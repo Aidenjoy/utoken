@@ -78,15 +78,15 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
-  // Rankings
+  // Rankings — displayed as Model Square
   const rankings = modules?.rankings
   if (rankings && typeof rankings === 'object' && rankings.enabled) {
     const requiresAuth = rankings.requireAuth && !isAuthed
-    links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
+    links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
-  // Docs (supports external links)
-  if (modules?.docs !== false) {
+  // Docs (supports external links) — hidden by default, enable via backend config
+  if (modules?.docs === true) {
     if (docsLink) {
       links.push({ title: t('Docs'), href: docsLink, external: true })
     } else {
@@ -94,8 +94,8 @@ export function useTopNavLinks(): TopNavLink[] {
     }
   }
 
-  // About
-  if (modules?.about !== false) {
+  // About — hidden by default, enable via backend config
+  if (modules?.about === true) {
     links.push({ title: t('About'), href: '/about' })
   }
 

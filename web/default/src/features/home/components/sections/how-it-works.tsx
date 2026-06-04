@@ -16,9 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Settings, Zap, BarChart3 } from 'lucide-react'
+import { Key, Route, BarChart3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { AnimateInView } from '@/components/animate-in-view'
 
 export function HowItWorks() {
   const { t } = useTranslation()
@@ -26,61 +25,105 @@ export function HowItWorks() {
   const steps = [
     {
       num: '1',
-      title: t('Configure'),
+      title: t('Add your API keys'),
       desc: t(
-        'Add your API keys, set up channels and configure access permissions'
+        'Connect your provider API keys for OpenAI, Claude, Gemini, and more. We never store your keys in plain text.'
       ),
-      icon: <Settings className='size-6' strokeWidth={1.5} />,
+      icon: <Key className='size-6' />,
     },
     {
       num: '2',
-      title: t('Connect'),
+      title: t('Route your requests'),
       desc: t(
-        'Connect through OpenAI, Claude, Gemini, and other compatible API routes'
+        'Configure routing rules, rate limits, and load balancing. One endpoint works with all OpenAI-compatible SDKs.'
       ),
-      icon: <Zap className='size-6' strokeWidth={1.5} />,
+      icon: <Route className='size-6' />,
     },
     {
       num: '3',
-      title: t('Monitor'),
-      desc: t('Track usage, costs and performance with real-time analytics'),
-      icon: <BarChart3 className='size-6' strokeWidth={1.5} />,
+      title: t('Monitor and scale'),
+      desc: t(
+        'Track usage, costs, and performance in real-time. Add more providers and scale without changing a line of code.'
+      ),
+      icon: <BarChart3 className='size-6' />,
     },
   ]
 
   return (
-    <section className='border-border/40 relative z-10 border-t px-6 py-24 md:py-32'>
+    <section className='bg-gray-50 px-6 py-20 dark:bg-transparent md:py-28'>
       <div className='mx-auto max-w-6xl'>
-        <AnimateInView className='mb-16 text-center md:mb-20'>
-          <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
+        <div className='mb-14 text-center'>
+          <p className='mb-3 text-xs font-semibold tracking-widest text-blue-600 dark:text-blue-400 uppercase'>
             {t('How It Works')}
           </p>
-          <h2 className='text-2xl font-bold tracking-tight md:text-3xl'>
-            {t('Three steps to get started')}
+          <h2 className='text-2xl font-extrabold tracking-tight text-gray-900 dark:text-gray-100 md:text-3xl'>
+            {t('Start in minutes')}
           </h2>
-        </AnimateInView>
+        </div>
 
-        <div className='grid gap-8 md:grid-cols-3 md:gap-12'>
-          {steps.map((step, i) => (
-            <AnimateInView
+        <div className='relative grid gap-8 md:grid-cols-3 md:gap-12'>
+          {/* Desktop connecting lines */}
+          <svg
+            className='pointer-events-none absolute inset-x-0 top-8 hidden select-none md:block'
+            width='100%'
+            height='2'
+            viewBox='0 0 100 2'
+            preserveAspectRatio='none'
+          >
+            <line
+              x1='0'
+              y1='1'
+              x2='100'
+              y2='1'
+              stroke='url(#lineGradient)'
+              strokeWidth='2'
+              strokeLinecap='round'
+              strokeDasharray='3 8'
+            />
+            <defs>
+              <linearGradient id='lineGradient' x1='0' y1='0' x2='1' y2='0'>
+                <stop offset='0%' stopColor='rgba(37,99,235,0.1)' />
+                <stop offset='30%' stopColor='rgba(37,99,235,0.35)' />
+                <stop offset='70%' stopColor='rgba(56,189,248,0.35)' />
+                <stop offset='100%' stopColor='rgba(56,189,248,0.1)' />
+              </linearGradient>
+            </defs>
+          </svg>
+
+          {/* Mobile connecting pulse dots */}
+          <div className='absolute inset-x-0 top-8 flex items-center justify-center md:hidden'>
+            <div className='flex items-center gap-2'>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className='size-1 rounded-full bg-blue-400 animate-pulse'
+                  style={{ animationDelay: `${i * 0.2}s` }}
+                />
+              ))}
+            </div>
+          </div>
+          {steps.map((step) => (
+            <div
               key={step.num}
-              delay={i * 150}
-              animation='fade-up'
               className='relative flex flex-col items-center text-center'
             >
               <div className='relative mb-6'>
-                <div className='text-muted-foreground border-border/50 bg-muted/30 flex size-16 items-center justify-center rounded-2xl border transition-colors'>
+                {/* Icon glow ring */}
+                <div className='absolute -inset-1 rounded-2xl bg-gradient-to-br from-blue-500/15 to-sky-500/15 blur-sm opacity-0 transition-opacity duration-500 group-hover:opacity-100' />
+                <div className='relative flex size-16 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm ring-1 ring-gray-100 transition-all duration-300 group-hover:shadow-md group-hover:ring-blue-200 dark:bg-transparent dark:text-blue-400 dark:ring-gray-800 dark:group-hover:ring-blue-800'>
                   {step.icon}
                 </div>
-                <div className='bg-foreground text-background absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-xs font-bold'>
+                <div className='absolute -top-2 -right-2 flex size-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-sm ring-2 ring-white dark:ring-gray-900'>
                   {step.num}
                 </div>
               </div>
-              <h3 className='mb-2 text-base font-semibold'>{step.title}</h3>
-              <p className='text-muted-foreground max-w-[240px] text-sm leading-relaxed'>
+              <h3 className='mb-2 text-base font-semibold text-gray-900 dark:text-gray-100'>
+                {step.title}
+              </h3>
+              <p className='max-w-xs text-sm leading-relaxed text-gray-500 dark:text-gray-400'>
                 {step.desc}
               </p>
-            </AnimateInView>
+            </div>
           ))}
         </div>
       </div>

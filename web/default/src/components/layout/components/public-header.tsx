@@ -192,15 +192,23 @@ export function PublicHeader(props: PublicHeaderProps) {
               'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
               scrolled
                 ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
-                : 'h-16 px-2'
+                : 'h-20 px-3'
             )}
           >
             {/* Logo */}
             <Link
               to={homeUrl}
-              className='group flex shrink-0 items-center gap-2.5'
+              className={cn(
+                'group flex shrink-0 items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                scrolled ? 'gap-2' : 'gap-3.5'
+              )}
             >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
+              <div
+                className={cn(
+                  'flex shrink-0 items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105',
+                  scrolled ? 'size-7' : 'size-14'
+                )}
+              >
                 {loading ? (
                   <Skeleton className='size-full rounded-lg' />
                 ) : customLogo ? (
@@ -214,7 +222,12 @@ export function PublicHeader(props: PublicHeaderProps) {
                   />
                 )}
               </div>
-              <span className='text-sm font-semibold tracking-tight'>
+              <span
+                className={cn(
+                  'font-bold tracking-tight transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                  scrolled ? 'text-sm' : 'text-xl'
+                )}
+              >
                 {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
               </span>
             </Link>

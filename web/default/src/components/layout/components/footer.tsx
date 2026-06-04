@@ -39,6 +39,8 @@ interface FooterProps {
   columns?: FooterColumnProps[]
   copyright?: string
   className?: string
+  /** Default false = show it. Set to true to hide the "© New API. 版权所有..." line. */
+  hideProjectAttribution?: boolean
 }
 
 const NEW_API_FOOTER_ATTRIBUTION_KEY = [
@@ -157,6 +159,8 @@ export function Footer(props: FooterProps) {
     demoSiteEnabled,
   } = useSystemConfig()
 
+  const hideAttribution = props.hideProjectAttribution ?? false
+
   const displayLogo = systemLogo || props.logo || '/logo.png'
   const displayName = systemName || props.name || 'New API'
   const isDemoSiteMode = Boolean(demoSiteEnabled)
@@ -237,7 +241,13 @@ export function Footer(props: FooterProps) {
             />
             <div className='border-border/60 text-muted-foreground/45 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
               <LegalLinks />
-              <ProjectAttribution currentYear={currentYear} inline />
+              {!hideAttribution ? (
+                <ProjectAttribution currentYear={currentYear} inline />
+              ) : (
+                <span className='text-muted-foreground text-xs'>
+                  {t('One API. All models.')}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -299,7 +309,13 @@ export function Footer(props: FooterProps) {
             </span>
             <LegalLinks leadingSeparator />
           </div>
-          <ProjectAttribution currentYear={currentYear} />
+          {!hideAttribution ? (
+            <ProjectAttribution currentYear={currentYear} />
+          ) : (
+            <span className='text-muted-foreground text-xs'>
+              {t('One API. All models.')}
+            </span>
+          )}
         </div>
       </div>
     </footer>
