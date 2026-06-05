@@ -38,4 +38,49 @@ bun install   # 使用 bun 安装新版前端依赖
 
 # 修改 rsbuild.config.ts 在 host: '0.0.0.0' 下面添加 port: 8000 防止端口冲突
 bun run dev
+
+# 使用 bun 构建新版前端资源
+bun run build
+```
+
+
+## 生产环境部署
+
+编译项目
+```
+# 1. 构建前端静态资源
+cd web/default
+bun install
+bun run build
+cd ../..
+
+# 2. 将前端资源嵌入 Go 二进制
+go build -o new-api
+```
+
+启动服务
+```
+# 启动（后台运行，日志写入 new-api.log）
+./deploy/start.sh
+
+# 停止服务
+./deploy/stop.sh
+
+# 重启服务
+./deploy/stop.sh && ./deploy/start.sh
+
+# 查看日志
+tail -f new-api.log
+```
+
+检查运行状态
+```
+# 查看进程
+ps aux | grep new-api
+
+# 查看 PID
+cat new-api.pid
+
+# 确认端口监听
+lsof -i :3000
 ```
