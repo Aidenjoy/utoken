@@ -159,9 +159,10 @@ export function Footer(props: FooterProps) {
     demoSiteEnabled,
   } = useSystemConfig()
 
-  const hideAttribution = props.hideProjectAttribution ?? false
-
   const displayLogo = systemLogo || props.logo || '/logo.png'
+  // Logo filename as dynamic switch: true.png → show New API attribution, other → slogan
+  const logoFileName = displayLogo.split('/').pop() || ''
+  const showAttributionByLogo = logoFileName === 'true.png'
   const displayName = systemName || props.name || 'New API'
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
@@ -241,7 +242,7 @@ export function Footer(props: FooterProps) {
             />
             <div className='border-border/60 text-muted-foreground/45 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
               <LegalLinks />
-              {!hideAttribution ? (
+              {showAttributionByLogo ? (
                 <ProjectAttribution currentYear={currentYear} inline />
               ) : (
                 <span className='text-muted-foreground text-xs'>
@@ -309,7 +310,7 @@ export function Footer(props: FooterProps) {
             </span>
             <LegalLinks leadingSeparator />
           </div>
-          {!hideAttribution ? (
+          {showAttributionByLogo ? (
             <ProjectAttribution currentYear={currentYear} />
           ) : (
             <span className='text-muted-foreground text-xs'>
