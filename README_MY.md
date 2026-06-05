@@ -54,12 +54,16 @@ bun install
 bun run build
 cd ../..
 
-# 2. 将前端资源嵌入 Go 二进制
+# 2. 将前端资源嵌入 Go 二进制（下载报错需要设置国内源 export GOPROXY=https://goproxy.cn,direct  查询是go env GOPROXY）
 go build -o new-api
 ```
 
 启动服务
 ```
+#  配置环境变量
+cp .env.example .env
+redis 需要注意，用户名和密码都写到后面，密码里有冒号必须 URL 编码，把 : 转成 %3A，格式为 redis://:用户名%3A密码
+
 # 启动（后台运行，日志写入 new-api.log）
 ./deploy/start.sh
 
