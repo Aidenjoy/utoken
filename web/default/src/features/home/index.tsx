@@ -16,19 +16,42 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
-import { Markdown } from '@/components/ui/markdown'
+
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
 import { CTA, Features, Hero, HowItWorks, ModelShowcase, Stats } from './components'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const { resolvedTheme } = useTheme()
   const { auth } = useAuthStore()
   const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
+
+  const syncIframePreferences = useCallback(() => {
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        { themeMode: resolvedTheme },
+        '*'
+      )
+      iframeRef.current?.contentWindow?.postMessage(
+        { lang: i18n.language },
+        '*'
+      )
+    } catch {
+      // Cross-origin frames may reject access while navigating.
+    }
+  }, [i18n.language, resolvedTheme])
+
+  useEffect(() => {
+    if (isUrl) {
+      syncIframePreferences()
+    }
+  }, [isUrl, syncIframePreferences])
 
   if (!isLoaded) {
     return (
@@ -41,21 +64,45 @@ export function Home() {
   }
 
   if (content) {
+    if (isUrl) {
+      return (
+        <PublicLayout showMainContainer={false}>
+          <iframe
+            ref={iframeRef}
+            src={content}
+            className='h-screen w-full border-none'
+            title={t('Custom Home Page')}
+            sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
+            onLoad={syncIframePreferences}
+          />
+        </PublicLayout>
+      )
+    }
+
+    const contentIsHtml = isLikelyHtml(content)
+
+    if (contentIsHtml) {
+      return (
+        <PublicLayout showMainContainer={false}>
+          <RichContent
+            mode='html'
+            htmlVariant='isolated'
+            content={content}
+            className='custom-home-content'
+          />
+        </PublicLayout>
+      )
+    }
+
     return (
-      <PublicLayout showMainContainer={false}>
-        <main className='overflow-x-hidden'>
-          {isUrl ? (
-            <iframe
-              src={content}
-              className='h-screen w-full border-none'
-              title={t('Custom Home Page')}
-            />
-          ) : (
-            <div className='container mx-auto py-8'>
-              <Markdown className='custom-home-content'>{content}</Markdown>
-            </div>
-          )}
-        </main>
+      <PublicLayout>
+        <div className='mx-auto max-w-6xl px-4 py-8'>
+          <RichContent
+            mode='markdown'
+            content={content}
+            className='custom-home-content'
+          />
+        </div>
       </PublicLayout>
     )
   }
