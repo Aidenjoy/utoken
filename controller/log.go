@@ -20,6 +20,10 @@ func GetAllLogs(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
+	// Agents can only see logs in their own group
+	if c.GetInt("role") == common.RoleAgentUser {
+		group = c.GetString("group")
+	}
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
 	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId)
@@ -104,6 +108,10 @@ func GetLogsStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
+	// Agents can only see logs in their own group
+	if c.GetInt("role") == common.RoleAgentUser {
+		group = c.GetString("group")
+	}
 	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
 	if err != nil {
 		common.ApiError(c, err)

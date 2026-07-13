@@ -692,6 +692,7 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 		"display_name": newUser.DisplayName,
 		"group":        newUser.Group,
 		"remark":       newUser.Remark,
+		"role":         newUser.Role,
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password

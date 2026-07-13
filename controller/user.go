@@ -246,6 +246,13 @@ func Register(c *gin.Context) {
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
 	}
+	// If inviter is an agent, new user inherits the agent's group
+	if inviterId > 0 {
+		inviter, err := model.GetUserById(inviterId, false)
+		if err == nil && inviter.Role == common.RoleAgentUser {
+			cleanUser.Group = inviter.Group
+		}
+	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
@@ -301,6 +308,22 @@ func Register(c *gin.Context) {
 }
 
 func GetAllUsers(c *gin.Context) {
+	myRole := c.GetInt("role")
+	if myRole == common.RoleAgentUser {
+		// Agents can only see users in their own group
+		myGroup := c.GetString("group")
+		pageInfo := common.GetPageQuery(c)
+		users, total, err := model.SearchUsers("", myGroup, nil, nil, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		pageInfo.SetTotal(int(total))
+		pageInfo.SetItems(users)
+		common.ApiSuccess(c, pageInfo)
+		return
+	}
+
 	pageInfo := common.GetPageQuery(c)
 	users, total, err := model.GetAllUsers(pageInfo)
 	if err != nil {
@@ -318,6 +341,11 @@ func GetAllUsers(c *gin.Context) {
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
+	myRole := c.GetInt("role")
+	if myRole == common.RoleAgentUser {
+		// Agents can only search within their own group
+		group = c.GetString("group")
+	}
 	var role *int
 	if roleStr := c.Query("role"); roleStr != "" {
 		if parsed, err := strconv.Atoi(roleStr); err == nil {
@@ -362,6 +390,13 @@ func GetUser(c *gin.Context) {
 	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
+	}
+	if myRole == common.RoleAgentUser {
+		myGroup := c.GetString("group")
+		if user.Group != myGroup {
+			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+			return
+		}
 	}
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
@@ -524,6 +559,19 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 		// 超级管理员不需要边栏设置功能
 		permissions["sidebar_settings"] = false
 		permissions["sidebar_modules"] = map[string]interface{}{}
+	} else if userRole == common.RoleAgentUser {
+		// 代理可以设置边栏，但只能访问用户管理
+		permissions["sidebar_settings"] = true
+		permissions["sidebar_modules"] = map[string]interface{}{
+			"admin": map[string]interface{}{
+				"channel":      false,
+				"models":       false,
+				"redemption":   false,
+				"user":         true,
+				"setting":      false,
+				"subscription": false,
+			},
+		}
 	} else if userRole == common.RoleAdminUser {
 		// 管理员可以设置边栏，但不包含系统设置功能
 		permissions["sidebar_settings"] = true
@@ -572,7 +620,17 @@ func generateDefaultSidebarConfig(userRole int) string {
 	}
 
 	// 管理员区域 - 根据角色决定
-	if userRole == common.RoleAdminUser {
+	if userRole == common.RoleAgentUser {
+		// 代理只能访问用户管理
+		defaultConfig["admin"] = map[string]interface{}{
+			"enabled":    true,
+			"channel":    false,
+			"models":     false,
+			"redemption": false,
+			"user":       true,
+			"setting":    false,
+		}
+	} else if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
 			"enabled":    true,
@@ -675,12 +733,27 @@ func UpdateUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if updatedUser.Role != common.RoleGuestUser && updatedUser.Role != originUser.Role {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	updatedUser.Role = originUser.Role
 	myRole := c.GetInt("role")
+	if updatedUser.Role != 0 && updatedUser.Role != originUser.Role {
+		// Only super-admin can change user role
+		if myRole != common.RoleRootUser {
+			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+			return
+		}
+		if !common.IsValidateRole(updatedUser.Role) || updatedUser.Role == common.RoleRootUser || updatedUser.Role == common.RoleGuestUser {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	} else {
+		updatedUser.Role = originUser.Role
+	}
+	if myRole == common.RoleAgentUser {
+		myGroup := c.GetString("group")
+		if originUser.Group != myGroup {
+			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+			return
+		}
+	}
 	if !canManageTargetRole(myRole, originUser.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
@@ -911,6 +984,13 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
+	if myRole == common.RoleAgentUser {
+		myGroup := c.GetString("group")
+		if originUser.Group != myGroup {
+			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+			return
+		}
+	}
 	if myRole <= originUser.Role {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
@@ -978,6 +1058,10 @@ func CreateUser(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
+	}
+	if myRole == common.RoleAgentUser {
+		// Agents can only create users in their own group
+		cleanUser.Group = c.GetString("group")
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1052,6 +1136,23 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
+	if myRole == common.RoleAgentUser {
+		myGroup := c.GetString("group")
+		if user.Group != myGroup {
+			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+			return
+		}
+		// Agents cannot adjust user quota
+		if req.Action == "add_quota" {
+			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+			return
+		}
+		// Agents cannot promote or demote users
+		if req.Action == "promote" || req.Action == "demote" {
+			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+			return
+		}
+	}
 	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return

@@ -155,6 +155,7 @@ export function UsersMutateDrawer({
   const selectedRole = form.watch('role')
   const canEditAdminPermissions = currentUser?.role === ROLE.SUPER_ADMIN
   const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
+  const isAgent = currentUser?.role === ROLE.AGENT
 
   const onSubmit = async (data: UserFormValues) => {
     if (!isUpdate) {
@@ -265,7 +266,7 @@ export function UsersMutateDrawer({
                   )}
                 />
 
-                {!isUpdate && (
+                {!isAgent && (
                   <FormField
                     control={form.control}
                     name='role'
@@ -275,6 +276,7 @@ export function UsersMutateDrawer({
                         <Select
                           items={[
                             { value: '1', label: t('Common User') },
+                            { value: '5', label: t('Agent') },
                             { value: '10', label: t('Admin') },
                           ]}
                           onValueChange={(value) =>
@@ -292,6 +294,7 @@ export function UsersMutateDrawer({
                               <SelectItem value='1'>
                                 {t('Common User')}
                               </SelectItem>
+                              <SelectItem value='5'>{t('Agent')}</SelectItem>
                               <SelectItem value='10'>{t('Admin')}</SelectItem>
                             </SelectGroup>
                           </SelectContent>
@@ -353,6 +356,7 @@ export function UsersMutateDrawer({
                 <SideDrawerSection>
                   <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
 
+                  {!isAgent && (
                   <FormField
                     control={form.control}
                     name='group'
@@ -388,6 +392,7 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+                  )}
 
                   <FormField
                     control={form.control}
@@ -411,6 +416,7 @@ export function UsersMutateDrawer({
                               className='flex-1'
                             />
                           </FormControl>
+                          {!isAgent && (
                           <Button
                             type='button'
                             variant='outline'
@@ -419,6 +425,7 @@ export function UsersMutateDrawer({
                             <Pencil className='mr-1 h-4 w-4' />
                             {t('Adjust Quota')}
                           </Button>
+                          )}
                         </div>
                         <FormDescription>
                           {formatQuota(parseQuotaFromDollars(field.value || 0))}
@@ -585,7 +592,7 @@ export function UsersMutateDrawer({
       </Sheet>
 
       {/* Adjust Quota Dialog */}
-      {currentRow && (
+      {currentRow && !isAgent && (
         <UserQuotaDialog
           open={quotaDialogOpen}
           onOpenChange={setQuotaDialogOpen}

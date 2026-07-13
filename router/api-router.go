@@ -124,21 +124,28 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
 			}
 
+			// Agent-accessible routes: user CRUD (role >= RoleAgentUser)
+			agentRoute := userRoute.Group("/")
+			agentRoute.Use(middleware.AgentAuth())
+			{
+				agentRoute.GET("/", controller.GetAllUsers)
+				agentRoute.GET("/search", controller.SearchUsers)
+				agentRoute.GET("/:id", controller.GetUser)
+				agentRoute.POST("/", controller.CreateUser)
+				agentRoute.POST("/manage", controller.ManageUser)
+				agentRoute.PUT("/", controller.UpdateUser)
+				agentRoute.DELETE("/:id", controller.DeleteUser)
+			}
+
+			// Admin-only routes (role >= RoleAdminUser)
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
 			{
-				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
-				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
-				adminRoute.GET("/:id", controller.GetUser)
-				adminRoute.POST("/", controller.CreateUser)
-				adminRoute.POST("/manage", controller.ManageUser)
-				adminRoute.PUT("/", controller.UpdateUser)
-				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
 
 				// Admin 2FA routes
@@ -265,14 +272,14 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
 		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
+		logRoute.GET("/", middleware.AgentAuth(), controller.GetAllLogs)
 		// Legacy synchronous direct-delete route used only by the classic frontend.
 		// TODO: remove once the classic frontend is removed; the default frontend uses /system-task/log-cleanup.
 		logRoute.DELETE("/", middleware.RootAuth(), controller.DeleteHistoryLogs)
-		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
+		logRoute.GET("/stat", middleware.AgentAuth(), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
 		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
-		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
+		logRoute.GET("/search", middleware.AgentAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
