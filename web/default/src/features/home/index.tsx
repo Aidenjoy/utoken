@@ -19,8 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { RichContent } from '@/components/rich-content'
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
+import { useTheme } from '@/context/theme-provider'
+import { isLikelyHtml } from '@/lib/content-format'
+import { useAuthStore } from '@/stores/auth-store'
 import { CTA, Features, Hero, HowItWorks, ModelShowcase, Stats } from './components'
 import { useHomePageContent } from './hooks'
 
