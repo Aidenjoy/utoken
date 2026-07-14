@@ -145,10 +145,11 @@ func RecordLog(userId int, logType int, content string) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
-	username, _ := GetUsernameById(userId, false)
+	username, group := GetUsernameAndGroupById(userId)
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
+		Group:     group,
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
@@ -164,10 +165,11 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
-	username, _ := GetUsernameById(userId, false)
+	username, group := GetUsernameAndGroupById(userId)
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
+		Group:     group,
 		CreatedAt: common.GetTimestamp(),
 		Type:      logType,
 		Content:   content,
@@ -200,7 +202,7 @@ func buildOpField(action string, params map[string]interface{}) map[string]inter
 // username 由调用方传入（登录流程已持有用户对象），避免额外的数据库查询。
 // content 为英文兜底文本（用于导出/经典前端）；action+params 供前端本地化渲染。
 // extra 可携带 login_method、user_agent 等附加信息（普通用户可见）。
-func RecordLoginLog(userId int, username string, content string, ip string, action string, params map[string]interface{}, extra map[string]interface{}) {
+func RecordLoginLog(userId int, username string, group string, content string, ip string, action string, params map[string]interface{}, extra map[string]interface{}) {
 	other := map[string]interface{}{}
 	for k, v := range extra {
 		other[k] = v
@@ -209,6 +211,7 @@ func RecordLoginLog(userId int, username string, content string, ip string, acti
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
+		Group:     group,
 		CreatedAt: common.GetTimestamp(),
 		Type:      LogTypeLogin,
 		Content:   content,
@@ -227,7 +230,7 @@ func RecordLoginLog(userId int, username string, content string, ip string, acti
 // adminInfo 存放操作者身份（写入 Other.admin_info，普通用户查询时剥离）；
 // auditInfo 存放路由/方法/结果等中间件兜底信息（写入 Other.audit_info，普通用户查询时剥离）。
 func RecordOperationAuditLog(logUserId int, content string, ip string, action string, params map[string]interface{}, adminInfo map[string]interface{}, auditInfo map[string]interface{}) {
-	username, _ := GetUsernameById(logUserId, false)
+	username, group := GetUsernameAndGroupById(logUserId)
 	other := map[string]interface{}{
 		"op": buildOpField(action, params),
 	}
@@ -240,6 +243,7 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 	log := &Log{
 		UserId:    logUserId,
 		Username:  username,
+		Group:     group,
 		CreatedAt: common.GetTimestamp(),
 		Type:      LogTypeManage,
 		Content:   content,
@@ -252,7 +256,7 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
-	username, _ := GetUsernameById(userId, false)
+	username, group := GetUsernameAndGroupById(userId)
 	adminInfo := map[string]interface{}{
 		"server_ip":               common.GetIp(),
 		"node_name":               common.NodeName,
@@ -267,6 +271,7 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
+		Group:     group,
 		CreatedAt: common.GetTimestamp(),
 		Type:      LogTypeTopup,
 		Content:   content,

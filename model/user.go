@@ -1218,6 +1218,39 @@ func GetUsernameById(id int, fromDB bool) (username string, err error) {
 	return username, nil
 }
 
+// GetUsernameAndGroupById returns both username and group for a user in a single query.
+// Used by log recording functions that need the group for filtering.
+func GetUsernameAndGroupById(id int) (username string, group string) {
+	if common.RedisEnabled {
+		username, err := getUserNameCache(id)
+		if err == nil {
+			group, err = getUserGroupCache(id)
+			if err == nil {
+				return username, group
+			}
+			// username cached but group not, fall through to DB for both
+		}
+	}
+	var result struct {
+		Username string
+		Group    string
+	}
+	err := DB.Model(&User{}).Where("id = ?", id).Select("username, " + commonGroupCol).Scan(&result).Error
+	if err != nil {
+		return "", ""
+	}
+	username = result.Username
+	group = result.Group
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			if err := updateUserNameCache(id, username); err != nil {
+				common.SysLog("failed to update user name cache: " + err.Error())
+			}
+		})
+	}
+	return username, group
+}
+
 func IsLinuxDOIdAlreadyTaken(linuxDOId string) bool {
 	var user User
 	err := DB.Unscoped().Where("linux_do_id = ?", linuxDOId).First(&user).Error

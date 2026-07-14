@@ -18,14 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import dayjs from 'dayjs'
+import { KeyRound } from 'lucide-react'
 
 import { SectionPageLayout } from '@/components/layout'
+import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   Select,
   SelectContent,
@@ -41,21 +43,32 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatQuota, formatNumber } from '@/lib/format'
+import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
+import {
+  formatUseTime,
+  formatLogQuota,
+  formatTimestampToDate,
+  formatNumber,
+} from '@/lib/format'
 import { getAllLogs, getLogStats } from '@/features/usage-logs/api'
+import type { UsageLog } from '@/features/usage-logs/data/schema'
+import { ModelBadge } from '@/features/usage-logs/components/model-badge'
+import {
+  formatModelName,
+  parseLogOther,
+  renderAuditContent,
+} from '@/features/usage-logs/lib/format'
+import {
+  getLogTypeConfig,
+  isDisplayableLogType,
+  isTimingLogType,
+} from '@/features/usage-logs/lib/utils'
+import {
+  LOG_TYPE_FILTERS,
+  LOG_TYPE_ALL_VALUE,
+} from '@/features/usage-logs/constants'
 
 const route = getRouteApi('/_authenticated/statistics-logs/')
-
-const LOG_TYPES = [
-  { value: '', label: 'All Types' },
-  { value: '1', label: 'TopUp' },
-  { value: '2', label: 'Consume' },
-  { value: '3', label: 'Manage' },
-  { value: '4', label: 'System' },
-  { value: '5', label: 'Error' },
-  { value: '6', label: 'Refund' },
-  { value: '7', label: 'Login' },
-]
 
 function getDefaultTimeRange() {
   const now = new Date()
@@ -78,12 +91,17 @@ export function StatisticsLogs() {
   const page = search.page ?? 1
   const pageSize = search.pageSize ?? 20
 
-  const defaultRange = getDefaultTimeRange()
-  const startTime = search.startTime ?? defaultRange.start.getTime()
-  const endTime = search.endTime ?? defaultRange.end.getTime()
-
-  const startTimestamp = Math.floor(startTime / 1000)
-  const endTimestamp = Math.floor(endTime / 1000)
+  const { startTime, endTime, startTimestamp, endTimestamp } = useMemo(() => {
+    const defaultRange = getDefaultTimeRange()
+    const stTime = search.startTime ?? defaultRange.start.getTime()
+    const enTime = search.endTime ?? defaultRange.end.getTime()
+    return {
+      startTime: stTime,
+      endTime: enTime,
+      startTimestamp: Math.floor(stTime / 1000),
+      endTimestamp: Math.floor(enTime / 1000),
+    }
+  }, [search.startTime, search.endTime])
 
   // Fetch logs
   const { data: logsData, isLoading } = useQuery({
@@ -115,6 +133,7 @@ export function StatisticsLogs() {
       }
       return result.data || { items: [], total: 0 }
     },
+    staleTime: 30 * 1000,
   })
 
   // Fetch stats
@@ -140,6 +159,7 @@ export function StatisticsLogs() {
       if (!result?.success) return { quota: 0, rpm: 0, tpm: 0 }
       return result.data || { quota: 0, rpm: 0, tpm: 0 }
     },
+    staleTime: 30 * 1000,
   })
 
   const handleSearch = useCallback(() => {
@@ -166,9 +186,12 @@ export function StatisticsLogs() {
     [navigate, search]
   )
 
-  const logs = logsData?.items || []
+  const logs = (logsData?.items || []) as unknown as UsageLog[]
   const total = logsData?.total || 0
   const totalPages = Math.ceil(total / pageSize)
+
+  // Column count for skeleton/empty state
+  const colCount = 9
 
   return (
     <SectionPageLayout fixedContent>
@@ -226,15 +249,16 @@ export function StatisticsLogs() {
                 {t('Type')}
               </label>
               <Select
-                value={localType}
-                onValueChange={(v) => setLocalType(v === 'all' ? '' : v)}
+                value={localType || LOG_TYPE_ALL_VALUE}
+                onValueChange={(v) =>
+                  setLocalType(v && v !== LOG_TYPE_ALL_VALUE ? v : '')
+                }
               >
                 <SelectTrigger className='w-32'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value='all'>{t('All Types')}</SelectItem>
-                  {LOG_TYPES.slice(1).map((lt) => (
+                  {LOG_TYPE_FILTERS.map((lt) => (
                     <SelectItem key={lt.value} value={lt.value}>
                       {t(lt.label)}
                     </SelectItem>
@@ -252,7 +276,7 @@ export function StatisticsLogs() {
                 {t('Quota')}:
               </span>
               <span className='font-semibold tabular-nums'>
-                {formatQuota(stat?.quota ?? 0)}
+                {formatLogQuota(stat?.quota ?? 0)}
               </span>
             </div>
             <div className='flex items-center gap-2 rounded-lg border px-4 py-2'>
@@ -274,25 +298,22 @@ export function StatisticsLogs() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className='w-40'>{t('Time')}</TableHead>
+                  <TableHead className='w-44'>{t('Time')}</TableHead>
+                  <TableHead className='w-32'>{t('Channel')}</TableHead>
                   <TableHead className='w-28'>{t('User')}</TableHead>
-                  <TableHead className='w-40'>{t('Model')}</TableHead>
-                  <TableHead className='w-28'>{t('Token')}</TableHead>
-                  <TableHead className='w-24 text-right'>
-                    {t('Prompt')}
-                  </TableHead>
-                  <TableHead className='w-24 text-right'>
-                    {t('Completion')}
-                  </TableHead>
-                  <TableHead className='w-24 text-right'>{t('Quota')}</TableHead>
-                  <TableHead className='w-20'>{t('Channel')}</TableHead>
+                  <TableHead className='w-40'>{t('Token')}</TableHead>
+                  <TableHead className='w-44'>{t('Model')}</TableHead>
+                  <TableHead className='w-24'>{t('Timing')}</TableHead>
+                  <TableHead className='w-28 text-right'>Tokens</TableHead>
+                  <TableHead className='w-24 text-right'>{t('Cost')}</TableHead>
+                  <TableHead className='w-48'>{t('Details')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={`skeleton-${i}`}>
-                      {Array.from({ length: 8 }).map((_, j) => (
+                      {Array.from({ length: colCount }).map((_, j) => (
                         <TableCell key={j}>
                           <div className='h-4 animate-pulse rounded bg-muted' />
                         </TableCell>
@@ -302,49 +323,173 @@ export function StatisticsLogs() {
                 ) : logs.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={colCount}
                       className='py-12 text-center text-muted-foreground'
                     >
                       {t('No Logs Found')}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className='font-mono text-xs'>
-                        {dayjs
-                          .unix(log.created_at)
-                          .format('MM-DD HH:mm:ss')}
-                      </TableCell>
-                      <TableCell className='truncate'>
-                        {log.username || '-'}
-                      </TableCell>
-                      <TableCell className='truncate text-xs'>
-                        {log.model_name || '-'}
-                      </TableCell>
-                      <TableCell className='truncate text-xs'>
-                        {log.token_name || '-'}
-                      </TableCell>
-                      <TableCell className='text-right tabular-nums'>
-                        {log.prompt_tokens > 0
-                          ? formatNumber(log.prompt_tokens)
-                          : '-'}
-                      </TableCell>
-                      <TableCell className='text-right tabular-nums'>
-                        {log.completion_tokens > 0
-                          ? formatNumber(log.completion_tokens)
-                          : '-'}
-                      </TableCell>
-                      <TableCell className='text-right tabular-nums'>
-                        {log.quota > 0
-                          ? formatQuota(log.quota)
-                          : '-'}
-                      </TableCell>
-                      <TableCell className='truncate text-xs'>
-                        {log.channel_name || log.channel || '-'}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  logs.map((log) => {
+                    const typeConfig = getLogTypeConfig(log.type)
+                    const other = parseLogOther(log.other)
+                    const modelInfo = formatModelName(log)
+                    const auditContent = renderAuditContent(other, t)
+
+                    return (
+                      <TableRow key={log.id}>
+                        {/* Time + Type badge */}
+                        <TableCell>
+                          <div className='flex min-w-0 flex-col gap-0.5'>
+                            <span className='truncate font-mono text-xs tabular-nums'>
+                              {formatTimestampToDate(log.created_at)}
+                            </span>
+                            <StatusBadge
+                              label={t(typeConfig.label)}
+                              variant={
+                                typeConfig.color as StatusBadgeProps['variant']
+                              }
+                              size='sm'
+                              copyable={false}
+                              className='!text-xs [&_span]:!text-xs'
+                            />
+                          </div>
+                        </TableCell>
+
+                        {/* Channel */}
+                        <TableCell>
+                          {isDisplayableLogType(log.type) && log.channel ? (
+                            <div className='flex max-w-[160px] flex-col gap-0.5'>
+                              <StatusBadge
+                                label={`#${log.channel}`}
+                                autoColor={String(log.channel)}
+                                copyText={String(log.channel)}
+                                size='sm'
+                                showDot={false}
+                                className='font-mono'
+                              />
+                              {log.channel_name && (
+                                <span className='text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'>
+                                  {log.channel_name}
+                                </span>
+                              )}
+                            </div>
+                          ) : null}
+                        </TableCell>
+
+                        {/* User */}
+                        <TableCell>
+                          {log.username ? (
+                            <div className='flex items-center gap-1.5'>
+                              <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
+                                <AvatarFallback
+                                  className='text-[11px] font-semibold'
+                                  style={getUserAvatarStyle(log.username)}
+                                >
+                                  {getUserAvatarFallback(log.username)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className='text-muted-foreground max-w-[100px] truncate text-sm'>
+                                {log.username}
+                              </span>
+                            </div>
+                          ) : null}
+                        </TableCell>
+
+                        {/* Token */}
+                        <TableCell>
+                          {isDisplayableLogType(log.type) && log.token_name ? (
+                            <div className='flex max-w-[200px] flex-col gap-0.5'>
+                              <StatusBadge
+                                label={log.token_name}
+                                icon={KeyRound}
+                                copyText={log.token_name}
+                                size='sm'
+                                showDot={false}
+                                className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
+                              />
+                              {(log.group ||
+                                (other?.group ?? '')) && (
+                                <span className='text-muted-foreground/60 truncate [font-family:var(--font-body)] !text-xs'>
+                                  {log.group || other?.group}
+                                </span>
+                              )}
+                            </div>
+                          ) : null}
+                        </TableCell>
+
+                        {/* Model */}
+                        <TableCell>
+                          {isDisplayableLogType(log.type) && log.model_name ? (
+                            <ModelBadge
+                              modelName={modelInfo.name}
+                              actualModel={modelInfo.actualModel}
+                            />
+                          ) : null}
+                        </TableCell>
+
+                        {/* Timing */}
+                        <TableCell>
+                          {isTimingLogType(log.type) && log.use_time > 0 ? (
+                            <div className='flex flex-col gap-0.5'>
+                              <StatusBadge
+                                label={formatUseTime(log.use_time)}
+                                variant={
+                                  log.use_time < 10
+                                    ? 'success'
+                                    : log.use_time < 30
+                                      ? 'warning'
+                                      : 'danger'
+                                }
+                                size='sm'
+                                copyable={false}
+                                className='rounded-md font-mono'
+                              />
+                              <span className='text-muted-foreground/60 [font-family:var(--font-body)] !text-xs leading-none'>
+                                {log.is_stream ? t('Stream') : t('Non-stream')}
+                              </span>
+                            </div>
+                          ) : null}
+                        </TableCell>
+
+                        {/* Tokens */}
+                        <TableCell className='text-right'>
+                          {isDisplayableLogType(log.type) ? (
+                            <div className='flex flex-col gap-0.5'>
+                              <span className='font-mono text-xs font-medium tabular-nums'>
+                                {(log.prompt_tokens || 0).toLocaleString()} /{' '}
+                                {(log.completion_tokens || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          ) : null}
+                        </TableCell>
+
+                        {/* Cost */}
+                        <TableCell className='text-right'>
+                          {isDisplayableLogType(log.type) && log.quota > 0 ? (
+                            <span className='border-border/80 bg-muted/60 inline-flex h-6 w-fit items-center rounded-md border px-2 [font-family:var(--font-body)] text-sm leading-none font-semibold tabular-nums'>
+                              {formatLogQuota(log.quota)}
+                            </span>
+                          ) : null}
+                        </TableCell>
+
+                        {/* Details */}
+                        <TableCell>
+                          {auditContent ? (
+                            <span className='text-xs leading-snug'>
+                              {auditContent}
+                            </span>
+                          ) : log.content ? (
+                            <span className='text-muted-foreground truncate text-xs'>
+                              {log.content}
+                            </span>
+                          ) : (
+                            <span className='text-muted-foreground/40'>—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
