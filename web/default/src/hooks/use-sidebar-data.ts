@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  BarChart3,
   Box,
   CreditCard,
   FileText,
@@ -27,6 +28,7 @@ import {
   ListTodo,
   MessageSquare,
   Radio,
+  ScrollText,
   ServerCog,
   Settings,
   Ticket,
@@ -135,6 +137,18 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+            requiredRole: ROLE.AGENT,
+          },
+          {
+            title: t('Statistics Data'),
+            url: '/statistics',
+            icon: BarChart3,
+            requiredRole: ROLE.AGENT,
+          },
+          {
+            title: t('Statistics Logs'),
+            url: '/statistics-logs',
+            icon: ScrollText,
             requiredRole: ROLE.AGENT,
           },
           {

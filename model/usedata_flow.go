@@ -23,9 +23,17 @@ type FlowQuotaData struct {
 }
 
 func GetFlowQuotaData(startTime int64, endTime int64, username string, userID int, role int) ([]*FlowQuotaData, error) {
+	return GetFlowQuotaDataWithGroup(startTime, endTime, username, userID, role, "")
+}
+
+// GetFlowQuotaDataWithGroup is like GetFlowQuotaData but also filters by group
+// (used for agents who should only see their own group's data).
+func GetFlowQuotaDataWithGroup(startTime int64, endTime int64, username string, userID int, role int, group string) ([]*FlowQuotaData, error) {
 	switch {
 	case role >= common.RoleRootUser:
 		return getRootFlowQuotaData(startTime, endTime, username)
+	case role >= common.RoleAgentUser && group != "":
+		return getAgentFlowQuotaData(startTime, endTime, username, group)
 	case role >= common.RoleAdminUser:
 		return getAdminFlowQuotaData(startTime, endTime, username)
 	default:
@@ -52,6 +60,24 @@ func getSelfFlowQuotaData(startTime int64, endTime int64, userID int) ([]*FlowQu
 		return nil, err
 	}
 	return rows, fillFlowTokenNames(rows)
+}
+
+func getAgentFlowQuotaData(startTime int64, endTime int64, username string, group string) ([]*FlowQuotaData, error) {
+	rows := make([]*FlowQuotaData, 0)
+	query := flowQuotaBaseQuery(startTime, endTime).
+		Select("user_id, username, use_group, model_name, channel_id, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
+		Where("use_group = ?", group)
+	if username != "" {
+		query = query.Where("username = ?", username)
+	}
+	err := query.
+		Group("user_id, username, use_group, model_name, channel_id").
+		Order("quota DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, fillFlowChannelNames(rows)
 }
 
 func getAdminFlowQuotaData(startTime int64, endTime int64, username string) ([]*FlowQuotaData, error) {
