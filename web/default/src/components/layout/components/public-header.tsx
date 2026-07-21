@@ -68,7 +68,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     showLanguageSwitcher = true,
     logo: customLogo,
     siteName: customSiteName,
-    homeUrl = '/',
+    homeUrl = 'http://model.yundashi.com',
     showAuthButtons = true,
     showNotifications = true,
   } = props
@@ -191,41 +191,87 @@ export function PublicHeader(props: PublicHeaderProps) {
             )}
           >
             {/* Logo */}
-            <Link
-              to={homeUrl}
-              className={cn(
-                'group flex shrink-0 items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                scrolled ? 'gap-2' : 'gap-3.5'
-              )}
-            >
-              <div
+            {homeUrl.startsWith('http') ? (
+              <a
+                href={homeUrl}
                 className={cn(
-                  'flex shrink-0 items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105',
-                  scrolled ? 'size-7' : 'size-14'
+                  'group flex shrink-0 items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                  scrolled ? 'gap-2' : 'gap-3.5'
                 )}
               >
-                {loading ? (
-                  <Skeleton className='size-full rounded-lg' />
-                ) : customLogo ? (
-                  customLogo
-                ) : (
-                  <HeaderLogo
-                    src={systemLogo}
-                    loading={loading}
-                    logoLoaded={logoLoaded}
-                    className='size-full rounded-lg object-contain'
-                  />
-                )}
-              </div>
-              <span
+                <div
+                  className={cn(
+                    'flex shrink-0 items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105',
+                    scrolled ? 'size-7' : 'size-14'
+                  )}
+                >
+                  {loading ? (
+                    <Skeleton className='size-full rounded-lg' />
+                  ) : customLogo ? (
+                    customLogo
+                  ) : (
+                    <HeaderLogo
+                      src={systemLogo}
+                      loading={loading}
+                      logoLoaded={logoLoaded}
+                      className='size-full rounded-lg object-contain'
+                    />
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    'font-bold tracking-tight transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                    scrolled ? 'text-sm' : 'text-xl'
+                  )}
+                >
+                  {loading ? (
+                    <Skeleton className='h-4 w-16' />
+                  ) : (
+                    displaySiteName
+                  )}
+                </span>
+              </a>
+            ) : (
+              <Link
+                to={homeUrl}
                 className={cn(
-                  'font-bold tracking-tight transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                  scrolled ? 'text-sm' : 'text-xl'
+                  'group flex shrink-0 items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                  scrolled ? 'gap-2' : 'gap-3.5'
                 )}
               >
-                {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
-              </span>
-            </Link>
+                <div
+                  className={cn(
+                    'flex shrink-0 items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105',
+                    scrolled ? 'size-7' : 'size-14'
+                  )}
+                >
+                  {loading ? (
+                    <Skeleton className='size-full rounded-lg' />
+                  ) : customLogo ? (
+                    customLogo
+                  ) : (
+                    <HeaderLogo
+                      src={systemLogo}
+                      loading={loading}
+                      logoLoaded={logoLoaded}
+                      className='size-full rounded-lg object-contain'
+                    />
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    'font-bold tracking-tight transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                    scrolled ? 'text-sm' : 'text-xl'
+                  )}
+                >
+                  {loading ? (
+                    <Skeleton className='h-4 w-16' />
+                  ) : (
+                    displaySiteName
+                  )}
+                </span>
+              </Link>
+            )}
 
             {/* Desktop nav */}
             <div className='hidden items-center gap-0.5 sm:flex'>
@@ -236,8 +282,8 @@ export function PublicHeader(props: PublicHeaderProps) {
                     <a
                       key={i}
                       href={link.href}
-                      target='_blank'
-                      rel='noopener noreferrer'
+                      target={link.sameTab ? undefined : '_blank'}
+                      rel={link.sameTab ? undefined : 'noopener noreferrer'}
                       aria-disabled={link.disabled}
                       tabIndex={link.disabled ? -1 : undefined}
                       onClick={(event) => handleNavLinkClick(event, link)}
@@ -379,8 +425,8 @@ export function PublicHeader(props: PublicHeaderProps) {
                   <a
                     key={i}
                     href={link.href}
-                    target='_blank'
-                    rel='noopener noreferrer'
+                    target={link.sameTab ? undefined : '_blank'}
+                    rel={link.sameTab ? undefined : 'noopener noreferrer'}
                     aria-disabled={link.disabled}
                     tabIndex={link.disabled ? -1 : undefined}
                     onClick={(event) => handleNavLinkClick(event, link, true)}

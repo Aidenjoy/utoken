@@ -64,7 +64,11 @@ type requestPayload struct {
 }
 
 type responsePayload struct {
-	ID string `json:"id"` // task_id
+	ID    string `json:"id"` // task_id
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 type responseTask struct {
@@ -198,6 +202,20 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
+
+	// Log the request payload (truncate image data to avoid flooding logs)
+	logBody := *body
+	for i := range logBody.Content {
+		if logBody.Content[i].ImageURL != nil && len(logBody.Content[i].ImageURL.URL) > 100 {
+			logBody.Content[i].ImageURL.URL = logBody.Content[i].ImageURL.URL[:80] + "...(truncated)"
+		}
+	}
+	if logData, err := common.Marshal(logBody); err == nil {
+		common.SysLog(fmt.Sprintf("[DoubaoVideo] Submit request body: %s", string(logData)))
+	} else {
+		common.SysLog(fmt.Sprintf("[DoubaoVideo] Submit request model=%s content_count=%d", body.Model, len(body.Content)))
+	}
+
 	return bytes.NewReader(data), nil
 }
 
@@ -215,6 +233,22 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 	_ = resp.Body.Close()
 
+	// Log the raw response
+	common.SysLog(fmt.Sprintf("[DoubaoVideo] Submit response status=%d body=%s", resp.StatusCode, string(responseBody)))
+
+	// Check for HTTP error status
+	if resp.StatusCode != http.StatusOK {
+		var errResp responsePayload
+		if err := common.Unmarshal(responseBody, &errResp); err == nil && errResp.Error.Message != "" {
+			common.SysError(fmt.Sprintf("[DoubaoVideo] Upstream error: code=%s message=%s", errResp.Error.Code, errResp.Error.Message))
+			taskErr = service.TaskErrorWrapper(fmt.Errorf("upstream error: %s - %s", errResp.Error.Code, errResp.Error.Message), "upstream_error", resp.StatusCode)
+		} else {
+			common.SysError(fmt.Sprintf("[DoubaoVideo] Upstream returned status %d: %s", resp.StatusCode, string(responseBody)))
+			taskErr = service.TaskErrorWrapper(fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, string(responseBody)), "upstream_error", resp.StatusCode)
+		}
+		return
+	}
+
 	// Parse Doubao response
 	var dResp responsePayload
 	if err := common.Unmarshal(responseBody, &dResp); err != nil {
@@ -223,9 +257,12 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 
 	if dResp.ID == "" {
+		common.SysError(fmt.Sprintf("[DoubaoVideo] task_id is empty in response: %s", string(responseBody)))
 		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
 	}
+
+	common.SysLog(fmt.Sprintf("[DoubaoVideo] Task submitted successfully: id=%s", dResp.ID))
 
 	ov := dto.NewOpenAIVideo()
 	ov.ID = info.PublicTaskID
@@ -307,10 +344,21 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
+	// Log the raw response (truncate if too long)
+	logBody := string(respBody)
+	if len(logBody) > 2000 {
+		logBody = logBody[:2000] + "...(truncated)"
+	}
+	common.SysLog(fmt.Sprintf("[DoubaoVideo] Fetch task response: %s", logBody))
+
 	resTask := responseTask{}
 	if err := common.Unmarshal(respBody, &resTask); err != nil {
+		common.SysError(fmt.Sprintf("[DoubaoVideo] Failed to unmarshal task result: %v, body: %s", err, logBody))
 		return nil, errors.Wrap(err, "unmarshal task result failed")
 	}
+
+	common.SysLog(fmt.Sprintf("[DoubaoVideo] Task status: id=%s status=%s progress_video=%d%% error=%s",
+		resTask.ID, resTask.Status, 0, resTask.Error.Message))
 
 	taskResult := relaycommon.TaskInfo{
 		Code: 0,

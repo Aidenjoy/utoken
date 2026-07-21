@@ -16,7 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { PlaygroundConfig, ParameterEnabled } from './types'
+import type {
+  PlaygroundConfig,
+  ParameterEnabled,
+  AspectRatio,
+  VideoConfig,
+  VideoMode,
+} from './types'
 
 // Message constants
 export const MESSAGE_ROLES = {
@@ -88,6 +94,50 @@ export const MESSAGE_ACTION_BUTTON_STYLES = {
   DELETE: 'size-7 text-muted-foreground hover:text-destructive',
   ICON: 'size-4',
 } as const
+
+// Video mode constants
+export const VIDEO_API_ENDPOINTS = {
+  SUBMIT: '/pg/video/generations',
+  FETCH: (taskId: string) => `/pg/video/generations/${taskId}`,
+} as const
+
+export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
+  model: '',
+  group: DEFAULT_GROUP,
+  mode: 'reference',
+  ratio: 'smart',
+  resolution: '720P',
+  duration: 5,
+  count: 1,
+  audio: true,
+  images: [],
+}
+
+export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
+  { value: 'smart', label: '智能' },
+  { value: '21:9', label: '21:9' },
+  { value: '16:9', label: '16:9' },
+  { value: '4:3', label: '4:3' },
+  { value: '1:1', label: '1:1' },
+  { value: '3:4', label: '3:4' },
+  { value: '9:16', label: '9:16' },
+]
+
+export const RESOLUTIONS = ['480P', '720P', '1080P', '4K'] as const
+export const DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const
+export const VIDEO_COUNT_RANGE = { min: 1, max: 8 } as const
+
+export const VIDEO_STORAGE_KEYS = {
+  VIDEO_CONFIG: 'playground_video_config',
+  VIDEO_TASKS: 'playground_video_tasks',
+} as const
+
+export const VIDEO_MODES: { value: VideoMode; label: string; maxImages: number }[] = [
+  { value: 'reference', label: '参考生成', maxImages: 1 },
+  { value: 'first_last_frame', label: '首尾帧', maxImages: 2 },
+]
+
+export const VIDEO_POLL_INTERVAL_MS = 3000
 
 // Message action labels
 export const MESSAGE_ACTION_LABELS = {

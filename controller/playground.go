@@ -3,7 +3,9 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -53,4 +55,93 @@ func Playground(c *gin.Context) {
 	_ = middleware.SetupContextForToken(c, tempToken)
 
 	Relay(c, types.RelayFormatOpenAI)
+}
+
+// PlaygroundTask handles video generation task submission from the playground.
+// It creates a temporary token (like Playground does for chat) and delegates to RelayTask.
+func PlaygroundTask(c *gin.Context) {
+	useAccessToken := c.GetBool("use_access_token")
+	if useAccessToken {
+		c.JSON(http.StatusForbidden, &dto.TaskError{
+			Code:       "access_denied",
+			Message:    "暂不支持使用 access token",
+			StatusCode: http.StatusForbidden,
+		})
+		return
+	}
+
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &dto.TaskError{
+			Code:       "gen_relay_info_failed",
+			Message:    err.Error(),
+			StatusCode: http.StatusInternalServerError,
+		})
+		return
+	}
+
+	userId := c.GetInt("id")
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &dto.TaskError{
+			Code:       "query_data_error",
+			Message:    err.Error(),
+			StatusCode: http.StatusInternalServerError,
+		})
+		return
+	}
+	userCache.WriteContext(c)
+
+	tempToken := &model.Token{
+		UserId: userId,
+		Name:   fmt.Sprintf("playground-video-%s", relayInfo.UsingGroup),
+		Group:  relayInfo.UsingGroup,
+	}
+	_ = middleware.SetupContextForToken(c, tempToken)
+
+	RelayTask(c)
+}
+
+// PlaygroundTaskFetch handles video generation task status polling from the playground.
+func PlaygroundTaskFetch(c *gin.Context) {
+	useAccessToken := c.GetBool("use_access_token")
+	if useAccessToken {
+		c.JSON(http.StatusForbidden, &dto.TaskError{
+			Code:       "access_denied",
+			Message:    "暂不支持使用 access token",
+			StatusCode: http.StatusForbidden,
+		})
+		return
+	}
+
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &dto.TaskError{
+			Code:       "gen_relay_info_failed",
+			Message:    err.Error(),
+			StatusCode: http.StatusInternalServerError,
+		})
+		return
+	}
+
+	userId := c.GetInt("id")
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, &dto.TaskError{
+			Code:       "query_data_error",
+			Message:    err.Error(),
+			StatusCode: http.StatusInternalServerError,
+		})
+		return
+	}
+	userCache.WriteContext(c)
+
+	tempToken := &model.Token{
+		UserId: userId,
+		Name:   fmt.Sprintf("playground-video-%s", relayInfo.UsingGroup),
+		Group:  relayInfo.UsingGroup,
+	}
+	_ = middleware.SetupContextForToken(c, tempToken)
+
+	RelayTaskFetch(c)
 }

@@ -18,12 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS } from './constants'
+import { API_ENDPOINTS, VIDEO_API_ENDPOINTS } from './constants'
 import type {
   ChatCompletionRequest,
   ChatCompletionResponse,
   ModelOption,
   GroupOption,
+  VideoSubmitRequest,
+  VideoSubmitResponse,
+  VideoTaskResponse,
 } from './types'
 
 /**
@@ -79,4 +82,61 @@ export async function getUserGroups(): Promise<GroupOption[]> {
     ratio: info.ratio,
     desc: info.desc,
   }))
+}
+
+/**
+ * Submit a video generation task
+ */
+export async function submitVideoTask(
+  payload: VideoSubmitRequest
+): Promise<VideoSubmitResponse> {
+  const res = await api.post(VIDEO_API_ENDPOINTS.SUBMIT, payload, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Fetch a video generation task status
+ *
+ * The backend returns a wrapped response:
+ *   { code: "success", data: { task_id, status, progress, result_url, fail_reason, ... } }
+ * where status is uppercase ("SUCCESS", "IN_PROGRESS", etc.) and progress is a string like "50%".
+ *
+ * This function unwraps and normalizes the response into the flat VideoTaskResponse format
+ * that the rest of the frontend expects.
+ */
+export async function fetchVideoTask(
+  taskId: string
+): Promise<VideoTaskResponse> {
+  const res = await api.get(VIDEO_API_ENDPOINTS.FETCH(taskId), {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  const raw = res.data
+
+  // Wrapped format: { code: "success", data: { ... } }
+  if (raw?.code === 'success' && raw?.data) {
+    const d = raw.data
+    const progressStr = typeof d.progress === 'string' ? d.progress : ''
+    const progressNum = parseInt(progressStr) || 0
+    const statusLower = (d.status || '').toLowerCase()
+
+    return {
+      id: d.task_id || taskId,
+      task_id: d.task_id,
+      object: 'video',
+      model: d.properties?.origin_model_name || '',
+      status: statusLower,
+      progress: progressNum,
+      created_at: d.created_at || 0,
+      completed_at: d.finish_time || d.updated_at,
+      metadata: d.result_url ? { url: d.result_url } : undefined,
+      error: d.fail_reason
+        ? { message: d.fail_reason, code: '' }
+        : undefined,
+    }
+  }
+
+  // Fallback: already in the expected flat format
+  return raw as VideoTaskResponse
 }

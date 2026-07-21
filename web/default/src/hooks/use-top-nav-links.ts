@@ -29,6 +29,7 @@ export type TopNavLink = {
   disabled?: boolean
   requiresAuth?: boolean
   external?: boolean
+  sameTab?: boolean
 }
 
 /**
@@ -62,9 +63,17 @@ export function useTopNavLinks(): TopNavLink[] {
 
   const links: TopNavLink[] = []
 
-  // Home
+  // 主页 — external link to model.yundashi.com
+  links.push({
+    title: '主页',
+    href: 'http://model.yundashi.com',
+    external: true,
+    sameTab: true,
+  })
+
+  // 算力商店 (was Home)
   if (modules?.home !== false) {
-    links.push({ title: t('Home'), href: '/' })
+    links.push({ title: '算力商店', href: '/' })
   }
 
   // Console -> /dashboard (new console path)

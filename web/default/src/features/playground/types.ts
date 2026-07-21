@@ -149,3 +149,72 @@ export interface GroupOption {
   ratio: number
   desc?: string
 }
+
+// Video mode types
+export type VideoMode = 'reference' | 'first_last_frame'
+export type AspectRatio = 'smart' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16'
+export type Resolution = '480P' | '720P' | '1080P' | '4K'
+export type VideoTaskStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+
+export interface VideoConfig {
+  model: string
+  group: string
+  mode: VideoMode
+  ratio: AspectRatio
+  resolution: Resolution
+  duration: number
+  count: number
+  audio: boolean
+  images: string[]
+}
+
+export interface VideoTask {
+  taskId: string
+  status: VideoTaskStatus
+  progress: number
+  videoUrl?: string
+  error?: string
+  model: string
+  prompt: string
+  images: string[]
+  createdAt: number
+  completedAt?: number
+}
+
+export interface VideoSubmitRequest {
+  model: string
+  prompt: string
+  group?: string
+  images?: string[]
+  duration?: number
+  seconds?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface VideoSubmitResponse {
+  id: string
+  task_id?: string
+  object: string
+  model: string
+  status: string
+  created_at: number
+}
+
+export interface VideoTaskResponse {
+  id: string
+  task_id?: string
+  object: string
+  model: string
+  status: string
+  progress: number
+  created_at: number
+  completed_at?: number
+  metadata?: {
+    url?: string
+    [key: string]: unknown
+  }
+  error?: {
+    message: string
+    code: string
+  }
+}
