@@ -7,6 +7,7 @@ import {
   Trash2Icon,
   XCircleIcon,
 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -21,6 +22,15 @@ interface PlaygroundVideoChatProps {
 
 export function PlaygroundVideoChat({ tasks, onClear }: PlaygroundVideoChatProps) {
   const { t } = useTranslation()
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom when a new task is added
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [tasks])
 
   if (tasks.length === 0) {
     return (
@@ -36,7 +46,7 @@ export function PlaygroundVideoChat({ tasks, onClear }: PlaygroundVideoChatProps
   }
 
   return (
-    <div className='mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-4 py-6'>
+    <div ref={scrollRef} className='mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-4 py-6'>
       <div className='mb-3 flex items-center justify-between'>
         <span className='text-muted-foreground text-sm'>
           {tasks.length} {t('task(s)')}

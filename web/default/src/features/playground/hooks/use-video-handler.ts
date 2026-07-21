@@ -232,7 +232,7 @@ export function useVideoHandler(config: VideoConfig) {
         }
 
         setVideoTasks((prev) => {
-          const next = [newTask, ...prev]
+          const next = [...prev, newTask]
           persistTasks(next)
           return next
         })
