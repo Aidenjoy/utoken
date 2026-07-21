@@ -49,7 +49,8 @@ export function loadVideoTasks(): VideoTask[] {
       const parsed = JSON.parse(stored) as VideoTask[]
       if (Array.isArray(parsed)) {
         // Keep all tasks including in-progress ones so they survive refresh
-        return parsed
+        // Sort by createdAt ascending (oldest first, newest at bottom)
+        return parsed.sort((a, b) => a.createdAt - b.createdAt)
       }
     }
   } catch {
