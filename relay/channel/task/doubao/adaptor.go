@@ -313,14 +313,30 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		Content: []ContentItem{},
 	}
 
-	// Add images if present
+	// Add images if present — Volcengine API requires `role` for image contents
 	if req.HasImage() {
-		for _, imgURL := range req.Images {
+		mode := ""
+		if m, ok := req.Metadata["mode"]; ok {
+			if ms, ok := m.(string); ok {
+				mode = ms
+			}
+		}
+
+		for i, imgURL := range req.Images {
+			role := "reference_image"
+			if mode == "first_last_frame" {
+				if i == 0 {
+					role = "first_frame"
+				} else {
+					role = "last_frame"
+				}
+			}
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
 				ImageURL: &MediaURL{
 					URL: imgURL,
 				},
+				Role: role,
 			})
 		}
 	}
