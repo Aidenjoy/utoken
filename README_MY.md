@@ -88,3 +88,41 @@ cat new-api.pid
 # 确认端口监听
 lsof -i :3000
 ```
+
+查看 nginx 配置
+grep -rl "token.yundashi" /etc/nginx/ 2>/dev/null
+
+添加上传文件限制，修改后执行
+nginx -t
+nginx -s reload
+
+配置如下：
+
+server {
+    listen 80;
+    server_name token.yundashi.com;
+
+    # 添加这一行，允许最大 200MB 上传
+    client_max_body_size 200m;
+
+    gzip on;
+    gzip_static on;     # 需要http_gzip_static_module 模块
+    gzip_min_length 1k;
+    gzip_comp_level 4;
+    gzip_proxied any;
+    gzip_types text/plain text/xml text/css text/js;
+    gzip_vary on;
+    gzip_http_version   1.0; #兼容多层nginx 反代
+    gzip_disable "MSIE [1-6]\.(?!.*SV1)";
+
+    # 前端打包好的dist目录文件
+    #root /uyg_data/uyg-customer-ui;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
