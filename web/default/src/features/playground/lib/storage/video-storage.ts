@@ -8,9 +8,15 @@ const MAX_STORED_VIDEO_TASKS = 50
 
 export function saveVideoConfig(config: VideoConfig): void {
   try {
+    // Only persist media items that have been uploaded (have remoteUrl)
+    // to avoid storing large base64 blobs in localStorage
+    const filteredConfig: VideoConfig = {
+      ...config,
+      mediaItems: config.mediaItems.filter((item) => item.remoteUrl),
+    }
     localStorage.setItem(
       VIDEO_STORAGE_KEYS.VIDEO_CONFIG,
-      JSON.stringify(config)
+      JSON.stringify(filteredConfig)
     )
   } catch {
     // ignore storage errors

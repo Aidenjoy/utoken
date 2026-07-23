@@ -2,13 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { fetchVideoTask, submitVideoTask } from '../api'
-import { VIDEO_POLL_INTERVAL_MS } from '../constants'
+import { fetchVideoTask, submitVideoTask, uploadFile } from '../api'
+import {
+  AUDIO_MAX_DURATION,
+  VIDEO_MAX_DURATION,
+  VIDEO_POLL_INTERVAL_MS,
+} from '../constants'
 import {
   loadVideoTasks,
   saveVideoTasks,
 } from '../lib/storage/video-storage'
 import type {
+  MediaItem,
   VideoConfig,
   VideoSubmitRequest,
   VideoTask,
@@ -37,9 +42,36 @@ function mapStatus(status: string): VideoTask['status'] {
   }
 }
 
+/**
+ * Get media duration (seconds) by loading metadata in a temporary element.
+ */
+function getMediaDuration(
+  url: string,
+  type: 'video' | 'audio'
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const el =
+      type === 'video'
+        ? document.createElement('video')
+        : document.createElement('audio')
+    el.preload = 'metadata'
+    el.onloadedmetadata = () => {
+      const dur = el.duration
+      if (isNaN(dur) || !isFinite(dur)) {
+        reject(new Error('Could not determine media duration'))
+      } else {
+        resolve(dur)
+      }
+    }
+    el.onerror = () => reject(new Error('Failed to load media metadata'))
+    el.src = url
+  })
+}
+
 function buildSubmitPayload(
   config: VideoConfig,
-  prompt: string
+  prompt: string,
+  batchId: string
 ): VideoSubmitRequest {
   const payload: VideoSubmitRequest = {
     model: config.model,
@@ -49,9 +81,21 @@ function buildSubmitPayload(
     seconds: String(config.duration),
   }
 
-  if (config.images.length > 0) {
-    payload.images = config.images
+  if (config.mode === 'first_last_frame' || config.mode === 'first_frame') {
+    // First/last frame and first frame modes: images are TOS URLs or base64 strings
+    if (config.images.length > 0) {
+      payload.images = config.images
+    }
+  } else if (config.mode === 'reference') {
+    // Reference mode: images (base64 or remoteUrl)
+    const imageUrls = config.mediaItems
+      .filter((item) => item.type === 'image')
+      .map((item) => item.remoteUrl || item.url)
+    if (imageUrls.length > 0) {
+      payload.images = imageUrls
+    }
   }
+  // text_to_video: no images needed
 
   const metadata: Record<string, unknown> = {
     resolution: config.resolution,
@@ -62,6 +106,24 @@ function buildSubmitPayload(
   if (config.ratio !== 'smart') {
     metadata.ratio = config.ratio
   }
+
+  // Reference mode: add video_urls and audio_urls from uploaded media
+  if (config.mode === 'reference') {
+    const videoUrls = config.mediaItems
+      .filter((item) => item.type === 'video' && item.remoteUrl)
+      .map((item) => item.remoteUrl!)
+    if (videoUrls.length > 0) {
+      metadata.video_urls = videoUrls
+    }
+    const audioUrls = config.mediaItems
+      .filter((item) => item.type === 'audio' && item.remoteUrl)
+      .map((item) => item.remoteUrl!)
+    if (audioUrls.length > 0) {
+      metadata.audio_urls = audioUrls
+    }
+  }
+
+  metadata.batch_id = batchId
   payload.metadata = metadata
 
   return payload
@@ -71,8 +133,13 @@ export function useVideoHandler(config: VideoConfig) {
   const { t } = useTranslation()
   const [videoTasks, setVideoTasks] = useState<VideoTask[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  // Track upload progress: { [localUrl]: percent }
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeTaskIdRef = useRef<string | null>(null)
+  // A shared ID that groups all files uploaded for the same video task.
+  // Used as the TOS folder name so all resources for one video are in one place.
+  const batchIdRef = useRef<string>(crypto.randomUUID())
 
   // Load tasks from storage on mount and resume polling for active tasks
   useEffect(() => {
@@ -145,15 +212,19 @@ export function useVideoHandler(config: VideoConfig) {
         if (status === 'failed') {
           // eslint-disable-next-line no-console
           console.log('[VideoTask] task failed:', resp.error)
+          const failMsg = resp.error?.message ?? 'Unknown error'
           updateTask(taskId, (t) => ({
             ...t,
             status: 'failed',
             progress: 100,
-            error: resp.error?.message ?? t.error ?? 'Unknown error',
+            error: failMsg,
             completedAt: Date.now(),
           }))
           setIsGenerating(false)
           activeTaskIdRef.current = null
+          toast.error(t('Generation failed'), {
+            description: failMsg,
+          })
           return
         }
 
@@ -190,12 +261,48 @@ export function useVideoHandler(config: VideoConfig) {
         toast.error(t('Please select a model first'))
         return
       }
-      if (!prompt.trim()) {
-        toast.error(t('Please enter a prompt'))
+
+      // Mode-specific validation
+      if (config.mode === 'text_to_video') {
+        // Text-to-video: prompt is required
+        if (!prompt.trim()) {
+          toast.error(t('Please enter a prompt'))
+          return
+        }
+      } else if (config.mode === 'reference') {
+        // Reference mode: must have at least 1 image or video (not audio-only)
+        const hasImageOrVideo = config.mediaItems.some(
+          (item) => item.type === 'image' || item.type === 'video'
+        )
+        if (!hasImageOrVideo) {
+          toast.error(t('Reference mode requires at least one image or video'))
+          return
+        }
+        // Ensure all media items are uploaded
+        const pendingUploads = config.mediaItems.filter(
+          (item) =>
+            (item.type === 'image' || item.type === 'video' || item.type === 'audio') &&
+            !item.remoteUrl
+        )
+        if (pendingUploads.length > 0) {
+          toast.error(t('Please wait for all media uploads to complete'))
+          return
+        }
+      } else if (config.mode === 'first_last_frame' || config.mode === 'first_frame') {
+        // First/last frame and first frame modes: must have at least 1 image
+        if (config.images.length === 0) {
+          toast.error(t('Please upload at least one image'))
+          return
+        }
+      }
+
+      // Check for ongoing uploads
+      if (Object.keys(uploadProgress).length > 0) {
+        toast.error(t('Please wait for all media uploads to complete'))
         return
       }
 
-      const payload = buildSubmitPayload(config, prompt)
+      const payload = buildSubmitPayload(config, prompt, batchIdRef.current)
 
       // Log the submit payload for debugging (truncate image data)
       const logPayload = {
@@ -227,7 +334,7 @@ export function useVideoHandler(config: VideoConfig) {
           progress: 0,
           model: config.model,
           prompt,
-          images: config.images,
+          images: config.mode === 'first_last_frame' ? config.images : [],
           createdAt: Date.now(),
         }
 
@@ -239,14 +346,24 @@ export function useVideoHandler(config: VideoConfig) {
 
         activeTaskIdRef.current = taskId
 
+        // Regenerate batch ID for the next video task
+        batchIdRef.current = crypto.randomUUID()
+
         // Start polling after a short delay
         pollTimerRef.current = setTimeout(() => {
           pollTask(taskId)
         }, VIDEO_POLL_INTERVAL_MS)
       } catch (error: unknown) {
         setIsGenerating(false)
+        // Extract the actual error message from the backend response.
+        // Axios errors have response.data.message; fall back to the
+        // generic Error.message for network errors.
+        const axiosErr = error as {
+          response?: { data?: { message?: string } }
+        }
         const message =
-          error instanceof Error ? error.message : String(error)
+          axiosErr?.response?.data?.message ||
+          (error instanceof Error ? error.message : String(error))
         toast.error(t('Failed to submit video task'), {
           description: message,
         })
@@ -289,11 +406,72 @@ export function useVideoHandler(config: VideoConfig) {
     }
   }, [])
 
+  /**
+   * Upload a media file to the Volcengine Files API.
+   * Returns a MediaItem with local preview URL, remote URL, and duration.
+   * Throws if duration exceeds limits (video ≤15s total, audio ≤15s total).
+   */
+  const uploadMediaItem = useCallback(
+    async (
+      file: File,
+      type: 'image' | 'video' | 'audio',
+      existingItems: MediaItem[]
+    ): Promise<MediaItem> => {
+      const localUrl = URL.createObjectURL(file)
+
+      let duration: number | undefined
+      if (type === 'video' || type === 'audio') {
+        duration = await getMediaDuration(localUrl, type)
+
+        // Check total duration limit
+        const maxDuration =
+          type === 'video' ? VIDEO_MAX_DURATION : AUDIO_MAX_DURATION
+        const existingDuration = existingItems
+          .filter((item) => item.type === type)
+          .reduce((sum, item) => sum + (item.duration || 0), 0)
+        if (existingDuration + duration > maxDuration) {
+          URL.revokeObjectURL(localUrl)
+          throw new Error(
+            t('Total duration exceeds {{max}}s limit', { max: maxDuration })
+          )
+        }
+      }
+
+      // Upload to backend proxy
+      setUploadProgress((prev) => ({ ...prev, [localUrl]: 0 }))
+      const { url: remoteUrl } = await uploadFile(
+        file,
+        config.model,
+        config.group,
+        batchIdRef.current,
+        (progress) => {
+          setUploadProgress((prev) => ({ ...prev, [localUrl]: progress }))
+        }
+      )
+      setUploadProgress((prev) => {
+        const next = { ...prev }
+        delete next[localUrl]
+        return next
+      })
+
+      return {
+        url: localUrl,
+        remoteUrl,
+        duration,
+        type,
+        name: file.name,
+      }
+    },
+    [config.model, config.group, t]
+  )
+
   return {
     videoTasks,
     isGenerating,
     submitVideo,
     stopPolling,
     clearTasks,
+    uploadMediaItem,
+    uploadProgress,
   }
 }

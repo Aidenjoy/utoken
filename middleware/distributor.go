@@ -99,6 +99,16 @@ func Distribute() func(c *gin.Context) {
 						usingGroup = playgroundRequest.Group
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 					}
+				} else if strings.HasPrefix(c.Request.URL.Path, "/pg/files/upload") {
+					// File upload uses multipart/form-data, read group from query parameter
+					if group := c.Query("group"); group != "" {
+						if !service.GroupInUserUsableGroups(usingGroup, group) && group != usingGroup {
+							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
+							return
+						}
+						usingGroup = group
+						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+					}
 				}
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
@@ -336,6 +346,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		if _, ok := c.Get("relay_mode"); !ok {
 			c.Set("relay_mode", relayMode)
 		}
+	} else if strings.HasPrefix(c.Request.URL.Path, "/pg/files/upload") {
+		// File upload uses multipart/form-data, read model from query parameter
+		modelRequest.Model = c.Query("model")
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1beta/models/") || strings.HasPrefix(c.Request.URL.Path, "/v1/models/") {
 		// Gemini API 路径处理: /v1beta/models/gemini-2.0-flash:generateContent
 		relayMode := relayconstant.RelayModeGemini

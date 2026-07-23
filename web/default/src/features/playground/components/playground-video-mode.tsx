@@ -56,7 +56,7 @@ export function PlaygroundVideoMode({
     saveVideoConfig(next)
   }, [])
 
-  const { videoTasks, isGenerating, submitVideo, stopPolling, clearTasks } =
+  const { videoTasks, isGenerating, submitVideo, stopPolling, clearTasks, uploadMediaItem, uploadProgress } =
     useVideoHandler(videoConfig)
 
   return (
@@ -79,6 +79,8 @@ export function PlaygroundVideoMode({
           onModelChange={onModelChange}
           onStop={stopPolling}
           onSubmit={submitVideo}
+          onUploadMediaItem={uploadMediaItem}
+          uploadProgress={uploadProgress}
         />
       </div>
     </div>

@@ -140,3 +140,44 @@ export async function fetchVideoTask(
   // Fallback: already in the expected flat format
   return raw as VideoTaskResponse
 }
+
+/**
+ * Upload a file to the Volcengine Files API via the backend proxy.
+ *
+ * The backend forwards the multipart file to {channel baseURL}/api/v3/files
+ * and returns the file ID + content_url. The content_url is then used as
+ * a reference URL in the video generation request.
+ *
+ * @param file     The file to upload
+ * @param model    The model name (used by Distribute middleware to select a channel)
+ * @param group    The user's group
+ * @param batchId  A shared UUID that groups all files uploaded for the same video task
+ * @param onProgress Optional progress callback (0-100)
+ */
+export async function uploadFile(
+  file: File,
+  model: string,
+  group: string,
+  batchId: string,
+  onProgress?: (percent: number) => void
+): Promise<{ id: string; url: string }> {
+  const formData = new FormData()
+  formData.append('purpose', 'user_data')
+  formData.append('file', file)
+
+  const res = await api.post(VIDEO_API_ENDPOINTS.FILE_UPLOAD, formData, {
+    params: { model, group, batch_id: batchId },
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e: { loaded: number; total?: number }) => {
+      if (onProgress && e.total) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    },
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+
+  const fileId = res.data.id
+  // Use content_url from backend if available; otherwise construct it
+  const url = res.data.content_url || `https://ark.cn-beijing.volces.com/api/v3/files/${fileId}/content`
+  return { id: fileId, url }
+}

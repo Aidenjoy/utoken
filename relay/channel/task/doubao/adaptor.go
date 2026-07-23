@@ -159,6 +159,10 @@ func hasVideoInMetadata(metadata map[string]interface{}) bool {
 	if metadata == nil {
 		return false
 	}
+	// Check video_urls field (reference mode uploads)
+	if videoURLs, ok := metadata["video_urls"].([]interface{}); ok && len(videoURLs) > 0 {
+		return true
+	}
 	contentRaw, ok := metadata["content"]
 	if !ok {
 		return false
@@ -330,6 +334,8 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 				} else {
 					role = "last_frame"
 				}
+			} else if mode == "first_frame" {
+				role = "first_frame"
 			}
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
@@ -344,6 +350,30 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	metadata := req.Metadata
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
+	}
+
+	// Add video/audio reference URLs from metadata (reference mode)
+	if videoURLs, ok := metadata["video_urls"].([]interface{}); ok {
+		for _, vu := range videoURLs {
+			if url, ok := vu.(string); ok && url != "" {
+				r.Content = append(r.Content, ContentItem{
+					Type:     "video_url",
+					VideoURL: &MediaURL{URL: url},
+					Role:     "reference_video",
+				})
+			}
+		}
+	}
+	if audioURLs, ok := metadata["audio_urls"].([]interface{}); ok {
+		for _, au := range audioURLs {
+			if url, ok := au.(string); ok && url != "" {
+				r.Content = append(r.Content, ContentItem{
+					Type:     "audio_url",
+					AudioURL: &MediaURL{URL: url},
+					Role:     "reference_audio",
+				})
+			}
+		}
 	}
 
 	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {

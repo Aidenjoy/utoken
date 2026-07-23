@@ -612,3 +612,31 @@ For commercial licensing, please contact support@quantumnous.com
     animation: none !important;
   }
 }
+
+/* --- Mention chip styles for contentEditable editor --- */
+.mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin: 0 1px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  vertical-align: baseline;
+  user-select: all;
+}
+.mention-chip-thumb {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.mention-chip-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}

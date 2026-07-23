@@ -99,6 +99,7 @@ export const MESSAGE_ACTION_BUTTON_STYLES = {
 export const VIDEO_API_ENDPOINTS = {
   SUBMIT: '/pg/video/generations',
   FETCH: (taskId: string) => `/pg/video/generations/${taskId}`,
+  FILE_UPLOAD: '/pg/files/upload',
 } as const
 
 export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
@@ -111,6 +112,7 @@ export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   count: 1,
   audio: true,
   images: [],
+  mediaItems: [],
 }
 
 export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
@@ -132,9 +134,18 @@ export const VIDEO_STORAGE_KEYS = {
   VIDEO_TASKS: 'playground_video_tasks',
 } as const
 
-export const VIDEO_MODES: { value: VideoMode; label: string; maxImages: number }[] = [
-  { value: 'reference', label: '参考生成', maxImages: 1 },
+export const VIDEO_MAX_DURATION = 15 // 视频总时长上限（秒）
+export const AUDIO_MAX_DURATION = 15 // 音频总时长上限（秒）
+export const MAX_VIDEOS = 3 // 最多视频数
+export const MAX_AUDIOS = 3 // 最多音频数
+export const MAX_REFERENCE_IMAGES = 9 // 参考模式最多图片数
+export const IMAGE_ASPECT_RATIO_RANGE = { min: 0.4, max: 2.5 } // 图片宽高比范围（Volcengine Seedance API 限制）
+
+export const VIDEO_MODES: { value: VideoMode; label: string; maxImages?: number }[] = [
+  { value: 'reference', label: '参考生成' },
   { value: 'first_last_frame', label: '首尾帧', maxImages: 2 },
+  { value: 'first_frame', label: '首帧', maxImages: 1 },
+  { value: 'text_to_video', label: '文生视频', maxImages: 0 },
 ]
 
 export const VIDEO_POLL_INTERVAL_MS = 3000

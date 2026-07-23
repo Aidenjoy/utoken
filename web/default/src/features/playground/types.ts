@@ -151,10 +151,22 @@ export interface GroupOption {
 }
 
 // Video mode types
-export type VideoMode = 'reference' | 'first_last_frame'
+export type VideoMode = 'reference' | 'first_last_frame' | 'first_frame' | 'text_to_video'
 export type AspectRatio = 'smart' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16'
 export type Resolution = '480P' | '720P' | '1080P' | '4K'
 export type VideoTaskStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+
+export interface MediaItem {
+  /** Local preview URL (blob: or data:) */
+  url: string
+  /** Remote URL returned by Volcengine Files API after upload */
+  remoteUrl?: string
+  /** Duration in seconds (video/audio only; images have no duration) */
+  duration?: number
+  type: 'image' | 'video' | 'audio'
+  /** Original file name */
+  name: string
+}
 
 export interface VideoConfig {
   model: string
@@ -165,7 +177,10 @@ export interface VideoConfig {
   duration: number
   count: number
   audio: boolean
+  /** First/last frame mode uses base64 image strings */
   images: string[]
+  /** Reference mode media items (images, videos, audio) */
+  mediaItems: MediaItem[]
 }
 
 export interface VideoTask {
