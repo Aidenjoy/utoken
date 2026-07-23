@@ -63,10 +63,10 @@ export function useTopNavLinks(): TopNavLink[] {
 
   const links: TopNavLink[] = []
 
-  // 主页 — external link to model.yundashi.com
+  // 主页 — external link to model.uyaogui.com
   links.push({
     title: '主页',
-    href: 'http://model.yundashi.com',
+    href: 'http://model.uyaogui.com',
     external: true,
     sameTab: true,
   })
