@@ -68,6 +68,21 @@ function getMediaDuration(
   })
 }
 
+/**
+ * Generate a UUID, falling back to Math.random for non-secure contexts (HTTP).
+ * crypto.randomUUID() is only available in secure contexts (HTTPS or localhost).
+ */
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 function buildSubmitPayload(
   config: VideoConfig,
   prompt: string,
@@ -139,7 +154,7 @@ export function useVideoHandler(config: VideoConfig) {
   const activeTaskIdRef = useRef<string | null>(null)
   // A shared ID that groups all files uploaded for the same video task.
   // Used as the TOS folder name so all resources for one video are in one place.
-  const batchIdRef = useRef<string>(crypto.randomUUID())
+  const batchIdRef = useRef<string>(generateUUID())
 
   // Load tasks from storage on mount and resume polling for active tasks
   useEffect(() => {
@@ -347,7 +362,7 @@ export function useVideoHandler(config: VideoConfig) {
         activeTaskIdRef.current = taskId
 
         // Regenerate batch ID for the next video task
-        batchIdRef.current = crypto.randomUUID()
+        batchIdRef.current = generateUUID()
 
         // Start polling after a short delay
         pollTimerRef.current = setTimeout(() => {
