@@ -25,7 +25,7 @@ import { Footer } from '@/components/layout/components/footer'
 import { useTheme } from '@/context/theme-provider'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
-import { CTA, Features, Hero, HowItWorks, ModelShowcase, Stats } from './components'
+import { CTA, Features, Hero, HowItWorks, ModelShowcase, Stats, YouYaoSolution } from './components'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
@@ -118,6 +118,7 @@ export function Home() {
       <ModelShowcase />
       <Features />
       <HowItWorks />
+      <YouYaoSolution />
       <CTA isAuthenticated={isAuthenticated} />
       <Footer hideProjectAttribution />
     </PublicLayout>
