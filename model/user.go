@@ -1137,6 +1137,19 @@ func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
 	updateUserUsedQuotaAndRequestCount(id, quota, 1)
 }
 
+// DecreaseUserUsedQuota reduces used_quota by the given amount (for refunds).
+// Unlike UpdateUserUsedQuotaAndRequestCount, this does not affect request_count.
+func DecreaseUserUsedQuota(id int, quota int) {
+	if quota <= 0 {
+		return
+	}
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeUsedQuota, id, -quota)
+		return
+	}
+	updateUserUsedQuota(id, -quota)
+}
+
 func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	err := DB.Model(&User{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
