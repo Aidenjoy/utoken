@@ -17,7 +17,8 @@ type TaskStatus string
 func (t TaskStatus) ToVideoStatus() string {
 	var status string
 	switch t {
-	case TaskStatusQueued, TaskStatusSubmitted:
+	case TaskStatusQueued, TaskStatusSubmitted, TaskStatusNotStart:
+		// NOT_START 表示刚提交、等待轮询首次更新，对外应视为排队中而非未知状态
 		status = dto.VideoStatusQueued
 	case TaskStatusInProgress:
 		status = dto.VideoStatusInProgress

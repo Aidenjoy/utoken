@@ -298,7 +298,8 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	}
 
 	switch resTask.Status {
-	case "queued", "pending":
+	case "queued", "pending", "unknown":
+		// "unknown" 由 New API 中转站在任务刚提交（NOT_START）时返回，视为排队中继续轮询
 		taskResult.Status = model.TaskStatusQueued
 	case "processing", "in_progress":
 		taskResult.Status = model.TaskStatusInProgress
