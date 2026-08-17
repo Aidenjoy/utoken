@@ -300,10 +300,20 @@ func InitResources() error {
 	}
 
 	// 启动时明确提示 TOS 上传是否启用，避免“本地 .env 配了、服务器没配”这类隐蔽问题
-	if os.Getenv("TOS_ACCESS_KEY") != "" && os.Getenv("TOS_SECRET_KEY") != "" && os.Getenv("TOS_BUCKET") != "" {
+	var tosMissing []string
+	if os.Getenv("TOS_ACCESS_KEY") == "" {
+		tosMissing = append(tosMissing, "TOS_ACCESS_KEY")
+	}
+	if os.Getenv("TOS_SECRET_KEY") == "" {
+		tosMissing = append(tosMissing, "TOS_SECRET_KEY")
+	}
+	if os.Getenv("TOS_BUCKET") == "" {
+		tosMissing = append(tosMissing, "TOS_BUCKET")
+	}
+	if len(tosMissing) == 0 {
 		common.SysLog(fmt.Sprintf("TOS upload enabled (bucket=%s)", os.Getenv("TOS_BUCKET")))
 	} else {
-		common.SysLog("TOS upload disabled: TOS_ACCESS_KEY/TOS_SECRET_KEY/TOS_BUCKET not all set, playground uploads will fall back to channel forwarding")
+		common.SysLog(fmt.Sprintf("TOS upload disabled: missing %s; playground uploads will fall back to channel forwarding", strings.Join(tosMissing, ", ")))
 	}
 
 	// 加载环境变量
