@@ -67,7 +67,16 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 		playgroundRouter.POST("/video/generations", controller.PlaygroundTask)
 		playgroundRouter.GET("/video/generations/:task_id", controller.PlaygroundTaskFetch)
-		playgroundRouter.POST("/files/upload", controller.PlaygroundFileUpload)
+	}
+
+	// 文件上传只走 TOS、不依赖渠道，不挂 Distribute，
+	// 避免模型未配渠道时上传被 503 拦截。
+	playgroundUploadRouter := router.Group("/pg")
+	playgroundUploadRouter.Use(middleware.RouteTag("relay"))
+	playgroundUploadRouter.Use(middleware.SystemPerformanceCheck())
+	playgroundUploadRouter.Use(middleware.UserAuth())
+	{
+		playgroundUploadRouter.POST("/files/upload", controller.PlaygroundFileUpload)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))

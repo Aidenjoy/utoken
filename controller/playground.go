@@ -6,14 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -21,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/types"
 	"github.com/google/uuid"
 	tos "github.com/volcengine/ve-tos-golang-sdk/v2/tos"
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 
 	"github.com/gin-gonic/gin"
 )
@@ -196,13 +192,8 @@ func PlaygroundTaskFetch(c *gin.Context) {
 //   - TOS_REGION:      TOS region (e.g., cn-beijing)
 //   - TOS_BUCKET:      TOS bucket name
 //
-// Alibaba Cloud OSS is supported as an alternative object storage:
-//   - OSS_ACCESS_KEY_ID:     OSS access key id
-//   - OSS_ACCESS_KEY_SECRET: OSS access key secret
-//   - OSS_ENDPOINT:          OSS endpoint (e.g., https://oss-cn-beijing.aliyuncs.com)
-//   - OSS_BUCKET:            OSS bucket name (must allow public read)
-//
-// If neither TOS nor OSS is configured, it falls back to the channel Files API.
+// If TOS is not configured, the request fails with an explicit error instead of
+// falling back to channel forwarding, keeping all uploads on one auditable path.
 func PlaygroundFileUpload(c *gin.Context) {
 	useAccessToken := c.GetBool("use_access_token")
 	if useAccessToken {
@@ -210,6 +201,24 @@ func PlaygroundFileUpload(c *gin.Context) {
 			"error": gin.H{
 				"message": "暂不支持使用 access token",
 				"type":    "access_denied",
+			},
+		})
+		return
+	}
+
+	// Uploads always go to the project TOS. If TOS is not fully configured, fail fast
+	// with an explicit error instead of silently forwarding to the channel, so all
+	// uploads stay on one auditable path.
+	tosAccessKey := common.GetEnvOrDefaultString("TOS_ACCESS_KEY", "")
+	tosSecretKey := common.GetEnvOrDefaultString("TOS_SECRET_KEY", "")
+	tosEndpoint := common.GetEnvOrDefaultString("TOS_ENDPOINT", "https://tos-cn-beijing.volces.com")
+	tosRegion := common.GetEnvOrDefaultString("TOS_REGION", "cn-beijing")
+	tosBucket := common.GetEnvOrDefaultString("TOS_BUCKET", "")
+	if tosAccessKey == "" || tosSecretKey == "" || tosBucket == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "TOS not configured, file upload unavailable; set TOS_ACCESS_KEY/TOS_SECRET_KEY/TOS_BUCKET",
+				"type":    "tos_not_configured",
 			},
 		})
 		return
@@ -228,199 +237,26 @@ func PlaygroundFileUpload(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// Try TOS upload (preferred path for video generation)
-	tosAccessKey := common.GetEnvOrDefaultString("TOS_ACCESS_KEY", "")
-	tosSecretKey := common.GetEnvOrDefaultString("TOS_SECRET_KEY", "")
-	tosEndpoint := common.GetEnvOrDefaultString("TOS_ENDPOINT", "https://tos-cn-beijing.volces.com")
-	tosRegion := common.GetEnvOrDefaultString("TOS_REGION", "cn-beijing")
-	tosBucket := common.GetEnvOrDefaultString("TOS_BUCKET", "")
-
-	if tosAccessKey != "" && tosSecretKey != "" && tosBucket != "" {
-		userId := c.GetInt("id")
-		model := c.Query("model")
-		batchID := c.Query("batch_id")
-		publicURL, objectKey, err := uploadToTOS(file, fileHeader.Filename, tosEndpoint, tosRegion, tosBucket, tosAccessKey, tosSecretKey, userId, batchID)
-		if err != nil {
-			common.SysError(fmt.Sprintf("[PlaygroundFileUpload] TOS upload failed (user=%d, model=%s, batch=%s): %v", userId, model, batchID, err))
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": gin.H{
-					"message": "failed to upload file to TOS: " + err.Error(),
-					"type":    "internal_error",
-				},
-			})
-			return
-		}
-		common.SysLog(fmt.Sprintf("[PlaygroundFileUpload] User %d uploaded file (model=%s, batch=%s): %s -> %s", userId, model, batchID, objectKey, publicURL))
-		c.JSON(http.StatusOK, gin.H{
-			"id":          objectKey,
-			"content_url": publicURL,
-		})
-		return
-	}
-
-	// Try Alibaba Cloud OSS upload (alternative object storage)
-	ossAccessKey := common.GetEnvOrDefaultString("OSS_ACCESS_KEY_ID", "")
-	ossSecretKey := common.GetEnvOrDefaultString("OSS_ACCESS_KEY_SECRET", "")
-	ossEndpoint := common.GetEnvOrDefaultString("OSS_ENDPOINT", "https://oss-cn-beijing.aliyuncs.com")
-	ossBucket := common.GetEnvOrDefaultString("OSS_BUCKET", "")
-
-	if ossAccessKey != "" && ossSecretKey != "" && ossBucket != "" {
-		userId := c.GetInt("id")
-		model := c.Query("model")
-		batchID := c.Query("batch_id")
-		publicURL, objectKey, err := uploadToOSS(file, fileHeader.Filename, ossEndpoint, ossBucket, ossAccessKey, ossSecretKey, userId, batchID)
-		if err != nil {
-			common.SysError(fmt.Sprintf("[PlaygroundFileUpload] OSS upload failed (user=%d, model=%s, batch=%s): %v", userId, model, batchID, err))
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": gin.H{
-					"message": "failed to upload file to OSS: " + err.Error(),
-					"type":    "internal_error",
-				},
-			})
-			return
-		}
-		common.SysLog(fmt.Sprintf("[PlaygroundFileUpload] User %d uploaded file (model=%s, batch=%s): %s -> %s", userId, model, batchID, objectKey, publicURL))
-		c.JSON(http.StatusOK, gin.H{
-			"id":          objectKey,
-			"content_url": publicURL,
-		})
-		return
-	}
-
-	// Fallback: use Volcengine Files API (requires channel context)
-	baseURL := common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl)
-	apiKey := common.GetContextKeyString(c, constant.ContextKeyChannelKey)
-	if baseURL == "" || apiKey == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": "TOS not configured and channel not selected",
-				"type":    "internal_error",
-			},
-		})
-		return
-	}
-
-	purpose := c.PostForm("purpose")
-	if purpose == "" {
-		purpose = "user_data"
-	}
-
-	// Build a new multipart request to forward to Volcengine Files API
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	if err := writer.WriteField("purpose", purpose); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": "failed to write purpose field: " + err.Error(),
-				"type":    "internal_error",
-			},
-		})
-		return
-	}
-	part, err := writer.CreateFormFile("file", fileHeader.Filename)
+	userId := c.GetInt("id")
+	model := c.Query("model")
+	batchID := c.Query("batch_id")
+	publicURL, objectKey, err := uploadToTOS(file, fileHeader.Filename, tosEndpoint, tosRegion, tosBucket, tosAccessKey, tosSecretKey, userId, batchID)
 	if err != nil {
+		common.SysError(fmt.Sprintf("[PlaygroundFileUpload] TOS upload failed (user=%d, model=%s, batch=%s): %v", userId, model, batchID, err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"message": "failed to create form file: " + err.Error(),
+				"message": "failed to upload file to TOS: " + err.Error(),
 				"type":    "internal_error",
 			},
 		})
 		return
 	}
-	if _, err := io.Copy(part, file); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": "failed to copy file: " + err.Error(),
-				"type":    "internal_error",
-			},
-		})
-		return
-	}
-	writer.Close()
-
-	// Forward to the channel's files API (path depends on whether baseURL already carries a version suffix)
-	uploadURL := filesUploadURL(baseURL)
-	req, err := http.NewRequest("POST", uploadURL, &buf)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": "failed to create request: " + err.Error(),
-				"type":    "internal_error",
-			},
-		})
-		return
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{
-				"message": "failed to upload file: " + err.Error(),
-				"type":    "internal_error",
-			},
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		// 上游非 200 时记录响应，便于定位：404 常见于渠道 baseURL 误带 /api/v3 后缀，
-		// 或所选渠道本身不提供 /api/v3/files 文件接口（非火山方舟渠道）。
-		bodySnippet := string(body)
-		if len(bodySnippet) > 300 {
-			bodySnippet = bodySnippet[:300]
-		}
-		common.SysError(fmt.Sprintf("[PlaygroundFileUpload] upstream upload failed (user=%d, model=%s, url=%s): status=%d body=%s",
-			c.GetInt("id"), c.Query("model"), uploadURL, resp.StatusCode, bodySnippet))
-	}
-
-	// Add content_url to the response so the frontend can use it directly.
-	if resp.StatusCode == http.StatusOK {
-		var result map[string]interface{}
-		if err := common.Unmarshal(body, &result); err == nil {
-			if fileID, ok := result["id"].(string); ok && fileID != "" {
-				contentURL := strings.TrimSuffix(baseURL, "/") + "/api/v3/files/" + fileID + "/content"
-				result["content_url"] = contentURL
-				if updated, err := common.Marshal(result); err == nil {
-					body = updated
-				}
-			}
-		}
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		// 上游 404 多为渠道 baseURL 与火山 Files API 路径不匹配（如中转站自带 /api/v2 前缀，
-		// 再拼 /api/v3/files 变成双重路径），透传对方默认 404 页对排障无意义，返回明确指引。
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"message": fmt.Sprintf("file upload endpoint not found on channel (%s); configure TOS env (TOS_ACCESS_KEY/TOS_SECRET_KEY/TOS_BUCKET) to enable direct upload", uploadURL),
-				"type":    "upstream_not_found",
-			},
-		})
-		return
-	}
-
-	// Return the upstream response with the same status code
-	c.Data(resp.StatusCode, "application/json", body)
+	common.SysLog(fmt.Sprintf("[PlaygroundFileUpload] User %d uploaded file (model=%s, batch=%s): %s -> %s", userId, model, batchID, objectKey, publicURL))
+	c.JSON(http.StatusOK, gin.H{
+		"id":          objectKey,
+		"content_url": publicURL,
+	})
 }
-
-// filesUploadURL 按渠道 baseURL 构造文件上传地址。
-// baseURL 已带版本路径后缀（如 /v1、/api/v2、/api/v3）时只拼 /files，
-// 避免拼出 /api/v2/api/v3/files 这类双重路径；无版本后缀视为火山官方渠道，拼默认 /api/v3/files。
-func filesUploadURL(baseURL string) string {
-	trimmed := strings.TrimSuffix(baseURL, "/")
-	if versionPathSuffixRE.MatchString(trimmed) {
-		return trimmed + "/files"
-	}
-	return trimmed + "/api/v3/files"
-}
-
-var versionPathSuffixRE = regexp.MustCompile(`/(?:api/)?v\d+$`)
 
 // uploadToTOS uploads a file to Volcengine TOS (Object Storage) and returns
 // the publicly accessible URL and the object key.
@@ -464,55 +300,9 @@ func uploadToTOS(file io.Reader, filename, endpoint, region, bucket, accessKey, 
 	_ = output
 
 	// Construct public URL: https://{bucket}.{endpoint-host}/{object-key}
-	publicURL = publicObjectURL(endpoint, bucket, objectKey)
-
-	return publicURL, objectKey, nil
-}
-
-// uploadToOSS uploads a file to Alibaba Cloud OSS and returns
-// the publicly accessible URL and the object key.
-// The object key is structured the same as TOS: {date}/{userId}_{batchId}/{filename}.
-// The bucket must allow public read so upstream providers can fetch the file directly.
-func uploadToOSS(file io.Reader, filename, endpoint, bucket, accessKey, secretKey string, userId int, batchID string) (publicURL, objectKey string, err error) {
-	client, err := oss.New(endpoint, accessKey, secretKey)
-	if err != nil {
-		return "", "", fmt.Errorf("create OSS client: %w", err)
-	}
-	bkt, err := client.Bucket(bucket)
-	if err != nil {
-		return "", "", fmt.Errorf("get OSS bucket: %w", err)
-	}
-
-	// Object key: {date}/{userId}_{batchId}/{filename}, same layout as TOS.
-	if batchID == "" {
-		batchID = uuid.New().String()
-	}
-	date := time.Now().Format("2006-01-02")
-	objectKey = fmt.Sprintf("%s/%d_%s/%s", date, userId, batchID, filename)
-
-	// Read file content
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return "", "", fmt.Errorf("read file: %w", err)
-	}
-
-	// Upload to OSS
-	if err := bkt.PutObject(objectKey, bytes.NewReader(content)); err != nil {
-		return "", "", fmt.Errorf("upload to OSS: %w", err)
-	}
-
-	// Construct public URL: https://{bucket}.{endpoint-host}/{object-key}
-	publicURL = publicObjectURL(endpoint, bucket, objectKey)
-
-	return publicURL, objectKey, nil
-}
-
-// publicObjectURL 构造对象存储的公网直链：https://{bucket}.{endpoint-host}/{key}。
-// endpoint 配置为内网地址（如 oss-cn-beijing-internal.aliyuncs.com）时自动去掉 -internal，
-// 保证生成的直链公网可达（上游供应商需直接拉取该 URL）。
-func publicObjectURL(endpoint, bucket, objectKey string) string {
 	endpointHost := strings.TrimPrefix(endpoint, "https://")
 	endpointHost = strings.TrimPrefix(endpointHost, "http://")
-	endpointHost = strings.ReplaceAll(endpointHost, "-internal", "")
-	return fmt.Sprintf("https://%s.%s/%s", bucket, endpointHost, objectKey)
+	publicURL = fmt.Sprintf("https://%s.%s/%s", bucket, endpointHost, objectKey)
+
+	return publicURL, objectKey, nil
 }
