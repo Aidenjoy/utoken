@@ -356,6 +356,18 @@ func PlaygroundFileUpload(c *gin.Context) {
 		}
 	}
 
+	if resp.StatusCode == http.StatusNotFound {
+		// 上游 404 多为渠道 baseURL 与火山 Files API 路径不匹配（如中转站自带 /api/v2 前缀，
+		// 再拼 /api/v3/files 变成双重路径），透传对方默认 404 页对排障无意义，返回明确指引。
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"message": fmt.Sprintf("file upload endpoint not found on channel (%s); configure TOS env (TOS_ACCESS_KEY/TOS_SECRET_KEY/TOS_BUCKET) to enable direct upload", uploadURL),
+				"type":    "upstream_not_found",
+			},
+		})
+		return
+	}
+
 	// Return the upstream response with the same status code
 	c.Data(resp.StatusCode, "application/json", body)
 }
