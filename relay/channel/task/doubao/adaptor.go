@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -127,8 +129,21 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
-	return fmt.Sprintf("%s/api/v3/contents/generations/tasks", a.baseURL), nil
+	return buildTaskURL(a.baseURL, "/contents/generations/tasks"), nil
 }
+
+// buildTaskURL 按渠道 baseURL 构造火山方舟任务地址。
+// baseURL 已带版本路径后缀（如中转站用 /api/v2 代替官方 /api/v3）时直接拼任务路径，
+// 避免拼出 /api/v2/api/v3/... 双重路径；无版本后缀视为火山官方，拼默认 /api/v3。
+func buildTaskURL(baseURL, taskPath string) string {
+	trimmed := strings.TrimSuffix(baseURL, "/")
+	if versionPathSuffixRE.MatchString(trimmed) {
+		return trimmed + taskPath
+	}
+	return trimmed + "/api/v3" + taskPath
+}
+
+var versionPathSuffixRE = regexp.MustCompile(`/(?:api/)?v\d+$`)
 
 // BuildRequestHeader sets required headers.
 func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *relaycommon.RelayInfo) error {
@@ -285,7 +300,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := fmt.Sprintf("%s/api/v3/contents/generations/tasks/%s", baseUrl, taskID)
+	uri := buildTaskURL(baseUrl, fmt.Sprintf("/contents/generations/tasks/%s", taskID))
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
