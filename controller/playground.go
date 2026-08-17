@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -301,8 +302,8 @@ func PlaygroundFileUpload(c *gin.Context) {
 	}
 	writer.Close()
 
-	// Forward to Volcengine Files API
-	uploadURL := strings.TrimSuffix(baseURL, "/") + "/api/v3/files"
+	// Forward to the channel's files API (path depends on whether baseURL already carries a version suffix)
+	uploadURL := filesUploadURL(baseURL)
 	req, err := http.NewRequest("POST", uploadURL, &buf)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -371,6 +372,19 @@ func PlaygroundFileUpload(c *gin.Context) {
 	// Return the upstream response with the same status code
 	c.Data(resp.StatusCode, "application/json", body)
 }
+
+// filesUploadURL 按渠道 baseURL 构造文件上传地址。
+// baseURL 已带版本路径后缀（如 /v1、/api/v2、/api/v3）时只拼 /files，
+// 避免拼出 /api/v2/api/v3/files 这类双重路径；无版本后缀视为火山官方渠道，拼默认 /api/v3/files。
+func filesUploadURL(baseURL string) string {
+	trimmed := strings.TrimSuffix(baseURL, "/")
+	if versionPathSuffixRE.MatchString(trimmed) {
+		return trimmed + "/files"
+	}
+	return trimmed + "/api/v3/files"
+}
+
+var versionPathSuffixRE = regexp.MustCompile(`/(?:api/)?v\d+$`)
 
 // uploadToTOS uploads a file to Volcengine TOS (Object Storage) and returns
 // the publicly accessible URL and the object key.
