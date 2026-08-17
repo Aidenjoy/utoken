@@ -464,9 +464,7 @@ func uploadToTOS(file io.Reader, filename, endpoint, region, bucket, accessKey, 
 	_ = output
 
 	// Construct public URL: https://{bucket}.{endpoint-host}/{object-key}
-	endpointHost := strings.TrimPrefix(endpoint, "https://")
-	endpointHost = strings.TrimPrefix(endpointHost, "http://")
-	publicURL = fmt.Sprintf("https://%s.%s/%s", bucket, endpointHost, objectKey)
+	publicURL = publicObjectURL(endpoint, bucket, objectKey)
 
 	return publicURL, objectKey, nil
 }
@@ -504,9 +502,17 @@ func uploadToOSS(file io.Reader, filename, endpoint, bucket, accessKey, secretKe
 	}
 
 	// Construct public URL: https://{bucket}.{endpoint-host}/{object-key}
-	endpointHost := strings.TrimPrefix(endpoint, "https://")
-	endpointHost = strings.TrimPrefix(endpointHost, "http://")
-	publicURL = fmt.Sprintf("https://%s.%s/%s", bucket, endpointHost, objectKey)
+	publicURL = publicObjectURL(endpoint, bucket, objectKey)
 
 	return publicURL, objectKey, nil
+}
+
+// publicObjectURL 构造对象存储的公网直链：https://{bucket}.{endpoint-host}/{key}。
+// endpoint 配置为内网地址（如 oss-cn-beijing-internal.aliyuncs.com）时自动去掉 -internal，
+// 保证生成的直链公网可达（上游供应商需直接拉取该 URL）。
+func publicObjectURL(endpoint, bucket, objectKey string) string {
+	endpointHost := strings.TrimPrefix(endpoint, "https://")
+	endpointHost = strings.TrimPrefix(endpointHost, "http://")
+	endpointHost = strings.ReplaceAll(endpointHost, "-internal", "")
+	return fmt.Sprintf("https://%s.%s/%s", bucket, endpointHost, objectKey)
 }

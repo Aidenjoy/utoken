@@ -30,3 +30,23 @@ func TestFilesUploadURL(t *testing.T) {
 		})
 	}
 }
+
+// 对象存储公网直链拼接：内网 endpoint 需自动转公网，否则上游拉不到文件。
+func TestPublicObjectURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		bucket   string
+		key      string
+		want     string
+	}{
+		{"OSS 外网 endpoint", "https://oss-cn-beijing.aliyuncs.com", "my-bucket", "2026-08-17/1_b/a.png", "https://my-bucket.oss-cn-beijing.aliyuncs.com/2026-08-17/1_b/a.png"},
+		{"OSS 内网 endpoint 自动转公网", "https://oss-cn-beijing-internal.aliyuncs.com", "my-bucket", "a.png", "https://my-bucket.oss-cn-beijing.aliyuncs.com/a.png"},
+		{"TOS endpoint", "https://tos-cn-beijing.volces.com", "my-bucket", "a.png", "https://my-bucket.tos-cn-beijing.volces.com/a.png"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, publicObjectURL(tt.endpoint, tt.bucket, tt.key))
+		})
+	}
+}
