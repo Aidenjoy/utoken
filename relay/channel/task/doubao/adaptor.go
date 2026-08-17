@@ -80,12 +80,24 @@ type responseTask struct {
 	Content struct {
 		VideoURL string `json:"video_url"`
 	} `json:"content"`
-	Seed            int    `json:"seed"`
-	Resolution      string `json:"resolution"`
-	Duration        int    `json:"duration"`
-	Ratio           string `json:"ratio"`
-	FramesPerSecond int    `json:"framespersecond"`
-	ServiceTier     string `json:"service_tier"`
+	// ResultSummary 兼容中转站（如 ai-tokenhub）的包装格式：火山原始结果
+	// 被包在 resultSummary 层，video_url / usage 位于 resultSummary.content /
+	// resultSummary.usage，且 duration 为字符串（"4"）而非官方的数字。
+	ResultSummary struct {
+		Content struct {
+			VideoURL string `json:"video_url"`
+		} `json:"content"`
+		Usage struct {
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	} `json:"resultSummary"`
+	Seed            int            `json:"seed"`
+	Resolution      string         `json:"resolution"`
+	Duration        dto.IntValue   `json:"duration"`
+	Ratio           string         `json:"ratio"`
+	FramesPerSecond int            `json:"framespersecond"`
+	ServiceTier     string         `json:"service_tier"`
 	Tools           []struct {
 		Type string `json:"type"`
 	} `json:"tools"`
@@ -100,8 +112,8 @@ type responseTask struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error"`
-	CreatedAt int64 `json:"created_at"`
-	UpdatedAt int64 `json:"updated_at"`
+	// 注意：不解析 created_at / updated_at —— 官方为 unix 数字，中转站为 ISO 字符串，
+	// 且包内无使用方；声明为 int64 会在中转站响应上整体反序列化失败。
 }
 
 // ============================
@@ -367,6 +379,10 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
 
+	// 火山方舟 resolution 枚举为小写（480p/720p/1080p/4k），而前端 Playground 传大写（480P/4K），
+	// 归一化后再发给上游，避免官方 Ark 或严格透传的中转站拒绝请求。
+	r.Resolution = strings.ToLower(strings.TrimSpace(r.Resolution))
+
 	// Add video/audio reference URLs from metadata (reference mode)
 	if videoURLs, ok := metadata["video_urls"].([]interface{}); ok {
 		for _, vu := range videoURLs {
@@ -436,10 +452,11 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	case "succeeded":
 		taskResult.Status = model.TaskStatusSuccess
 		taskResult.Progress = "100%"
-		taskResult.Url = resTask.Content.VideoURL
+		// 官方顶层 content/usage 优先，中转站 resultSummary 包装格式兜底
+		taskResult.Url = lo.CoalesceOrEmpty(resTask.Content.VideoURL, resTask.ResultSummary.Content.VideoURL)
 		// 解析 usage 信息用于按倍率计费
-		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
-		taskResult.TotalTokens = resTask.Usage.TotalTokens
+		taskResult.CompletionTokens = lo.CoalesceOrEmpty(resTask.Usage.CompletionTokens, resTask.ResultSummary.Usage.CompletionTokens)
+		taskResult.TotalTokens = lo.CoalesceOrEmpty(resTask.Usage.TotalTokens, resTask.ResultSummary.Usage.TotalTokens)
 	case "failed":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"
@@ -464,7 +481,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.TaskID = originTask.TaskID
 	openAIVideo.Status = originTask.Status.ToVideoStatus()
 	openAIVideo.SetProgressStr(originTask.Progress)
-	openAIVideo.SetMetadata("url", dResp.Content.VideoURL)
+	openAIVideo.SetMetadata("url", lo.CoalesceOrEmpty(dResp.Content.VideoURL, dResp.ResultSummary.Content.VideoURL))
 	openAIVideo.CreatedAt = originTask.CreatedAt
 	openAIVideo.CompletedAt = originTask.UpdatedAt
 	openAIVideo.Model = originTask.Properties.OriginModelName
