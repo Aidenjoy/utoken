@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 	"github.com/google/uuid"
 	tos "github.com/volcengine/ve-tos-golang-sdk/v2/tos"
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 
 	"github.com/gin-gonic/gin"
 )
@@ -195,7 +196,13 @@ func PlaygroundTaskFetch(c *gin.Context) {
 //   - TOS_REGION:      TOS region (e.g., cn-beijing)
 //   - TOS_BUCKET:      TOS bucket name
 //
-// If TOS is not configured, it falls back to the Volcengine Files API.
+// Alibaba Cloud OSS is supported as an alternative object storage:
+//   - OSS_ACCESS_KEY_ID:     OSS access key id
+//   - OSS_ACCESS_KEY_SECRET: OSS access key secret
+//   - OSS_ENDPOINT:          OSS endpoint (e.g., https://oss-cn-beijing.aliyuncs.com)
+//   - OSS_BUCKET:            OSS bucket name (must allow public read)
+//
+// If neither TOS nor OSS is configured, it falls back to the channel Files API.
 func PlaygroundFileUpload(c *gin.Context) {
 	useAccessToken := c.GetBool("use_access_token")
 	if useAccessToken {
@@ -238,6 +245,35 @@ func PlaygroundFileUpload(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": gin.H{
 					"message": "failed to upload file to TOS: " + err.Error(),
+					"type":    "internal_error",
+				},
+			})
+			return
+		}
+		common.SysLog(fmt.Sprintf("[PlaygroundFileUpload] User %d uploaded file (model=%s, batch=%s): %s -> %s", userId, model, batchID, objectKey, publicURL))
+		c.JSON(http.StatusOK, gin.H{
+			"id":          objectKey,
+			"content_url": publicURL,
+		})
+		return
+	}
+
+	// Try Alibaba Cloud OSS upload (alternative object storage)
+	ossAccessKey := common.GetEnvOrDefaultString("OSS_ACCESS_KEY_ID", "")
+	ossSecretKey := common.GetEnvOrDefaultString("OSS_ACCESS_KEY_SECRET", "")
+	ossEndpoint := common.GetEnvOrDefaultString("OSS_ENDPOINT", "https://oss-cn-beijing.aliyuncs.com")
+	ossBucket := common.GetEnvOrDefaultString("OSS_BUCKET", "")
+
+	if ossAccessKey != "" && ossSecretKey != "" && ossBucket != "" {
+		userId := c.GetInt("id")
+		model := c.Query("model")
+		batchID := c.Query("batch_id")
+		publicURL, objectKey, err := uploadToOSS(file, fileHeader.Filename, ossEndpoint, ossBucket, ossAccessKey, ossSecretKey, userId, batchID)
+		if err != nil {
+			common.SysError(fmt.Sprintf("[PlaygroundFileUpload] OSS upload failed (user=%d, model=%s, batch=%s): %v", userId, model, batchID, err))
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": gin.H{
+					"message": "failed to upload file to OSS: " + err.Error(),
 					"type":    "internal_error",
 				},
 			})
@@ -426,6 +462,46 @@ func uploadToTOS(file io.Reader, filename, endpoint, region, bucket, accessKey, 
 		return "", "", fmt.Errorf("upload to TOS: %w", err)
 	}
 	_ = output
+
+	// Construct public URL: https://{bucket}.{endpoint-host}/{object-key}
+	endpointHost := strings.TrimPrefix(endpoint, "https://")
+	endpointHost = strings.TrimPrefix(endpointHost, "http://")
+	publicURL = fmt.Sprintf("https://%s.%s/%s", bucket, endpointHost, objectKey)
+
+	return publicURL, objectKey, nil
+}
+
+// uploadToOSS uploads a file to Alibaba Cloud OSS and returns
+// the publicly accessible URL and the object key.
+// The object key is structured the same as TOS: {date}/{userId}_{batchId}/{filename}.
+// The bucket must allow public read so upstream providers can fetch the file directly.
+func uploadToOSS(file io.Reader, filename, endpoint, bucket, accessKey, secretKey string, userId int, batchID string) (publicURL, objectKey string, err error) {
+	client, err := oss.New(endpoint, accessKey, secretKey)
+	if err != nil {
+		return "", "", fmt.Errorf("create OSS client: %w", err)
+	}
+	bkt, err := client.Bucket(bucket)
+	if err != nil {
+		return "", "", fmt.Errorf("get OSS bucket: %w", err)
+	}
+
+	// Object key: {date}/{userId}_{batchId}/{filename}, same layout as TOS.
+	if batchID == "" {
+		batchID = uuid.New().String()
+	}
+	date := time.Now().Format("2006-01-02")
+	objectKey = fmt.Sprintf("%s/%d_%s/%s", date, userId, batchID, filename)
+
+	// Read file content
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return "", "", fmt.Errorf("read file: %w", err)
+	}
+
+	// Upload to OSS
+	if err := bkt.PutObject(objectKey, bytes.NewReader(content)); err != nil {
+		return "", "", fmt.Errorf("upload to OSS: %w", err)
+	}
 
 	// Construct public URL: https://{bucket}.{endpoint-host}/{object-key}
 	endpointHost := strings.TrimPrefix(endpoint, "https://")
