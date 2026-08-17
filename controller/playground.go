@@ -331,6 +331,17 @@ func PlaygroundFileUpload(c *gin.Context) {
 
 	body, _ := io.ReadAll(resp.Body)
 
+	if resp.StatusCode != http.StatusOK {
+		// 上游非 200 时记录响应，便于定位：404 常见于渠道 baseURL 误带 /api/v3 后缀，
+		// 或所选渠道本身不提供 /api/v3/files 文件接口（非火山方舟渠道）。
+		bodySnippet := string(body)
+		if len(bodySnippet) > 300 {
+			bodySnippet = bodySnippet[:300]
+		}
+		common.SysError(fmt.Sprintf("[PlaygroundFileUpload] upstream upload failed (user=%d, model=%s, url=%s): status=%d body=%s",
+			c.GetInt("id"), c.Query("model"), uploadURL, resp.StatusCode, bodySnippet))
+	}
+
 	// Add content_url to the response so the frontend can use it directly.
 	if resp.StatusCode == http.StatusOK {
 		var result map[string]interface{}
