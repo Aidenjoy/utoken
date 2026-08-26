@@ -59,4 +59,14 @@ func SetVideoRouter(router *gin.Engine) {
 		arkNativeRouter.POST("/contents/generations/tasks", controller.RelayTask)
 		arkNativeRouter.GET("/contents/generations/tasks/:task_id", controller.RelayTaskFetch)
 	}
+
+	// 中转站风格素材库对外 API（兼容 ctaigw 契约）：下游客户端/下级网关
+	// 用 Bearer token 注册与查询素材，本站可作为其素材协议的中转上游。
+	relayAssetRouter := router.Group("/v1/api/assets")
+	relayAssetRouter.Use(middleware.RouteTag("relay"))
+	relayAssetRouter.Use(middleware.TokenAuth())
+	{
+		relayAssetRouter.POST("/upload", controller.RelayUploadAsset)
+		relayAssetRouter.GET("/:id", controller.RelayGetAsset)
+	}
 }

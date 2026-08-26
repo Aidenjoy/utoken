@@ -127,37 +127,62 @@ type assetUploadRequest struct {
 	Name      string `json:"name"`
 }
 
-// UploadAsset 注册素材：校验后调渠道协议适配器向上游注册并落库。
-func UploadAsset(c *gin.Context) {
-	userId := c.GetInt("id")
-	var req assetUploadRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		assetJSONError(c, http.StatusBadRequest, "invalid_request", "invalid request body: "+err.Error())
-		return
+// assetRegisterError 承载注册失败信息，管理端 API 与对外 API 各自映射响应格式。
+type assetRegisterError struct {
+	status int
+	typ    string
+	msg    string
+}
+
+// resolveAssetProtocolChannel 按 channel_id（可选）解析开启了素材协议的启用渠道；
+// 未传时仅当唯一可用渠道时自动选择，否则要求显式指定。
+func resolveAssetProtocolChannel(channelId int) (*model.Channel, error) {
+	if channelId > 0 {
+		channel, err := model.GetChannelById(channelId, true)
+		if err != nil || channel.Status != common.ChannelStatusEnabled {
+			return nil, fmt.Errorf("channel not found or disabled")
+		}
+		if channel.GetOtherSettings().AssetUploadProtocol == "" {
+			return nil, fmt.Errorf("channel %d does not enable any asset upload protocol", channelId)
+		}
+		return channel, nil
 	}
+	channels, err := model.GetEnabledChannels()
+	if err != nil {
+		return nil, err
+	}
+	var picked *model.Channel
+	for _, channel := range channels {
+		if channel.GetOtherSettings().AssetUploadProtocol == "" {
+			continue
+		}
+		if picked != nil {
+			return nil, fmt.Errorf("multiple asset channels are available, please specify channel_id")
+		}
+		picked = channel
+	}
+	if picked == nil {
+		return nil, fmt.Errorf("no available channel enables an asset upload protocol")
+	}
+	return picked, nil
+}
+
+// registerAssetForUser 素材注册核心流程：校验 → 上游注册 → 组 ID 回写 → 复用/落库。
+func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *assetRegisterError) {
 	req.URL = strings.TrimSpace(req.URL)
 	if !model.IsValidAssetType(req.AssetType) {
-		assetJSONError(c, http.StatusBadRequest, "invalid_request", "asset_type must be one of Image/Video/Audio")
-		return
+		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", "asset_type must be one of Image/Video/Audio"}
 	}
 	if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
-		assetJSONError(c, http.StatusBadRequest, "invalid_request", "url must be a public http(s) URL")
-		return
+		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", "url must be a public http(s) URL"}
 	}
-	if req.ChannelId <= 0 {
-		assetJSONError(c, http.StatusBadRequest, "invalid_request", "channel_id is required")
-		return
-	}
-
-	channel, err := model.GetChannelById(req.ChannelId, true)
-	if err != nil || channel.Status != common.ChannelStatusEnabled {
-		assetJSONError(c, http.StatusBadRequest, "invalid_request", "channel not found or disabled")
-		return
+	channel, err := resolveAssetProtocolChannel(req.ChannelId)
+	if err != nil {
+		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", err.Error()}
 	}
 	proto, err := assetrelay.NewProtocol(buildAssetChannelConfig(channel))
 	if err != nil {
-		assetJSONError(c, http.StatusBadRequest, "invalid_request", err.Error())
-		return
+		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", err.Error()}
 	}
 
 	res, err := proto.Upload(assetrelay.UploadRequest{
@@ -166,9 +191,8 @@ func UploadAsset(c *gin.Context) {
 		Name:      req.Name,
 	})
 	if err != nil {
-		common.SysError(fmt.Sprintf("[Asset] upload failed (user=%d, channel=%d): %v", userId, req.ChannelId, err))
-		assetJSONError(c, http.StatusBadGateway, "upstream_error", err.Error())
-		return
+		common.SysError(fmt.Sprintf("[Asset] upload failed (user=%d, channel=%d): %v", userId, channel.Id, err))
+		return nil, &assetRegisterError{http.StatusBadGateway, "upstream_error", err.Error()}
 	}
 
 	// 渠道未配置素材组时适配器会自动创建默认组，这里把组 ID 回写渠道配置以便后续复用
@@ -181,11 +205,9 @@ func UploadAsset(c *gin.Context) {
 	// 同一渠道的上游 ID 全局唯一：重复注册直接复用已有记录
 	if existing, err := model.GetAssetByChannelAndAssetID(channel.Id, res.AssetID); err == nil && existing.ID > 0 {
 		if existing.UserID != userId {
-			assetJSONError(c, http.StatusConflict, "conflict", "this asset is already registered by another user")
-			return
+			return nil, &assetRegisterError{http.StatusConflict, "conflict", "this asset is already registered by another user"}
 		}
-		c.JSON(http.StatusOK, existing)
-		return
+		return existing, nil
 	}
 
 	asset := &model.Asset{
@@ -200,11 +222,102 @@ func UploadAsset(c *gin.Context) {
 		ProjectName: res.ProjectName,
 	}
 	if err := asset.Insert(); err != nil {
-		assetJSONError(c, http.StatusInternalServerError, "insert_error", err.Error())
-		return
+		return nil, &assetRegisterError{http.StatusInternalServerError, "insert_error", err.Error()}
 	}
 	common.SysLog(fmt.Sprintf("[Asset] user %d registered asset %s (channel=%d, type=%s)", userId, res.AssetID, channel.Id, req.AssetType))
+	return asset, nil
+}
+
+// UploadAsset 管理端（会话鉴权）注册素材入口，channel_id 必填。
+func UploadAsset(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req assetUploadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "invalid request body: "+err.Error())
+		return
+	}
+	if req.ChannelId <= 0 {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "channel_id is required")
+		return
+	}
+	asset, regErr := registerAssetForUser(userId, req)
+	if regErr != nil {
+		assetJSONError(c, regErr.status, regErr.typ, regErr.msg)
+		return
+	}
 	c.JSON(http.StatusOK, asset)
+}
+
+// relayAssetJSON 中转站风格对外信封：{"code":0,"message":"ok","data":...}，code 非 0 即失败。
+func relayAssetJSON(c *gin.Context, code int, msg string, data gin.H) {
+	body := gin.H{"code": code, "message": msg}
+	if data != nil {
+		body["data"] = data
+	}
+	c.JSON(http.StatusOK, body)
+}
+
+// relayAssetStatus 本地三态映射为中转站风格状态文案（首字母大写，与 ctaigw 一致）。
+func relayAssetStatus(status string) string {
+	switch status {
+	case model.AssetStatusActive:
+		return "Active"
+	case model.AssetStatusFailed:
+		return "Failed"
+	default:
+		return "Pending"
+	}
+}
+
+func relayAssetTime(ts int64) string {
+	return time.Unix(ts, 0).UTC().Format("2006-01-02T15:04:05Z")
+}
+
+// RelayUploadAsset 对外（Bearer token）素材注册接口，兼容中转站契约：
+// POST {base}/api/assets/upload，body {url, asset_type, name[, channel_id]}。
+// 挂载路径与 ctaigw 一致，使本站可作为下级网关的素材协议中转上游。
+func RelayUploadAsset(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req assetUploadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		relayAssetJSON(c, 1, "invalid request body: "+err.Error(), nil)
+		return
+	}
+	asset, regErr := registerAssetForUser(userId, req)
+	if regErr != nil {
+		relayAssetJSON(c, 1, regErr.msg, nil)
+		return
+	}
+	relayAssetJSON(c, 0, "ok", gin.H{
+		"Id":          asset.AssetID,
+		"GroupId":     asset.GroupID,
+		"ProjectName": asset.ProjectName,
+	})
+}
+
+// RelayGetAsset 对外（Bearer token）素材状态查询接口，兼容中转站契约：
+// GET {base}/api/assets/{id}；pending 时顺带向上游刷新。仅能查询本人素材。
+func RelayGetAsset(c *gin.Context) {
+	userId := c.GetInt("id")
+	assetID := c.Param("id")
+	assets, err := model.GetUserAssetsByAssetIDs(userId, []string{assetID})
+	if err != nil || len(assets) == 0 {
+		relayAssetJSON(c, 1, "asset not found", nil)
+		return
+	}
+	asset := assets[0]
+	refreshPendingAssets([]*model.Asset{asset})
+	relayAssetJSON(c, 0, "ok", gin.H{
+		"Id":          asset.AssetID,
+		"Name":        asset.Name,
+		"GroupId":     asset.GroupID,
+		"ProjectName": asset.ProjectName,
+		"AssetType":   asset.AssetType,
+		"Status":      relayAssetStatus(asset.Status),
+		"URL":         asset.PreviewURL,
+		"CreateTime":  relayAssetTime(asset.CreatedAt),
+		"UpdateTime":  relayAssetTime(asset.UpdatedAt),
+	})
 }
 
 // persistAssetGroupID 将自动创建的默认素材组 ID 回写到渠道 other settings。
