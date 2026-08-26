@@ -579,11 +579,12 @@ export function PlaygroundVideoInput({
   }, [showMention])
 
   // Fetch active library assets while the @ mention popup is open so they
-  // can be referenced alongside session uploads.
+  // can be referenced alongside session uploads. Assets are per-channel, so
+  // only ask for assets whose channel can serve the selected model/group.
   useEffect(() => {
     if (!showMention || config.mode !== 'reference') return
     let cancelled = false
-    void listAssets().then((list) => {
+    void listAssets(undefined, config.model, config.group).then((list) => {
       if (!cancelled) {
         setLibraryAssets(list.filter((asset) => asset.status === 'active'))
       }
@@ -591,7 +592,7 @@ export function PlaygroundVideoInput({
     return () => {
       cancelled = true
     }
-  }, [showMention, config.mode])
+  }, [showMention, config.mode, config.model, config.group])
 
   const mentionLibraryAssets = libraryAssets.filter(
     (asset) =>

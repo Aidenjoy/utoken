@@ -121,10 +121,10 @@ export function AssetLibraryContent({
   useEffect(() => {
     if (!hasPendingAsset) return
     const timer = setInterval(() => {
-      void reloadAssets({ silent: true })
+      void reloadAssets({ silent: true, channelId })
     }, 3000)
     return () => clearInterval(timer)
-  }, [hasPendingAsset, reloadAssets])
+  }, [hasPendingAsset, channelId, reloadAssets])
 
   useEffect(() => {
     let cancelled = false
@@ -137,12 +137,17 @@ export function AssetLibraryContent({
           prev && list.some((p) => p.id === prev) ? prev : list[0].id
         )
       }
-      await reloadAssets()
     })()
     return () => {
       cancelled = true
     }
-  }, [reloadAssets])
+  }, [])
+
+  // 素材绑定「用户 × 渠道」，跨渠道不通用，列表只展示当前所选渠道
+  useEffect(() => {
+    if (!channelId) return
+    void reloadAssets({ channelId })
+  }, [channelId, reloadAssets])
 
   const handleRegister = async (registerUrl: string, registerName: string) => {
     if (!channelId) {
@@ -164,7 +169,7 @@ export function AssetLibraryContent({
       toast.success(t('Asset registered'))
       setUrl('')
       setName('')
-      await reloadAssets()
+      await reloadAssets({ channelId })
     } catch (err) {
       toast.error(t('Failed to register asset'), {
         description: err instanceof Error ? err.message : String(err),
@@ -203,7 +208,7 @@ export function AssetLibraryContent({
       })
       toast.success(t('Asset registered'))
       setName('')
-      await reloadAssets()
+      await reloadAssets({ channelId })
     } catch (err) {
       toast.error(t('Failed to register asset'), {
         description: err instanceof Error ? err.message : String(err),
@@ -352,7 +357,7 @@ export function AssetLibraryContent({
           variant='ghost'
           size='sm'
           disabled={loading}
-          onClick={() => reloadAssets()}
+          onClick={() => reloadAssets({ channelId })}
         >
           <RefreshCwIcon size={14} className={cn(loading && 'animate-spin')} />
           {t('Refresh')}

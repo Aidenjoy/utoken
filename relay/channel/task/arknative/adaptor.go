@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -27,8 +29,9 @@ import (
 // 客户端只需替换 base_url 与 key 即可接入：
 // 请求体除 model 字段按渠道模型映射替换外原样透传上游，
 // 上游提交/查询响应也原样返回客户端。
-// 渠道 base_url 必须包含版本路径（官方填 /api/v3，中转站按各自协议填
-// /v1、/api/v2 等），程序不做任何自动补全，所见即所发。
+// 渠道 base_url 原样使用（所见即所发），仅火山官方域名例外：
+// 官方任务 API 固定挂在 /api/v3，而用户常把 base_url 配成 OpenAI 兼容
+// 聊天路径 /v1（或裸域名），直接拼任务路径会 404，因此官方域名统一归一到 /api/v3。
 type TaskAdaptor struct {
 	taskcommon.BaseBilling
 	ChannelType int
@@ -45,6 +48,24 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl
 	a.apiKey = info.ApiKey
+}
+
+var (
+	// arkOfficialHostRE 匹配火山方舟官方 API 域名（国内 volces.com / 国际 bytepluses.com）。
+	arkOfficialHostRE = regexp.MustCompile(`^ark\.[a-z0-9-]+\.(?:volces\.com|bytepluses\.com)(:\d+)?$`)
+	// arkVersionPathRE 匹配尾部版本路径（/v1、/api/v3 等）。
+	arkVersionPathRE = regexp.MustCompile(`/(?:api/)?v\d+$`)
+)
+
+// arkTaskBaseURL 归一化火山官方域名的 base_url 到任务 API 版本路径 /api/v3：
+// .../v1（OpenAI 兼容聊天路径）或裸域名都会 404，必须换成 /api/v3；
+// 非官方域名（中转站）保持所见即所发，原样返回。
+func arkTaskBaseURL(baseURL string) string {
+	trimmed := strings.TrimSuffix(baseURL, "/")
+	if u, err := url.Parse(trimmed); err == nil && arkOfficialHostRE.MatchString(u.Host) {
+		return arkVersionPathRE.ReplaceAllString(trimmed, "") + "/api/v3"
+	}
+	return trimmed
 }
 
 // ValidateRequestAndSetAction 对官方协议原始请求体做最小校验：
@@ -97,9 +118,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 }
 
 // BuildRequestURL constructs the upstream URL.
-// base_url 按渠道配置原样使用（含版本路径），不自动补全 /api/v3。
+// base_url 按渠道配置原样使用；火山官方域名归一到 /api/v3（见 arkTaskBaseURL）。
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
-	return strings.TrimSuffix(a.baseURL, "/") + "/contents/generations/tasks", nil
+	return arkTaskBaseURL(a.baseURL) + "/contents/generations/tasks", nil
 }
 
 // BuildRequestHeader sets required headers.
@@ -217,7 +238,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := strings.TrimSuffix(baseUrl, "/") + fmt.Sprintf("/contents/generations/tasks/%s", taskID)
+	uri := arkTaskBaseURL(baseUrl) + fmt.Sprintf("/contents/generations/tasks/%s", taskID)
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {

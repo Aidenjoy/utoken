@@ -31,6 +31,9 @@ type UploadResult struct {
 	AssetID     string
 	GroupID     string
 	ProjectName string
+	// CreatedGroupID 渠道未配置 asset_group_id 时自动创建的默认素材组 ID，
+	// 非空时调用方应回写渠道配置以便后续复用。
+	CreatedGroupID string
 }
 
 // QueryResult 上游素材状态查询返回（Status 已归一化为 model.AssetStatus*）。

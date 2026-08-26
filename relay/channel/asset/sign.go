@@ -45,13 +45,17 @@ func signRequest(req *http.Request, p signParams) {
 	req.Header.Set("X-Date", longDate)
 	req.Header.Set("X-Content-Sha256", payloadHash)
 
-	headers := http.Header{}
+	// 规范头表一律用小写 key 直接存取：http.Header.Get 按规范名（Content-Type）
+	// 查找，存小写 key 会全部落空，导致签名头块为空值、上游 SignatureDoesNotMatch。
+	headers := map[string]string{}
 	for k, v := range p.Headers {
-		headers[k] = v
+		if len(v) > 0 {
+			headers[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v[0])
+		}
 	}
-	headers["host"] = []string{p.Host}
-	headers["x-date"] = []string{longDate}
-	headers["x-content-sha256"] = []string{payloadHash}
+	headers["host"] = p.Host
+	headers["x-date"] = longDate
+	headers["x-content-sha256"] = payloadHash
 
 	canonicalHeaders, signedHeaders := canonicalizeHeaders(headers, p.SignedNames)
 	canonicalRequest := strings.Join([]string{
@@ -81,7 +85,7 @@ func signRequest(req *http.Request, p signParams) {
 }
 
 // canonicalizeHeaders 输出规范头块与参与签名的头名列表（按头名排序）。
-func canonicalizeHeaders(headers http.Header, signedNames []string) (string, string) {
+func canonicalizeHeaders(headers map[string]string, signedNames []string) (string, string) {
 	names := make([]string, 0, len(signedNames))
 	seen := make(map[string]bool, len(signedNames))
 	for _, n := range signedNames {
@@ -98,7 +102,7 @@ func canonicalizeHeaders(headers http.Header, signedNames []string) (string, str
 	for _, n := range names {
 		b.WriteString(n)
 		b.WriteString(":")
-		b.WriteString(strings.TrimSpace(headers.Get(n)))
+		b.WriteString(headers[n])
 		b.WriteString("\n")
 	}
 	return b.String(), strings.Join(names, ";")

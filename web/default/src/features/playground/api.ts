@@ -18,7 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS, ASSET_API_ENDPOINTS, VIDEO_API_ENDPOINTS } from './constants'
+import {
+  API_ENDPOINTS,
+  ASSET_API_ENDPOINTS,
+  VIDEO_API_ENDPOINTS,
+} from './constants'
 import type {
   Asset,
   AssetProvider,
@@ -134,9 +138,7 @@ export async function fetchVideoTask(
       created_at: d.created_at || 0,
       completed_at: d.finish_time || d.updated_at,
       metadata: d.result_url ? { url: d.result_url } : undefined,
-      error: d.fail_reason
-        ? { message: d.fail_reason, code: '' }
-        : undefined,
+      error: d.fail_reason ? { message: d.fail_reason, code: '' } : undefined,
     }
   }
 
@@ -181,7 +183,9 @@ export async function uploadFile(
 
   const fileId = res.data.id
   // Use content_url from backend if available; otherwise construct it
-  const url = res.data.content_url || `https://ark.cn-beijing.volces.com/api/v3/files/${fileId}/content`
+  const url =
+    res.data.content_url ||
+    `https://ark.cn-beijing.volces.com/api/v3/files/${fileId}/content`
   return { id: fileId, url }
 }
 
@@ -235,11 +239,21 @@ export async function registerAsset(payload: {
 
 /**
  * List the current user's assets (optionally filtered by channel).
+ * When model/group are given, the backend only returns assets whose
+ * channel can serve that model in the group (assets are per-channel).
  */
-export async function listAssets(channelId?: number): Promise<Asset[]> {
+export async function listAssets(
+  channelId?: number,
+  model?: string,
+  group?: string
+): Promise<Asset[]> {
   try {
+    const params: Record<string, unknown> = {}
+    if (channelId) params.channel_id = channelId
+    if (model) params.model = model
+    if (group) params.group = group
     const res = await api.get(ASSET_API_ENDPOINTS.LIST, {
-      params: channelId ? { channel_id: channelId } : undefined,
+      params: Object.keys(params).length > 0 ? params : undefined,
       skipErrorHandler: true,
     } as Record<string, unknown>)
     return Array.isArray(res.data?.assets) ? res.data.assets : []

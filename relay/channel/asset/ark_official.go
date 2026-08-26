@@ -29,13 +29,23 @@ const (
 	arkOfficialService         = "ark"
 	arkOfficialVersion         = "2024-01-01"
 	arkActionCreateAsset       = "CreateAsset"
+	arkActionCreateAssetGroup  = "CreateAssetGroup"
 	arkActionGetAsset          = "GetAsset"
+	// arkDefaultAssetGroupName 渠道未配置 asset_group_id 时自动创建的默认虚拟人像素材组名称。
+	arkDefaultAssetGroupName = "new-api-assets"
 )
 
 func (p *ArkOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 	groupID := strings.TrimSpace(p.cfg.Settings.AssetGroupID)
-	if groupID == "" {
-		return nil, fmt.Errorf("ark_official asset protocol requires asset_group_id")
+	createdGroupID := ""
+	// “default” 不是火山合法的素材组 ID（组 ID 形如 group-xxxx），视同未配置走自动建组
+	if groupID == "" || groupID == "default" {
+		var err error
+		groupID, err = p.createAssetGroup()
+		if err != nil {
+			return nil, fmt.Errorf("auto-create default asset group failed: %w", err)
+		}
+		createdGroupID = groupID
 	}
 	body, err := common.Marshal(map[string]any{
 		"GroupId":     groupID,
@@ -57,10 +67,34 @@ func (p *ArkOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 		return nil, fmt.Errorf("ark official CreateAsset returned empty asset id")
 	}
 	return &UploadResult{
-		AssetID:     result.ID,
-		GroupID:     groupID,
-		ProjectName: p.cfg.Settings.AssetProjectName,
+		AssetID:        result.ID,
+		GroupID:        groupID,
+		ProjectName:    p.cfg.Settings.AssetProjectName,
+		CreatedGroupID: createdGroupID,
 	}, nil
+}
+
+// createAssetGroup 调用官方 CreateAssetGroup 创建默认虚拟人像素材组并返回其 ID；
+// 未配置 ProjectName 时上游默认落入 default 项目。
+func (p *ArkOfficialProtocol) createAssetGroup() (string, error) {
+	payload := map[string]any{"Name": arkDefaultAssetGroupName}
+	if projectName := strings.TrimSpace(p.cfg.Settings.AssetProjectName); projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		ID string `json:"Id"`
+	}
+	if err := p.call(arkActionCreateAssetGroup, body, &result); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(result.ID) == "" {
+		return "", fmt.Errorf("ark official CreateAssetGroup returned empty group id")
+	}
+	return result.ID, nil
 }
 
 func (p *ArkOfficialProtocol) Query(assetID string) (*QueryResult, error) {

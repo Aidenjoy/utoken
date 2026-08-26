@@ -129,9 +129,12 @@ func TestBuildRequestURL(t *testing.T) {
 		baseURL string
 		want    string
 	}{
-		// base_url 按配置原样使用，版本路径由用户填写，程序不自动补全
+		// 火山官方域名：任务 API 固定挂在 /api/v3，/v1（OpenAI 兼容聊天路径）或裸域名归一
 		{"https://ark.cn-beijing.volces.com/api/v3", "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"},
-		// 中转站自定义版本后缀同样原样拼
+		{"https://ark.cn-beijing.volces.com/v1", "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"},
+		{"https://ark.cn-beijing.volces.com", "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"},
+		{"https://ark.ap-southeast.bytepluses.com/v1", "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks"},
+		// 中转站域名保持所见即所发，原样拼版本路径
 		{"https://ai-tokenhub.com/api/v2", "https://ai-tokenhub.com/api/v2/contents/generations/tasks"},
 		{"https://ai.ctaigw.cn/v1", "https://ai.ctaigw.cn/v1/contents/generations/tasks"},
 		// 末尾斜杠不影响拼接

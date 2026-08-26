@@ -2972,7 +2972,7 @@ export function ChannelMutateDrawer({
                                             </FormControl>
                                             <FormDescription>
                                               {t(
-                                                'Asset group used by the Volcengine CreateAsset API'
+                                                'Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically'
                                               )}
                                             </FormDescription>
                                             <FormMessage />

@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,6 +73,24 @@ func TestArkOfficialUpload(t *testing.T) {
 	// body 哈希必须与请求体一致
 	sum := sha256.Sum256([]byte(gotBody))
 	assert.Equal(t, hex.EncodeToString(sum[:]), gotSha256)
+
+	// 独立重算完整签名（含规范头块真实值），防止签名头块被空值化
+	u, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+	canonicalHeaders := "content-type:application/json\n" +
+		"host:" + u.Host + "\n" +
+		"x-content-sha256:" + gotSha256 + "\n" +
+		"x-date:" + gotXDate + "\n"
+	canonicalRequest := strings.Join([]string{
+		"POST", "/", "Action=CreateAsset&Version=2024-01-01",
+		canonicalHeaders, "content-type;host;x-content-sha256;x-date", gotSha256,
+	}, "\n")
+	stringToSign := strings.Join([]string{
+		"HMAC-SHA256", gotXDate, "20260716/cn-beijing/ark/request",
+		hexSha256([]byte(canonicalRequest)),
+	}, "\n")
+	wantSig := hexHmacSha256(deriveSigningKey("sk-test-secret", "20260716", "cn-beijing", "ark"), []byte(stringToSign))
+	assert.Contains(t, gotAuth, "Signature="+wantSig)
 
 	// Authorization 格式 + Credential scope
 	re := regexp.MustCompile(`^HMAC-SHA256 Credential=AKLT-test/20260716/cn-beijing/ark/request, ` +
@@ -146,12 +166,44 @@ func TestArkOfficialQueryAndError(t *testing.T) {
 	assert.Contains(t, err.Error(), "asset not found")
 }
 
-func TestArkOfficialMissingGroupID(t *testing.T) {
-	p := newOfficialProtocolForTest("http://127.0.0.1:1")
+func TestArkOfficialMissingGroupIDAutoCreatesDefaultGroup(t *testing.T) {
+	var actions []string
+	bodies := map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		action := r.URL.Query().Get("Action")
+		actions = append(actions, action)
+		b, _ := io.ReadAll(r.Body)
+		bodies[action] = string(b)
+		switch action {
+		case "CreateAssetGroup":
+			_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Id":"group-auto-1"}}`))
+		case "CreateAsset":
+			_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Id":"asset-1"}}`))
+		default:
+			t.Errorf("unexpected action %q", action)
+		}
+	}))
+	defer srv.Close()
+
+	p := newOfficialProtocolForTest(srv.URL)
 	p.cfg.Settings.AssetGroupID = ""
-	_, err := p.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "asset_group_id")
+	res, err := p.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage})
+	require.NoError(t, err)
+
+	// 必须先建组再建素材，且素材落入自动创建的组
+	require.Equal(t, []string{"CreateAssetGroup", "CreateAsset"}, actions)
+	assert.Contains(t, bodies["CreateAssetGroup"], `"Name":"new-api-assets"`)
+	assert.Contains(t, bodies["CreateAsset"], `"GroupId":"group-auto-1"`)
+	assert.Equal(t, "group-auto-1", res.GroupID)
+	assert.Equal(t, "group-auto-1", res.CreatedGroupID)
+
+	// 填了字面量 "default" 同样视同未配置，走自动建组
+	p2 := newOfficialProtocolForTest(srv.URL)
+	p2.cfg.Settings.AssetGroupID = "default"
+	res2, err2 := p2.Upload(UploadRequest{URL: "https://example.com/b.jpg", AssetType: model.AssetTypeImage})
+	require.NoError(t, err2)
+	assert.Equal(t, "group-auto-1", res2.GroupID)
+	assert.Equal(t, "group-auto-1", res2.CreatedGroupID)
 }
 
 func TestCanonicalQueryAndEscape(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	assetrelay "github.com/QuantumNous/new-api/relay/channel/asset"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -170,6 +171,13 @@ func UploadAsset(c *gin.Context) {
 		return
 	}
 
+	// 渠道未配置素材组时适配器会自动创建默认组，这里把组 ID 回写渠道配置以便后续复用
+	if res.CreatedGroupID != "" {
+		if err := persistAssetGroupID(channel, res.CreatedGroupID); err != nil {
+			common.SysError(fmt.Sprintf("[Asset] persist auto-created asset group failed (channel=%d, group=%s): %v", channel.Id, res.CreatedGroupID, err))
+		}
+	}
+
 	// 同一渠道的上游 ID 全局唯一：重复注册直接复用已有记录
 	if existing, err := model.GetAssetByChannelAndAssetID(channel.Id, res.AssetID); err == nil && existing.ID > 0 {
 		if existing.UserID != userId {
@@ -199,7 +207,18 @@ func UploadAsset(c *gin.Context) {
 	c.JSON(http.StatusOK, asset)
 }
 
+// persistAssetGroupID 将自动创建的默认素材组 ID 回写到渠道 other settings。
+func persistAssetGroupID(channel *model.Channel, groupID string) error {
+	settings := channel.GetOtherSettings()
+	settings.AssetGroupID = groupID
+	channel.SetOtherSettings(settings)
+	return model.DB.Model(&model.Channel{}).Where("id = ?", channel.Id).
+		Updates(map[string]interface{}{"settings": channel.OtherSettings}).Error
+}
+
 // ListAssets 列出本人素材（?channel_id= 过滤），pending 素材顺带向上游刷新状态。
+// ?model=（可选 ?group=）进一步过滤：素材只在注册它的渠道上游有效，
+// 因此仅返回渠道在当前分组（或用户可用分组）下支持该模型的素材。
 func ListAssets(c *gin.Context) {
 	userId := c.GetInt("id")
 	channelId, _ := strconv.Atoi(c.Query("channel_id"))
@@ -209,6 +228,26 @@ func ListAssets(c *gin.Context) {
 		return
 	}
 	refreshPendingAssets(assets)
+
+	if modelName := c.Query("model"); modelName != "" {
+		groups := []string{}
+		if group := c.Query("group"); group != "" {
+			groups = append(groups, group)
+		} else {
+			userGroup, _ := model.GetUserGroup(userId, false)
+			for g := range service.GetUserUsableGroups(userGroup) {
+				groups = append(groups, g)
+			}
+		}
+		filtered := make([]*model.Asset, 0, len(assets))
+		for _, a := range assets {
+			if model.IsChannelEnabledForAnyGroupModel(groups, modelName, a.ChannelID) {
+				filtered = append(filtered, a)
+			}
+		}
+		assets = filtered
+	}
+
 	c.JSON(http.StatusOK, gin.H{"assets": assets})
 }
 
