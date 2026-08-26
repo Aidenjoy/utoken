@@ -209,6 +209,15 @@ export const channelFormSchema = z
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
+    // Asset library settings (Volcengine Ark Native type 59; stored in settings JSON)
+    asset_upload_protocol: z.enum(['', 'relay', 'ark_official']).optional(),
+    asset_upload_path: z.string().optional(),
+    asset_query_path: z.string().optional(),
+    asset_ak: z.string().optional(),
+    asset_sk: z.string().optional(),
+    asset_group_id: z.string().optional(),
+    asset_project_name: z.string().optional(),
+    asset_region: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
@@ -349,6 +358,15 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
   advanced_custom: '',
+  // Asset library settings
+  asset_upload_protocol: '',
+  asset_upload_path: '',
+  asset_query_path: '',
+  asset_ak: '',
+  asset_sk: '',
+  asset_group_id: '',
+  asset_project_name: '',
+  asset_region: '',
 }
 
 // ============================================================================
@@ -405,6 +423,14 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
+  let assetUploadProtocol: '' | 'relay' | 'ark_official' = ''
+  let assetUploadPath = ''
+  let assetQueryPath = ''
+  let assetAk = ''
+  let assetSk = ''
+  let assetGroupId = ''
+  let assetProjectName = ''
+  let assetRegion = ''
 
   if (channel.settings) {
     try {
@@ -433,6 +459,18 @@ export function transformChannelToFormDefaults(
       if (parsed.advanced_custom) {
         advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
       }
+      assetUploadProtocol =
+        parsed.asset_upload_protocol === 'relay' ||
+        parsed.asset_upload_protocol === 'ark_official'
+          ? parsed.asset_upload_protocol
+          : ''
+      assetUploadPath = String(parsed.asset_upload_path || '')
+      assetQueryPath = String(parsed.asset_query_path || '')
+      assetAk = String(parsed.asset_ak || '')
+      assetSk = String(parsed.asset_sk || '')
+      assetGroupId = String(parsed.asset_group_id || '')
+      assetProjectName = String(parsed.asset_project_name || '')
+      assetRegion = String(parsed.asset_region || '')
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to parse channel settings:', error)
@@ -484,6 +522,15 @@ export function transformChannelToFormDefaults(
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
     advanced_custom: advancedCustom,
+    // Asset library settings
+    asset_upload_protocol: assetUploadProtocol,
+    asset_upload_path: assetUploadPath,
+    asset_query_path: assetQueryPath,
+    asset_ak: assetAk,
+    asset_sk: assetSk,
+    asset_group_id: assetGroupId,
+    asset_project_name: assetProjectName,
+    asset_region: assetRegion,
   }
 }
 
@@ -620,6 +667,42 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     }
   } else if ('advanced_custom' in settingsObj) {
     delete settingsObj.advanced_custom
+  }
+
+  // Asset library settings (Volcengine Ark Native, type 59)
+  const assetSettingKeys = [
+    'asset_upload_protocol',
+    'asset_upload_path',
+    'asset_query_path',
+    'asset_ak',
+    'asset_sk',
+    'asset_group_id',
+    'asset_project_name',
+    'asset_region',
+  ] as const
+  if (formData.type === 59 && formData.asset_upload_protocol) {
+    settingsObj.asset_upload_protocol = formData.asset_upload_protocol
+    if (formData.asset_upload_path?.trim()) {
+      settingsObj.asset_upload_path = formData.asset_upload_path.trim()
+    } else {
+      delete settingsObj.asset_upload_path
+    }
+    if (formData.asset_query_path?.trim()) {
+      settingsObj.asset_query_path = formData.asset_query_path.trim()
+    } else {
+      delete settingsObj.asset_query_path
+    }
+    if (formData.asset_upload_protocol === 'ark_official') {
+      settingsObj.asset_ak = formData.asset_ak || ''
+      settingsObj.asset_sk = formData.asset_sk || ''
+      settingsObj.asset_group_id = formData.asset_group_id || ''
+      settingsObj.asset_project_name = formData.asset_project_name || ''
+      settingsObj.asset_region = formData.asset_region?.trim() || ''
+    }
+  } else {
+    for (const key of assetSettingKeys) {
+      if (key in settingsObj) delete settingsObj[key]
+    }
   }
 
   return JSON.stringify(settingsObj)

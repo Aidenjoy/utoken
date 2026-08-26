@@ -92,6 +92,12 @@ export function SidebarModulesSection({
         title: t('Playground'),
         description: t('Experiment with prompts and models in real time.'),
       },
+      asset: {
+        title: t('Asset Library'),
+        description: t(
+          'Register portrait assets by URL, then reference them with @ in the prompt'
+        ),
+      },
       chat: {
         title: t('Chat'),
         description: t('Access previous conversations and start new ones.'),

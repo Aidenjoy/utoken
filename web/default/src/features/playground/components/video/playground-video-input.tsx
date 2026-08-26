@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
+import { listAssets } from '../../api'
 import {
   ASPECT_RATIOS,
   DURATION_OPTIONS,
@@ -39,6 +40,7 @@ import {
 } from '../../constants'
 import type {
   AspectRatio,
+  Asset,
   GroupOption,
   MediaItem,
   ModelOption,
@@ -69,22 +71,13 @@ interface PlaygroundVideoInputProps {
 }
 
 function getMediaDisplayName(item: MediaItem, items: MediaItem[]): string {
+  // Asset library items keep their registered name
+  if (item.assetId) return item.name || item.assetId
   const typeLabel =
     item.type === 'video' ? '视频' : item.type === 'audio' ? '音频' : '图片'
   const sameTypeItems = items.filter((i) => i.type === item.type)
   const index = sameTypeItems.indexOf(item) + 1
   return `${typeLabel}${index}`
-}
-
-function getMediaIcon(type: 'image' | 'video' | 'audio'): string {
-  switch (type) {
-    case 'video':
-      return '📹'
-    case 'audio':
-      return '🎧'
-    case 'image':
-      return '🖼️'
-  }
 }
 
 export function PlaygroundVideoInput({
@@ -119,9 +112,17 @@ export function PlaygroundVideoInput({
   const [mentionStartIndex, setMentionStartIndex] = useState(-1)
   const mentionPopupRef = useRef<HTMLDivElement>(null)
 
+  // --- asset library assets shown in the @ mention popup ---
+  const [libraryAssets, setLibraryAssets] = useState<Asset[]>([])
+
   // --- uploading placeholder state ---
   const [uploadingItems, setUploadingItems] = useState<
-    { id: string; type: 'image' | 'video' | 'audio'; fileName: string; localUrl: string }[]
+    {
+      id: string
+      type: 'image' | 'video' | 'audio'
+      fileName: string
+      localUrl: string
+    }[]
   >([])
   const configRef = useRef(config)
   configRef.current = config
@@ -154,8 +155,7 @@ export function PlaygroundVideoInput({
   const handleModeChange = (mode: string) => {
     if (mode === 'first_last_frame' || mode === 'first_frame') {
       // Switching to frame-based mode: clear media items, trim images
-      const newMax =
-        VIDEO_MODES.find((m) => m.value === mode)?.maxImages ?? 2
+      const newMax = VIDEO_MODES.find((m) => m.value === mode)?.maxImages ?? 2
       const trimmedImages = config.images.slice(0, newMax)
       onConfigChange({
         ...config,
@@ -199,9 +199,7 @@ export function PlaygroundVideoInput({
     }
   }
 
-  const handleImageUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
@@ -223,13 +221,20 @@ export function PlaygroundVideoInput({
         continue
       }
       const ratio = await getImageAspectRatio(file)
-      if (ratio > 0 && (ratio < IMAGE_ASPECT_RATIO_RANGE.min || ratio > IMAGE_ASPECT_RATIO_RANGE.max)) {
+      if (
+        ratio > 0 &&
+        (ratio < IMAGE_ASPECT_RATIO_RANGE.min ||
+          ratio > IMAGE_ASPECT_RATIO_RANGE.max)
+      ) {
         toast.error(
-          t('Image aspect ratio must be between {{min}} and {{max}}, got {{ratio}}', {
-            min: IMAGE_ASPECT_RATIO_RANGE.min,
-            max: IMAGE_ASPECT_RATIO_RANGE.max,
-            ratio: ratio.toFixed(2),
-          })
+          t(
+            'Image aspect ratio must be between {{min}} and {{max}}, got {{ratio}}',
+            {
+              min: IMAGE_ASPECT_RATIO_RANGE.min,
+              max: IMAGE_ASPECT_RATIO_RANGE.max,
+              ratio: ratio.toFixed(2),
+            }
+          )
         )
         continue
       }
@@ -272,9 +277,15 @@ export function PlaygroundVideoInput({
 
   // --- Reference mode media item handlers ---
 
-  const imageMediaItems = config.mediaItems.filter((item) => item.type === 'image')
-  const videoMediaItems = config.mediaItems.filter((item) => item.type === 'video')
-  const audioMediaItems = config.mediaItems.filter((item) => item.type === 'audio')
+  const imageMediaItems = config.mediaItems.filter(
+    (item) => item.type === 'image'
+  )
+  const videoMediaItems = config.mediaItems.filter(
+    (item) => item.type === 'video'
+  )
+  const audioMediaItems = config.mediaItems.filter(
+    (item) => item.type === 'audio'
+  )
 
   const handleReferenceImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -299,13 +310,20 @@ export function PlaygroundVideoInput({
         continue
       }
       const ratio = await getImageAspectRatio(file)
-      if (ratio > 0 && (ratio < IMAGE_ASPECT_RATIO_RANGE.min || ratio > IMAGE_ASPECT_RATIO_RANGE.max)) {
+      if (
+        ratio > 0 &&
+        (ratio < IMAGE_ASPECT_RATIO_RANGE.min ||
+          ratio > IMAGE_ASPECT_RATIO_RANGE.max)
+      ) {
         toast.error(
-          t('Image aspect ratio must be between {{min}} and {{max}}, got {{ratio}}', {
-            min: IMAGE_ASPECT_RATIO_RANGE.min,
-            max: IMAGE_ASPECT_RATIO_RANGE.max,
-            ratio: ratio.toFixed(2),
-          })
+          t(
+            'Image aspect ratio must be between {{min}} and {{max}}, got {{ratio}}',
+            {
+              min: IMAGE_ASPECT_RATIO_RANGE.min,
+              max: IMAGE_ASPECT_RATIO_RANGE.max,
+              ratio: ratio.toFixed(2),
+            }
+          )
         )
         continue
       }
@@ -321,7 +339,11 @@ export function PlaygroundVideoInput({
           ...imageMediaItems,
           ...uploadingItems
             .filter((u) => u.type === 'image')
-            .map((u) => ({ url: u.localUrl, type: 'image' as const, name: u.fileName })),
+            .map((u) => ({
+              url: u.localUrl,
+              type: 'image' as const,
+              name: u.fileName,
+            })),
         ])
         onConfigChange({
           ...configRef.current,
@@ -340,9 +362,7 @@ export function PlaygroundVideoInput({
     }
   }
 
-  const handleVideoUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
     if (!onUploadMediaItem) return
@@ -376,9 +396,7 @@ export function PlaygroundVideoInput({
           mediaItems: [...configRef.current.mediaItems, item],
         })
       } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : String(err)
-        )
+        toast.error(err instanceof Error ? err.message : String(err))
       } finally {
         setUploadingItems((prev) => prev.filter((u) => u.id !== uploadId))
         URL.revokeObjectURL(localUrl)
@@ -389,9 +407,7 @@ export function PlaygroundVideoInput({
     }
   }
 
-  const handleAudioUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
     if (!onUploadMediaItem) return
@@ -425,9 +441,7 @@ export function PlaygroundVideoInput({
           mediaItems: [...configRef.current.mediaItems, item],
         })
       } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : String(err)
-        )
+        toast.error(err instanceof Error ? err.message : String(err))
       } finally {
         setUploadingItems((prev) => prev.filter((u) => u.id !== uploadId))
         URL.revokeObjectURL(localUrl)
@@ -478,7 +492,9 @@ export function PlaygroundVideoInput({
           node.nodeType === Node.TEXT_NODE &&
           range.endOffset === 1 &&
           node.previousSibling?.nodeType === Node.ELEMENT_NODE &&
-          (node.previousSibling as HTMLElement).classList?.contains('mention-chip')
+          (node.previousSibling as HTMLElement).classList?.contains(
+            'mention-chip'
+          )
         ) {
           atBoundary = true
         }
@@ -490,8 +506,14 @@ export function PlaygroundVideoInput({
       }
     } else if (showMention && mentionStartIndex >= 0) {
       // Close popup if user typed space/newline after @, or deleted the @
-      const textAfterAt = textBeforeCursor.substring(mentionStartIndex + 1, cursorPos)
-      if (/\s/.test(textAfterAt) || textBeforeCursor[mentionStartIndex] !== '@') {
+      const textAfterAt = textBeforeCursor.substring(
+        mentionStartIndex + 1,
+        cursorPos
+      )
+      if (
+        /\s/.test(textAfterAt) ||
+        textBeforeCursor[mentionStartIndex] !== '@'
+      ) {
         setShowMention(false)
       }
     }
@@ -556,6 +578,55 @@ export function PlaygroundVideoInput({
     }
   }, [showMention])
 
+  // Fetch active library assets while the @ mention popup is open so they
+  // can be referenced alongside session uploads.
+  useEffect(() => {
+    if (!showMention || config.mode !== 'reference') return
+    let cancelled = false
+    void listAssets().then((list) => {
+      if (!cancelled) {
+        setLibraryAssets(list.filter((asset) => asset.status === 'active'))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [showMention, config.mode])
+
+  const mentionLibraryAssets = libraryAssets.filter(
+    (asset) =>
+      !config.mediaItems.some((item) => item.assetId === asset.asset_id) &&
+      (mentionFilter === 'all' ||
+        (mentionFilter === 'video'
+          ? asset.asset_type === 'Video'
+          : mentionFilter === 'audio'
+            ? asset.asset_type === 'Audio'
+            : asset.asset_type === 'Image'))
+  )
+
+  // Add an asset-library asset as a media item; remoteUrl carries asset://
+  // and flows through buildSubmitPayload unchanged.
+  const handleLibraryAssetSelect = (asset: Asset) => {
+    const item: MediaItem = {
+      url: asset.preview_url || asset.source_url,
+      remoteUrl: `asset://${asset.asset_id}`,
+      type:
+        asset.asset_type === 'Video'
+          ? 'video'
+          : asset.asset_type === 'Audio'
+            ? 'audio'
+            : 'image',
+      name: asset.name || asset.asset_id,
+      assetId: asset.asset_id,
+      assetChannelId: asset.channel_id,
+    }
+    onConfigChange({
+      ...configRef.current,
+      mediaItems: [...configRef.current.mediaItems, item],
+    })
+    handleMentionSelect(item)
+  }
+
   return (
     <div className='grid shrink-0 gap-3 px-1 md:pb-4'>
       <input
@@ -589,91 +660,34 @@ export function PlaygroundVideoInput({
 
       {/* Prompt input card */}
       <div className='relative'>
-      <div className='bg-background/95 dark:bg-background/80 border-border/70 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 ring-foreground/5 relative rounded-xl border overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15'>
-        {/* First/last frame and first frame images */}
-        {(config.mode === 'first_last_frame' || config.mode === 'first_frame') && (config.images.length > 0 || uploadingItems.some((u) => u.type === 'image')) && (
-          <div className='flex flex-wrap gap-2 border-border/60 border-b p-3'>
-            {config.images.map((img, i) => (
-              <div
-                key={i}
-                className='group relative size-16 overflow-hidden rounded-lg border'
-              >
-                <img
-                  src={img}
-                  alt={`ref-${i}`}
-                  className='size-full object-cover'
-                />
-                <span className='bg-background/80 absolute bottom-0.5 left-0.5 rounded px-1 py-0.5 text-[10px] font-medium'>
-                  {i === 0 ? '首帧' : '尾帧'}
-                </span>
-                <button
-                  onClick={() => removeImage(i)}
-                  className='bg-background/80 absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full text-xs opacity-0 transition-opacity group-hover:flex group-hover:opacity-100'
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-            {uploadingItems
-              .filter((u) => u.type === 'image')
-              .map((u) => (
-                <div
-                  key={u.id}
-                  className='group relative size-16 overflow-hidden rounded-lg border'
-                >
-                  <img
-                    src={u.localUrl}
-                    alt={u.fileName}
-                    className='size-full object-cover opacity-50'
-                  />
-                  <div className='absolute inset-0 flex items-center justify-center bg-black/50'>
-                    <div className='size-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
-                  </div>
-                </div>
-              ))}
-            {/* Empty slots */}
-            {config.images.length + uploadingItems.filter((u) => u.type === 'image').length < maxImages && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled}
-                className='border-border/60 border-dashed text-muted-foreground hover:border-primary hover:text-primary flex size-16 items-center justify-center rounded-lg border-2 text-[10px] transition-colors'
-              >
-                {config.images.length === 0 ? '首帧' : '尾帧'}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Reference mode media items */}
-        {config.mode === 'reference' && (config.mediaItems.length > 0 || uploadingItems.length > 0) && (
-          <div className='space-y-2 border-border/60 border-b p-3'>
-            {/* Images row */}
-            {(imageMediaItems.length > 0 ||
+        <div className='bg-background/95 dark:bg-background/80 border-border/70 ring-foreground/5 focus-within:border-primary/45 focus-within:ring-primary/15 relative overflow-hidden rounded-xl border shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 transition-all duration-200'>
+          {/* First/last frame and first frame images */}
+          {(config.mode === 'first_last_frame' ||
+            config.mode === 'first_frame') &&
+            (config.images.length > 0 ||
               uploadingItems.some((u) => u.type === 'image')) && (
-              <div className='flex flex-wrap gap-2'>
-                {config.mediaItems.map((item, i) =>
-                  item.type === 'image' ? (
-                    <div
-                      key={i}
-                      className='group relative size-16 overflow-hidden rounded-lg border'
+              <div className='border-border/60 flex flex-wrap gap-2 border-b p-3'>
+                {config.images.map((img, i) => (
+                  <div
+                    key={i}
+                    className='group relative size-16 overflow-hidden rounded-lg border'
+                  >
+                    <img
+                      src={img}
+                      alt={`ref-${i}`}
+                      className='size-full object-cover'
+                    />
+                    <span className='bg-background/80 absolute bottom-0.5 left-0.5 rounded px-1 py-0.5 text-[10px] font-medium'>
+                      {i === 0 ? '首帧' : '尾帧'}
+                    </span>
+                    <button
+                      onClick={() => removeImage(i)}
+                      className='bg-background/80 absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full text-xs opacity-0 transition-opacity group-hover:flex group-hover:opacity-100'
                     >
-                      <img
-                        src={item.url}
-                        alt={item.name}
-                        className='size-full object-cover'
-                      />
-                      <span className='bg-background/80 absolute bottom-0.5 left-0.5 rounded px-1 py-0.5 text-[10px] font-medium'>
-                        {t('Image')}
-                      </span>
-                      <button
-                        onClick={() => removeMediaItem(i)}
-                        className='bg-background/80 absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full text-xs opacity-0 transition-opacity group-hover:flex group-hover:opacity-100'
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : null
-                )}
+                      ✕
+                    </button>
+                  </div>
+                ))}
                 {uploadingItems
                   .filter((u) => u.type === 'image')
                   .map((u) => (
@@ -691,421 +705,538 @@ export function PlaygroundVideoInput({
                       </div>
                     </div>
                   ))}
+                {/* Empty slots */}
+                {config.images.length +
+                  uploadingItems.filter((u) => u.type === 'image').length <
+                  maxImages && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={disabled}
+                    className='border-border/60 text-muted-foreground hover:border-primary hover:text-primary flex size-16 items-center justify-center rounded-lg border-2 border-dashed text-[10px] transition-colors'
+                  >
+                    {config.images.length === 0 ? '首帧' : '尾帧'}
+                  </button>
+                )}
               </div>
             )}
-            {/* Videos row */}
-            {(videoMediaItems.length > 0 ||
-              uploadingItems.some((u) => u.type === 'video')) && (
-              <div className='flex flex-wrap gap-2'>
-                {config.mediaItems.map((item, i) =>
-                  item.type === 'video' ? (
-                    <div
-                      key={i}
-                      className='group relative size-16 overflow-hidden rounded-lg border'
-                    >
-                      <video
-                        src={item.url}
-                        className='size-full object-cover'
-                      />
-                      <span className='bg-background/80 absolute bottom-0.5 left-0.5 rounded px-1 py-0.5 text-[10px] font-medium'>
-                        {item.duration != null
-                          ? `${item.duration.toFixed(1)}s`
-                          : t('Video')}
-                      </span>
-                      {!item.remoteUrl && uploadProgress?.[item.url] != null && (
-                        <div className='absolute inset-0 flex items-center justify-center bg-black/50'>
-                          <span className='text-primary text-xs font-medium'>
-                            {uploadProgress[item.url]}%
+
+          {/* Reference mode media items */}
+          {config.mode === 'reference' &&
+            (config.mediaItems.length > 0 || uploadingItems.length > 0) && (
+              <div className='border-border/60 space-y-2 border-b p-3'>
+                {/* Images row */}
+                {(imageMediaItems.length > 0 ||
+                  uploadingItems.some((u) => u.type === 'image')) && (
+                  <div className='flex flex-wrap gap-2'>
+                    {config.mediaItems.map((item, i) =>
+                      item.type === 'image' ? (
+                        <div
+                          key={i}
+                          className='group relative size-16 overflow-hidden rounded-lg border'
+                        >
+                          <img
+                            src={item.url}
+                            alt={item.name}
+                            className='size-full object-cover'
+                          />
+                          <span className='bg-background/80 absolute bottom-0.5 left-0.5 rounded px-1 py-0.5 text-[10px] font-medium'>
+                            {t('Image')}
+                          </span>
+                          <button
+                            onClick={() => removeMediaItem(i)}
+                            className='bg-background/80 absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full text-xs opacity-0 transition-opacity group-hover:flex group-hover:opacity-100'
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : null
+                    )}
+                    {uploadingItems
+                      .filter((u) => u.type === 'image')
+                      .map((u) => (
+                        <div
+                          key={u.id}
+                          className='group relative size-16 overflow-hidden rounded-lg border'
+                        >
+                          <img
+                            src={u.localUrl}
+                            alt={u.fileName}
+                            className='size-full object-cover opacity-50'
+                          />
+                          <div className='absolute inset-0 flex items-center justify-center bg-black/50'>
+                            <div className='size-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                {/* Videos row */}
+                {(videoMediaItems.length > 0 ||
+                  uploadingItems.some((u) => u.type === 'video')) && (
+                  <div className='flex flex-wrap gap-2'>
+                    {config.mediaItems.map((item, i) =>
+                      item.type === 'video' ? (
+                        <div
+                          key={i}
+                          className='group relative size-16 overflow-hidden rounded-lg border'
+                        >
+                          <video
+                            src={item.url}
+                            className='size-full object-cover'
+                          />
+                          <span className='bg-background/80 absolute bottom-0.5 left-0.5 rounded px-1 py-0.5 text-[10px] font-medium'>
+                            {item.duration != null
+                              ? `${item.duration.toFixed(1)}s`
+                              : t('Video')}
+                          </span>
+                          {!item.remoteUrl &&
+                            uploadProgress?.[item.url] != null && (
+                              <div className='absolute inset-0 flex items-center justify-center bg-black/50'>
+                                <span className='text-primary text-xs font-medium'>
+                                  {uploadProgress[item.url]}%
+                                </span>
+                              </div>
+                            )}
+                          <button
+                            onClick={() => removeMediaItem(i)}
+                            className='bg-background/80 absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full text-xs opacity-0 transition-opacity group-hover:flex group-hover:opacity-100'
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : null
+                    )}
+                    {uploadingItems
+                      .filter((u) => u.type === 'video')
+                      .map((u) => (
+                        <div
+                          key={u.id}
+                          className='group relative size-16 overflow-hidden rounded-lg border'
+                        >
+                          <video
+                            src={u.localUrl}
+                            className='size-full object-cover'
+                          />
+                          <div className='absolute inset-0 flex items-center justify-center bg-black/50'>
+                            <div className='size-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                {/* Audio row */}
+                {(audioMediaItems.length > 0 ||
+                  uploadingItems.some((u) => u.type === 'audio')) && (
+                  <div className='flex flex-wrap gap-2'>
+                    {config.mediaItems.map((item, i) =>
+                      item.type === 'audio' ? (
+                        <div
+                          key={i}
+                          className='group relative flex h-8 items-center gap-1.5 rounded-lg border px-2'
+                        >
+                          <MusicIcon
+                            size={14}
+                            className='text-muted-foreground shrink-0'
+                          />
+                          <span className='max-w-[100px] truncate text-xs'>
+                            {item.name}
+                          </span>
+                          {item.duration != null && (
+                            <span className='text-muted-foreground text-[10px]'>
+                              {item.duration.toFixed(1)}s
+                            </span>
+                          )}
+                          {!item.remoteUrl &&
+                            uploadProgress?.[item.url] != null && (
+                              <span className='text-primary text-[10px] font-medium'>
+                                {uploadProgress[item.url]}%
+                              </span>
+                            )}
+                          <button
+                            onClick={() => removeMediaItem(i)}
+                            className='text-muted-foreground hover:text-destructive shrink-0'
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : null
+                    )}
+                    {uploadingItems
+                      .filter((u) => u.type === 'audio')
+                      .map((u) => (
+                        <div
+                          key={u.id}
+                          className='flex h-8 items-center gap-1.5 rounded-lg border px-2'
+                        >
+                          <div className='border-muted-foreground/30 border-t-muted-foreground size-3 animate-spin rounded-full border-2' />
+                          <span className='max-w-[100px] truncate text-xs'>
+                            {u.fileName}
                           </span>
                         </div>
-                      )}
-                      <button
-                        onClick={() => removeMediaItem(i)}
-                        className='bg-background/80 absolute top-0.5 right-0.5 hidden size-5 items-center justify-center rounded-full text-xs opacity-0 transition-opacity group-hover:flex group-hover:opacity-100'
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : null
+                      ))}
+                  </div>
                 )}
-                {uploadingItems
-                  .filter((u) => u.type === 'video')
-                  .map((u) => (
-                    <div
-                      key={u.id}
-                      className='group relative size-16 overflow-hidden rounded-lg border'
-                    >
-                      <video
-                        src={u.localUrl}
-                        className='size-full object-cover'
-                      />
-                      <div className='absolute inset-0 flex items-center justify-center bg-black/50'>
-                        <div className='size-4 animate-spin rounded-full border-2 border-white/30 border-t-white' />
-                      </div>
-                    </div>
-                  ))}
               </div>
             )}
-            {/* Audio row */}
-            {(audioMediaItems.length > 0 ||
-              uploadingItems.some((u) => u.type === 'audio')) && (
-              <div className='flex flex-wrap gap-2'>
-                {config.mediaItems.map((item, i) =>
-                  item.type === 'audio' ? (
-                    <div
-                      key={i}
-                      className='group relative flex h-8 items-center gap-1.5 rounded-lg border px-2'
-                    >
-                      <MusicIcon size={14} className='text-muted-foreground shrink-0' />
-                      <span className='max-w-[100px] truncate text-xs'>
-                        {item.name}
-                      </span>
-                      {item.duration != null && (
-                        <span className='text-muted-foreground text-[10px]'>
-                          {item.duration.toFixed(1)}s
-                        </span>
-                      )}
-                      {!item.remoteUrl && uploadProgress?.[item.url] != null && (
-                        <span className='text-primary text-[10px] font-medium'>
-                          {uploadProgress[item.url]}%
-                        </span>
-                      )}
-                      <button
-                        onClick={() => removeMediaItem(i)}
-                        className='text-muted-foreground hover:text-destructive shrink-0'
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : null
+
+          {/* Rich text editor (contentEditable) */}
+          <div className='relative min-h-20 md:min-h-24'>
+            {isEmpty && (
+              <div className='text-muted-foreground pointer-events-none absolute inset-0 px-5 pt-4 leading-7 md:text-base'>
+                {t(
+                  '使用@可快速引用上传的文件，如:参考@视频1中的动作，生成@图片2和@图片3中的角色打斗的视频。'
                 )}
-                {uploadingItems
-                  .filter((u) => u.type === 'audio')
-                  .map((u) => (
-                    <div
-                      key={u.id}
-                      className='flex h-8 items-center gap-1.5 rounded-lg border px-2'
-                    >
-                      <div className='size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground' />
-                      <span className='max-w-[100px] truncate text-xs'>
-                        {u.fileName}
-                      </span>
-                    </div>
-                  ))}
               </div>
             )}
+            <div
+              ref={editorRef}
+              contentEditable={!disabled}
+              suppressContentEditableWarning
+              className={cn(
+                'min-h-20 w-full resize-none px-5 pt-4 pb-3 leading-7 md:min-h-24 md:text-base focus:outline-none',
+                disabled && 'cursor-not-allowed opacity-50'
+              )}
+              onInput={handleEditorInput}
+              onKeyDown={handleKeyDown}
+              style={{ caretColor: 'currentColor' }}
+            />
           </div>
-        )}
 
-        {/* Rich text editor (contentEditable) */}
-        <div className='relative min-h-20 md:min-h-24'>
-          {isEmpty && (
-            <div className='text-muted-foreground pointer-events-none absolute inset-0 px-5 pt-4 leading-7 md:text-base'>
-              {t('使用@可快速引用上传的文件，如:参考@视频1中的动作，生成@图片2和@图片3中的角色打斗的视频。')}
-            </div>
-          )}
-          <div
-            ref={editorRef}
-            contentEditable={!disabled}
-            suppressContentEditableWarning
-            className={cn(
-              'min-h-20 w-full resize-none px-5 pt-4 pb-3 leading-7 md:min-h-24 md:text-base focus:outline-none',
-              disabled && 'cursor-not-allowed opacity-50'
-            )}
-            onInput={handleEditorInput}
-            onKeyDown={handleKeyDown}
-            style={{ caretColor: 'currentColor' }}
-          />
-        </div>
+          {/* Configuration bar */}
+          <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex flex-wrap items-center gap-1.5 border-t px-3 py-2 backdrop-blur'>
+            {/* Mode selector */}
+            <ConfigDropdown
+              label={
+                VIDEO_MODES.find((m) => m.value === config.mode)?.label ||
+                '参考生成'
+              }
+              options={VIDEO_MODES.map((m) => ({
+                value: m.value,
+                label: m.label,
+              }))}
+              value={config.mode}
+              onChange={handleModeChange}
+            />
 
-        {/* Configuration bar */}
-        <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex flex-wrap items-center gap-1.5 border-t px-3 py-2 backdrop-blur'>
-          {/* Mode selector */}
-          <ConfigDropdown
-            label={
-              VIDEO_MODES.find((m) => m.value === config.mode)?.label ||
-              '参考生成'
-            }
-            options={VIDEO_MODES.map((m) => ({
-              value: m.value,
-              label: m.label,
-            }))}
-            value={config.mode}
-            onChange={handleModeChange}
-          />
-
-          {/* Upload buttons */}
-          {config.mode === 'reference' ? (
-            <>
+            {/* Upload buttons */}
+            {config.mode === 'reference' ? (
+              <>
+                <button
+                  className={cn(
+                    'flex size-8 items-center justify-center rounded-lg transition-colors',
+                    imageMediaItems.length >= MAX_REFERENCE_IMAGES
+                      ? 'text-muted-foreground/50'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+                  )}
+                  disabled={
+                    disabled || imageMediaItems.length >= MAX_REFERENCE_IMAGES
+                  }
+                  onClick={() => fileInputRef.current?.click()}
+                  title={t('Upload reference images')}
+                >
+                  <ImageIcon size={16} />
+                </button>
+                <button
+                  className={cn(
+                    'flex size-8 items-center justify-center rounded-lg transition-colors',
+                    videoMediaItems.length >= MAX_VIDEOS
+                      ? 'text-muted-foreground/50'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+                  )}
+                  disabled={disabled || videoMediaItems.length >= MAX_VIDEOS}
+                  onClick={() => videoFileInputRef.current?.click()}
+                  title={t('Upload reference videos')}
+                >
+                  <FilmIcon size={16} />
+                </button>
+                <button
+                  className={cn(
+                    'flex size-8 items-center justify-center rounded-lg transition-colors',
+                    audioMediaItems.length >= MAX_AUDIOS
+                      ? 'text-muted-foreground/50'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+                  )}
+                  disabled={disabled || audioMediaItems.length >= MAX_AUDIOS}
+                  onClick={() => audioFileInputRef.current?.click()}
+                  title={t('Upload reference audio')}
+                >
+                  <MusicIcon size={16} />
+                </button>
+              </>
+            ) : config.mode === 'first_last_frame' ||
+              config.mode === 'first_frame' ? (
               <button
-                className={cn(
-                  'flex size-8 items-center justify-center rounded-lg transition-colors',
-                  imageMediaItems.length >= MAX_REFERENCE_IMAGES
-                    ? 'text-muted-foreground/50'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
-                )}
-                disabled={disabled || imageMediaItems.length >= MAX_REFERENCE_IMAGES}
+                className='text-muted-foreground hover:text-foreground hover:bg-muted/70 flex size-8 items-center justify-center rounded-lg transition-colors'
+                disabled={disabled || config.images.length >= maxImages}
                 onClick={() => fileInputRef.current?.click()}
-                title={t('Upload reference images')}
+                title={t('Upload frame image')}
               >
                 <ImageIcon size={16} />
               </button>
-              <button
-                className={cn(
-                  'flex size-8 items-center justify-center rounded-lg transition-colors',
-                  videoMediaItems.length >= MAX_VIDEOS
-                    ? 'text-muted-foreground/50'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
-                )}
-                disabled={disabled || videoMediaItems.length >= MAX_VIDEOS}
-                onClick={() => videoFileInputRef.current?.click()}
-                title={t('Upload reference videos')}
-              >
-                <FilmIcon size={16} />
-              </button>
-              <button
-                className={cn(
-                  'flex size-8 items-center justify-center rounded-lg transition-colors',
-                  audioMediaItems.length >= MAX_AUDIOS
-                    ? 'text-muted-foreground/50'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
-                )}
-                disabled={disabled || audioMediaItems.length >= MAX_AUDIOS}
-                onClick={() => audioFileInputRef.current?.click()}
-                title={t('Upload reference audio')}
-              >
-                <MusicIcon size={16} />
-              </button>
-            </>
-          ) : (config.mode === 'first_last_frame' || config.mode === 'first_frame') ? (
+            ) : null}
+
+            {/* Ratio selector */}
+            <ConfigDropdown
+              label={config.ratio === 'smart' ? t('Smart Ratio') : config.ratio}
+              options={ASPECT_RATIOS.map((r) => ({
+                value: r.value,
+                label: r.label,
+              }))}
+              value={config.ratio}
+              onChange={(v) => updateField('ratio', v as AspectRatio)}
+            />
+
+            {/* Resolution selector */}
+            <ConfigButtonGroup
+              label={config.resolution}
+              options={RESOLUTIONS.map((r) => ({ value: r, label: r }))}
+              value={config.resolution}
+              onChange={(v) => updateField('resolution', v as Resolution)}
+            />
+
+            {/* Duration selector */}
+            <ConfigButtonGroup
+              label={`${config.duration}s`}
+              options={DURATION_OPTIONS.map((d) => ({
+                value: String(d),
+                label: `${d}s`,
+              }))}
+              value={String(config.duration)}
+              onChange={(v) => updateField('duration', parseInt(v))}
+            />
+
+            {/* Count selector */}
+            <ConfigDropdown
+              label={`${config.count} ${t('videos')}`}
+              options={Array.from(
+                { length: VIDEO_COUNT_RANGE.max },
+                (_, i) => i + 1
+              ).map((n) => ({ value: String(n), label: String(n) }))}
+              value={String(config.count)}
+              onChange={(v) => updateField('count', parseInt(v))}
+            />
+
+            {/* Audio toggle */}
             <button
-              className='text-muted-foreground hover:text-foreground hover:bg-muted/70 flex size-8 items-center justify-center rounded-lg transition-colors'
-              disabled={disabled || config.images.length >= maxImages}
-              onClick={() => fileInputRef.current?.click()}
-              title={t('Upload frame image')}
+              className={cn(
+                'flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium transition-colors',
+                config.audio
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-muted text-muted-foreground'
+              )}
+              disabled={disabled}
+              onClick={() => updateField('audio', !config.audio)}
             >
-              <ImageIcon size={16} />
+              {config.audio ? (
+                <Volume2Icon size={14} />
+              ) : (
+                <VolumeXIcon size={14} />
+              )}
+              <span className='hidden sm:inline'>
+                {config.audio ? t('Audio') : t('Muted')}
+              </span>
             </button>
-          ) : null}
 
-          {/* Ratio selector */}
-          <ConfigDropdown
-            label={config.ratio === 'smart' ? t('Smart Ratio') : config.ratio}
-            options={ASPECT_RATIOS.map((r) => ({
-              value: r.value,
-              label: r.label,
-            }))}
-            value={config.ratio}
-            onChange={(v) => updateField('ratio', v as AspectRatio)}
-          />
-
-          {/* Resolution selector */}
-          <ConfigButtonGroup
-            label={config.resolution}
-            options={RESOLUTIONS.map((r) => ({ value: r, label: r }))}
-            value={config.resolution}
-            onChange={(v) => updateField('resolution', v as Resolution)}
-          />
-
-          {/* Duration selector */}
-          <ConfigButtonGroup
-            label={`${config.duration}s`}
-            options={DURATION_OPTIONS.map((d) => ({
-              value: String(d),
-              label: `${d}s`,
-            }))}
-            value={String(config.duration)}
-            onChange={(v) => updateField('duration', parseInt(v))}
-          />
-
-          {/* Count selector */}
-          <ConfigDropdown
-            label={`${config.count} ${t('videos')}`}
-            options={Array.from(
-              { length: VIDEO_COUNT_RANGE.max },
-              (_, i) => i + 1
-            ).map((n) => ({ value: String(n), label: String(n) }))}
-            value={String(config.count)}
-            onChange={(v) => updateField('count', parseInt(v))}
-          />
-
-          {/* Audio toggle */}
-          <button
-            className={cn(
-              'flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium transition-colors',
-              config.audio
-                ? 'bg-primary/10 text-primary'
-                : 'bg-muted text-muted-foreground'
+            {/* Clear button */}
+            {hasTasks && onClearTasks && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      className='text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex size-8 items-center justify-center rounded-lg transition-colors'
+                      disabled={disabled}
+                      onClick={onClearTasks}
+                    />
+                  }
+                >
+                  <Trash2Icon size={16} />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('Clear tasks')}</p>
+                </TooltipContent>
+              </Tooltip>
             )}
-            disabled={disabled}
-            onClick={() => updateField('audio', !config.audio)}
-          >
-            {config.audio ? (
-              <Volume2Icon size={14} />
+          </div>
+
+          {/* Footer with model selector and submit */}
+          <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex items-center justify-between gap-2 border-t px-3 py-2.5 backdrop-blur'>
+            <ModelGroupSelector
+              selectedModel={config.model}
+              models={models}
+              onModelChange={onModelChange}
+              selectedGroup={config.group}
+              groups={groups}
+              onGroupChange={onGroupChange}
+            />
+
+            {isGenerating ? (
+              <Button
+                className='border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15 font-medium'
+                onClick={onStop}
+                variant='secondary'
+              >
+                <SquareIcon className='fill-current' size={16} />
+                <span className='hidden sm:inline'>{t('Stop')}</span>
+              </Button>
             ) : (
-              <VolumeXIcon size={14} />
+              <Button
+                className='h-8 px-3 font-medium shadow-sm'
+                disabled={disabled || !prompt.trim() || !config.model}
+                onClick={handleSubmit}
+                size='sm'
+              >
+                <SendIcon size={16} />
+                <span className='hidden sm:inline'>{t('Generate')}</span>
+              </Button>
             )}
-            <span className='hidden sm:inline'>
-              {config.audio ? t('Audio') : t('Muted')}
-            </span>
-          </button>
-
-          {/* Clear button */}
-          {hasTasks && onClearTasks && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    className='text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex size-8 items-center justify-center rounded-lg transition-colors'
-                    disabled={disabled}
-                    onClick={onClearTasks}
-                  />
-                }
-              >
-                <Trash2Icon size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{t('Clear tasks')}</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-
-        {/* Footer with model selector and submit */}
-        <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex items-center justify-between gap-2 border-t px-3 py-2.5 backdrop-blur'>
-          <ModelGroupSelector
-            selectedModel={config.model}
-            models={models}
-            onModelChange={onModelChange}
-            selectedGroup={config.group}
-            groups={groups}
-            onGroupChange={onGroupChange}
-          />
-
-          {isGenerating ? (
-            <Button
-              className='border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15 font-medium'
-              onClick={onStop}
-              variant='secondary'
-            >
-              <SquareIcon className='fill-current' size={16} />
-              <span className='hidden sm:inline'>{t('Stop')}</span>
-            </Button>
-          ) : (
-            <Button
-              className='h-8 px-3 font-medium shadow-sm'
-              disabled={disabled || !prompt.trim() || !config.model}
-              onClick={handleSubmit}
-              size='sm'
-            >
-              <SendIcon size={16} />
-              <span className='hidden sm:inline'>{t('Generate')}</span>
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* @ mention popup - outside overflow-hidden container */}
-      {showMention && config.mode === 'reference' && (
-        <div
-          ref={mentionPopupRef}
-          className='bg-background/95 dark:bg-background/90 border-border/70 absolute bottom-full left-3 right-3 z-50 mb-1 overflow-hidden rounded-lg border shadow-lg'
-        >
-          {/* Filter tabs */}
-          <div className='border-border/60 flex items-center gap-1 border-b px-2 py-1.5'>
-            {(
-              [
-                { value: 'all', label: t('全部') },
-                { value: 'video', label: t('视频') },
-                { value: 'image', label: t('图片') },
-                { value: 'audio', label: t('音频') },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.value}
-                className={cn(
-                  'rounded px-2 py-0.5 text-xs font-medium transition-colors',
-                  mentionFilter === tab.value
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-                onClick={() => setMentionFilter(tab.value)}
-              >
-                {tab.label}
-              </button>
-            ))}
           </div>
-          {/* Resource list */}
-          <div className='max-h-48 overflow-y-auto py-1'>
-            {config.mediaItems
-              .filter(
-                (item) =>
-                  mentionFilter === 'all' || item.type === mentionFilter
-              )
-              .map((item, i) => {
-                const displayName = getMediaDisplayName(
-                  item,
-                  config.mediaItems
+        </div>
+
+        {/* @ mention popup - outside overflow-hidden container */}
+        {showMention && config.mode === 'reference' && (
+          <div
+            ref={mentionPopupRef}
+            className='bg-background/95 dark:bg-background/90 border-border/70 absolute right-3 bottom-full left-3 z-50 mb-1 overflow-hidden rounded-lg border shadow-lg'
+          >
+            {/* Filter tabs */}
+            <div className='border-border/60 flex items-center gap-1 border-b px-2 py-1.5'>
+              {(
+                [
+                  { value: 'all', label: t('全部') },
+                  { value: 'video', label: t('视频') },
+                  { value: 'image', label: t('图片') },
+                  { value: 'audio', label: t('音频') },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.value}
+                  className={cn(
+                    'rounded px-2 py-0.5 text-xs font-medium transition-colors',
+                    mentionFilter === tab.value
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  onClick={() => setMentionFilter(tab.value)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {/* Resource list */}
+            <div className='max-h-48 overflow-y-auto py-1'>
+              {config.mediaItems
+                .filter(
+                  (item) =>
+                    mentionFilter === 'all' || item.type === mentionFilter
                 )
-                return (
-                  <button
-                    key={i}
-                    className='hover:bg-muted/60 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors'
-                    onClick={() => handleMentionSelect(item)}
-                  >
-                    {/* Thumbnail */}
-                    <div className='size-8 shrink-0 overflow-hidden rounded border'>
-                      {item.type === 'image' && (
-                        <img
-                          src={item.url}
-                          alt={item.name}
-                          className='size-full object-cover'
-                        />
-                      )}
-                      {item.type === 'video' && (
-                        <video
-                          src={item.url}
-                          className='size-full object-cover'
-                        />
-                      )}
-                      {item.type === 'audio' && (
-                        <div className='bg-muted flex size-full items-center justify-center'>
-                          <MusicIcon size={14} className='text-muted-foreground' />
-                        </div>
-                      )}
-                    </div>
-                    {/* Name + duration */}
-                    <div className='min-w-0 flex-1'>
-                      <div className='truncate text-xs font-medium'>
-                        {displayName}
+                .map((item, i) => {
+                  const displayName = getMediaDisplayName(
+                    item,
+                    config.mediaItems
+                  )
+                  return (
+                    <button
+                      key={i}
+                      className='hover:bg-muted/60 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors'
+                      onClick={() => handleMentionSelect(item)}
+                    >
+                      {/* Thumbnail */}
+                      <div className='size-8 shrink-0 overflow-hidden rounded border'>
+                        {item.type === 'image' && (
+                          <img
+                            src={item.url}
+                            alt={item.name}
+                            className='size-full object-cover'
+                          />
+                        )}
+                        {item.type === 'video' && (
+                          <video
+                            src={item.url}
+                            className='size-full object-cover'
+                          />
+                        )}
+                        {item.type === 'audio' && (
+                          <div className='bg-muted flex size-full items-center justify-center'>
+                            <MusicIcon
+                              size={14}
+                              className='text-muted-foreground'
+                            />
+                          </div>
+                        )}
                       </div>
-                      {item.duration != null && (
-                        <div className='text-muted-foreground text-[10px]'>
-                          {item.duration.toFixed(1)}s
+                      {/* Name + duration */}
+                      <div className='min-w-0 flex-1'>
+                        <div className='truncate text-xs font-medium'>
+                          {displayName}
                         </div>
-                      )}
-                    </div>
-                    {/* Upload status */}
-                    {!item.remoteUrl &&
-                      uploadProgress?.[item.url] != null && (
-                        <span className='text-primary shrink-0 text-[10px] font-medium'>
-                          {uploadProgress[item.url]}%
-                        </span>
-                      )}
-                  </button>
-                )
-              })}
-            {config.mediaItems.filter(
-              (item) =>
-                mentionFilter === 'all' || item.type === mentionFilter
-            ).length === 0 && (
-              <div className='text-muted-foreground px-3 py-2 text-center text-xs'>
-                {t('No resources uploaded yet')}
-              </div>
-            )}
+                        {item.duration != null && (
+                          <div className='text-muted-foreground text-[10px]'>
+                            {item.duration.toFixed(1)}s
+                          </div>
+                        )}
+                      </div>
+                      {/* Upload status */}
+                      {!item.remoteUrl &&
+                        uploadProgress?.[item.url] != null && (
+                          <span className='text-primary shrink-0 text-[10px] font-medium'>
+                            {uploadProgress[item.url]}%
+                          </span>
+                        )}
+                    </button>
+                  )
+                })}
+              {mentionLibraryAssets.length > 0 && (
+                <>
+                  <div className='text-muted-foreground/80 px-3 pt-1.5 pb-0.5 text-[10px] font-medium tracking-wide uppercase'>
+                    {t('Asset Library')}
+                  </div>
+                  {mentionLibraryAssets.map((asset) => (
+                    <button
+                      key={asset.asset_id}
+                      className='hover:bg-muted/60 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors'
+                      onClick={() => handleLibraryAssetSelect(asset)}
+                    >
+                      <div className='size-8 shrink-0 overflow-hidden rounded border'>
+                        {asset.asset_type === 'Image' ? (
+                          <img
+                            src={asset.preview_url || asset.source_url}
+                            alt={asset.name}
+                            className='size-full object-cover'
+                          />
+                        ) : asset.asset_type === 'Video' ? (
+                          <video
+                            src={asset.preview_url || asset.source_url}
+                            className='size-full object-cover'
+                          />
+                        ) : (
+                          <div className='bg-muted flex size-full items-center justify-center'>
+                            <MusicIcon
+                              size={14}
+                              className='text-muted-foreground'
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className='min-w-0 flex-1'>
+                        <div className='truncate text-xs font-medium'>
+                          {asset.name || asset.asset_id}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+              {config.mediaItems.filter(
+                (item) => mentionFilter === 'all' || item.type === mentionFilter
+              ).length === 0 &&
+                mentionLibraryAssets.length === 0 && (
+                  <div className='text-muted-foreground px-3 py-2 text-center text-xs'>
+                    {t('No resources uploaded yet')}
+                  </div>
+                )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   )
@@ -1216,7 +1347,11 @@ function ConfigDropdown({
           </button>
         }
       />
-      <PopoverContent side='top' align='start' className='w-auto min-w-[5rem] p-1.5'>
+      <PopoverContent
+        side='top'
+        align='start'
+        className='w-auto min-w-[5rem] p-1.5'
+      >
         <div className='flex max-h-48 flex-col gap-0.5 overflow-y-auto'>
           {options.map((opt) => (
             <button

@@ -41,6 +41,7 @@ import {
   Route,
   Settings,
   SlidersHorizontal,
+  Users,
   Wand2,
 } from 'lucide-react'
 import {
@@ -296,6 +297,14 @@ const SENSITIVE_FORM_FIELDS = [
   'upstream_model_update_check_enabled',
   'upstream_model_update_auto_sync_enabled',
   'upstream_model_update_ignored_models',
+  'asset_upload_protocol',
+  'asset_upload_path',
+  'asset_query_path',
+  'asset_ak',
+  'asset_sk',
+  'asset_group_id',
+  'asset_project_name',
+  'asset_region',
 ] satisfies (keyof ChannelFormValues)[]
 
 function readAdvancedSettingsPreference(): boolean {
@@ -731,6 +740,7 @@ export function ChannelMutateDrawer({
     'disable_task_polling_sleep'
   )
   const currentProxy = form.watch('proxy')
+  const currentAssetUploadProtocol = form.watch('asset_upload_protocol')
   const currentSystemPrompt = form.watch('system_prompt')
   const currentSystemPromptOverride = form.watch('system_prompt_override')
   const currentAllowServiceTier = form.watch('allow_service_tier')
@@ -2787,6 +2797,225 @@ export function ChannelMutateDrawer({
                                   </FormItem>
                                 )}
                               />
+                            )}
+
+                            {/* ── Asset Library (Volcengine Ark Native, type 59) ── */}
+                            {currentType === 59 && (
+                              <div
+                                className={sideDrawerSectionClassName('scroll-mt-4')}
+                              >
+                                <CardHeading
+                                  title={t('Asset Library')}
+                                  icon={<Users className='h-4 w-4' />}
+                                />
+                                <fieldset
+                                  disabled={sensitiveLocked}
+                                  className='space-y-4 disabled:opacity-60'
+                                >
+                                  <FormField
+                                    control={form.control}
+                                    name='asset_upload_protocol'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>
+                                          {t('Asset Upload Protocol')}
+                                        </FormLabel>
+                                        <Select
+                                          items={[
+                                            {
+                                              value: 'none',
+                                              label: t('Disabled'),
+                                            },
+                                            {
+                                              value: 'relay',
+                                              label: t('Relay Station'),
+                                            },
+                                            {
+                                              value: 'ark_official',
+                                              label: t('Volcengine Official'),
+                                            },
+                                          ]}
+                                          onValueChange={(value) =>
+                                            field.onChange(
+                                              value === 'none' ? '' : value
+                                            )
+                                          }
+                                          value={field.value || 'none'}
+                                        >
+                                          <FormControl>
+                                            <SelectTrigger>
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                          </FormControl>
+                                          <SelectContent
+                                            alignItemWithTrigger={false}
+                                          >
+                                            <SelectGroup>
+                                              <SelectItem value='none'>
+                                                {t('Disabled')}
+                                              </SelectItem>
+                                              <SelectItem value='relay'>
+                                                {t('Relay Station')}
+                                              </SelectItem>
+                                              <SelectItem value='ark_official'>
+                                                {t('Volcengine Official')}
+                                              </SelectItem>
+                                            </SelectGroup>
+                                          </SelectContent>
+                                        </Select>
+                                        <FormDescription>
+                                          {t(
+                                            'Allows users to register portrait assets on this channel and reference them with asset:// in video tasks'
+                                          )}
+                                        </FormDescription>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+
+                                  {currentAssetUploadProtocol === 'relay' && (
+                                    <>
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_upload_path'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset Upload Path')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input
+                                                placeholder='/api/assets/upload'
+                                                {...field}
+                                              />
+                                            </FormControl>
+                                            <FormDescription>
+                                              {t(
+                                                'Relay upload path, appended to the channel base URL'
+                                              )}
+                                            </FormDescription>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_query_path'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset Query Path')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input
+                                                placeholder='/api/assets/{id}'
+                                                {...field}
+                                              />
+                                            </FormControl>
+                                            <FormDescription>
+                                              {t(
+                                                'Relay query path template, {id} is replaced with the asset ID'
+                                              )}
+                                            </FormDescription>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                    </>
+                                  )}
+
+                                  {currentAssetUploadProtocol === 'ark_official' && (
+                                    <>
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_ak'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset AccessKey')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_sk'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset SecretKey')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input
+                                                type='password'
+                                                {...field}
+                                              />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_group_id'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset Group ID')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input {...field} />
+                                            </FormControl>
+                                            <FormDescription>
+                                              {t(
+                                                'Asset group used by the Volcengine CreateAsset API'
+                                              )}
+                                            </FormDescription>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_project_name'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset Project Name')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_region'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset Region')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input
+                                                placeholder='cn-beijing'
+                                                {...field}
+                                              />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                    </>
+                                  )}
+                                </fieldset>
+                              </div>
                             )}
 
                             {currentType === CHANNEL_TYPE_ADVANCED_CUSTOM && (

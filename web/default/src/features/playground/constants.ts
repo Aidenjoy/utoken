@@ -102,6 +102,14 @@ export const VIDEO_API_ENDPOINTS = {
   FILE_UPLOAD: '/pg/files/upload',
 } as const
 
+// Asset library (virtual portrait library) endpoints
+export const ASSET_API_ENDPOINTS = {
+  PROVIDERS: '/pg/assets/providers',
+  UPLOAD: '/pg/assets/upload',
+  LIST: '/pg/assets',
+  DETAIL: (id: number) => `/pg/assets/${id}`,
+} as const
+
 export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   model: '',
   group: DEFAULT_GROUP,

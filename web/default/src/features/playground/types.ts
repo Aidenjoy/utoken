@@ -166,6 +166,37 @@ export interface MediaItem {
   type: 'image' | 'video' | 'audio'
   /** Original file name */
   name: string
+  /** Upstream asset ID (set when this item comes from the asset library) */
+  assetId?: string
+  /** Channel the asset was registered on (asset:// is only valid there) */
+  assetChannelId?: number
+}
+
+// Asset library (virtual portrait library) types
+export type AssetType = 'Image' | 'Video' | 'Audio'
+export type AssetStatus = 'pending' | 'active' | 'failed'
+
+export interface Asset {
+  id: number
+  created_at: number
+  updated_at: number
+  user_id: number
+  channel_id: number
+  asset_id: string
+  name: string
+  asset_type: AssetType
+  status: AssetStatus
+  source_url: string
+  preview_url: string
+  group_id: string
+  project_name: string
+  error_msg: string
+}
+
+export interface AssetProvider {
+  id: number
+  name: string
+  protocol: string
 }
 
 export interface VideoConfig {

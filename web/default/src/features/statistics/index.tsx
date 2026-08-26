@@ -175,7 +175,8 @@ export function Statistics() {
   }, [navigate, search, localUsername])
 
   const handleDaysChange = useCallback(
-    (value: string) => {
+    (value: string | null) => {
+      if (!value) return
       navigate({
         to: '/statistics',
         search: { ...search, days: Number(value) },

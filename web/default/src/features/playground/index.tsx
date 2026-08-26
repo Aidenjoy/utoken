@@ -83,7 +83,6 @@ export function Playground() {
       <PlaygroundVideoMode
         group={config.group}
         groups={groups}
-        isModelLoading={isLoadingModels}
         model={config.model}
         models={models}
         onGroupChange={(value) => updateConfig('group', value)}

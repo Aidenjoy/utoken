@@ -29,6 +29,19 @@ const (
 	AwsKeyTypeApiKey AwsKeyType = "api_key"
 )
 
+// 虚拟人像素材上传协议（仅对支持 asset:// 素材引用的视频渠道生效，如 ArkNative）
+const (
+	AssetUploadProtocolNone       = ""             // 关闭
+	AssetUploadProtocolRelay      = "relay"        // 中转站风格：POST {base}{asset_upload_path}
+	AssetUploadProtocolArkOfficial = "ark_official" // 火山方舟官方：AK/SK 签名调 CreateAsset
+)
+
+const (
+	DefaultAssetUploadPath = "/api/assets/upload"
+	DefaultAssetQueryPath  = "/api/assets/{id}"
+	DefaultAssetRegion     = "cn-beijing"
+)
+
 type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string                `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType         `json:"vertex_key_type,omitempty"` // "json" or "api_key"
@@ -49,6 +62,40 @@ type ChannelOtherSettings struct {
 	UpstreamModelUpdateLastRemovedModels  []string              `json:"upstream_model_update_last_removed_models,omitempty"`  // 上次检测到的可删除模型
 	UpstreamModelUpdateIgnoredModels      []string              `json:"upstream_model_update_ignored_models,omitempty"`       // 手动忽略的模型
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
+
+	// 虚拟人像素材库（asset:// 引用）配置
+	AssetUploadProtocol string `json:"asset_upload_protocol,omitempty"` // ""/relay/ark_official
+	AssetUploadPath     string `json:"asset_upload_path,omitempty"`     // relay 协议注册路径，默认 /api/assets/upload
+	AssetQueryPath      string `json:"asset_query_path,omitempty"`      // relay 协议查询路径模板，默认 /api/assets/{id}
+	AssetAK             string `json:"asset_ak,omitempty"`              // 官方协议 AccessKey
+	AssetSK             string `json:"asset_sk,omitempty"`              // 官方协议 SecretKey
+	AssetGroupID        string `json:"asset_group_id,omitempty"`        // 官方协议素材组 GroupId
+	AssetProjectName    string `json:"asset_project_name,omitempty"`    // 官方协议 ProjectName
+	AssetRegion         string `json:"asset_region,omitempty"`          // 官方协议区域，默认 cn-beijing
+}
+
+// AssetUploadPathOrDefault 返回 relay 协议素材注册路径。
+func (s *ChannelOtherSettings) AssetUploadPathOrDefault() string {
+	if s == nil || strings.TrimSpace(s.AssetUploadPath) == "" {
+		return DefaultAssetUploadPath
+	}
+	return strings.TrimSpace(s.AssetUploadPath)
+}
+
+// AssetQueryPathOrDefault 返回 relay 协议素材查询路径模板（{id} 为占位符）。
+func (s *ChannelOtherSettings) AssetQueryPathOrDefault() string {
+	if s == nil || strings.TrimSpace(s.AssetQueryPath) == "" {
+		return DefaultAssetQueryPath
+	}
+	return strings.TrimSpace(s.AssetQueryPath)
+}
+
+// AssetRegionOrDefault 返回官方协议区域。
+func (s *ChannelOtherSettings) AssetRegionOrDefault() string {
+	if s == nil || strings.TrimSpace(s.AssetRegion) == "" {
+		return DefaultAssetRegion
+	}
+	return strings.TrimSpace(s.AssetRegion)
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

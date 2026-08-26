@@ -77,6 +77,13 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundUploadRouter.Use(middleware.UserAuth())
 	{
 		playgroundUploadRouter.POST("/files/upload", controller.PlaygroundFileUpload)
+
+		// 虚拟人像素材库：素材管理不依赖转发渠道，同样不挂 Distribute
+		playgroundUploadRouter.GET("/assets/providers", controller.GetAssetProviders)
+		playgroundUploadRouter.POST("/assets/upload", controller.UploadAsset)
+		playgroundUploadRouter.GET("/assets", controller.ListAssets)
+		playgroundUploadRouter.GET("/assets/:id", controller.GetAsset)
+		playgroundUploadRouter.DELETE("/assets/:id", controller.DeleteAsset)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))

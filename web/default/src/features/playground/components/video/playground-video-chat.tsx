@@ -4,14 +4,11 @@ import {
   DownloadIcon,
   FilmIcon,
   LoaderIcon,
-  Trash2Icon,
   XCircleIcon,
 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-
-import { cn } from '@/lib/utils'
 
 import type { VideoTask } from '../../types'
 

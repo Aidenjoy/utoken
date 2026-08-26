@@ -23,6 +23,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  Images,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -60,6 +61,11 @@ export function useSidebarData(): SidebarData {
             title: '新对话',
             url: '/playground',
             icon: FlaskConical,
+          },
+          {
+            title: t('Asset Library'),
+            url: '/asset-library',
+            icon: Images,
           },
           {
             title: t('Chat'),

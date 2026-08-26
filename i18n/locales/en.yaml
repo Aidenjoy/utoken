@@ -271,6 +271,9 @@ distributor.get_channel_failed: "Failed to get available channel for model {{.Mo
 distributor.no_available_channel: "No available channel for model {{.Model}} under group {{.Group}} (distributor)"
 distributor.invalid_midjourney_request: "Invalid Midjourney request: {{.Error}}"
 distributor.invalid_request_parse_model: "Invalid request, unable to parse model"
+distributor.asset_not_found: "The asset {{.Asset}} referenced in the request is not registered under your account"
+distributor.asset_channel_conflict: "The request references assets belonging to different channels; all referenced assets must come from the same channel"
+distributor.asset_channel_unavailable: "The channel {{.Channel}} owning the referenced asset is unavailable (disabled, or model {{.Model}} is not enabled under the current group)"
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "Custom OAuth provider not found"

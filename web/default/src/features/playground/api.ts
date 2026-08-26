@@ -18,8 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS, VIDEO_API_ENDPOINTS } from './constants'
+import { API_ENDPOINTS, ASSET_API_ENDPOINTS, VIDEO_API_ENDPOINTS } from './constants'
 import type {
+  Asset,
+  AssetProvider,
+  AssetType,
   ChatCompletionRequest,
   ChatCompletionResponse,
   ModelOption,
@@ -180,4 +183,80 @@ export async function uploadFile(
   // Use content_url from backend if available; otherwise construct it
   const url = res.data.content_url || `https://ark.cn-beijing.volces.com/api/v3/files/${fileId}/content`
   return { id: fileId, url }
+}
+
+/**
+ * Extract the error message from an asset API failure response.
+ * The backend returns `{ error: { message, type } }` on /pg/assets/*.
+ */
+function assetErrorMessage(error: unknown): string {
+  const axiosErr = error as {
+    response?: { data?: { error?: { message?: string } } }
+  }
+  return (
+    axiosErr?.response?.data?.error?.message ||
+    (error instanceof Error ? error.message : String(error))
+  )
+}
+
+/**
+ * List channels that have an asset upload protocol enabled.
+ */
+export async function getAssetProviders(): Promise<AssetProvider[]> {
+  try {
+    const res = await api.get(ASSET_API_ENDPOINTS.PROVIDERS, {
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+    return Array.isArray(res.data?.providers) ? res.data.providers : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Register an asset by public URL on the given channel.
+ * Throws with the upstream error message on failure.
+ */
+export async function registerAsset(payload: {
+  channel_id: number
+  url: string
+  asset_type: AssetType
+  name: string
+}): Promise<Asset> {
+  try {
+    const res = await api.post(ASSET_API_ENDPOINTS.UPLOAD, payload, {
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+    return res.data as Asset
+  } catch (error) {
+    throw new Error(assetErrorMessage(error))
+  }
+}
+
+/**
+ * List the current user's assets (optionally filtered by channel).
+ */
+export async function listAssets(channelId?: number): Promise<Asset[]> {
+  try {
+    const res = await api.get(ASSET_API_ENDPOINTS.LIST, {
+      params: channelId ? { channel_id: channelId } : undefined,
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+    return Array.isArray(res.data?.assets) ? res.data.assets : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Delete an asset record (local record only; upstream keeps the asset).
+ */
+export async function deleteAsset(id: number): Promise<void> {
+  try {
+    await api.delete(ASSET_API_ENDPOINTS.DETAIL(id), {
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+  } catch (error) {
+    throw new Error(assetErrorMessage(error))
+  }
 }

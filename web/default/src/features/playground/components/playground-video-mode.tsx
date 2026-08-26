@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { useVideoHandler } from '../hooks/use-video-handler'
 import {
   getInitialVideoConfig,
   saveVideoConfig,
 } from '../lib/storage/video-storage'
-import { useVideoHandler } from '../hooks/use-video-handler'
-import type {
-  GroupOption,
-  ModelOption,
-  VideoConfig,
-} from '../types'
+import type { GroupOption, ModelOption, VideoConfig } from '../types'
 import { PlaygroundVideoChat } from './video/playground-video-chat'
 import { PlaygroundVideoInput } from './video/playground-video-input'
 
@@ -20,7 +16,6 @@ interface PlaygroundVideoModeProps {
   groups: GroupOption[]
   onModelChange: (model: string) => void
   onGroupChange: (group: string) => void
-  isModelLoading?: boolean
 }
 
 export function PlaygroundVideoMode({
@@ -30,7 +25,6 @@ export function PlaygroundVideoMode({
   groups,
   onModelChange,
   onGroupChange,
-  isModelLoading,
 }: PlaygroundVideoModeProps) {
   const [videoConfig, setVideoConfig] = useState<VideoConfig>(() => {
     const initial = getInitialVideoConfig()
@@ -41,10 +35,7 @@ export function PlaygroundVideoMode({
   useEffect(() => {
     setVideoConfig((prev) => {
       const next = { ...prev, model, group }
-      if (
-        prev.model !== model ||
-        prev.group !== group
-      ) {
+      if (prev.model !== model || prev.group !== group) {
         saveVideoConfig(next)
       }
       return next
@@ -56,8 +47,15 @@ export function PlaygroundVideoMode({
     saveVideoConfig(next)
   }, [])
 
-  const { videoTasks, isGenerating, submitVideo, stopPolling, clearTasks, uploadMediaItem, uploadProgress } =
-    useVideoHandler(videoConfig)
+  const {
+    videoTasks,
+    isGenerating,
+    submitVideo,
+    stopPolling,
+    clearTasks,
+    uploadMediaItem,
+    uploadProgress,
+  } = useVideoHandler(videoConfig)
 
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
