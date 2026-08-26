@@ -3,8 +3,9 @@ package doubao
 import (
 	"testing"
 
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ func TestBuildTaskURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, buildTaskURL(tt.baseURL, "/contents/generations/tasks"))
+			assert.Equal(t, tt.want, taskcommon.BuildVolcTaskURL(tt.baseURL, "/contents/generations/tasks"))
 		})
 	}
 }
@@ -34,10 +35,10 @@ func TestBuildTaskURL(t *testing.T) {
 func TestBuildTaskURLFetch(t *testing.T) {
 	assert.Equal(t,
 		"https://ai-tokenhub.com/api/v2/contents/generations/tasks/cgt-123",
-		buildTaskURL("https://ai-tokenhub.com/api/v2", "/contents/generations/tasks/cgt-123"))
+		taskcommon.BuildVolcTaskURL("https://ai-tokenhub.com/api/v2", "/contents/generations/tasks/cgt-123"))
 	assert.Equal(t,
 		"https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/cgt-123",
-		buildTaskURL("https://ark.cn-beijing.volces.com", "/contents/generations/tasks/cgt-123"))
+		taskcommon.BuildVolcTaskURL("https://ark.cn-beijing.volces.com", "/contents/generations/tasks/cgt-123"))
 }
 
 // 前端 Playground 传大写分辨率（480P/1080P/4K），火山方舟枚举为小写，
@@ -82,29 +83,29 @@ func TestParseTaskResult(t *testing.T) {
 		wantTokens int
 	}{
 		{
-			name: "官方格式 succeeded",
-			body: `{"id":"cgt-123","model":"doubao-seedance-2-0-260128","status":"succeeded","content":{"video_url":"https://ark.example.com/v.mp4"},"usage":{"completion_tokens":100,"total_tokens":120},"created_at":1755432000,"updated_at":1755432060,"duration":4}`, 
+			name:       "官方格式 succeeded",
+			body:       `{"id":"cgt-123","model":"doubao-seedance-2-0-260128","status":"succeeded","content":{"video_url":"https://ark.example.com/v.mp4"},"usage":{"completion_tokens":100,"total_tokens":120},"created_at":1755432000,"updated_at":1755432060,"duration":4}`,
 			wantStatus: string(model.TaskStatusSuccess),
 			wantURL:    "https://ark.example.com/v.mp4",
 			wantTokens: 100,
 		},
 		{
-			name: "中转站 resultSummary 包装 succeeded",
-			body: `{"id":"01a00fbf-3cf9-70a5-adc6-9b93a5ffd848","upstreamTaskId":"cgt-20260817204306-fskqb","status":"succeeded","model":"doubao-seedance-2-0-mini-260615","resultSummary":{"content":{"video_url":"https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-0-mini/demo.mp4?X-Tos-Signature=abc"},"duration":"4","resolution":"480p","upstreamStatus":"succeeded","usage":{"completion_tokens":40594,"total_tokens":40594}},"createdAt":"2026-08-17T20:43:06.359411+08:00","updatedAt":"2026-08-17T20:45:03.595838+08:00"}`, 
+			name:       "中转站 resultSummary 包装 succeeded",
+			body:       `{"id":"01a00fbf-3cf9-70a5-adc6-9b93a5ffd848","upstreamTaskId":"cgt-20260817204306-fskqb","status":"succeeded","model":"doubao-seedance-2-0-mini-260615","resultSummary":{"content":{"video_url":"https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-0-mini/demo.mp4?X-Tos-Signature=abc"},"duration":"4","resolution":"480p","upstreamStatus":"succeeded","usage":{"completion_tokens":40594,"total_tokens":40594}},"createdAt":"2026-08-17T20:43:06.359411+08:00","updatedAt":"2026-08-17T20:45:03.595838+08:00"}`,
 			wantStatus: string(model.TaskStatusSuccess),
 			wantURL:    "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-0-mini/demo.mp4?X-Tos-Signature=abc",
 			wantTokens: 40594,
 		},
 		{
-			name: "中转站 resultSummary 包装 running",
-			body: `{"id":"01a00fbf-3cf9-70a5-adc6-9b93a5ffd848","upstreamTaskId":"cgt-20260817204306-fskqb","status":"running","model":"doubao-seedance-2-0-mini-260615","resultSummary":{"upstreamStatus":"running"},"createdAt":"2026-08-17T20:43:06.359411+08:00","updatedAt":"2026-08-17T20:43:30.348118+08:00"}`, 
+			name:       "中转站 resultSummary 包装 running",
+			body:       `{"id":"01a00fbf-3cf9-70a5-adc6-9b93a5ffd848","upstreamTaskId":"cgt-20260817204306-fskqb","status":"running","model":"doubao-seedance-2-0-mini-260615","resultSummary":{"upstreamStatus":"running"},"createdAt":"2026-08-17T20:43:06.359411+08:00","updatedAt":"2026-08-17T20:43:30.348118+08:00"}`,
 			wantStatus: string(model.TaskStatusInProgress),
 			wantURL:    "",
 			wantTokens: 0,
 		},
 		{
 			name:       "官方格式 failed",
-			body:       `{"id":"cgt-123","status":"failed","error":{"code":"InternalServiceError","message":"boom"}}`, 
+			body:       `{"id":"cgt-123","status":"failed","error":{"code":"InternalServiceError","message":"boom"}}`,
 			wantStatus: string(model.TaskStatusFailure),
 			wantURL:    "",
 			wantTokens: 0,

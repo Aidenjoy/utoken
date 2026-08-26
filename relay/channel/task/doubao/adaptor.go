@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -73,49 +72,6 @@ type responsePayload struct {
 	} `json:"error"`
 }
 
-type responseTask struct {
-	ID      string `json:"id"`
-	Model   string `json:"model"`
-	Status  string `json:"status"`
-	Content struct {
-		VideoURL string `json:"video_url"`
-	} `json:"content"`
-	// ResultSummary 兼容中转站（如 ai-tokenhub）的包装格式：火山原始结果
-	// 被包在 resultSummary 层，video_url / usage 位于 resultSummary.content /
-	// resultSummary.usage，且 duration 为字符串（"4"）而非官方的数字。
-	ResultSummary struct {
-		Content struct {
-			VideoURL string `json:"video_url"`
-		} `json:"content"`
-		Usage struct {
-			CompletionTokens int `json:"completion_tokens"`
-			TotalTokens      int `json:"total_tokens"`
-		} `json:"usage"`
-	} `json:"resultSummary"`
-	Seed            int            `json:"seed"`
-	Resolution      string         `json:"resolution"`
-	Duration        dto.IntValue   `json:"duration"`
-	Ratio           string         `json:"ratio"`
-	FramesPerSecond int            `json:"framespersecond"`
-	ServiceTier     string         `json:"service_tier"`
-	Tools           []struct {
-		Type string `json:"type"`
-	} `json:"tools"`
-	Usage struct {
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
-		ToolUsage        struct {
-			WebSearch int `json:"web_search"`
-		} `json:"tool_usage"`
-	} `json:"usage"`
-	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-	// 注意：不解析 created_at / updated_at —— 官方为 unix 数字，中转站为 ISO 字符串，
-	// 且包内无使用方；声明为 int64 会在中转站响应上整体反序列化失败。
-}
-
 // ============================
 // Adaptor implementation
 // ============================
@@ -141,21 +97,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
-	return buildTaskURL(a.baseURL, "/contents/generations/tasks"), nil
+	return taskcommon.BuildVolcTaskURL(a.baseURL, "/contents/generations/tasks"), nil
 }
-
-// buildTaskURL 按渠道 baseURL 构造火山方舟任务地址。
-// baseURL 已带版本路径后缀（如中转站用 /api/v2 代替官方 /api/v3）时直接拼任务路径，
-// 避免拼出 /api/v2/api/v3/... 双重路径；无版本后缀视为火山官方，拼默认 /api/v3。
-func buildTaskURL(baseURL, taskPath string) string {
-	trimmed := strings.TrimSuffix(baseURL, "/")
-	if versionPathSuffixRE.MatchString(trimmed) {
-		return trimmed + taskPath
-	}
-	return trimmed + "/api/v3" + taskPath
-}
-
-var versionPathSuffixRE = regexp.MustCompile(`/(?:api/)?v\d+$`)
 
 // BuildRequestHeader sets required headers.
 func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *relaycommon.RelayInfo) error {
@@ -312,7 +255,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := buildTaskURL(baseUrl, fmt.Sprintf("/contents/generations/tasks/%s", taskID))
+	uri := taskcommon.BuildVolcTaskURL(baseUrl, fmt.Sprintf("/contents/generations/tasks/%s", taskID))
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -421,57 +364,11 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
-	// Log the raw response (truncate if too long)
-	logBody := string(respBody)
-	if len(logBody) > 2000 {
-		logBody = logBody[:2000] + "...(truncated)"
-	}
-	common.SysLog(fmt.Sprintf("[DoubaoVideo] Fetch task response: %s", logBody))
-
-	resTask := responseTask{}
-	if err := common.Unmarshal(respBody, &resTask); err != nil {
-		common.SysError(fmt.Sprintf("[DoubaoVideo] Failed to unmarshal task result: %v, body: %s", err, logBody))
-		return nil, errors.Wrap(err, "unmarshal task result failed")
-	}
-
-	common.SysLog(fmt.Sprintf("[DoubaoVideo] Task status: id=%s status=%s progress_video=%d%% error=%s",
-		resTask.ID, resTask.Status, 0, resTask.Error.Message))
-
-	taskResult := relaycommon.TaskInfo{
-		Code: 0,
-	}
-
-	// Map Doubao status to internal status
-	switch resTask.Status {
-	case "pending", "queued":
-		taskResult.Status = model.TaskStatusQueued
-		taskResult.Progress = "10%"
-	case "processing", "running":
-		taskResult.Status = model.TaskStatusInProgress
-		taskResult.Progress = "50%"
-	case "succeeded":
-		taskResult.Status = model.TaskStatusSuccess
-		taskResult.Progress = "100%"
-		// 官方顶层 content/usage 优先，中转站 resultSummary 包装格式兜底
-		taskResult.Url = lo.CoalesceOrEmpty(resTask.Content.VideoURL, resTask.ResultSummary.Content.VideoURL)
-		// 解析 usage 信息用于按倍率计费
-		taskResult.CompletionTokens = lo.CoalesceOrEmpty(resTask.Usage.CompletionTokens, resTask.ResultSummary.Usage.CompletionTokens)
-		taskResult.TotalTokens = lo.CoalesceOrEmpty(resTask.Usage.TotalTokens, resTask.ResultSummary.Usage.TotalTokens)
-	case "failed":
-		taskResult.Status = model.TaskStatusFailure
-		taskResult.Progress = "100%"
-		taskResult.Reason = resTask.Error.Message
-	default:
-		// Unknown status, treat as processing
-		taskResult.Status = model.TaskStatusInProgress
-		taskResult.Progress = "30%"
-	}
-
-	return &taskResult, nil
+	return taskcommon.ParseVolcTaskResult(respBody, "[DoubaoVideo]")
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
-	var dResp responseTask
+	var dResp taskcommon.VolcTaskResponse
 	if err := common.Unmarshal(originTask.Data, &dResp); err != nil {
 		return nil, errors.Wrap(err, "unmarshal doubao task data failed")
 	}
@@ -481,7 +378,7 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.TaskID = originTask.TaskID
 	openAIVideo.Status = originTask.Status.ToVideoStatus()
 	openAIVideo.SetProgressStr(originTask.Progress)
-	openAIVideo.SetMetadata("url", lo.CoalesceOrEmpty(dResp.Content.VideoURL, dResp.ResultSummary.Content.VideoURL))
+	openAIVideo.SetMetadata("url", dResp.VideoURL())
 	openAIVideo.CreatedAt = originTask.CreatedAt
 	openAIVideo.CompletedAt = originTask.UpdatedAt
 	openAIVideo.Model = originTask.Properties.OriginModelName

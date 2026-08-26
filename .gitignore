@@ -18,6 +18,7 @@ new-api
 *.pid
 *.log
 /__debug_bin*
+.debug/
 .DS_Store
 tiktoken_cache
 .eslintcache

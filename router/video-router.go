@@ -49,4 +49,14 @@ func SetVideoRouter(router *gin.Engine) {
 		// Maps to: /?Action=CVSync2AsyncSubmitTask&Version=2022-08-31 and /?Action=CVSync2AsyncGetResult&Version=2022-08-31
 		jimengOfficialGroup.POST("/", controller.RelayTask)
 	}
+
+	// Volcengine Ark official-protocol routes — clients of the official Ark API
+	// can point their base_url at this server and keep the exact same paths.
+	arkNativeRouter := router.Group("/api/v3")
+	arkNativeRouter.Use(middleware.RouteTag("relay"))
+	arkNativeRouter.Use(middleware.TokenAuth(), middleware.Distribute())
+	{
+		arkNativeRouter.POST("/contents/generations/tasks", controller.RelayTask)
+		arkNativeRouter.GET("/contents/generations/tasks/:task_id", controller.RelayTaskFetch)
+	}
 }

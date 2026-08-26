@@ -196,14 +196,28 @@ export interface VideoTask {
   completedAt?: number
 }
 
+// Volcano Ark official protocol content item
+// ({base}/api/v3/contents/generations/tasks)
+export interface ArkContentItem {
+  type: 'text' | 'image_url' | 'video_url' | 'audio_url'
+  text?: string
+  image_url?: { url: string }
+  video_url?: { url: string }
+  audio_url?: { url: string }
+  role?: string
+}
+
+// Request body of the Volcano Ark official protocol; the gateway passes it
+// through to upstream as-is. `group` is a gateway-specific extension for
+// group selection and is ignored by the official protocol.
 export interface VideoSubmitRequest {
   model: string
-  prompt: string
-  group?: string
-  images?: string[]
+  content: ArkContentItem[]
+  generate_audio?: boolean
+  ratio?: string
+  resolution?: string
   duration?: number
-  seconds?: string
-  metadata?: Record<string, unknown>
+  group?: string
 }
 
 export interface VideoSubmitResponse {

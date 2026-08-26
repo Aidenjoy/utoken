@@ -13,6 +13,7 @@ import {
   saveVideoTasks,
 } from '../lib/storage/video-storage'
 import type {
+  ArkContentItem,
   MediaItem,
   VideoConfig,
   VideoSubmitRequest,
@@ -83,63 +84,56 @@ function generateUUID(): string {
   })
 }
 
+// Build the Volcano Ark official-protocol request body
+// ({base}/api/v3/contents/generations/tasks) so the gateway can pass it
+// through to upstream unchanged.
 function buildSubmitPayload(
   config: VideoConfig,
-  prompt: string,
-  batchId: string
+  prompt: string
 ): VideoSubmitRequest {
-  const payload: VideoSubmitRequest = {
-    model: config.model,
-    prompt,
-    group: config.group,
-    duration: config.duration,
-    seconds: String(config.duration),
-  }
+  const content: ArkContentItem[] = [{ type: 'text', text: prompt }]
 
   if (config.mode === 'first_last_frame' || config.mode === 'first_frame') {
     // First/last frame and first frame modes: images are TOS URLs or base64 strings
-    if (config.images.length > 0) {
-      payload.images = config.images
-    }
+    config.images.forEach((url, index) => {
+      const role =
+        config.mode === 'first_last_frame'
+          ? index === 0
+            ? 'first_frame'
+            : 'last_frame'
+          : 'first_frame'
+      content.push({ type: 'image_url', image_url: { url }, role })
+    })
   } else if (config.mode === 'reference') {
-    // Reference mode: images (base64 or remoteUrl)
-    const imageUrls = config.mediaItems
-      .filter((item) => item.type === 'image')
-      .map((item) => item.remoteUrl || item.url)
-    if (imageUrls.length > 0) {
-      payload.images = imageUrls
+    // Reference mode: images, videos and audio uploaded to TOS
+    for (const item of config.mediaItems) {
+      const url = item.remoteUrl || item.url
+      if (!url) {
+        continue
+      }
+      if (item.type === 'image') {
+        content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+      } else if (item.type === 'video') {
+        content.push({ type: 'video_url', video_url: { url }, role: 'reference_video' })
+      } else if (item.type === 'audio') {
+        content.push({ type: 'audio_url', audio_url: { url }, role: 'reference_audio' })
+      }
     }
   }
-  // text_to_video: no images needed
+  // text_to_video: no media content needed
 
-  const metadata: Record<string, unknown> = {
-    resolution: config.resolution,
+  const payload: VideoSubmitRequest = {
+    model: config.model,
+    content,
     generate_audio: config.audio,
-    n: config.count,
-    mode: config.mode,
+    duration: config.duration,
+    // Volcano Ark resolution enum is lowercase (480p/720p/1080p/4k)
+    resolution: config.resolution.toLowerCase(),
+    group: config.group,
   }
   if (config.ratio !== 'smart') {
-    metadata.ratio = config.ratio
+    payload.ratio = config.ratio
   }
-
-  // Reference mode: add video_urls and audio_urls from uploaded media
-  if (config.mode === 'reference') {
-    const videoUrls = config.mediaItems
-      .filter((item) => item.type === 'video' && item.remoteUrl)
-      .map((item) => item.remoteUrl!)
-    if (videoUrls.length > 0) {
-      metadata.video_urls = videoUrls
-    }
-    const audioUrls = config.mediaItems
-      .filter((item) => item.type === 'audio' && item.remoteUrl)
-      .map((item) => item.remoteUrl!)
-    if (audioUrls.length > 0) {
-      metadata.audio_urls = audioUrls
-    }
-  }
-
-  metadata.batch_id = batchId
-  payload.metadata = metadata
 
   return payload
 }
@@ -317,14 +311,21 @@ export function useVideoHandler(config: VideoConfig) {
         return
       }
 
-      const payload = buildSubmitPayload(config, prompt, batchIdRef.current)
+      const payload = buildSubmitPayload(config, prompt)
 
-      // Log the submit payload for debugging (truncate image data)
+      // Log the submit payload for debugging (truncate media URLs)
       const logPayload = {
         ...payload,
-        images: payload.images?.map((img) =>
-          img.length > 100 ? img.substring(0, 80) + '...(truncated)' : img
-        ),
+        content: payload.content.map((item) => {
+          const truncated = { ...item }
+          for (const key of ['image_url', 'video_url', 'audio_url'] as const) {
+            const media = truncated[key]
+            if (media && media.url.length > 100) {
+              truncated[key] = { url: media.url.substring(0, 80) + '...(truncated)' }
+            }
+          }
+          return truncated
+        }),
       }
       // eslint-disable-next-line no-console
       console.log('[VideoTask] Submit payload:', logPayload)

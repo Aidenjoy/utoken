@@ -387,6 +387,19 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 
+	// 火山方舟官方协议路径：查询响应透传上游（格式与实时性与官方一致）
+	if strings.HasPrefix(c.Request.RequestURI, "/api/v3/contents/generations/tasks") {
+		if realtime := arkNativePassthroughFetch(originTask); len(realtime) > 0 {
+			respBody = realtime
+			return
+		}
+		// 上游不可用时回退本地轮询快照（task.Data 为官方格式查询响应）
+		if len(originTask.Data) > 0 {
+			respBody = originTask.Data
+			return
+		}
+	}
+
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
 	if realtimeResp := tryRealtimeFetch(originTask, isOpenAIVideoAPI); len(realtimeResp) > 0 {
 		respBody = realtimeResp
@@ -422,6 +435,54 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
 	return
+}
+
+// arkNativePassthroughFetch 对 ArkNative（火山方舟官方协议透传）渠道实时查询上游，
+// 返回上游原始响应体；顺便把最新状态同步到本地任务。失败返回 nil（调用方回退本地快照）。
+func arkNativePassthroughFetch(task *model.Task) []byte {
+	channelModel, err := model.GetChannelById(task.ChannelId, true)
+	if err != nil || channelModel.Type != constant.ChannelTypeArkNative {
+		return nil
+	}
+
+	baseURL := channelModel.GetBaseURL()
+	if baseURL == "" {
+		baseURL = constant.ChannelBaseURLs[channelModel.Type]
+	}
+	adaptor := GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(channelModel.Type)))
+	if adaptor == nil {
+		return nil
+	}
+
+	resp, err := adaptor.FetchTask(baseURL, channelModel.Key, map[string]any{
+		"task_id": task.GetUpstreamTaskID(),
+	}, channelModel.GetSetting().Proxy)
+	if err != nil || resp == nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	// 顺便同步本地任务状态（与 tryRealtimeFetch 一致）
+	if ti, parseErr := adaptor.ParseTaskResult(body); parseErr == nil && ti != nil {
+		snap := task.Snapshot()
+		if ti.Status != "" {
+			task.Status = model.TaskStatus(ti.Status)
+		}
+		if ti.Progress != "" {
+			task.Progress = ti.Progress
+		}
+		if ti.Url != "" && !strings.HasPrefix(ti.Url, "data:") {
+			task.PrivateData.ResultURL = ti.Url
+		}
+		if !snap.Equal(task.Snapshot()) {
+			_, _ = task.UpdateWithStatus(snap.Status)
+		}
+	}
+	return body
 }
 
 // tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。

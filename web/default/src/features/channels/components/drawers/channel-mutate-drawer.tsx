@@ -1252,6 +1252,14 @@ export function ChannelMutateDrawer({
       }
     }
 
+    // Type 59 (Volcengine Ark Native) - set default base_url with official version path
+    if (currentType === 59) {
+      const currentBaseUrlValue = form.getValues('base_url')
+      if (!currentBaseUrlValue || currentBaseUrlValue === '') {
+        form.setValue('base_url', 'https://ark.cn-beijing.volces.com/api/v3')
+      }
+    }
+
     // Type 18 (Xunfei) - set default other (version)
     if (currentType === 18) {
       const currentOther = form.getValues('other')
@@ -1281,7 +1289,9 @@ export function ChannelMutateDrawer({
   }, [form, isEditing, multiKeyMode, supportsMultiKeyAddMode])
 
   // Validate base_url - warn if it ends with /v1
+  // (Volcengine Ark Native keeps the version path as configured, skip the warning)
   useEffect(() => {
+    if (currentType === 59) return
     if (!currentBaseUrl || !currentBaseUrl.endsWith('/v1')) return
 
     // Show warning toast
@@ -2726,7 +2736,7 @@ export function ChannelMutateDrawer({
                             )}
 
                             {/* General base_url for other types */}
-                            {![3, 8, 22, 36, 45].includes(currentType) && (
+                            {![3, 8, 22, 36, 45, 59].includes(currentType) && (
                               <FormField
                                 control={form.control}
                                 name='base_url'
@@ -2744,6 +2754,33 @@ export function ChannelMutateDrawer({
                                     <FormDescription>
                                       {t(
                                         'Custom API base URL. For official channels, New API has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            {/* Volcengine Ark Native (type 59) - base_url used as-is, must include version path */}
+                            {currentType === 59 && (
+                              <FormField
+                                control={form.control}
+                                name='base_url'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>{t('Base URL')}</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        placeholder={t(
+                                          'e.g., https://ark.cn-beijing.volces.com/api/v3'
+                                        )}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'The URL is used exactly as configured; no version path is added automatically. It must include the version path: /api/v3 for Volcano Ark official, or the relay\'s own path (e.g. /v1, /api/v2) for third-party relays.'
                                       )}
                                     </FormDescription>
                                     <FormMessage />
