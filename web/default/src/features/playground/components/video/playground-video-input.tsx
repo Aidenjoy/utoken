@@ -4,7 +4,6 @@ import {
   MusicIcon,
   SendIcon,
   SquareIcon,
-  TimerIcon,
   Trash2Icon,
   Volume2Icon,
   VolumeXIcon,
@@ -20,7 +19,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Slider } from '@/components/ui/slider'
 import {
   Tooltip,
   TooltipContent,
@@ -151,7 +149,6 @@ export function PlaygroundVideoInput({
   const durationOptions = config.model.includes('2-5')
     ? Array.from({ length: 30 - 4 + 1 }, (_, i) => i + 4)
     : DURATION_OPTIONS
-  const maxDuration = durationOptions[durationOptions.length - 1]
 
   const updateField = <K extends keyof VideoConfig>(
     key: K,
@@ -1012,31 +1009,12 @@ export function PlaygroundVideoInput({
               onChange={(v) => updateField('resolution', v as Resolution)}
             />
 
-            {/* Duration slider */}
-            <div
-              className={cn(
-                'border-border/60 bg-muted/70 hover:border-foreground/20 focus-within:border-ring/60 flex h-8 w-44 items-center gap-2 rounded-lg border px-2.5 transition-colors sm:w-52',
-                disabled && 'pointer-events-none opacity-50'
-              )}
-              title={t('Video duration')}
-            >
-              <TimerIcon
-                size={13}
-                className='text-muted-foreground/80 shrink-0'
-              />
-              <Slider
-                value={[config.duration]}
-                min={4}
-                max={maxDuration}
-                step={1}
-                aria-label={t('Video duration')}
-                onValueChange={(v) => updateField('duration', v[0])}
-                className='min-w-0 flex-1'
-              />
-              <span className='border-border/60 bg-background text-foreground shrink-0 rounded-md border px-1.5 py-px font-mono text-[11px] font-medium tabular-nums'>
-                {config.duration}s
-              </span>
-            </div>
+            {/* Duration selector */}
+            <ConfigDurationGrid
+              value={config.duration}
+              options={durationOptions}
+              onChange={(v) => updateField('duration', v)}
+            />
 
             {/* Count selector */}
             <ConfigDropdown
@@ -1401,6 +1379,58 @@ function ConfigDropdown({
               }}
             >
               {t(opt.label)}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// --- Duration grid (trigger shows current value, popover shows a seconds grid) ---
+function ConfigDurationGrid({
+  value,
+  options,
+  onChange,
+}: {
+  value: number
+  options: readonly number[]
+  onChange: (value: number) => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <button
+            className='bg-muted hover:bg-muted/70 text-foreground flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium transition-colors'
+            title={t('Video duration')}
+            aria-label={t('Video duration')}
+          >
+            <span className='font-mono tabular-nums'>{value}s</span>
+            <span className='text-muted-foreground'>▾</span>
+          </button>
+        }
+      />
+      <PopoverContent side='top' align='start' className='w-auto p-2'>
+        <div className='grid grid-cols-6 gap-1'>
+          {options.map((d) => (
+            <button
+              key={d}
+              className={cn(
+                'h-7 w-10 rounded-md text-xs font-medium tabular-nums transition-colors',
+                value === d
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted hover:bg-muted/70 text-foreground'
+              )}
+              onClick={() => {
+                onChange(d)
+                setOpen(false)
+              }}
+            >
+              {d}s
             </button>
           ))}
         </div>
