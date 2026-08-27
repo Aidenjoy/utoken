@@ -425,7 +425,7 @@ export function useVideoHandler(config: VideoConfig) {
   /**
    * Upload a media file to the Volcengine Files API.
    * Returns a MediaItem with local preview URL, remote URL, and duration.
-   * Throws if duration exceeds limits (video ≤30s total, audio ≤30s total).
+   * Throws if duration exceeds limits (video ≤15s total, audio ≤15s total).
    */
   const uploadMediaItem = useCallback(
     async (

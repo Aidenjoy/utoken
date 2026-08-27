@@ -134,10 +134,7 @@ export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
 ]
 
 export const RESOLUTIONS = ['480P', '720P', '1080P', '4K'] as const
-export const DURATION_OPTIONS = [
-  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-  24, 25, 26, 27, 28, 29, 30,
-] as const
+export const DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const
 export const VIDEO_COUNT_RANGE = { min: 1, max: 8 } as const
 
 export const VIDEO_STORAGE_KEYS = {
@@ -145,8 +142,8 @@ export const VIDEO_STORAGE_KEYS = {
   VIDEO_TASKS: 'playground_video_tasks',
 } as const
 
-export const VIDEO_MAX_DURATION = 30 // 视频总时长上限（秒）
-export const AUDIO_MAX_DURATION = 30 // 音频总时长上限（秒）
+export const VIDEO_MAX_DURATION = 15 // 视频总时长上限（秒）
+export const AUDIO_MAX_DURATION = 15 // 音频总时长上限（秒）
 export const MAX_VIDEOS = 3 // 最多视频数
 export const MAX_AUDIOS = 3 // 最多音频数
 export const MAX_REFERENCE_IMAGES = 9 // 参考模式最多图片数
