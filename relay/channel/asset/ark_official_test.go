@@ -56,7 +56,7 @@ func TestArkOfficialUpload(t *testing.T) {
 	defer srv.Close()
 
 	p := newOfficialProtocolForTest(srv.URL)
-	res, err := p.Upload(UploadRequest{URL: "https://example.com/face.jpg", AssetType: model.AssetTypeImage, Name: "ignored"})
+	res, err := p.Upload(UploadRequest{URL: "https://example.com/face.jpg", AssetType: model.AssetTypeImage, Name: "my-asset"})
 	require.NoError(t, err)
 	assert.Equal(t, "asset-20260224200602-qn7wr", res.AssetID)
 	assert.Equal(t, "group-123", res.GroupID)
@@ -67,6 +67,8 @@ func TestArkOfficialUpload(t *testing.T) {
 	assert.Contains(t, gotBody, `"GroupId":"group-123"`)
 	assert.Contains(t, gotBody, `"URL":"https://example.com/face.jpg"`)
 	assert.Contains(t, gotBody, `"AssetType":"Image"`)
+	// 上游火山要求 Name 必填，请求体必须透传
+	assert.Contains(t, gotBody, `"Name":"my-asset"`)
 	assert.Contains(t, gotBody, `"ProjectName":"test-project"`)
 
 	assert.Equal(t, "20260716T111338Z", gotXDate)

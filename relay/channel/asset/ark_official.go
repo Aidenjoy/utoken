@@ -51,6 +51,7 @@ func (p *ArkOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 		"GroupId":     groupID,
 		"URL":         req.URL,
 		"AssetType":   req.AssetType,
+		"Name":        req.Name,
 		"ProjectName": p.cfg.Settings.AssetProjectName,
 	})
 	if err != nil {

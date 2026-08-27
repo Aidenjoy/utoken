@@ -195,6 +195,19 @@ func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *as
 	if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", "url must be a public http(s) URL"}
 	}
+	// 上游要求素材名称非空：未传时取 URL 末段作为默认名，仍为空则用时间戳兜底
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		if i := strings.LastIndex(req.URL, "/"); i+1 < len(req.URL) {
+			req.Name = req.URL[i+1:]
+		}
+		if q := strings.IndexByte(req.Name, '?'); q >= 0 {
+			req.Name = req.Name[:q]
+		}
+	}
+	if req.Name == "" {
+		req.Name = fmt.Sprintf("asset-%d", time.Now().Unix())
+	}
 	channel, err := resolveAssetProtocolChannel(req.ChannelId, req.Channel)
 	if err != nil {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", err.Error()}
