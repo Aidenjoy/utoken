@@ -5044,6 +5044,7 @@
     "Vertex AI Key Format": "Vertex AI Key Format",
     "Vertex AI service account key must be valid JSON": "Vertex AI service account key must be valid JSON",
     "Video": "Video",
+    "Video duration": "Video duration",
     "Video length in seconds": "Video length in seconds",
     "Video Remix": "Video Remix",
     "Video size must be less than 100MB": "Video size must be less than 100MB",

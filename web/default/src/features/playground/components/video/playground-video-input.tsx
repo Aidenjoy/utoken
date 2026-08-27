@@ -4,6 +4,7 @@ import {
   MusicIcon,
   SendIcon,
   SquareIcon,
+  TimerIcon,
   Trash2Icon,
   Volume2Icon,
   VolumeXIcon,
@@ -19,6 +20,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Slider } from '@/components/ui/slider'
 import {
   Tooltip,
   TooltipContent,
@@ -149,6 +151,7 @@ export function PlaygroundVideoInput({
   const durationOptions = config.model.includes('2-5')
     ? Array.from({ length: 30 - 4 + 1 }, (_, i) => i + 4)
     : DURATION_OPTIONS
+  const maxDuration = durationOptions[durationOptions.length - 1]
 
   const updateField = <K extends keyof VideoConfig>(
     key: K,
@@ -1009,16 +1012,31 @@ export function PlaygroundVideoInput({
               onChange={(v) => updateField('resolution', v as Resolution)}
             />
 
-            {/* Duration selector */}
-            <ConfigButtonGroup
-              label={`${config.duration}s`}
-              options={durationOptions.map((d) => ({
-                value: String(d),
-                label: `${d}s`,
-              }))}
-              value={String(config.duration)}
-              onChange={(v) => updateField('duration', parseInt(v))}
-            />
+            {/* Duration slider */}
+            <div
+              className={cn(
+                'border-border/60 bg-muted/70 hover:border-foreground/20 focus-within:border-ring/60 flex h-8 w-44 items-center gap-2 rounded-lg border px-2.5 transition-colors sm:w-52',
+                disabled && 'pointer-events-none opacity-50'
+              )}
+              title={t('Video duration')}
+            >
+              <TimerIcon
+                size={13}
+                className='text-muted-foreground/80 shrink-0'
+              />
+              <Slider
+                value={[config.duration]}
+                min={4}
+                max={maxDuration}
+                step={1}
+                aria-label={t('Video duration')}
+                onValueChange={(v) => updateField('duration', v[0])}
+                className='min-w-0 flex-1'
+              />
+              <span className='border-border/60 bg-background text-foreground shrink-0 rounded-md border px-1.5 py-px font-mono text-[11px] font-medium tabular-nums'>
+                {config.duration}s
+              </span>
+            </div>
 
             {/* Count selector */}
             <ConfigDropdown
