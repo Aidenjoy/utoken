@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/google/uuid"
 	tos "github.com/volcengine/ve-tos-golang-sdk/v2/tos"
@@ -255,6 +257,34 @@ func PlaygroundFileUpload(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"id":          objectKey,
 		"content_url": publicURL,
+	})
+}
+
+// PlaygroundVideoModelCaps 返回请求模型的视频生成上限：
+// 火山方舟官方协议渠道提供的 seedance 2.5 模型时长上限 30 秒，其余 15 秒。
+func PlaygroundVideoModelCaps(c *gin.Context) {
+	modelName := c.Query("model")
+	maxDuration := 15
+	if strings.Contains(modelName, "2-5") {
+		groups := []string{}
+		if group := c.Query("group"); group != "" {
+			groups = append(groups, group)
+		} else {
+			userGroup, err := model.GetUserGroup(c.GetInt("id"), false)
+			if err == nil {
+				for g := range service.GetUserUsableGroups(userGroup) {
+					groups = append(groups, g)
+				}
+			}
+		}
+		if model.IsModelServedByChannelType(groups, modelName, constant.ChannelTypeArkNative) {
+			maxDuration = 30
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    gin.H{"max_duration": maxDuration},
 	})
 }
 

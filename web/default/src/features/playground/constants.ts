@@ -100,6 +100,7 @@ export const VIDEO_API_ENDPOINTS = {
   SUBMIT: '/pg/video/generations',
   FETCH: (taskId: string) => `/pg/video/generations/${taskId}`,
   FILE_UPLOAD: '/pg/files/upload',
+  MODEL_CAPS: '/pg/video/model_caps',
 } as const
 
 // Asset library (virtual portrait library) endpoints
@@ -134,7 +135,8 @@ export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
 ]
 
 export const RESOLUTIONS = ['480P', '720P', '1080P', '4K'] as const
-export const DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const
+export const VIDEO_DURATION_MIN = 4
+export const VIDEO_DURATION_DEFAULT_MAX = 15
 export const VIDEO_COUNT_RANGE = { min: 1, max: 8 } as const
 
 export const VIDEO_STORAGE_KEYS = {
@@ -149,7 +151,11 @@ export const MAX_AUDIOS = 3 // 最多音频数
 export const MAX_REFERENCE_IMAGES = 9 // 参考模式最多图片数
 export const IMAGE_ASPECT_RATIO_RANGE = { min: 0.4, max: 2.5 } // 图片宽高比范围（Volcengine Seedance API 限制）
 
-export const VIDEO_MODES: { value: VideoMode; label: string; maxImages?: number }[] = [
+export const VIDEO_MODES: {
+  value: VideoMode
+  label: string
+  maxImages?: number
+}[] = [
   { value: 'reference', label: '参考生成' },
   { value: 'first_last_frame', label: '首尾帧', maxImages: 2 },
   { value: 'first_frame', label: '首帧', maxImages: 1 },
