@@ -77,7 +77,6 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundUploadRouter.Use(middleware.UserAuth())
 	{
 		playgroundUploadRouter.POST("/files/upload", controller.PlaygroundFileUpload)
-		playgroundUploadRouter.GET("/video/model_caps", controller.PlaygroundVideoModelCaps)
 
 		// 虚拟人像素材库：素材管理不依赖转发渠道，同样不挂 Distribute
 		playgroundUploadRouter.GET("/assets/providers", controller.GetAssetProviders)

@@ -22,7 +22,6 @@ import {
   API_ENDPOINTS,
   ASSET_API_ENDPOINTS,
   VIDEO_API_ENDPOINTS,
-  VIDEO_DURATION_DEFAULT_MAX,
 } from './constants'
 import type {
   Asset,
@@ -145,27 +144,6 @@ export async function fetchVideoTask(
 
   // Fallback: already in the expected flat format
   return raw as VideoTaskResponse
-}
-
-/**
- * Fetch the max video duration (seconds) for the given model/group.
- * Seedance 2.5 served by Ark official-protocol channels allows 30s;
- * everything else stays at the default 15s.
- */
-export async function getVideoModelCaps(
-  model: string,
-  group: string
-): Promise<number> {
-  try {
-    const res = await api.get(VIDEO_API_ENDPOINTS.MODEL_CAPS, {
-      params: { model, group },
-      skipErrorHandler: true,
-    } as Record<string, unknown>)
-    const max = res.data?.data?.max_duration
-    return typeof max === 'number' && max > 0 ? max : VIDEO_DURATION_DEFAULT_MAX
-  } catch {
-    return VIDEO_DURATION_DEFAULT_MAX
-  }
 }
 
 /**

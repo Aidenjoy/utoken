@@ -26,17 +26,16 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-import { getVideoModelCaps, listAssets } from '../../api'
+import { listAssets } from '../../api'
 import {
   ASPECT_RATIOS,
+  DURATION_OPTIONS,
   IMAGE_ASPECT_RATIO_RANGE,
   MAX_AUDIOS,
   MAX_REFERENCE_IMAGES,
   MAX_VIDEOS,
   RESOLUTIONS,
   VIDEO_COUNT_RANGE,
-  VIDEO_DURATION_DEFAULT_MAX,
-  VIDEO_DURATION_MIN,
   VIDEO_MODES,
 } from '../../constants'
 import type {
@@ -116,26 +115,6 @@ export function PlaygroundVideoInput({
   // --- asset library assets shown in the @ mention popup ---
   const [libraryAssets, setLibraryAssets] = useState<Asset[]>([])
 
-  // --- model duration cap: seedance 2.5 on Ark official channels allows 30s ---
-  const [maxDuration, setMaxDuration] = useState(VIDEO_DURATION_DEFAULT_MAX)
-
-  useEffect(() => {
-    if (!config.model) return
-    let cancelled = false
-    void getVideoModelCaps(config.model, config.group).then((max) => {
-      if (!cancelled) setMaxDuration(max)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [config.model, config.group])
-
-  useEffect(() => {
-    if (config.duration > maxDuration) {
-      updateField('duration', maxDuration)
-    }
-  }, [maxDuration, config.duration])
-
   // --- uploading placeholder state ---
   const [uploadingItems, setUploadingItems] = useState<
     {
@@ -165,11 +144,6 @@ export function PlaygroundVideoInput({
 
   const maxImages =
     VIDEO_MODES.find((m) => m.value === config.mode)?.maxImages ?? 1
-
-  const durationOptions = Array.from(
-    { length: maxDuration - VIDEO_DURATION_MIN + 1 },
-    (_, i) => VIDEO_DURATION_MIN + i
-  )
 
   const updateField = <K extends keyof VideoConfig>(
     key: K,
@@ -1024,7 +998,7 @@ export function PlaygroundVideoInput({
             {/* Duration selector */}
             <ConfigButtonGroup
               label={`${config.duration}s`}
-              options={durationOptions.map((d) => ({
+              options={DURATION_OPTIONS.map((d) => ({
                 value: String(d),
                 label: `${d}s`,
               }))}

@@ -42,25 +42,6 @@ func IsChannelEnabledForAnyGroupModel(groups []string, modelName string, channel
 	return false
 }
 
-// IsModelServedByChannelType 判断是否存在指定类型的启用渠道，
-// 能为任一给定分组提供该模型（与分发器同源 ability 判定）。
-func IsModelServedByChannelType(groups []string, modelName string, channelType int) bool {
-	if modelName == "" || len(groups) == 0 {
-		return false
-	}
-	channels, err := GetEnabledChannels()
-	if err != nil {
-		return false
-	}
-	for _, channel := range channels {
-		if channel.Type == channelType &&
-			IsChannelEnabledForAnyGroupModel(groups, modelName, channel.Id) {
-			return true
-		}
-	}
-	return false
-}
-
 func isChannelEnabledForGroupModelDB(group string, modelName string, channelID int) bool {
 	var count int64
 	err := DB.Model(&Ability{}).

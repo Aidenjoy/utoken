@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
-  CopyIcon,
   FilmIcon,
   ImageIcon,
   MusicIcon,
@@ -40,7 +39,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
 
 import {
@@ -409,32 +407,6 @@ export function AssetLibraryContent({
                 <div className='truncate text-xs font-medium'>
                   {asset.name || asset.asset_id}
                 </div>
-                {asset.asset_id && (
-                  <div className='text-muted-foreground flex items-center gap-1'>
-                    <span
-                      className='min-w-0 flex-1 truncate font-mono text-[10px]'
-                      title={asset.asset_id}
-                    >
-                      {asset.asset_id}
-                    </span>
-                    <button
-                      type='button'
-                      className='hover:text-foreground shrink-0 rounded p-0.5'
-                      title={t('Copy asset reference')}
-                      aria-label={t('Copy asset reference')}
-                      onClick={() => {
-                        void copyToClipboard(`asset://${asset.asset_id}`).then(
-                          (ok) => {
-                            if (ok) toast.success(t('Asset reference copied'))
-                            else toast.error(t('Failed to copy'))
-                          }
-                        )
-                      }}
-                    >
-                      <CopyIcon size={12} />
-                    </button>
-                  </div>
-                )}
                 {asset.status === 'failed' && asset.error_msg && (
                   <div className='text-destructive truncate text-[10px]'>
                     {asset.error_msg}
