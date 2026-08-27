@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  CheckIcon,
+  CopyIcon,
   FilmIcon,
   ImageIcon,
   MusicIcon,
@@ -39,6 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
 
 import {
@@ -101,6 +104,8 @@ export function AssetLibraryContent({
   const [url, setUrl] = useState('')
   const [assetType, setAssetType] = useState<AssetType>('Image')
   const [name, setName] = useState('')
+  const [copiedAssetId, setCopiedAssetId] = useState<number | null>(null)
+  const copyResetTimer = useRef<number | undefined>(undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const reloadAssets = useCallback(
@@ -217,6 +222,24 @@ export function AssetLibraryContent({
       setUploadingLocal(false)
     }
   }
+
+  const handleCopyAsset = useCallback(
+    (asset: Asset) => {
+      void copyToClipboard(`asset://${asset.asset_id}`).then((ok) => {
+        if (!ok) {
+          toast.error(t('Failed to copy'))
+          return
+        }
+        setCopiedAssetId(asset.id)
+        window.clearTimeout(copyResetTimer.current)
+        copyResetTimer.current = window.setTimeout(
+          () => setCopiedAssetId(null),
+          1600
+        )
+      })
+    },
+    [t]
+  )
 
   const handleDelete = async (asset: Asset) => {
     try {
@@ -363,7 +386,7 @@ export function AssetLibraryContent({
           {t('Refresh')}
         </Button>
       </div>
-      <div className='grid min-h-0 flex-1 auto-rows-min grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6'>
+      <div className='grid min-h-0 flex-1 auto-rows-min grid-cols-3 gap-2.5 overflow-y-auto pr-1 sm:grid-cols-4 lg:grid-cols-5'>
         {loading &&
           Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className='space-y-1.5'>
@@ -376,12 +399,14 @@ export function AssetLibraryContent({
             <div
               key={asset.id}
               className={cn(
-                'group relative overflow-hidden rounded-lg border bg-background transition-all',
+                'group border-border/60 hover:border-foreground/25 relative overflow-hidden rounded-xl border bg-background transition-all hover:shadow-md',
                 asset.status !== 'active' && 'opacity-75'
               )}
             >
-              <div className='bg-muted relative aspect-square w-full'>
-                {assetPreview(asset)}
+              <div className='bg-muted relative aspect-square w-full overflow-hidden'>
+                <div className='size-full transition-transform duration-300 ease-out group-hover:scale-[1.04]'>
+                  {assetPreview(asset)}
+                </div>
                 {/* Status badge overlay */}
                 <div className='absolute top-1.5 left-1.5'>
                   {statusBadge(asset)}
@@ -403,10 +428,39 @@ export function AssetLibraryContent({
                   <Trash2Icon size={13} />
                 </button>
               </div>
-              <div className='space-y-0.5 p-1.5'>
-                <div className='truncate text-xs font-medium'>
-                  {asset.name || asset.asset_id}
-                </div>
+              <div className='space-y-1 p-2'>
+                {asset.name && (
+                  <div className='truncate text-xs font-medium' title={asset.name}>
+                    {asset.name}
+                  </div>
+                )}
+                {asset.asset_id && (
+                  <div className='flex items-start gap-0.5'>
+                    <span className='text-muted-foreground/90 min-w-0 flex-1 break-all font-mono text-[10px] leading-4'>
+                      {asset.asset_id}
+                    </span>
+                    <button
+                      type='button'
+                      className={cn(
+                        'shrink-0 rounded-md p-1 transition-colors',
+                        copiedAssetId === asset.id
+                          ? 'text-emerald-500'
+                          : 'text-muted-foreground/70 hover:bg-muted hover:text-foreground'
+                      )}
+                      title={t('Copy asset reference')}
+                      aria-label={t('Copy asset reference')}
+                      onClick={() => {
+                        handleCopyAsset(asset)
+                      }}
+                    >
+                      {copiedAssetId === asset.id ? (
+                        <CheckIcon size={12} />
+                      ) : (
+                        <CopyIcon size={12} />
+                      )}
+                    </button>
+                  </div>
+                )}
                 {asset.status === 'failed' && asset.error_msg && (
                   <div className='text-destructive truncate text-[10px]'>
                     {asset.error_msg}
