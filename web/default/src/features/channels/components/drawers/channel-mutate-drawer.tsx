@@ -2790,7 +2790,7 @@ export function ChannelMutateDrawer({
                                     </FormControl>
                                     <FormDescription>
                                       {t(
-                                        'The URL is used exactly as configured; no version path is added automatically. It must include the version path: /api/v3 for Volcano Ark official, or the relay\'s own path (e.g. /v1, /api/v2) for third-party relays.'
+                                        "The URL is used exactly as configured; no version path is added automatically. It must include the version path: /api/v3 for Volcano Ark official, or the relay's own path (e.g. /v1, /api/v2) for third-party relays."
                                       )}
                                     </FormDescription>
                                     <FormMessage />
@@ -2802,7 +2802,9 @@ export function ChannelMutateDrawer({
                             {/* ── Asset Library (Volcengine Ark Native, type 59) ── */}
                             {currentType === 59 && (
                               <div
-                                className={sideDrawerSectionClassName('scroll-mt-4')}
+                                className={sideDrawerSectionClassName(
+                                  'scroll-mt-4'
+                                )}
                               >
                                 <CardHeading
                                   title={t('Asset Library')}
@@ -2828,7 +2830,7 @@ export function ChannelMutateDrawer({
                                             },
                                             {
                                               value: 'relay',
-                                              label: t('Relay Station'),
+                                              label: t('Tianyi Cloud'),
                                             },
                                             {
                                               value: 'ark_official',
@@ -2855,7 +2857,7 @@ export function ChannelMutateDrawer({
                                                 {t('Disabled')}
                                               </SelectItem>
                                               <SelectItem value='relay'>
-                                                {t('Relay Station')}
+                                                {t('Tianyi Cloud')}
                                               </SelectItem>
                                               <SelectItem value='ark_official'>
                                                 {t('Volcengine Official')}
@@ -2924,7 +2926,8 @@ export function ChannelMutateDrawer({
                                     </>
                                   )}
 
-                                  {currentAssetUploadProtocol === 'ark_official' && (
+                                  {currentAssetUploadProtocol ===
+                                    'ark_official' && (
                                     <>
                                       <FormField
                                         control={form.control}

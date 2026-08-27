@@ -122,6 +122,7 @@ func GetAssetProviders(c *gin.Context) {
 
 type assetUploadRequest struct {
 	ChannelId int    `json:"channel_id"`
+	Channel   string `json:"channel"` // 渠道名称（对外 API 用名称代替数字 ID，便于记忆）
 	URL       string `json:"url"`
 	AssetType string `json:"asset_type"`
 	Name      string `json:"name"`
@@ -134,37 +135,55 @@ type assetRegisterError struct {
 	msg    string
 }
 
-// resolveAssetProtocolChannel 按 channel_id（可选）解析开启了素材协议的启用渠道；
-// 未传时仅当唯一可用渠道时自动选择，否则要求显式指定。
-func resolveAssetProtocolChannel(channelId int) (*model.Channel, error) {
-	if channelId > 0 {
-		channel, err := model.GetChannelById(channelId, true)
-		if err != nil || channel.Status != common.ChannelStatusEnabled {
-			return nil, fmt.Errorf("channel not found or disabled")
-		}
-		if channel.GetOtherSettings().AssetUploadProtocol == "" {
-			return nil, fmt.Errorf("channel %d does not enable any asset upload protocol", channelId)
-		}
-		return channel, nil
-	}
+// resolveAssetProtocolChannel 按 channel_id 或渠道名称（均可选）解析开启了素材协议的启用渠道；
+// 均未传时仅当唯一可用渠道时自动选择，否则报错并列出可用渠道名称。
+func resolveAssetProtocolChannel(channelId int, channelName string) (*model.Channel, error) {
 	channels, err := model.GetEnabledChannels()
 	if err != nil {
 		return nil, err
 	}
-	var picked *model.Channel
+	available := make([]*model.Channel, 0, len(channels))
 	for _, channel := range channels {
-		if channel.GetOtherSettings().AssetUploadProtocol == "" {
-			continue
+		if channel.GetOtherSettings().AssetUploadProtocol != "" {
+			available = append(available, channel)
 		}
-		if picked != nil {
-			return nil, fmt.Errorf("multiple asset channels are available, please specify channel_id")
-		}
-		picked = channel
 	}
-	if picked == nil {
+	availableNames := make([]string, 0, len(available))
+	for _, channel := range available {
+		availableNames = append(availableNames, channel.Name)
+	}
+
+	if channelId > 0 {
+		for _, channel := range available {
+			if channel.Id == channelId {
+				return channel, nil
+			}
+		}
+		return nil, fmt.Errorf("channel %d not found or does not enable any asset upload protocol (available: %s)", channelId, strings.Join(availableNames, ", "))
+	}
+	if channelName != "" {
+		var picked *model.Channel
+		for _, channel := range available {
+			if channel.Name != channelName {
+				continue
+			}
+			if picked != nil {
+				return nil, fmt.Errorf("multiple asset channels named %q, please rename one (available: %s)", channelName, strings.Join(availableNames, ", "))
+			}
+			picked = channel
+		}
+		if picked == nil {
+			return nil, fmt.Errorf("no asset channel named %q (available: %s)", channelName, strings.Join(availableNames, ", "))
+		}
+		return picked, nil
+	}
+	if len(available) == 0 {
 		return nil, fmt.Errorf("no available channel enables an asset upload protocol")
 	}
-	return picked, nil
+	if len(available) > 1 {
+		return nil, fmt.Errorf("multiple asset channels are available, please specify channel name (available: %s)", strings.Join(availableNames, ", "))
+	}
+	return available[0], nil
 }
 
 // registerAssetForUser 素材注册核心流程：校验 → 上游注册 → 组 ID 回写 → 复用/落库。
@@ -176,7 +195,7 @@ func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *as
 	if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", "url must be a public http(s) URL"}
 	}
-	channel, err := resolveAssetProtocolChannel(req.ChannelId)
+	channel, err := resolveAssetProtocolChannel(req.ChannelId, req.Channel)
 	if err != nil {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", err.Error()}
 	}
