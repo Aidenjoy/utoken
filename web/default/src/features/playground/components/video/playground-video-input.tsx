@@ -145,12 +145,26 @@ export function PlaygroundVideoInput({
   const maxImages =
     VIDEO_MODES.find((m) => m.value === config.mode)?.maxImages ?? 1
 
+  // seedance 2.5（模型名含 2-5）时长上限 30 秒，其余模型保持 4–15 秒
+  const durationOptions = config.model.includes('2-5')
+    ? Array.from({ length: 30 - 4 + 1 }, (_, i) => i + 4)
+    : DURATION_OPTIONS
+
   const updateField = <K extends keyof VideoConfig>(
     key: K,
     value: VideoConfig[K]
   ) => {
     onConfigChange({ ...config, [key]: value })
   }
+
+  // 模型切换后当前时长超出上限时回落（2.5 上限 30 秒，其余 15 秒）
+  useEffect(() => {
+    const maxDuration = config.model.includes('2-5') ? 30 : 15
+    if (config.duration > maxDuration) {
+      updateField('duration', maxDuration)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.model, config.duration])
 
   const handleModeChange = (mode: string) => {
     if (mode === 'first_last_frame' || mode === 'first_frame') {
@@ -998,7 +1012,7 @@ export function PlaygroundVideoInput({
             {/* Duration selector */}
             <ConfigButtonGroup
               label={`${config.duration}s`}
-              options={DURATION_OPTIONS.map((d) => ({
+              options={durationOptions.map((d) => ({
                 value: String(d),
                 label: `${d}s`,
               }))}
