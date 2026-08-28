@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -297,28 +296,9 @@ func signEcloudRequest(req *http.Request, p ecloudSignParams) {
 	mac := hmac.New(sha1.New, []byte(ecloudSignKeyPrefix+p.SK))
 	mac.Write([]byte(stringToSign))
 	query["Signature"] = hex.EncodeToString(mac.Sum(nil))
-	req.URL.RawQuery = ecloudRawQuery(query)
-}
-
-// ecloudRawQuery 构造实际请求的 query 串：冒号保留不转义（官方示例 URL 中
-// Timestamp=2017-01-11T15:15:11Z 为原样冒号，网关对 %3A 形式可能判格式非法）；
-// 参与签名哈希的规范串仍用 canonicalQuery 的全转义形式。
-func ecloudRawQuery(q map[string]string) string {
-	keys := make([]string, 0, len(q))
-	for k := range q {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, ecloudEscape(k)+"="+ecloudEscape(q[k]))
-	}
-	return strings.Join(parts, "&")
-}
-
-// ecloudEscape 在 canonicalEscape 基础上保留 ':' 不转义（':' 在 URL query 中本就合法）。
-func ecloudEscape(s string) string {
-	return strings.ReplaceAll(canonicalEscape(s), "%3A", ":")
+	// 实际请求的 query 直接用全转义的规范串（含 %3A 冒号）——已用真实 AK/SK 实测通过，
+	// 网关先 URL 解码参数再校验，与签名哈希所用电文天然一致。
+	req.URL.RawQuery = canonicalQuery(query)
 }
 
 // ecloudTruncateName 上游限制素材名称最长 64 字符，按字符（非字节）截断。

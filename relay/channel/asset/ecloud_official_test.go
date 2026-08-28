@@ -68,8 +68,9 @@ func TestSignEcloudRequestMatchesOfficialExample(t *testing.T) {
 	assert.Equal(t, "2017-01-11T15%3A15%3A11Z", url.QueryEscape(q.Get("Timestamp")))
 	assert.Equal(t, "HmacSHA1", q.Get("SignatureMethod"))
 	assert.Equal(t, "V2.0", q.Get("SignatureVersion"))
-	// 实际 URL 中冒号保留原样（与官方示例 URL 一致），不参与转义
-	assert.Contains(t, req.URL.RawQuery, "Timestamp=2017-01-11T15:15:11Z")
+	// 实际 URL 也用全转义的规范串（%3A 冒号）——已用真实 AK/SK 实测通过的形态，
+	// 网关先 URL 解码再校验；q.Get 会自动解码还原
+	assert.Contains(t, req.URL.RawQuery, "Timestamp=2017-01-11T15%3A15%3A11Z")
 }
 
 func TestEcloudUpload(t *testing.T) {
@@ -224,7 +225,7 @@ func TestEcloudRetriesOnTimestampError(t *testing.T) {
 	assert.Equal(t, "asset-1", res.AssetID)
 	require.Equal(t, 2, calls)
 	assert.Equal(t, fixedTime.Format(ecloudTimestampLayout), timestamps[0])
-	// 重试时已按 Date 头纠偏，Timestamp 对齐上游时钟；且仍为原样冒号格式
+	// 重试时已按 Date 头纠偏，Timestamp 对齐上游时钟（Query().Get 自动解码）
 	assert.Equal(t, serverNow.Format(ecloudTimestampLayout), timestamps[1])
 }
 
