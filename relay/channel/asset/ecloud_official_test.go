@@ -31,6 +31,7 @@ func ecloudConfig() ChannelConfig {
 }
 
 func newEcloudProtocolForTest(endpoint string) *EcloudOfficialProtocol {
+	ecloudClockSkew.Store(0)
 	return &EcloudOfficialProtocol{
 		cfg:      ecloudConfig(),
 		endpoint: endpoint,
@@ -57,6 +58,8 @@ func TestSignEcloudRequestMatchesOfficialExample(t *testing.T) {
 	assert.Equal(t, "2017-01-11T15%3A15%3A11Z", url.QueryEscape(q.Get("Timestamp")))
 	assert.Equal(t, "HmacSHA1", q.Get("SignatureMethod"))
 	assert.Equal(t, "V2.0", q.Get("SignatureVersion"))
+	// 实际 URL 中冒号保留原样（与官方示例 URL 一致），不参与转义
+	assert.Contains(t, req.URL.RawQuery, "Timestamp=2017-01-11T15:15:11Z")
 }
 
 func TestEcloudUpload(t *testing.T) {
@@ -182,6 +185,37 @@ func TestEcloudUploadAutoCreatesGroup(t *testing.T) {
 	assert.Contains(t, groupBody.body, `"groupName":"new-api-assets"`)
 	assert.Equal(t, "/api/openapi-maas/exp/aicc/v2/asset", assetBody.path)
 	assert.Contains(t, assetBody.body, `"groupId":"group-auto-1"`)
+}
+
+func TestEcloudRetriesOnTimestampError(t *testing.T) {
+	ecloudClockSkew.Store(0)
+	t.Cleanup(func() { ecloudClockSkew.Store(0) })
+
+	// 上游时钟比本地快 1 小时：首次请求被拒，用响应 Date 头纠偏后重试成功
+	serverNow := fixedTime.Add(time.Hour)
+	var timestamps []string
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Date", serverNow.UTC().Format(http.TimeFormat))
+		timestamps = append(timestamps, r.URL.Query().Get("Timestamp"))
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"errorMessage":"Invalid parameter Timestamp ","errorCode":"INVALID_PARAMETER","state":"ERROR","requestId":"req-x"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"state":"OK","body":"asset-1"}`))
+	}))
+	defer srv.Close()
+
+	p := newEcloudProtocolForTest(srv.URL)
+	res, err := p.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage, Name: "a"})
+	require.NoError(t, err)
+	assert.Equal(t, "asset-1", res.AssetID)
+	require.Equal(t, 2, calls)
+	assert.Equal(t, fixedTime.Format(ecloudTimestampLayout), timestamps[0])
+	// 重试时已按 Date 头纠偏，Timestamp 对齐上游时钟；且仍为原样冒号格式
+	assert.Equal(t, serverNow.Format(ecloudTimestampLayout), timestamps[1])
 }
 
 func TestEcloudQuery(t *testing.T) {

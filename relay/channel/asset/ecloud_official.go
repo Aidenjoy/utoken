@@ -11,7 +11,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -119,68 +121,109 @@ func (p *EcloudOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 	}, nil
 }
 
+// ecloudClockSkew 本地时钟相对上游服务器的偏差（秒），由响应 Date 头自动校正，
+// 供进程内全部移动云请求复用；上游要求 Timestamp 与服务器时差不超过限定（否则 400）。
+var ecloudClockSkew atomic.Int64
+
 // call 执行一次签名的移动云 API 调用，并把响应信封的 body 字段解析到 out。
+// 上游以 INVALID_PARAMETER 拒绝 Timestamp 时（本地时钟漂移），利用响应 Date 头
+// 纠偏后自动重试一次。
 func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any) error {
 	endpoint := p.endpoint
 	if endpoint == "" {
 		endpoint = ecloudDefaultEndpoint
 	}
 	uri := strings.TrimSuffix(endpoint, "/") + path
-	httpReq, err := http.NewRequest(method, uri, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-
 	now := time.Now
 	if p.now != nil {
 		now = p.now
 	}
-	signEcloudRequest(httpReq, ecloudSignParams{
-		AK:   p.cfg.Settings.AssetAK,
-		SK:   p.cfg.Settings.AssetSK,
-		Path: httpReq.URL.Path,
-		Now:  now(),
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-	defer cancel()
 	client, err := httpClient(p.cfg.Proxy)
 	if err != nil {
 		return err
 	}
-	resp, err := client.Do(httpReq.WithContext(ctx))
-	if err != nil {
-		return fmt.Errorf("asset request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, truncate(respBody))
-	}
 
-	var envelope struct {
-		State        string          `json:"state"`
-		ErrorCode    string          `json:"errorCode"`
-		ErrorMessage string          `json:"errorMessage"`
-		Body         json.RawMessage `json:"body"`
-	}
-	if err := common.Unmarshal(respBody, &envelope); err != nil {
-		return fmt.Errorf("parse ecloud response failed: %w, body: %s", err, truncate(respBody))
-	}
-	if envelope.State != "OK" {
-		return fmt.Errorf("ecloud asset request failed (code=%s): %s", envelope.ErrorCode, envelope.ErrorMessage)
-	}
-	if out != nil {
-		if err := common.Unmarshal(envelope.Body, out); err != nil {
-			return fmt.Errorf("parse ecloud body failed: %w, body: %s", err, truncate(respBody))
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		httpReq, err := http.NewRequest(method, uri, bytes.NewReader(body))
+		if err != nil {
+			return err
 		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Accept", "application/json")
+		signEcloudRequest(httpReq, ecloudSignParams{
+			AK:   p.cfg.Settings.AssetAK,
+			SK:   p.cfg.Settings.AssetSK,
+			Path: httpReq.URL.Path,
+			Now:  now().Add(time.Duration(ecloudClockSkew.Load()) * time.Second),
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+		resp, err := client.Do(httpReq.WithContext(ctx))
+		cancel()
+		if err != nil {
+			return fmt.Errorf("asset request failed: %w", err)
+		}
+		ecloudSyncClock(resp, now)
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, truncate(respBody))
+			if attempt == 0 && isEcloudTimestampError(respBody) {
+				continue
+			}
+			return lastErr
+		}
+
+		var envelope struct {
+			State        string          `json:"state"`
+			ErrorCode    string          `json:"errorCode"`
+			ErrorMessage string          `json:"errorMessage"`
+			Body         json.RawMessage `json:"body"`
+		}
+		if err := common.Unmarshal(respBody, &envelope); err != nil {
+			return fmt.Errorf("parse ecloud response failed: %w, body: %s", err, truncate(respBody))
+		}
+		if envelope.State != "OK" {
+			return fmt.Errorf("ecloud asset request failed (code=%s): %s", envelope.ErrorCode, envelope.ErrorMessage)
+		}
+		if out != nil {
+			if err := common.Unmarshal(envelope.Body, out); err != nil {
+				return fmt.Errorf("parse ecloud body failed: %w, body: %s", err, truncate(respBody))
+			}
+		}
+		return nil
 	}
-	return nil
+	return lastErr
+}
+
+// ecloudSyncClock 用上游响应 Date 头校正本地时钟偏差（秒）。
+func ecloudSyncClock(resp *http.Response, localNow func() time.Time) {
+	date := resp.Header.Get("Date")
+	if date == "" {
+		return
+	}
+	serverTime, err := http.ParseTime(date)
+	if err != nil {
+		return
+	}
+	ecloudClockSkew.Store(int64(serverTime.Sub(localNow()).Seconds()))
+}
+
+// isEcloudTimestampError 判断上游是否因 Timestamp 非法（时钟漂移）拒绝请求。
+func isEcloudTimestampError(body []byte) bool {
+	var e struct {
+		ErrorCode    string `json:"errorCode"`
+		ErrorMessage string `json:"errorMessage"`
+	}
+	if err := common.Unmarshal(body, &e); err != nil {
+		return false
+	}
+	return e.ErrorCode == "INVALID_PARAMETER" && strings.Contains(e.ErrorMessage, "Timestamp")
 }
 
 // ecloudSignParams 移动云通用签名所需输入。
@@ -219,7 +262,28 @@ func signEcloudRequest(req *http.Request, p ecloudSignParams) {
 	mac := hmac.New(sha1.New, []byte(ecloudSignKeyPrefix+p.SK))
 	mac.Write([]byte(stringToSign))
 	query["Signature"] = hex.EncodeToString(mac.Sum(nil))
-	req.URL.RawQuery = canonicalQuery(query)
+	req.URL.RawQuery = ecloudRawQuery(query)
+}
+
+// ecloudRawQuery 构造实际请求的 query 串：冒号保留不转义（官方示例 URL 中
+// Timestamp=2017-01-11T15:15:11Z 为原样冒号，网关对 %3A 形式可能判格式非法）；
+// 参与签名哈希的规范串仍用 canonicalQuery 的全转义形式。
+func ecloudRawQuery(q map[string]string) string {
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, ecloudEscape(k)+"="+ecloudEscape(q[k]))
+	}
+	return strings.Join(parts, "&")
+}
+
+// ecloudEscape 在 canonicalEscape 基础上保留 ':' 不转义（':' 在 URL query 中本就合法）。
+func ecloudEscape(s string) string {
+	return strings.ReplaceAll(canonicalEscape(s), "%3A", ":")
 }
 
 // ecloudTruncateName 上游限制素材名称最长 64 字符，按字符（非字节）截断。
