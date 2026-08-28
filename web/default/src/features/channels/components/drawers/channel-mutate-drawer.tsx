@@ -2838,7 +2838,7 @@ export function ChannelMutateDrawer({
                                             },
                                             {
                                               value: 'ecloud',
-                                              label: t('Mobile Cloud Official'),
+                                              label: t('Mobile Cloud'),
                                             },
                                           ]}
                                           onValueChange={(value) =>
@@ -2867,7 +2867,7 @@ export function ChannelMutateDrawer({
                                                 {t('Volcengine Official')}
                                               </SelectItem>
                                               <SelectItem value='ecloud'>
-                                                {t('Mobile Cloud Official')}
+                                                {t('Mobile Cloud')}
                                               </SelectItem>
                                             </SelectGroup>
                                           </SelectContent>
