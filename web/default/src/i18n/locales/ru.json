@@ -475,7 +475,7 @@
     "Ask anything": "Спросите что угодно",
     "Asset AccessKey": "AccessKey материалов",
     "Asset Group ID": "ID группы материалов",
-    "Asset group of the Mobile Cloud asset library; required": "Группа ресурсов библиотеки Mobile Cloud; обязательно",
+    "Asset group of the Mobile Cloud asset library; if empty, a default group is created automatically": "Группа ресурсов библиотеки Mobile Cloud; если пусто, группа по умолчанию создаётся автоматически",
     "Asset group used by the Volcengine CreateAsset API": "Группа материалов, используемая API Volcengine CreateAsset",
     "Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically": "Группа материалов для API CreateAsset Volcengine; если пусто, группа по умолчанию создаётся автоматически",
     "Asset Library": "Библиотека материалов",

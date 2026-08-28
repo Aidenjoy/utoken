@@ -33,6 +33,7 @@ type EcloudOfficialProtocol struct {
 const (
 	ecloudDefaultEndpoint = "https://ecloud.10086.cn"
 	ecloudAssetPath       = "/api/openapi-maas/exp/aicc/v2/asset"
+	ecloudAssetGroupPath  = "/api/openapi-maas/exp/aicc/v2/asset-group"
 	// ecloudMaxAssetName 上游限制素材名称最长 64 个字符。
 	ecloudMaxAssetName    = 64
 	ecloudSignKeyPrefix   = "BC_SIGNATURE&"
@@ -40,12 +41,20 @@ const (
 	ecloudSignMethod      = "HmacSHA1"
 	ecloudAPIVersion      = "2016-12-05"
 	ecloudTimestampLayout = "2006-01-02T15:04:05Z"
+	// ecloudDefaultAssetGroupName 渠道未配置 asset_group_id 时自动创建的默认 AIGC 素材组名称。
+	ecloudDefaultAssetGroupName = "new-api-assets"
 )
 
 func (p *EcloudOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 	groupID := strings.TrimSpace(p.cfg.Settings.AssetGroupID)
+	createdGroupID := ""
 	if groupID == "" {
-		return nil, fmt.Errorf("ecloud asset protocol requires asset_group_id")
+		var err error
+		groupID, err = p.createAssetGroup()
+		if err != nil {
+			return nil, fmt.Errorf("auto-create default asset group failed: %w", err)
+		}
+		createdGroupID = groupID
 	}
 	body, err := common.Marshal(map[string]any{
 		"groupId":   groupID,
@@ -65,9 +74,32 @@ func (p *EcloudOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error
 		return nil, fmt.Errorf("ecloud asset upload returned empty asset id")
 	}
 	return &UploadResult{
-		AssetID: assetID,
-		GroupID: groupID,
+		AssetID:        assetID,
+		GroupID:        groupID,
+		CreatedGroupID: createdGroupID,
 	}, nil
+}
+
+// createAssetGroup 调用官方创建素材组接口建默认 AIGC 素材组并返回其 ID；
+// 上游仅支持 API 创建 AIGC（虚拟人像）类型素材组。
+func (p *EcloudOfficialProtocol) createAssetGroup() (string, error) {
+	body, err := common.Marshal(map[string]any{
+		"groupType": "AIGC",
+		"groupName": ecloudDefaultAssetGroupName,
+	})
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		GroupID string `json:"groupId"`
+	}
+	if err := p.call(http.MethodPost, ecloudAssetGroupPath, body, &result); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(result.GroupID) == "" {
+		return "", fmt.Errorf("ecloud asset group creation returned empty group id")
+	}
+	return result.GroupID, nil
 }
 
 func (p *EcloudOfficialProtocol) Query(assetID string) (*QueryResult, error) {

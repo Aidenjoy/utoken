@@ -475,7 +475,7 @@
     "Ask anything": "隨便問",
     "Asset AccessKey": "素材 AccessKey",
     "Asset Group ID": "素材群組 ID",
-    "Asset group of the Mobile Cloud asset library; required": "移動雲素材資產庫的素材組，必填",
+    "Asset group of the Mobile Cloud asset library; if empty, a default group is created automatically": "移動雲素材資產庫的素材組，留空時自動建立預設素材組",
     "Asset group used by the Volcengine CreateAsset API": "火山引擎 CreateAsset 介面使用的素材群組",
     "Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically": "火山 CreateAsset API 使用的素材組；留空時自動建立預設素材組",
     "Asset Library": "素材庫",

@@ -475,7 +475,7 @@
     "Ask anything": "何でも質問する",
     "Asset AccessKey": "素材 AccessKey",
     "Asset Group ID": "素材グループ ID",
-    "Asset group of the Mobile Cloud asset library; required": "モバイルクラウド素材ライブラリの素材グループ（必須）",
+    "Asset group of the Mobile Cloud asset library; if empty, a default group is created automatically": "モバイルクラウド素材ライブラリの素材グループ。空欄の場合はデフォルトのグループを自動作成",
     "Asset group used by the Volcengine CreateAsset API": "Volcengine CreateAsset API で使用する素材グループ",
     "Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically": "Volcengine CreateAsset API が使用する素材グループ。空欄の場合はデフォルトのグループが自動作成されます",
     "Asset Library": "素材ライブラリ",

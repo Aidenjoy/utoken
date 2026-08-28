@@ -145,13 +145,43 @@ func TestEcloudUploadErrorEnvelope(t *testing.T) {
 	assert.Contains(t, err.Error(), "asset group not exist")
 }
 
-func TestEcloudUploadRequiresGroup(t *testing.T) {
+func TestEcloudUploadAutoCreatesGroup(t *testing.T) {
+	var groupBody, assetBody struct {
+		path string
+		body string
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		switch r.URL.Path {
+		case "/api/openapi-maas/exp/aicc/v2/asset-group":
+			groupBody.path = r.URL.Path
+			groupBody.body = string(b)
+			_, _ = w.Write([]byte(`{"state":"OK","body":{"groupId":"group-auto-1","groupType":"AIGC","groupName":"new-api-assets"}}`))
+		case "/api/openapi-maas/exp/aicc/v2/asset":
+			assetBody.path = r.URL.Path
+			assetBody.body = string(b)
+			_, _ = w.Write([]byte(`{"state":"OK","body":"asset-1"}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
 	cfg := ecloudConfig()
 	cfg.Settings.AssetGroupID = ""
-	p := &EcloudOfficialProtocol{cfg: cfg}
-	_, err := p.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage, Name: "a"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "asset_group_id")
+	p := &EcloudOfficialProtocol{cfg: cfg, endpoint: srv.URL, now: func() time.Time { return fixedTime }}
+	res, err := p.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage, Name: "a"})
+	require.NoError(t, err)
+	assert.Equal(t, "asset-1", res.AssetID)
+	assert.Equal(t, "group-auto-1", res.GroupID)
+	assert.Equal(t, "group-auto-1", res.CreatedGroupID)
+
+	// 先建组（AIGC 类型 + 默认组名），再用新建的组注册素材
+	assert.Equal(t, "/api/openapi-maas/exp/aicc/v2/asset-group", groupBody.path)
+	assert.Contains(t, groupBody.body, `"groupType":"AIGC"`)
+	assert.Contains(t, groupBody.body, `"groupName":"new-api-assets"`)
+	assert.Equal(t, "/api/openapi-maas/exp/aicc/v2/asset", assetBody.path)
+	assert.Contains(t, assetBody.body, `"groupId":"group-auto-1"`)
 }
 
 func TestEcloudQuery(t *testing.T) {

@@ -3073,7 +3073,7 @@ export function ChannelMutateDrawer({
                                             </FormControl>
                                             <FormDescription>
                                               {t(
-                                                'Asset group of the Mobile Cloud asset library; required'
+                                                'Asset group of the Mobile Cloud asset library; if empty, a default group is created automatically'
                                               )}
                                             </FormDescription>
                                             <FormMessage />
