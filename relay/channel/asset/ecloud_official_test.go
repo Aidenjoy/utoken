@@ -30,8 +30,14 @@ func ecloudConfig() ChannelConfig {
 	}
 }
 
+// resetEcloudClock 将时钟状态重置为生产默认（北京墙钟基准、零漂移）。
+func resetEcloudClock() {
+	ecloudBaseOffset.Store(ecloudBeijingOffset)
+	ecloudClockDrift.Store(0)
+}
+
 func newEcloudProtocolForTest(endpoint string) *EcloudOfficialProtocol {
-	ecloudClockCorrection.Store(0)
+	resetEcloudClock()
 	return &EcloudOfficialProtocol{
 		cfg:      ecloudConfig(),
 		endpoint: endpoint,
@@ -40,11 +46,11 @@ func newEcloudProtocolForTest(endpoint string) *EcloudOfficialProtocol {
 }
 
 // TestEcloudTimestampDefaultsToBeijingWallClock 默认按北京时间墙钟渲染 Timestamp：
-// 官方 Python/Java/Postman 示例均以本地时间 + 字面 Z 生成，网关按墙钟时刻比对，
-// 真 UTC 在北京时间（UTC+8）会偏差 8 小时而报 INVALID_PARAMETER。
+// 真实 AK/SK 实测北京墙钟恒通过、真 UTC 恒被 INVALID_PARAMETER 拒绝；
+// 官方 Python/Java/Postman 示例亦均以本地时间 + 字面 Z 生成。
 func TestEcloudTimestampDefaultsToBeijingWallClock(t *testing.T) {
-	t.Cleanup(func() { ecloudClockCorrection.Store(0) })
-	ecloudClockCorrection.Store(8 * 3600)
+	t.Cleanup(resetEcloudClock)
+	resetEcloudClock()
 	got := ecloudTimestamp(fixedTime)
 	assert.Equal(t, fixedTime.UTC().Add(8*time.Hour).Format(ecloudTimestampLayout), got.Format(ecloudTimestampLayout))
 }
@@ -105,7 +111,7 @@ func TestEcloudUpload(t *testing.T) {
 	for _, name := range []string{"Version", "AccessKey", "Timestamp", "SignatureMethod", "SignatureVersion", "SignatureNonce", "Signature"} {
 		assert.NotEmpty(t, gotQuery.Get(name), "missing query param %s", name)
 	}
-	assert.Equal(t, fixedTime.Format("2006-01-02T15:04:05Z"), gotQuery.Get("Timestamp"))
+	assert.Equal(t, fixedTime.UTC().Add(8*time.Hour).Format("2006-01-02T15:04:05Z"), gotQuery.Get("Timestamp"))
 	signed := map[string]string{}
 	for k, v := range gotQuery {
 		if k != "Signature" && len(v) > 0 {
@@ -199,10 +205,10 @@ func TestEcloudUploadAutoCreatesGroup(t *testing.T) {
 }
 
 func TestEcloudRetriesOnTimestampError(t *testing.T) {
-	ecloudClockCorrection.Store(0)
-	t.Cleanup(func() { ecloudClockCorrection.Store(0) })
+	t.Cleanup(resetEcloudClock)
+	resetEcloudClock()
 
-	// 上游时钟比本地快 1 小时：首次请求被拒，用响应 Date 头纠偏后重试成功
+	// 上游时钟比本地快 1 小时：首次请求被拒，用响应 Date 头刷新漂移后重试成功
 	serverNow := fixedTime.Add(time.Hour)
 	var timestamps []string
 	calls := 0
@@ -224,16 +230,16 @@ func TestEcloudRetriesOnTimestampError(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "asset-1", res.AssetID)
 	require.Equal(t, 2, calls)
-	assert.Equal(t, fixedTime.Format(ecloudTimestampLayout), timestamps[0])
-	// 重试时已按 Date 头纠偏，Timestamp 对齐上游时钟（Query().Get 自动解码）
-	assert.Equal(t, serverNow.Format(ecloudTimestampLayout), timestamps[1])
+	assert.Equal(t, fixedTime.UTC().Add(8*time.Hour).Format(ecloudTimestampLayout), timestamps[0])
+	// 重试时已按 Date 头刷新秒级漂移（+1h），时区基准（+8h）保持不变
+	assert.Equal(t, serverNow.UTC().Add(8*time.Hour).Format(ecloudTimestampLayout), timestamps[1])
 }
 
 // TestEcloudRetriesOnTimestampErrorWithoutDateHeader 上游拒绝且无 Date 头时，
 // 回退启发式：从北京墙钟（+8）切到真实 UTC 重试。
 func TestEcloudRetriesOnTimestampErrorWithoutDateHeader(t *testing.T) {
-	t.Cleanup(func() { ecloudClockCorrection.Store(0) })
-	ecloudClockCorrection.Store(8 * 3600)
+	t.Cleanup(resetEcloudClock)
+	resetEcloudClock()
 
 	var timestamps []string
 	calls := 0
@@ -251,8 +257,6 @@ func TestEcloudRetriesOnTimestampErrorWithoutDateHeader(t *testing.T) {
 	defer srv.Close()
 
 	p := newEcloudProtocolForTest(srv.URL)
-	// newEcloudProtocolForTest 会把校正量清零，这里重新设为默认北京墙钟
-	ecloudClockCorrection.Store(8 * 3600)
 	res, err := p.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage, Name: "a"})
 	require.NoError(t, err)
 	assert.Equal(t, "asset-1", res.AssetID)

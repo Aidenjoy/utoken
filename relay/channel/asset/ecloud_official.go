@@ -120,14 +120,19 @@ func (p *EcloudOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 	}, nil
 }
 
-// ecloudClockCorrection Timestamp 渲染时在真实 UTC 上叠加的校正量（秒）。
-// 网关把 Timestamp 当作墙钟时刻与自身时钟比对（官方 Python/Java/Postman 示例均以
-// 本地北京时间 + 字面 Z 生成，而非真实 UTC），故默认 +8 小时渲染北京墙钟；
-// 被上游以 Timestamp 非法拒绝时由响应 Date 头重算校正量（无 Date 头时回退启发式）后重试。
-var ecloudClockCorrection atomic.Int64
+// 网关把 Timestamp 当作北京时间墙钟比对（真实 AK/SK 实测：北京墙钟恒通过、
+// 真 UTC 恒被 INVALID_PARAMETER 拒绝；官方 Python/Java/Postman 示例亦为本地时间+字面 Z）。
+// ecloudBaseOffset 为时区基准（秒，默认 +8h），被上游拒绝且无 Date 头时在 +8h/0 间回退切换；
+// ecloudClockDrift 为秒级时钟漂移，由响应 Date 头持续校正（限幅 ±1h），二者叠加渲染 Timestamp。
+var (
+	ecloudBaseOffset atomic.Int64
+	ecloudClockDrift atomic.Int64
+)
+
+const ecloudBeijingOffset = int64(8 * 3600)
 
 func init() {
-	ecloudClockCorrection.Store(8 * 3600)
+	ecloudBaseOffset.Store(ecloudBeijingOffset)
 }
 
 // call 执行一次签名的移动云 API 调用，并把响应信封的 body 字段解析到 out。
@@ -207,44 +212,49 @@ func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any)
 	return lastErr
 }
 
-// ecloudTimestamp 返回渲染 Timestamp 所用的墙钟时刻：真实 UTC 叠加校正量。
+// ecloudTimestamp 返回渲染 Timestamp 所用的墙钟时刻：真实 UTC 叠加时区基准与秒级漂移。
 func ecloudTimestamp(now time.Time) time.Time {
-	return now.UTC().Add(time.Duration(ecloudClockCorrection.Load()) * time.Second)
+	return now.UTC().Add(time.Duration(ecloudBaseOffset.Load()+ecloudClockDrift.Load()) * time.Second)
 }
 
-// ecloudAdjustClock 在上游拒绝 Timestamp 后重算校正量：优先用响应 Date 头
-// （RFC1123，恒为真实 UTC）求出令 Timestamp ≈ 上游墙钟的偏移；
-// 无 Date 头时回退启发式——从北京墙钟（+8）切到真实 UTC，或反向切回。
+// ecloudAdjustClock 在上游拒绝 Timestamp 后修正时钟：优先用响应 Date 头
+// （RFC1123，恒为真实 UTC）刷新秒级漂移；无 Date 头时回退启发式——
+// 时区基准在北京墙钟（+8h）与真实 UTC（0）之间切换后重试。
 func ecloudAdjustClock(resp *http.Response, localNow time.Time) {
-	if date := resp.Header.Get("Date"); date != "" {
-		if serverTime, err := http.ParseTime(date); err == nil {
-			ecloudClockCorrection.Store(int64(serverTime.Sub(localNow.UTC()).Seconds()))
-			return
-		}
+	if drift, ok := ecloudDateDrift(resp, localNow); ok {
+		ecloudClockDrift.Store(drift)
+		return
 	}
-	if ecloudClockCorrection.Load() == 8*3600 {
-		ecloudClockCorrection.Store(0)
+	if ecloudBaseOffset.Load() == ecloudBeijingOffset {
+		ecloudBaseOffset.Store(0)
 	} else {
-		ecloudClockCorrection.Store(8 * 3600)
+		ecloudBaseOffset.Store(ecloudBeijingOffset)
 	}
 }
 
 // ecloudSyncClock 用上游响应 Date 头（RFC1123，恒为真实 UTC）微调秒级时钟漂移；
-// 偏差超过 1 小时视为时区解读差异，交由 Timestamp 拒绝后的重试校正处理。
+// 偏差超过 1 小时视为本地时钟严重失准，仅记录不采纳，避免污染时区基准。
 func ecloudSyncClock(resp *http.Response, localNow func() time.Time) {
+	if drift, ok := ecloudDateDrift(resp, localNow()); ok {
+		ecloudClockDrift.Store(drift)
+	}
+}
+
+// ecloudDateDrift 从响应 Date 头计算本地时钟的秒级漂移；无 Date 头或偏差超限时不采纳。
+func ecloudDateDrift(resp *http.Response, localNow time.Time) (int64, bool) {
 	date := resp.Header.Get("Date")
 	if date == "" {
-		return
+		return 0, false
 	}
 	serverTime, err := http.ParseTime(date)
 	if err != nil {
-		return
+		return 0, false
 	}
-	correction := int64(serverTime.Sub(localNow().UTC()).Seconds())
-	if correction < -3600 || correction > 3600 {
-		return
+	drift := int64(serverTime.Sub(localNow.UTC()).Seconds())
+	if drift < -3600 || drift > 3600 {
+		return 0, false
 	}
-	ecloudClockCorrection.Store(correction)
+	return drift, true
 }
 
 // isEcloudTimestampError 判断上游是否因 Timestamp 非法（时钟漂移）拒绝请求。
