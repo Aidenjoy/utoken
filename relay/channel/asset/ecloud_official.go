@@ -121,13 +121,19 @@ func (p *EcloudOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 	}, nil
 }
 
-// ecloudClockSkew 本地时钟相对上游服务器的偏差（秒），由响应 Date 头自动校正，
-// 供进程内全部移动云请求复用；上游要求 Timestamp 与服务器时差不超过限定（否则 400）。
-var ecloudClockSkew atomic.Int64
+// ecloudClockCorrection Timestamp 渲染时在真实 UTC 上叠加的校正量（秒）。
+// 网关把 Timestamp 当作墙钟时刻与自身时钟比对（官方 Python/Java/Postman 示例均以
+// 本地北京时间 + 字面 Z 生成，而非真实 UTC），故默认 +8 小时渲染北京墙钟；
+// 被上游以 Timestamp 非法拒绝时由响应 Date 头重算校正量（无 Date 头时回退启发式）后重试。
+var ecloudClockCorrection atomic.Int64
+
+func init() {
+	ecloudClockCorrection.Store(8 * 3600)
+}
 
 // call 执行一次签名的移动云 API 调用，并把响应信封的 body 字段解析到 out。
-// 上游以 INVALID_PARAMETER 拒绝 Timestamp 时（本地时钟漂移），利用响应 Date 头
-// 纠偏后自动重试一次。
+// 上游以 INVALID_PARAMETER 拒绝 Timestamp 时（时区解读或时钟漂移），
+// 校正后自动重试一次。
 func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any) error {
 	endpoint := p.endpoint
 	if endpoint == "" {
@@ -155,7 +161,7 @@ func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any)
 			AK:   p.cfg.Settings.AssetAK,
 			SK:   p.cfg.Settings.AssetSK,
 			Path: httpReq.URL.Path,
-			Now:  now().Add(time.Duration(ecloudClockSkew.Load()) * time.Second),
+			Now:  ecloudTimestamp(now()),
 		})
 
 		ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
@@ -174,6 +180,7 @@ func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any)
 		if resp.StatusCode != http.StatusOK {
 			lastErr = fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, truncate(respBody))
 			if attempt == 0 && isEcloudTimestampError(respBody) {
+				ecloudAdjustClock(resp, now())
 				continue
 			}
 			return lastErr
@@ -201,7 +208,30 @@ func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any)
 	return lastErr
 }
 
-// ecloudSyncClock 用上游响应 Date 头校正本地时钟偏差（秒）。
+// ecloudTimestamp 返回渲染 Timestamp 所用的墙钟时刻：真实 UTC 叠加校正量。
+func ecloudTimestamp(now time.Time) time.Time {
+	return now.UTC().Add(time.Duration(ecloudClockCorrection.Load()) * time.Second)
+}
+
+// ecloudAdjustClock 在上游拒绝 Timestamp 后重算校正量：优先用响应 Date 头
+// （RFC1123，恒为真实 UTC）求出令 Timestamp ≈ 上游墙钟的偏移；
+// 无 Date 头时回退启发式——从北京墙钟（+8）切到真实 UTC，或反向切回。
+func ecloudAdjustClock(resp *http.Response, localNow time.Time) {
+	if date := resp.Header.Get("Date"); date != "" {
+		if serverTime, err := http.ParseTime(date); err == nil {
+			ecloudClockCorrection.Store(int64(serverTime.Sub(localNow.UTC()).Seconds()))
+			return
+		}
+	}
+	if ecloudClockCorrection.Load() == 8*3600 {
+		ecloudClockCorrection.Store(0)
+	} else {
+		ecloudClockCorrection.Store(8 * 3600)
+	}
+}
+
+// ecloudSyncClock 用上游响应 Date 头（RFC1123，恒为真实 UTC）微调秒级时钟漂移；
+// 偏差超过 1 小时视为时区解读差异，交由 Timestamp 拒绝后的重试校正处理。
 func ecloudSyncClock(resp *http.Response, localNow func() time.Time) {
 	date := resp.Header.Get("Date")
 	if date == "" {
@@ -211,7 +241,11 @@ func ecloudSyncClock(resp *http.Response, localNow func() time.Time) {
 	if err != nil {
 		return
 	}
-	ecloudClockSkew.Store(int64(serverTime.Sub(localNow()).Seconds()))
+	correction := int64(serverTime.Sub(localNow().UTC()).Seconds())
+	if correction < -3600 || correction > 3600 {
+		return
+	}
+	ecloudClockCorrection.Store(correction)
 }
 
 // isEcloudTimestampError 判断上游是否因 Timestamp 非法（时钟漂移）拒绝请求。
@@ -238,6 +272,7 @@ type ecloudSignParams struct {
 // signEcloudRequest 按移动云通用签名机制把公共签名参数追加到 query：
 // StringToSign = METHOD\npercentEncode(path)\nsha256hex(排序后的规范 query)，
 // Signature = HmacSHA1("BC_SIGNATURE&"+SK, StringToSign)。
+// 注意 p.Now 应为 ecloudTimestamp 处理后的墙钟时刻，此处不得再做 UTC 归一。
 func signEcloudRequest(req *http.Request, p ecloudSignParams) {
 	nonce := p.Nonce
 	if nonce == "" {
@@ -246,7 +281,7 @@ func signEcloudRequest(req *http.Request, p ecloudSignParams) {
 	query := map[string]string{
 		"Version":          ecloudAPIVersion,
 		"AccessKey":        p.AK,
-		"Timestamp":        p.Now.UTC().Format(ecloudTimestampLayout),
+		"Timestamp":        p.Now.Format(ecloudTimestampLayout),
 		"SignatureMethod":  ecloudSignMethod,
 		"SignatureVersion": ecloudSignVersion,
 		"SignatureNonce":   nonce,
