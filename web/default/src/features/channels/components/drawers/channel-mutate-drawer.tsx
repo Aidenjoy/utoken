@@ -2836,6 +2836,10 @@ export function ChannelMutateDrawer({
                                               value: 'ark_official',
                                               label: t('Volcengine Official'),
                                             },
+                                            {
+                                              value: 'ecloud',
+                                              label: t('Mobile Cloud Official'),
+                                            },
                                           ]}
                                           onValueChange={(value) =>
                                             field.onChange(
@@ -2861,6 +2865,9 @@ export function ChannelMutateDrawer({
                                               </SelectItem>
                                               <SelectItem value='ark_official'>
                                                 {t('Volcengine Official')}
+                                              </SelectItem>
+                                              <SelectItem value='ecloud'>
+                                                {t('Mobile Cloud Official')}
                                               </SelectItem>
                                             </SelectGroup>
                                           </SelectContent>
@@ -3011,6 +3018,64 @@ export function ChannelMutateDrawer({
                                                 {...field}
                                               />
                                             </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                    </>
+                                  )}
+
+                                  {currentAssetUploadProtocol === 'ecloud' && (
+                                    <>
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_ak'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset AccessKey')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_sk'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset SecretKey')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input
+                                                type='password'
+                                                {...field}
+                                              />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={form.control}
+                                        name='asset_group_id'
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>
+                                              {t('Asset Group ID')}
+                                            </FormLabel>
+                                            <FormControl>
+                                              <Input {...field} />
+                                            </FormControl>
+                                            <FormDescription>
+                                              {t(
+                                                'Asset group of the Mobile Cloud asset library; required'
+                                              )}
+                                            </FormDescription>
                                             <FormMessage />
                                           </FormItem>
                                         )}

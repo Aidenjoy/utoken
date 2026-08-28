@@ -59,6 +59,11 @@ func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 			return nil, fmt.Errorf("ark_official asset protocol requires asset_ak and asset_sk")
 		}
 		return &ArkOfficialProtocol{cfg: cfg}, nil
+	case dto.AssetUploadProtocolEcloud:
+		if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
+			return nil, fmt.Errorf("ecloud asset protocol requires asset_ak and asset_sk")
+		}
+		return &EcloudOfficialProtocol{cfg: cfg}, nil
 	default:
 		return nil, fmt.Errorf("asset upload protocol is not enabled on this channel")
 	}
@@ -84,7 +89,7 @@ func NormalizeUpstreamStatus(status string) string {
 		return model.AssetStatusActive
 	case "failed", "error", "expired":
 		return model.AssetStatusFailed
-	default:
+	default: // 含移动云的 PROCESSING 及其它未知状态，统一按处理中轮询
 		return model.AssetStatusPending
 	}
 }

@@ -31,9 +31,10 @@ const (
 
 // 虚拟人像素材上传协议（仅对支持 asset:// 素材引用的视频渠道生效，如 ArkNative）
 const (
-	AssetUploadProtocolNone       = ""             // 关闭
-	AssetUploadProtocolRelay      = "relay"        // 中转站风格：POST {base}{asset_upload_path}
+	AssetUploadProtocolNone        = ""             // 关闭
+	AssetUploadProtocolRelay       = "relay"        // 中转站风格：POST {base}{asset_upload_path}
 	AssetUploadProtocolArkOfficial = "ark_official" // 火山方舟官方：AK/SK 签名调 CreateAsset
+	AssetUploadProtocolEcloud      = "ecloud"       // 移动云 MoMA 官方：query 参数签名调素材资产库 API
 )
 
 const (
@@ -64,7 +65,7 @@ type ChannelOtherSettings struct {
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
 
 	// 虚拟人像素材库（asset:// 引用）配置
-	AssetUploadProtocol string `json:"asset_upload_protocol,omitempty"` // ""/relay/ark_official
+	AssetUploadProtocol string `json:"asset_upload_protocol,omitempty"` // ""/relay/ark_official/ecloud
 	AssetUploadPath     string `json:"asset_upload_path,omitempty"`     // relay 协议注册路径，默认 /api/assets/upload
 	AssetQueryPath      string `json:"asset_query_path,omitempty"`      // relay 协议查询路径模板，默认 /api/assets/{id}
 	AssetAK             string `json:"asset_ak,omitempty"`              // 官方协议 AccessKey

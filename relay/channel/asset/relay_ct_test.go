@@ -116,6 +116,11 @@ func TestNewProtocol(t *testing.T) {
 			AssetUploadProtocol: dto.AssetUploadProtocolArkOfficial,
 			AssetAK:             "ak", AssetSK: "sk",
 		}, "*asset.ArkOfficialProtocol", ""},
+		{"ecloud without keys", dto.ChannelOtherSettings{AssetUploadProtocol: dto.AssetUploadProtocolEcloud}, "", "asset_ak"},
+		{"ecloud with keys", dto.ChannelOtherSettings{
+			AssetUploadProtocol: dto.AssetUploadProtocolEcloud,
+			AssetAK:             "ak", AssetSK: "sk",
+		}, "*asset.EcloudOfficialProtocol", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -137,6 +142,8 @@ func typeName(p Protocol) string {
 		return "*asset.RelayProtocol"
 	case *ArkOfficialProtocol:
 		return "*asset.ArkOfficialProtocol"
+	case *EcloudOfficialProtocol:
+		return "*asset.EcloudOfficialProtocol"
 	}
 	return "unknown"
 }
@@ -151,8 +158,11 @@ func TestNormalizeUpstreamStatus(t *testing.T) {
 		{"completed", model.AssetStatusActive},
 		{"failed", model.AssetStatusFailed},
 		{"Error", model.AssetStatusFailed},
+		{"FAILED", model.AssetStatusFailed},
 		{"expired", model.AssetStatusFailed},
 		{"processing", model.AssetStatusPending},
+		{"PROCESSING", model.AssetStatusPending},
+		{"ACTIVE", model.AssetStatusActive},
 		{"", model.AssetStatusPending},
 	}
 	for _, tt := range tests {
