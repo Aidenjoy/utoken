@@ -124,7 +124,7 @@ export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
 }
 
 export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
-  { value: 'smart', label: '智能' },
+  { value: 'smart', label: 'Smart' },
   { value: '21:9', label: '21:9' },
   { value: '16:9', label: '16:9' },
   { value: '4:3', label: '4:3' },
@@ -150,10 +150,10 @@ export const MAX_REFERENCE_IMAGES = 9 // 参考模式最多图片数
 export const IMAGE_ASPECT_RATIO_RANGE = { min: 0.4, max: 2.5 } // 图片宽高比范围（Volcengine Seedance API 限制）
 
 export const VIDEO_MODES: { value: VideoMode; label: string; maxImages?: number }[] = [
-  { value: 'reference', label: '参考生成' },
-  { value: 'first_last_frame', label: '首尾帧', maxImages: 2 },
-  { value: 'first_frame', label: '首帧', maxImages: 1 },
-  { value: 'text_to_video', label: '文生视频', maxImages: 0 },
+  { value: 'reference', label: 'Reference Generation' },
+  { value: 'first_last_frame', label: 'First & Last Frame', maxImages: 2 },
+  { value: 'first_frame', label: 'First Frame', maxImages: 1 },
+  { value: 'text_to_video', label: 'Text to Video', maxImages: 0 },
 ]
 
 export const VIDEO_POLL_INTERVAL_MS = 3000

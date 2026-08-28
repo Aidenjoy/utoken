@@ -70,11 +70,19 @@ interface PlaygroundVideoInputProps {
   uploadProgress?: Record<string, number>
 }
 
-function getMediaDisplayName(item: MediaItem, items: MediaItem[]): string {
+function getMediaDisplayName(
+  item: MediaItem,
+  items: MediaItem[],
+  t: (key: string) => string
+): string {
   // Asset library items keep their registered name
   if (item.assetId) return item.name || item.assetId
   const typeLabel =
-    item.type === 'video' ? '视频' : item.type === 'audio' ? '音频' : '图片'
+    item.type === 'video'
+      ? t('视频')
+      : item.type === 'audio'
+        ? t('音频')
+        : t('图片')
   const sameTypeItems = items.filter((i) => i.type === item.type)
   const index = sameTypeItems.indexOf(item) + 1
   return `${typeLabel}${index}`
@@ -547,7 +555,7 @@ export function PlaygroundVideoInput({
   const handleMentionSelect = (item: MediaItem) => {
     const editor = editorRef.current
     if (!editor) return
-    const displayName = getMediaDisplayName(item, config.mediaItems)
+    const displayName = getMediaDisplayName(item, config.mediaItems, t)
 
     // Delete the @ and any filter text typed after it, then insert the chip
     const cursorPos = getCursorTextOffset()
@@ -693,7 +701,7 @@ export function PlaygroundVideoInput({
                       className='size-full object-cover'
                     />
                     <span className='bg-background/80 absolute bottom-0.5 left-0.5 rounded px-1 py-0.5 text-[10px] font-medium'>
-                      {i === 0 ? '首帧' : '尾帧'}
+                      {i === 0 ? t('First Frame') : t('Last Frame')}
                     </span>
                     <button
                       onClick={() => removeImage(i)}
@@ -729,7 +737,7 @@ export function PlaygroundVideoInput({
                     disabled={disabled}
                     className='border-border/60 text-muted-foreground hover:border-primary hover:text-primary flex size-16 items-center justify-center rounded-lg border-2 border-dashed text-[10px] transition-colors'
                   >
-                    {config.images.length === 0 ? '首帧' : '尾帧'}
+                    {config.images.length === 0 ? t('First Frame') : t('Last Frame')}
                   </button>
                 )}
               </div>
@@ -921,10 +929,10 @@ export function PlaygroundVideoInput({
           <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex flex-wrap items-center gap-1.5 border-t px-3 py-2 backdrop-blur'>
             {/* Mode selector */}
             <ConfigDropdown
-              label={
-                VIDEO_MODES.find((m) => m.value === config.mode)?.label ||
-                '参考生成'
-              }
+              label={t(
+                VIDEO_MODES.find((m) => m.value === config.mode)?.label ??
+                  'Reference Generation'
+              )}
               options={VIDEO_MODES.map((m) => ({
                 value: m.value,
                 label: m.label,
@@ -1143,7 +1151,8 @@ export function PlaygroundVideoInput({
                 .map((item, i) => {
                   const displayName = getMediaDisplayName(
                     item,
-                    config.mediaItems
+                    config.mediaItems,
+                    t
                   )
                   return (
                     <button

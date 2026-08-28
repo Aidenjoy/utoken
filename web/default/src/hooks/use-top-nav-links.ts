@@ -65,7 +65,7 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // 主页 — external link to model.yundashi.com
   links.push({
-    title: '主页',
+    title: t('Home'),
     href: 'http://model.yundashi.com',
     external: true,
     sameTab: true,
@@ -73,7 +73,7 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // 算力商店 (was Home)
   if (modules?.home !== false) {
-    links.push({ title: '算力商店', href: '/' })
+    links.push({ title: t('Compute Store'), href: '/' })
   }
 
   // Console -> /dashboard (new console path)

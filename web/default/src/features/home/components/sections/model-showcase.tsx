@@ -31,6 +31,8 @@ interface ModelCardProps {
 }
 
 function ModelCard(props: ModelCardProps) {
+  const { t } = useTranslation()
+
   return (
     <div className='group relative cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 transition-all duration-300 hover:border-blue-200 hover:shadow-[0_8px_40px_-8px_rgba(37,99,235,0.12)] hover:-translate-y-0.5 dark:border-gray-800 dark:bg-transparent dark:hover:border-blue-800 dark:hover:shadow-[0_8px_40px_-8px_rgba(37,99,235,0.08)]'>
       {/* Left accent line */}
@@ -50,7 +52,7 @@ function ModelCard(props: ModelCardProps) {
         <div>
           <div className='flex items-center gap-1.5'>
             <span className='text-xs font-medium text-gray-400 dark:text-gray-500'>
-              {props.provider}
+              {t(props.provider)}
             </span>
             {props.isNew && (
               <span className='rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-900/40 dark:text-blue-400'>
@@ -71,7 +73,7 @@ function ModelCard(props: ModelCardProps) {
       <div className='flex items-center justify-between text-xs text-gray-400 dark:text-gray-500'>
         <span className='inline-flex items-center gap-1'>
           <span className='inline-block size-1 rounded-full bg-blue-400' />
-          {props.context}
+          {t(props.context)}
         </span>
         <span className='font-mono font-medium tracking-tight text-gray-600 dark:text-gray-400'>
           {props.price}
@@ -90,28 +92,28 @@ const MODELS: ModelCardProps[] = [
     isHot: true,
   },
   {
-    provider: '字节跳动',
+    provider: 'ByteDance',
     model: 'Doubao-Seed2.0-Pro',
     context: '128K context',
     price: '¥3.2/¥16',
     isHot: true,
   },
   {
-    provider: '阿里云',
+    provider: 'Alibaba Cloud',
     model: 'Qwen3.7-Max',
     context: '1M context',
     price: '¥12/¥36',
     isNew: true,
   },
   {
-    provider: '智谱AI',
+    provider: 'Zhipu AI',
     model: 'GLM-5.1',
     context: '128K context',
     price: '¥6/¥30',
     isNew: true,
   },
   {
-    provider: '月之暗面',
+    provider: 'Moonshot',
     model: 'Kimi-K2.6',
     context: '256K context',
     price: '¥6.5/¥27',
