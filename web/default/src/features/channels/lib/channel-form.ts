@@ -210,7 +210,9 @@ export const channelFormSchema = z
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
     // Asset library settings (Volcengine Ark Native type 59; stored in settings JSON)
-    asset_upload_protocol: z.enum(['', 'relay', 'ark_official', 'ecloud']).optional(),
+    asset_upload_protocol: z
+      .enum(['', 'relay', 'ark_official', 'ecloud', 'bit_official'])
+      .optional(),
     asset_upload_path: z.string().optional(),
     asset_query_path: z.string().optional(),
     asset_ak: z.string().optional(),
@@ -423,7 +425,12 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
-  let assetUploadProtocol: '' | 'relay' | 'ark_official' | 'ecloud' = ''
+  let assetUploadProtocol:
+    | ''
+    | 'relay'
+    | 'ark_official'
+    | 'ecloud'
+    | 'bit_official' = ''
   let assetUploadPath = ''
   let assetQueryPath = ''
   let assetAk = ''
@@ -462,7 +469,8 @@ export function transformChannelToFormDefaults(
       assetUploadProtocol =
         parsed.asset_upload_protocol === 'relay' ||
         parsed.asset_upload_protocol === 'ark_official' ||
-        parsed.asset_upload_protocol === 'ecloud'
+        parsed.asset_upload_protocol === 'ecloud' ||
+        parsed.asset_upload_protocol === 'bit_official'
           ? parsed.asset_upload_protocol
           : ''
       assetUploadPath = String(parsed.asset_upload_path || '')
@@ -693,7 +701,10 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     } else {
       delete settingsObj.asset_query_path
     }
-    if (formData.asset_upload_protocol === 'ark_official') {
+    if (
+      formData.asset_upload_protocol === 'ark_official' ||
+      formData.asset_upload_protocol === 'bit_official'
+    ) {
       settingsObj.asset_ak = formData.asset_ak || ''
       settingsObj.asset_sk = formData.asset_sk || ''
       settingsObj.asset_group_id = formData.asset_group_id || ''

@@ -2840,6 +2840,10 @@ export function ChannelMutateDrawer({
                                               value: 'ecloud',
                                               label: t('Mobile Cloud'),
                                             },
+                                            {
+                                              value: 'bit_official',
+                                              label: t('Bit Official'),
+                                            },
                                           ]}
                                           onValueChange={(value) =>
                                             field.onChange(
@@ -2868,6 +2872,9 @@ export function ChannelMutateDrawer({
                                               </SelectItem>
                                               <SelectItem value='ecloud'>
                                                 {t('Mobile Cloud')}
+                                              </SelectItem>
+                                              <SelectItem value='bit_official'>
+                                                {t('Bit Official')}
                                               </SelectItem>
                                             </SelectGroup>
                                           </SelectContent>
@@ -2933,8 +2940,10 @@ export function ChannelMutateDrawer({
                                     </>
                                   )}
 
-                                  {currentAssetUploadProtocol ===
-                                    'ark_official' && (
+                                  {(currentAssetUploadProtocol ===
+                                    'ark_official' ||
+                                    currentAssetUploadProtocol ===
+                                      'bit_official') && (
                                     <>
                                       <FormField
                                         control={form.control}
@@ -2981,9 +2990,14 @@ export function ChannelMutateDrawer({
                                               <Input {...field} />
                                             </FormControl>
                                             <FormDescription>
-                                              {t(
-                                                'Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically'
-                                              )}
+                                              {currentAssetUploadProtocol ===
+                                              'bit_official'
+                                                ? t(
+                                                    'Asset group of the Bit official asset library; if empty, a default group is created automatically'
+                                                  )
+                                                : t(
+                                                    'Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically'
+                                                  )}
                                             </FormDescription>
                                             <FormMessage />
                                           </FormItem>

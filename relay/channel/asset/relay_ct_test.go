@@ -121,6 +121,11 @@ func TestNewProtocol(t *testing.T) {
 			AssetUploadProtocol: dto.AssetUploadProtocolEcloud,
 			AssetAK:             "ak", AssetSK: "sk",
 		}, "*asset.EcloudOfficialProtocol", ""},
+		{"bit_official without keys", dto.ChannelOtherSettings{AssetUploadProtocol: dto.AssetUploadProtocolBitOfficial}, "", "asset_ak"},
+		{"bit_official with keys", dto.ChannelOtherSettings{
+			AssetUploadProtocol: dto.AssetUploadProtocolBitOfficial,
+			AssetAK:             "ak", AssetSK: "sk",
+		}, "*asset.ArkOfficialProtocol", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

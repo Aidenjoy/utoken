@@ -64,6 +64,11 @@ func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 			return nil, fmt.Errorf("ecloud asset protocol requires asset_ak and asset_sk")
 		}
 		return &EcloudOfficialProtocol{cfg: cfg}, nil
+	case dto.AssetUploadProtocolBitOfficial:
+		if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
+			return nil, fmt.Errorf("bit_official asset protocol requires asset_ak and asset_sk")
+		}
+		return newBitOfficialProtocol(cfg), nil
 	default:
 		return nil, fmt.Errorf("asset upload protocol is not enabled on this channel")
 	}
