@@ -705,15 +705,15 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       formData.asset_upload_protocol === 'ark_official' ||
       formData.asset_upload_protocol === 'bit_official'
     ) {
-      settingsObj.asset_ak = formData.asset_ak || ''
-      settingsObj.asset_sk = formData.asset_sk || ''
+      settingsObj.asset_ak = (formData.asset_ak || '').trim()
+      settingsObj.asset_sk = (formData.asset_sk || '').trim()
       settingsObj.asset_group_id = formData.asset_group_id || ''
       settingsObj.asset_project_name = formData.asset_project_name || ''
       settingsObj.asset_region = formData.asset_region?.trim() || ''
     }
     if (formData.asset_upload_protocol === 'ecloud') {
-      settingsObj.asset_ak = formData.asset_ak || ''
-      settingsObj.asset_sk = formData.asset_sk || ''
+      settingsObj.asset_ak = (formData.asset_ak || '').trim()
+      settingsObj.asset_sk = (formData.asset_sk || '').trim()
       settingsObj.asset_group_id = formData.asset_group_id || ''
     }
   } else {

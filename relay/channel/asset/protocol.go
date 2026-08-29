@@ -51,6 +51,9 @@ type Protocol interface {
 
 // NewProtocol 按渠道配置的协议类型构造适配器；未开启协议返回错误。
 func NewProtocol(cfg ChannelConfig) (Protocol, error) {
+	// 凭据去杂质：粘贴密钥常带首尾空白/换行，会直接破坏签名或 Authorization 头解析。
+	cfg.Settings.AssetAK = sanitizeCredential(cfg.Settings.AssetAK)
+	cfg.Settings.AssetSK = sanitizeCredential(cfg.Settings.AssetSK)
 	switch cfg.Settings.AssetUploadProtocol {
 	case dto.AssetUploadProtocolRelay:
 		return &RelayProtocol{cfg: cfg}, nil
@@ -100,3 +103,13 @@ func NormalizeUpstreamStatus(status string) string {
 }
 
 const defaultRequestTimeout = 30 * time.Second
+
+// sanitizeCredential 去除凭据中的空白与控制字符（AK/SK 不含空格，剥离是安全的）。
+func sanitizeCredential(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r <= ' ' || r == '\u00a0' {
+			return -1
+		}
+		return r
+	}, s)
+}
