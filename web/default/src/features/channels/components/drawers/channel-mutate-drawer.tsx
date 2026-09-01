@@ -2969,10 +2969,7 @@ export function ChannelMutateDrawer({
                                               {t('Asset SecretKey')}
                                             </FormLabel>
                                             <FormControl>
-                                              <Input
-                                                type='password'
-                                                {...field}
-                                              />
+                                              <Input {...field} />
                                             </FormControl>
                                             <FormMessage />
                                           </FormItem>
@@ -3065,10 +3062,7 @@ export function ChannelMutateDrawer({
                                               {t('Asset SecretKey')}
                                             </FormLabel>
                                             <FormControl>
-                                              <Input
-                                                type='password'
-                                                {...field}
-                                              />
+                                              <Input {...field} />
                                             </FormControl>
                                             <FormMessage />
                                           </FormItem>
