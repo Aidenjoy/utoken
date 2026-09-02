@@ -300,6 +300,20 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&Asset{},
+		&DirectorProject{},
+		&DirectorEpisode{},
+		&DirectorCharacter{},
+		&DirectorScene{},
+		&DirectorProp{},
+		&DirectorStoryboard{},
+		&DirectorImageGeneration{},
+		&DirectorVideoGeneration{},
+		&DirectorVideoMerge{},
+		&DirectorEditProject{},
+		&DirectorAsset{},
+		&DirectorAssetCategory{},
+		&DirectorModelSettings{},
+		&DirectorUserToken{},
 	)
 	if err != nil {
 		return err
@@ -352,6 +366,20 @@ func migrateDBFast() error {
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
+		{&DirectorProject{}, "DirectorProject"},
+		{&DirectorEpisode{}, "DirectorEpisode"},
+		{&DirectorCharacter{}, "DirectorCharacter"},
+		{&DirectorScene{}, "DirectorScene"},
+		{&DirectorProp{}, "DirectorProp"},
+		{&DirectorStoryboard{}, "DirectorStoryboard"},
+		{&DirectorImageGeneration{}, "DirectorImageGeneration"},
+		{&DirectorVideoGeneration{}, "DirectorVideoGeneration"},
+		{&DirectorVideoMerge{}, "DirectorVideoMerge"},
+		{&DirectorEditProject{}, "DirectorEditProject"},
+		{&DirectorAsset{}, "DirectorAsset"},
+		{&DirectorAssetCategory{}, "DirectorAssetCategory"},
+		{&DirectorModelSettings{}, "DirectorModelSettings"},
+		{&DirectorUserToken{}, "DirectorUserToken"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

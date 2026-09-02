@@ -20,6 +20,8 @@ import {
   Activity,
   BarChart3,
   Box,
+  Camera,
+  Clapperboard,
   CreditCard,
   FileText,
   FlaskConical,
@@ -27,11 +29,14 @@ import {
   Key,
   LayoutDashboard,
   ListTodo,
+  Megaphone,
   MessageSquare,
   Radio,
   ScrollText,
   ServerCog,
   Settings,
+  Settings2,
+  ShoppingCart,
   Ticket,
   User,
   Users,
@@ -39,7 +44,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -55,7 +60,7 @@ export function useSidebarData(): SidebarData {
     navGroups: [
       {
         id: 'chat',
-        title: t('Chat'),
+        title: t('Test Models'),
         items: [
           {
             title: t('New Chat'),
@@ -63,7 +68,7 @@ export function useSidebarData(): SidebarData {
             icon: FlaskConical,
           },
           {
-            title: t('Asset Library'),
+            title: t('Virtual Human Asset Library'),
             url: '/asset-library',
             icon: Images,
           },
@@ -71,6 +76,37 @@ export function useSidebarData(): SidebarData {
             title: t('Chat'),
             icon: MessageSquare,
             type: 'chat-presets',
+          },
+        ],
+      },
+      {
+        id: 'director',
+        title: t('Cloud Director'),
+        items: [
+          {
+            title: t('Short Drama'),
+            url: '/director/drama',
+            icon: Clapperboard,
+          },
+          {
+            title: t('E-commerce Video'),
+            url: '/director/ecommerce',
+            icon: ShoppingCart,
+          },
+          {
+            title: t('Ad Video'),
+            url: '/director/ad',
+            icon: Megaphone,
+          },
+          {
+            title: t('Daily Video'),
+            url: '/director/daily',
+            icon: Camera,
+          },
+          {
+            title: t('Model Settings'),
+            url: '/director/settings',
+            icon: Settings2,
           },
         ],
       },
