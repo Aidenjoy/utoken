@@ -2,7 +2,10 @@ package controller
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,6 +59,28 @@ func shouldRefreshAsset(id int64) bool {
 	return true
 }
 
+// assetProtocolFor 按渠道缓存协议适配器，渠道不可用或构造失败时记入 channelErrs 避免重试。
+func assetProtocolFor(channelID int, protocols map[int]assetrelay.Protocol, channelErrs map[int]bool) assetrelay.Protocol {
+	if proto, ok := protocols[channelID]; ok {
+		return proto
+	}
+	if channelErrs[channelID] {
+		return nil
+	}
+	channel, err := model.GetChannelById(channelID, true)
+	if err != nil || channel.Status != common.ChannelStatusEnabled {
+		channelErrs[channelID] = true
+		return nil
+	}
+	proto, err := assetrelay.NewProtocol(buildAssetChannelConfig(channel))
+	if err != nil {
+		channelErrs[channelID] = true
+		return nil
+	}
+	protocols[channelID] = proto
+	return proto
+}
+
 // refreshPendingAssets 对非终态（pending）素材向上游刷新状态，按渠道缓存协议适配器。
 func refreshPendingAssets(assets []*model.Asset) {
 	protocols := map[int]assetrelay.Protocol{}
@@ -67,20 +92,7 @@ func refreshPendingAssets(assets []*model.Asset) {
 		if !shouldRefreshAsset(a.ID) {
 			continue
 		}
-		proto, ok := protocols[a.ChannelID]
-		if !ok && !channelErrs[a.ChannelID] {
-			channel, err := model.GetChannelById(a.ChannelID, true)
-			if err != nil || channel.Status != common.ChannelStatusEnabled {
-				channelErrs[a.ChannelID] = true
-				continue
-			}
-			proto, err = assetrelay.NewProtocol(buildAssetChannelConfig(channel))
-			if err != nil {
-				channelErrs[a.ChannelID] = true
-				continue
-			}
-			protocols[a.ChannelID] = proto
-		}
+		proto := assetProtocolFor(a.ChannelID, protocols, channelErrs)
 		if proto == nil {
 			continue
 		}
@@ -89,12 +101,113 @@ func refreshPendingAssets(assets []*model.Asset) {
 			common.SysLog(fmt.Sprintf("[Asset] refresh failed (asset=%d, upstream_id=%s): %v", a.ID, a.AssetID, err))
 			continue
 		}
-		_ = model.UpdateAssetStatus(a.ID, res.Status, res.PreviewURL, res.ErrorMsg)
+		// 上游预览链接带签名时效，落库前转存自有 TOS 换永久地址
+		preview := mirrorAssetPreviewToTOS(a, res.PreviewURL)
+		_ = model.UpdateAssetStatus(a.ID, res.Status, preview, res.ErrorMsg)
 		a.Status = res.Status
-		if res.PreviewURL != "" {
-			a.PreviewURL = res.PreviewURL
+		if preview != "" {
+			a.PreviewURL = preview
 		}
 		a.ErrorMsg = res.ErrorMsg
+	}
+}
+
+// remirrorExternalPreviews 修复历史素材：active 但预览地址仍是上游临时链接（会过期）时，
+// 重新向上游取新鲜链接并转存自有 TOS，把永久地址回写预览字段。
+// TOS 未配置时跳过（临时链接已是唯一可用地址）。
+func remirrorExternalPreviews(assets []*model.Asset) {
+	if _, ok := common.GetTOSUploadConfig(); !ok {
+		return
+	}
+	protocols := map[int]assetrelay.Protocol{}
+	channelErrs := map[int]bool{}
+	for _, a := range assets {
+		if a.Status != model.AssetStatusActive || a.PreviewURL == "" || isOwnTOSURL(a.PreviewURL) {
+			continue
+		}
+		if !shouldRefreshAsset(a.ID) {
+			continue
+		}
+		proto := assetProtocolFor(a.ChannelID, protocols, channelErrs)
+		if proto == nil {
+			continue
+		}
+		res, err := proto.Query(a.AssetID)
+		if err != nil || res.PreviewURL == "" {
+			common.SysLog(fmt.Sprintf("[Asset] remirror query failed (asset=%d, upstream_id=%s): %v", a.ID, a.AssetID, err))
+			continue
+		}
+		mirrored := mirrorAssetPreviewToTOS(a, res.PreviewURL)
+		if mirrored == res.PreviewURL {
+			continue
+		}
+		if err := model.UpdateAssetStatus(a.ID, a.Status, mirrored, a.ErrorMsg); err != nil {
+			common.SysLog(fmt.Sprintf("[Asset] remirror persist failed (asset=%d): %v", a.ID, err))
+			continue
+		}
+		a.PreviewURL = mirrored
+	}
+}
+
+// isOwnTOSURL 判断地址是否已落在自有 TOS 桶上（避免重复转存）。
+func isOwnTOSURL(rawURL string) bool {
+	cfg, ok := common.GetTOSUploadConfig()
+	if !ok {
+		return false
+	}
+	endpointHost := strings.TrimPrefix(cfg.Endpoint, "https://")
+	endpointHost = strings.TrimPrefix(endpointHost, "http://")
+	return strings.HasPrefix(rawURL, fmt.Sprintf("https://%s.%s/", cfg.Bucket, endpointHost))
+}
+
+// mirrorAssetPreviewToTOS 把上游返回的临时预览链接转存到自有 TOS，返回永久可访问地址；
+// 已是自有地址、TOS 未配置或转存失败时原样返回上游链接。
+func mirrorAssetPreviewToTOS(a *model.Asset, remoteURL string) string {
+	if remoteURL == "" || isOwnTOSURL(remoteURL) {
+		return remoteURL
+	}
+	if _, ok := common.GetTOSUploadConfig(); !ok {
+		return remoteURL
+	}
+	client := &http.Client{Timeout: 300 * time.Second}
+	resp, err := client.Get(remoteURL)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("[Asset] mirror download failed (asset=%d): %v", a.ID, err))
+		return remoteURL
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		common.SysLog(fmt.Sprintf("[Asset] mirror download failed (asset=%d): HTTP %d", a.ID, resp.StatusCode))
+		return remoteURL
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 512<<20))
+	if err != nil {
+		common.SysLog(fmt.Sprintf("[Asset] mirror read failed (asset=%d): %v", a.ID, err))
+		return remoteURL
+	}
+	filename := fmt.Sprintf("asset%d_%d%s", a.ID, time.Now().Unix(), assetPreviewExt(a, remoteURL))
+	ownURL, _, err := common.UploadBytesToTOS(data, filename, a.UserID, "assets")
+	if err != nil {
+		common.SysLog(fmt.Sprintf("[Asset] mirror upload failed (asset=%d): %v", a.ID, err))
+		return remoteURL
+	}
+	return ownURL
+}
+
+// assetPreviewExt 转存文件名扩展名：优先取上游链接路径后缀，缺失时按素材类型兜底
+func assetPreviewExt(a *model.Asset, remoteURL string) string {
+	if u, err := url.Parse(remoteURL); err == nil {
+		if ext := path.Ext(u.Path); ext != "" && len(ext) <= 8 {
+			return ext
+		}
+	}
+	switch a.AssetType {
+	case model.AssetTypeVideo:
+		return ".mp4"
+	case model.AssetTypeAudio:
+		return ".mp3"
+	default:
+		return ".png"
 	}
 }
 
@@ -186,6 +299,36 @@ func resolveAssetProtocolChannel(channelId int, channelName string) (*model.Chan
 	return available[0], nil
 }
 
+// resolveAssetProtocolChannelForModel 在开启了素材协议的启用渠道中，选出在指定分组下
+// 可服务该模型的渠道（优先级高者优先）。云导演按「模型设置」的视频模型定位素材渠道时使用。
+func resolveAssetProtocolChannelForModel(group, modelName string) (*model.Channel, error) {
+	channels, err := model.GetEnabledChannels()
+	if err != nil {
+		return nil, err
+	}
+	var picked *model.Channel
+	availableNames := make([]string, 0, len(channels))
+	for _, channel := range channels {
+		if channel.GetOtherSettings().AssetUploadProtocol == "" {
+			continue
+		}
+		availableNames = append(availableNames, channel.Name)
+		if !model.IsChannelEnabledForGroupModel(group, modelName, channel.Id) {
+			continue
+		}
+		if picked == nil || channel.GetPriority() > picked.GetPriority() {
+			picked = channel
+		}
+	}
+	if picked == nil {
+		if len(availableNames) == 0 {
+			return nil, fmt.Errorf("no available channel enables an asset upload protocol")
+		}
+		return nil, fmt.Errorf("no asset channel can serve model %q in group %q (asset channels: %s)", modelName, group, strings.Join(availableNames, ", "))
+	}
+	return picked, nil
+}
+
 // registerAssetForUser 素材注册核心流程：校验 → 上游注册 → 组 ID 回写 → 复用/落库。
 func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *assetRegisterError) {
 	req.URL = strings.TrimSpace(req.URL)
@@ -212,15 +355,21 @@ func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *as
 	if err != nil {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", err.Error()}
 	}
+	return registerAssetToChannel(userId, channel, req.URL, req.AssetType, req.Name)
+}
+
+// registerAssetToChannel 向指定渠道注册素材：上游注册 → 组 ID 回写 → 复用/落库。
+// 调用方需已完成 URL/类型/名称校验与渠道选择。
+func registerAssetToChannel(userId int, channel *model.Channel, url, assetType, name string) (*model.Asset, *assetRegisterError) {
 	proto, err := assetrelay.NewProtocol(buildAssetChannelConfig(channel))
 	if err != nil {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", err.Error()}
 	}
 
 	res, err := proto.Upload(assetrelay.UploadRequest{
-		URL:       req.URL,
-		AssetType: req.AssetType,
-		Name:      req.Name,
+		URL:       url,
+		AssetType: assetType,
+		Name:      name,
 	})
 	if err != nil {
 		common.SysError(fmt.Sprintf("[Asset] upload failed (user=%d, channel=%d): %v", userId, channel.Id, err))
@@ -246,17 +395,17 @@ func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *as
 		UserID:      userId,
 		ChannelID:   channel.Id,
 		AssetID:     res.AssetID,
-		Name:        req.Name,
-		AssetType:   req.AssetType,
+		Name:        name,
+		AssetType:   assetType,
 		Status:      model.AssetStatusPending,
-		SourceURL:   req.URL,
+		SourceURL:   url,
 		GroupID:     res.GroupID,
 		ProjectName: res.ProjectName,
 	}
 	if err := asset.Insert(); err != nil {
 		return nil, &assetRegisterError{http.StatusInternalServerError, "insert_error", err.Error()}
 	}
-	common.SysLog(fmt.Sprintf("[Asset] user %d registered asset %s (channel=%d, type=%s)", userId, res.AssetID, channel.Id, req.AssetType))
+	common.SysLog(fmt.Sprintf("[Asset] user %d registered asset %s (channel=%d, type=%s)", userId, res.AssetID, channel.Id, assetType))
 	return asset, nil
 }
 
@@ -339,6 +488,7 @@ func RelayGetAsset(c *gin.Context) {
 	}
 	asset := assets[0]
 	refreshPendingAssets([]*model.Asset{asset})
+	remirrorExternalPreviews([]*model.Asset{asset})
 	relayAssetJSON(c, 0, "ok", gin.H{
 		"Id":          asset.AssetID,
 		"Name":        asset.Name,
@@ -373,6 +523,7 @@ func ListAssets(c *gin.Context) {
 		return
 	}
 	refreshPendingAssets(assets)
+	remirrorExternalPreviews(assets)
 
 	if modelName := c.Query("model"); modelName != "" {
 		groups := []string{}
@@ -410,6 +561,7 @@ func GetAsset(c *gin.Context) {
 		return
 	}
 	refreshPendingAssets([]*model.Asset{asset})
+	remirrorExternalPreviews([]*model.Asset{asset})
 	c.JSON(http.StatusOK, asset)
 }
 
