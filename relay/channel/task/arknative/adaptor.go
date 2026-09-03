@@ -45,6 +45,9 @@ type TaskAdaptor struct {
 	// hasWatermark 记录客户端是否显式传了 watermark：未传时 BuildRequestBody
 	// 注入 false 去水印（方舟默认盖水印），显式传值则原样透传。
 	hasWatermark bool
+	// unified 标记请求体为统一视频协议（无 content 数组）：BuildRequestBody
+	// 按 doubao 规则转换为官方格式而非透传。
+	unified bool
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
@@ -87,15 +90,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 	a.rawBody = raw
 
-	var req struct {
-		Model      string         `json:"model"`
-		Resolution string         `json:"resolution"`
-		Duration   *dto.IntValue  `json:"duration"`
-		Watermark  *dto.BoolValue `json:"watermark"`
-		Content    []struct {
-			Type string `json:"type"`
-		} `json:"content"`
-	}
+	var req submitProbe
 	if err := common.Unmarshal(raw, &req); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
@@ -110,7 +105,12 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 				"invalid_request", http.StatusBadRequest)
 		}
 	}
-
+	// 统一视频协议兼容：云导演/Playground 同源客户端向 /v1/video/generations 发送
+	// {prompt, images, metadata}，而官方协议要求 content 数组；缺 content 时按
+	// doubao 规则转换（见 buildUnifiedRequestBody）
+	if len(req.Content) == 0 && (strings.TrimSpace(req.Prompt) != "" || len(req.Images) > 0 || strings.TrimSpace(req.Image) != "") {
+		return a.validateUnifiedSubmit(&req)
+	}
 	a.resolution = req.Resolution
 	a.hasWatermark = req.Watermark != nil
 	for _, item := range req.Content {
@@ -118,6 +118,56 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			a.hasVideo = true
 			break
 		}
+	}
+	return nil
+}
+
+// submitProbe 提交请求体的最小解析结构：同时覆盖官方协议与统一视频协议字段，
+// 用于区分两种格式并提取计费相关字段
+type submitProbe struct {
+	Model      string         `json:"model"`
+	Resolution string         `json:"resolution"`
+	Duration   *dto.IntValue  `json:"duration"`
+	Watermark  *dto.BoolValue `json:"watermark"`
+	Content    []struct {
+		Type string `json:"type"`
+	} `json:"content"`
+	// 统一视频协议字段（云导演/Playground 同源客户端）
+	Prompt   string         `json:"prompt"`
+	Image    string         `json:"image"`
+	Images   []string       `json:"images"`
+	Metadata map[string]any `json:"metadata"`
+}
+
+// validateUnifiedSubmit 校验统一视频协议体：prompt 必填；metadata 内的 duration 是
+// 用户可控计费乘数且绕过顶层校验，必须同标强制上下界（计费安全不变量）；
+// 并提取计费字段（resolution / 是否含视频输入）。
+func (a *TaskAdaptor) validateUnifiedSubmit(req *submitProbe) *dto.TaskError {
+	if strings.TrimSpace(req.Prompt) == "" {
+		return service.TaskErrorWrapperLocal(errors.New("prompt is required"), "invalid_request", http.StatusBadRequest)
+	}
+	if raw, ok := req.Metadata["duration"]; ok {
+		if b, err := common.Marshal(raw); err == nil {
+			var dv dto.IntValue
+			if common.Unmarshal(b, &dv) == nil {
+				duration := int(dv)
+				if duration < 0 || duration > relaycommon.MaxTaskDurationSeconds {
+					return service.TaskErrorWrapperLocal(
+						fmt.Errorf("duration must be between 0 and %d, got %d", relaycommon.MaxTaskDurationSeconds, duration),
+						"invalid_request", http.StatusBadRequest)
+				}
+			}
+		}
+	}
+	a.unified = true
+	if res, ok := req.Metadata["resolution"].(string); ok {
+		a.resolution = res
+	}
+	if videoURLs, ok := req.Metadata["video_urls"].([]interface{}); ok && len(videoURLs) > 0 {
+		a.hasVideo = true
+	}
+	if _, ok := req.Metadata["watermark"]; ok {
+		a.hasWatermark = true
 	}
 	return nil
 }
@@ -159,6 +209,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		}
 	}
 
+	// 统一视频协议：按 doubao 规则转换为官方格式（content 数组 + 顶层参数），
+	// 去水印默认值等官方语义已由转换逻辑补齐，不再走透传与水印注入
+	if a.unified {
+		return a.buildUnifiedRequestBody(body, info)
+	}
+
 	if info.UpstreamModelName != "" {
 		mapped, err := sjson.SetBytes(body, "model", info.UpstreamModelName)
 		if err != nil {
@@ -182,6 +238,39 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		logBody = logBody[:2000] + "...(truncated)"
 	}
 	common.SysLog(fmt.Sprintf("[ArkNative] Submit request body: %s", logBody))
+
+	return bytes.NewReader(body), nil
+}
+
+// buildUnifiedRequestBody 解析统一视频协议体并复用 doubao 转换生成 Ark 原生请求体；
+// model 字段按渠道模型映射替换，与透传分支语义一致。
+func (a *TaskAdaptor) buildUnifiedRequestBody(raw []byte, info *relaycommon.RelayInfo) (io.Reader, error) {
+	var req relaycommon.TaskSubmitReq
+	if err := common.Unmarshal(raw, &req); err != nil {
+		return nil, errors.Wrap(err, "parse unified request failed")
+	}
+	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
+		req.Images = []string{req.Image}
+	}
+	body, err := doubao.MarshalUnifiedRequestBody(&req)
+	if err != nil {
+		return nil, errors.Wrap(err, "convert unified request failed")
+	}
+	if info.IsModelMapped {
+		mapped, err := sjson.SetBytes(body, "model", info.UpstreamModelName)
+		if err != nil {
+			return nil, errors.Wrap(err, "replace model field failed")
+		}
+		body = mapped
+	} else {
+		info.UpstreamModelName = req.Model
+	}
+
+	logBody := string(body)
+	if len(logBody) > 2000 {
+		logBody = logBody[:2000] + "...(truncated)"
+	}
+	common.SysLog(fmt.Sprintf("[ArkNative] Submit unified request body: %s", logBody))
 
 	return bytes.NewReader(body), nil
 }

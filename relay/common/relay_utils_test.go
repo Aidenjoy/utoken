@@ -67,6 +67,15 @@ func TestTaskDurationBounds(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "huge metadata duration is rejected",
+			body:    `{"model":"doubao-seedance-2-0","prompt":"a cat","metadata":{"duration":9999999999}}`,
+			wantErr: true,
+		},
+		{
+			name: "normal metadata duration is accepted",
+			body: `{"model":"doubao-seedance-2-0","prompt":"a cat","metadata":{"duration":5}}`,
+		},
+		{
 			name: "normal duration is accepted",
 			body: `{"model":"sora-2","prompt":"a cat","seconds":"8"}`,
 		},

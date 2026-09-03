@@ -63,7 +63,7 @@ func TestConvertToRequestPayloadNormalizesResolution(t *testing.T) {
 				Prompt:   "跳舞",
 				Metadata: map[string]interface{}{"resolution": tt.resolution},
 			}
-			payload, err := (&TaskAdaptor{}).convertToRequestPayload(req)
+			payload, err := convertToRequestPayload(req)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, payload.Resolution)
 		})
@@ -89,7 +89,7 @@ func TestConvertToRequestPayloadWatermarkDefaultAndPassthrough(t *testing.T) {
 				Prompt:   "跳舞",
 				Metadata: tt.metadata,
 			}
-			payload, err := (&TaskAdaptor{}).convertToRequestPayload(req)
+			payload, err := convertToRequestPayload(req)
 			require.NoError(t, err)
 			require.NotNil(t, payload.Watermark)
 			assert.Equal(t, tt.want, bool(*payload.Watermark))

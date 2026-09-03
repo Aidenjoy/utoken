@@ -171,6 +171,104 @@ func TestBuildRequestBodyWatermarkDefaultAndPassthrough(t *testing.T) {
 	}
 }
 
+// 统一视频协议（云导演/Playground 同源客户端）缺 content 数组，必须转换为
+// 官方格式：images 按 mode 分配 role、metadata 参数提升到顶层、补 text 条目。
+func TestUnifiedProtocolConvertedToNative(t *testing.T) {
+	body := `{
+		"model": "doubao-seedance-2-0-260128",
+		"prompt": "一只橘猫在草地上奔跑",
+		"images": ["https://example.com/first.png", "https://example.com/last.png"],
+		"metadata": {
+			"mode": "first_last_frame",
+			"generate_audio": true,
+			"watermark": false,
+			"resolution": "720P",
+			"ratio": "9:16",
+			"duration": 5
+		}
+	}`
+	c := newTestContext(t, http.MethodPost, "/v1/video/generations", body)
+	a := &TaskAdaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{UpstreamModelName: "mapped-model", IsModelMapped: true},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+	assert.True(t, a.unified)
+	assert.Equal(t, "720P", a.resolution)
+	assert.False(t, a.hasVideo)
+
+	reader, err := a.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	out, err := io.ReadAll(reader)
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, common.Unmarshal(out, &parsed))
+	assert.Equal(t, "mapped-model", parsed["model"])
+	// 火山 resolution 枚举为小写，转换时归一
+	assert.Equal(t, "720p", parsed["resolution"])
+	assert.Equal(t, "9:16", parsed["ratio"])
+	assert.Equal(t, float64(5), parsed["duration"])
+	assert.Equal(t, true, parsed["generate_audio"])
+	assert.Equal(t, false, parsed["watermark"])
+	content, ok := parsed["content"].([]any)
+	require.True(t, ok)
+	require.Len(t, content, 3)
+	first, _ := content[0].(map[string]any)
+	assert.Equal(t, "first_frame", first["role"])
+	last, _ := content[1].(map[string]any)
+	assert.Equal(t, "last_frame", last["role"])
+	text, _ := content[2].(map[string]any)
+	assert.Equal(t, "一只橘猫在草地上奔跑", text["text"])
+}
+
+// 统一协议 metadata 内的 duration 绕过顶层校验，必须同标强制上下界（计费安全不变量）。
+func TestValidateUnifiedDurationBounds(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{
+			name:    "oversized metadata duration rejected",
+			body:    `{"model":"m","prompt":"p","metadata":{"duration":999999}}`,
+			wantErr: true,
+		},
+		{
+			name:    "negative metadata duration rejected",
+			body:    `{"model":"m","prompt":"p","metadata":{"duration":-1}}`,
+			wantErr: true,
+		},
+		{
+			name:    "missing prompt rejected",
+			body:    `{"model":"m","images":["https://example.com/a.png"]}`,
+			wantErr: true,
+		},
+		{
+			name:    "normal metadata duration accepted",
+			body:    `{"model":"m","prompt":"p","metadata":{"duration":5}}`,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newTestContext(t, http.MethodPost, "/v1/video/generations", tt.body)
+			a := &TaskAdaptor{}
+			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+			taskErr := a.ValidateRequestAndSetAction(c, info)
+			if tt.wantErr {
+				require.NotNil(t, taskErr)
+				assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+				return
+			}
+			require.Nil(t, taskErr)
+			assert.True(t, a.unified)
+		})
+	}
+}
+
 func TestBuildRequestURL(t *testing.T) {
 	tests := []struct {
 		baseURL string

@@ -91,6 +91,19 @@ func validateTaskDurationBounds(req TaskSubmitReq) *dto.TaskError {
 	if seconds < 0 || seconds > MaxTaskDurationSeconds {
 		return createTaskError(fmt.Errorf("seconds must be between 1 and %d", MaxTaskDurationSeconds), "invalid_seconds", http.StatusBadRequest, true)
 	}
+	// metadata 是透传字段，可携带 duration 绕过顶层校验（如火山 metadata.duration），
+	// 同样强制上下界，独立于顶层值校验
+	if raw, ok := req.Metadata["duration"]; ok {
+		if b, err := common.Marshal(raw); err == nil {
+			var dv dto.IntValue
+			if common.Unmarshal(b, &dv) == nil {
+				md := int(dv)
+				if md < 0 || md > MaxTaskDurationSeconds {
+					return createTaskError(fmt.Errorf("seconds must be between 1 and %d", MaxTaskDurationSeconds), "invalid_seconds", http.StatusBadRequest, true)
+				}
+			}
+		}
+	}
 	return nil
 }
 

@@ -163,7 +163,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, err
 	}
 
-	body, err := a.convertToRequestPayload(&req)
+	body, err := convertToRequestPayload(&req)
 	if err != nil {
 		return nil, errors.Wrap(err, "convert request payload failed")
 	}
@@ -281,7 +281,7 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return ChannelName
 }
 
-func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, error) {
+func convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, error) {
 	r := requestPayload{
 		Model:   req.Model,
 		Content: []ContentItem{},
@@ -367,6 +367,16 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	})
 
 	return &r, nil
+}
+
+// MarshalUnifiedRequestBody 将统一视频协议（prompt/images/metadata）转为火山方舟原生请求体。
+// arknative 渠道的统一协议兼容分支复用，保证两渠道转换规则一致。
+func MarshalUnifiedRequestBody(req *relaycommon.TaskSubmitReq) ([]byte, error) {
+	body, err := convertToRequestPayload(req)
+	if err != nil {
+		return nil, err
+	}
+	return common.Marshal(body)
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
