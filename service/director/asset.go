@@ -15,6 +15,38 @@ import (
 // AssetService 素材库服务（上传登记、自定义分类管理）
 type AssetService struct{}
 
+// AssetWithUsername 素材及归属用户名（仅管理员视图填充）
+type AssetWithUsername struct {
+	model.DirectorAsset
+	Username string `json:"username,omitempty"`
+}
+
+// ListAssets 分页查询素材；withUsername 时填充归属用户名（管理员视图）
+func (s *AssetService) ListAssets(f model.DirectorAssetFilter, withUsername bool) ([]AssetWithUsername, int64, error) {
+	assets, total, err := model.ListDirectorAssets(f)
+	if err != nil {
+		return nil, 0, err
+	}
+	list := make([]AssetWithUsername, 0, len(assets))
+	for _, a := range assets {
+		list = append(list, AssetWithUsername{DirectorAsset: *a})
+	}
+	if withUsername && len(assets) > 0 {
+		userIDs := make([]int, 0, len(assets))
+		for _, a := range assets {
+			userIDs = append(userIDs, a.UserID)
+		}
+		usernames, err := fetchUsernames(userIDs)
+		if err != nil {
+			return nil, 0, err
+		}
+		for i := range list {
+			list[i].Username = usernames[list[i].UserID]
+		}
+	}
+	return list, total, nil
+}
+
 // builtinAssetCategories 内置分类键（生成环节自动登记，自定义分类不可重名）
 var builtinAssetCategories = []string{"character", "scene", "prop", "storyboard", "composed", "merged", "edited", "upload"}
 

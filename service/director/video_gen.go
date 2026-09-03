@@ -250,7 +250,7 @@ func (s *VideoGenerationService) SubmitStoryboardVideo(userID, storyboardID int,
 	// @ 引用展开：提示词中的 @[kind:x] 标识替换为「参考图N/参考视频N」并收集资产地址。
 	// 真正走首尾帧时剔除图片引用：不允许 last_frame 与 reference_image 混用（参考视频不受限）
 	var refImages, refVideos []string
-	prompt, refImages, refVideos = expandMentionsEx(prompt, lastFrameURL == "", mentionEntityAssetRef(userID, cfg.Model))
+	prompt, refImages, refVideos = expandMentionsEx(prompt, lastFrameURL == "", mentionEntityAssetRef(userID, cfg.Model), userID)
 	// 参考生成模式：当前镜头图作为第一张参考图，不锁定首帧；
 	// 镜头图占据参考图1位置，@ 引用的序号需整体后移一位，与模型看到的图片顺序对齐
 	reqFirstURL := frameURL

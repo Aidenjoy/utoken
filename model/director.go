@@ -126,6 +126,7 @@ type DirectorEpisode struct {
 	ProjectID      int                  `json:"projectId" gorm:"index;not null"`                         // 所属项目
 	EpisodeNumber  int                  `json:"episodeNumber" gorm:"not null"`                           // 集号
 	Title          string               `json:"title" gorm:"size:128;not null"`                          // 集标题
+	Description    string               `json:"description" gorm:"type:text"`                            // 集简介
 	Content        string               `json:"content" gorm:"type:text"`                                // 原始内容
 	ScriptContent  string               `json:"scriptContent" gorm:"type:text"`                          // AI改写后剧本
 	TargetDuration int                  `json:"targetDuration" gorm:"default:60"`                        // 目标总时长(秒)

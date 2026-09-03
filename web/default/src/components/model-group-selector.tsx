@@ -677,7 +677,8 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   )
 
   const handleGroupChange = useCallback(
-    (value: string) => {
+    (value: string | null) => {
+      if (value === null) return
       onGroupChange(value)
     },
     [onGroupChange]

@@ -62,6 +62,7 @@ export interface DirectorProjectWithStats extends DirectorProject {
   episodeCount: number
   characterCount: number
   sceneCount: number
+  username?: string // 归属用户名（仅管理员视图返回）
 }
 
 export interface DirectorCharacter {
@@ -114,6 +115,7 @@ export interface DirectorEpisode {
   projectId: number
   episodeNumber: number
   title: string
+  description: string
   content: string
   scriptContent: string
   targetDuration: number
@@ -239,6 +241,7 @@ export interface DirectorAsset {
   height: number
   duration: number
   isFavorite: boolean
+  username?: string // 归属用户名（仅管理员视图返回）
 }
 
 export interface DirectorAssetCategory {
@@ -265,6 +268,7 @@ export interface AssetListParams {
   episodeId?: number
   type?: string
   category?: string
+  userId?: number // 管理员归属过滤：缺省=自己，0=全部，N=指定用户
   p?: number
   page_size?: number
 }
@@ -310,6 +314,7 @@ export interface ProjectListParams {
   category?: string
   status?: string
   keyword?: string
+  userId?: number // 管理员归属过滤：缺省=自己，0=全部，N=指定用户
   p?: number
   page_size?: number
 }

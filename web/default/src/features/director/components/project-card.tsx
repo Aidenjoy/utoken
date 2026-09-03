@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { Clapperboard, MoreHorizontal, Play } from 'lucide-react'
+import { Clapperboard, MoreHorizontal, Play, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +37,7 @@ import type { DirectorCategory, DirectorProjectWithStats } from '../types'
 interface ProjectCardProps {
   project: DirectorProjectWithStats
   category: DirectorCategory
+  showOwner?: boolean // 管理员视图：显示归属用户 ID 与用户名
   onEdit: (project: DirectorProjectWithStats) => void
   onDelete: (project: DirectorProjectWithStats) => void
 }
@@ -118,6 +119,14 @@ export function ProjectCard(props: ProjectCardProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {props.showOwner && (
+          <div className='text-muted-foreground flex items-center gap-1 text-xs'>
+            <UserRound aria-hidden='true' className='size-3 shrink-0' />
+            <span className='truncate'>
+              #{project.userId} {project.username}
+            </span>
+          </div>
+        )}
         {project.genre || project.style ? (
           <div className='flex flex-wrap gap-1'>
             {project.genre && (

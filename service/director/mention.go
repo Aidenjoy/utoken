@@ -27,28 +27,29 @@ var MentionKindLabel = map[string]string{
 	"video": "视频",
 }
 
-// mentionAssetURL 查询引用资产的地址，不存在或无图时返回空串
-func mentionAssetURL(kind string, id int) string {
+// mentionAssetURL 查询引用资产的地址，不存在、无图或不归属该用户时返回空串。
+// 归属校验防止在提示词中写入他人资产 ID 把他人参考图混入自己的生成请求。
+func mentionAssetURL(kind string, id int, userID int) string {
 	var url string
 	switch kind {
 	case "char":
-		if c, err := model.GetDirectorCharacterByID(id); err == nil {
+		if c, err := model.GetDirectorCharacterByID(id); err == nil && c.UserID == userID {
 			url = c.ImageURL
 		}
 	case "prop":
-		if p, err := model.GetDirectorPropByID(id); err == nil {
+		if p, err := model.GetDirectorPropByID(id); err == nil && p.UserID == userID {
 			url = p.ImageURL
 		}
 	case "scene":
-		if sc, err := model.GetDirectorSceneByID(id); err == nil {
+		if sc, err := model.GetDirectorSceneByID(id); err == nil && sc.UserID == userID {
 			url = sc.ImageURL
 		}
 	case "shot":
-		if sb, err := model.GetDirectorStoryboardByID(id); err == nil {
+		if sb, err := model.GetDirectorStoryboardByID(id); err == nil && sb.UserID == userID {
 			url = sb.FirstFrameImage
 		}
 	case "video":
-		if sb, err := model.GetDirectorStoryboardByID(id); err == nil {
+		if sb, err := model.GetDirectorStoryboardByID(id); err == nil && sb.UserID == userID {
 			url = sb.VideoURL
 		}
 	}
@@ -72,16 +73,16 @@ func shiftRefIndex(prompt string, offset int) string {
 
 // expandMentions 将提示词中的 @[kind:id] 按出现顺序展开为「参考图N/参考视频N」文本，
 // 同时收集资产地址（图片经 toDataURL 校验，视频仅保留 http 地址）。
-// 同一资产多次引用复用同一编号；无图资产的标识直接剔除。
-func expandMentions(prompt string) (string, []string, []string) {
-	return expandMentionsEx(prompt, true, nil)
+// 同一资产多次引用复用同一编号；无图资产与非本人资产的标识直接剔除。
+func expandMentions(prompt string, userID int) (string, []string, []string) {
+	return expandMentionsEx(prompt, true, nil, userID)
 }
 
 // expandMentionsEx includeImages=false 时剔除图片类引用（不展开、不收集地址）。
 // 用于首尾帧生视频：不允许 last_frame 与 reference_image 混用，只能二选一。
 // assetRef 可选：把（kind, id）解析为 asset:// 渠道素材引用（仅视频生成传入）。
 // 命中时引用直接进入参考图列表（免 base64 转存），由网关中间件锁定素材所属渠道。
-func expandMentionsEx(prompt string, includeImages bool, assetRef func(kind string, id int) string) (string, []string, []string) {
+func expandMentionsEx(prompt string, includeImages bool, assetRef func(kind string, id int) string, userID int) (string, []string, []string) {
 	imgIndex := map[string]int{} // 原始地址 -> 参考图编号
 	videoIndex := map[string]int{}
 	images := make([]string, 0, 4)
@@ -90,7 +91,7 @@ func expandMentionsEx(prompt string, includeImages bool, assetRef func(kind stri
 		m := mentionRe.FindStringSubmatch(token)
 		kind, idStr := m[1], m[2]
 		id, _ := strconv.Atoi(idStr)
-		url := mentionAssetURL(kind, id)
+		url := mentionAssetURL(kind, id, userID)
 		if url == "" {
 			return ""
 		}

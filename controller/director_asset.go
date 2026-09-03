@@ -23,6 +23,9 @@ func DirectorCreateAsset(c *gin.Context) {
 		common.ApiErrorMsg(c, "素材地址不能为空")
 		return
 	}
+	if a.ProjectID != nil && *a.ProjectID > 0 && !directorOwnedProjectID(c, *a.ProjectID) {
+		return
+	}
 	a.ID = 0
 	a.UserID = userId
 	if err := a.Insert(); err != nil {
@@ -52,7 +55,7 @@ func DirectorUpdateAsset(c *gin.Context) {
 		return
 	}
 	a, err := model.GetDirectorAssetByID(req.ID)
-	if err != nil {
+	if err != nil || !directorOwned(c, a.UserID) {
 		common.ApiErrorMsg(c, "素材不存在")
 		return
 	}
@@ -67,6 +70,9 @@ func DirectorUpdateAsset(c *gin.Context) {
 	// 同时清空分集/分镜引用，避免跨项目脏关联
 	if req.ProjectID != nil {
 		if *req.ProjectID > 0 {
+			if !directorOwnedProjectID(c, *req.ProjectID) {
+				return
+			}
 			fields["project_id"] = *req.ProjectID
 		} else {
 			fields["project_id"] = nil
@@ -92,6 +98,11 @@ func DirectorDeleteAsset(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	a, err := model.GetDirectorAssetByID(id)
+	if err != nil || !directorOwned(c, a.UserID) {
+		common.ApiErrorMsg(c, "素材不存在")
+		return
+	}
 	if err := model.DeleteDirectorAsset(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -99,10 +110,12 @@ func DirectorDeleteAsset(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
-// DirectorGetAssetList 素材列表
+// DirectorGetAssetList 素材列表（管理员可按归属用户过滤并返回用户名）
 func DirectorGetAssetList(c *gin.Context) {
 	page, pageSize := directorPage(c)
+	ownerID, isAdmin := directorOwnerFilter(c)
 	f := model.DirectorAssetFilter{
+		UserID:       ownerID,
 		ProjectID:    directorQueryIntPtr(c, "projectId"),
 		EpisodeID:    directorQueryIntPtr(c, "episodeId"),
 		StoryboardID: directorQueryIntPtr(c, "storyboardId"),
@@ -112,7 +125,7 @@ func DirectorGetAssetList(c *gin.Context) {
 		Page:         page,
 		PageSize:     pageSize,
 	}
-	list, total, err := model.ListDirectorAssets(f)
+	list, total, err := directorAssetSvc.ListAssets(f, isAdmin)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -130,6 +143,9 @@ func DirectorUploadAsset(c *gin.Context) {
 	}
 	projectID, _ := strconv.Atoi(c.PostForm("projectId"))
 	episodeID, _ := strconv.Atoi(c.PostForm("episodeId"))
+	if projectID > 0 && !directorOwnedProjectID(c, projectID) {
+		return
+	}
 	asset, err := directorAssetSvc.UploadAsset(header, userId, projectID, episodeID, c.PostForm("name"), c.PostForm("category"))
 	if err != nil {
 		common.ApiError(c, err)
@@ -147,6 +163,9 @@ func DirectorUploadFile(c *gin.Context) {
 		return
 	}
 	projectID, _ := strconv.Atoi(c.PostForm("projectId"))
+	if projectID > 0 && !directorOwnedProjectID(c, projectID) {
+		return
+	}
 	url, err := directorAssetSvc.UploadFile(header, userId, projectID)
 	if err != nil {
 		common.ApiError(c, err)

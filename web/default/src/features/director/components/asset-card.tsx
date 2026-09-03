@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Download, FileIcon, Music, Trash2 } from 'lucide-react'
+import { Download, FileIcon, Music, Trash2, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -30,6 +30,7 @@ interface AssetCardProps {
   asset: DirectorAsset
   categoryLabel: (key: string) => string
   projectText: (id?: number | null) => string
+  showOwner?: boolean // 管理员视图：显示归属用户 ID 与用户名
   onDelete: (asset: DirectorAsset) => void
 }
 
@@ -90,6 +91,14 @@ export function AssetCard(props: AssetCardProps) {
         <div className='truncate text-[13px] font-semibold' title={asset.name}>
           {asset.name}
         </div>
+        {props.showOwner && (
+          <div className='text-muted-foreground flex items-center gap-1 text-xs'>
+            <UserRound aria-hidden='true' className='size-3 shrink-0' />
+            <span className='truncate'>
+              #{asset.userId} {asset.username}
+            </span>
+          </div>
+        )}
         <div className='flex items-center justify-between'>
           <Badge variant='outline' className='font-normal'>
             {props.categoryLabel(asset.category)}

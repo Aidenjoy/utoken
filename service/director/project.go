@@ -14,9 +14,23 @@ type ProjectService struct{}
 // ProjectWithStats 项目及统计
 type ProjectWithStats struct {
 	model.DirectorProject
-	EpisodeCount   int64 `json:"episodeCount"`
-	CharacterCount int64 `json:"characterCount"`
-	SceneCount     int64 `json:"sceneCount"`
+	EpisodeCount   int64  `json:"episodeCount"`
+	CharacterCount int64  `json:"characterCount"`
+	SceneCount     int64  `json:"sceneCount"`
+	Username       string `json:"username,omitempty"` // 归属用户名（仅管理员视图填充）
+}
+
+// fetchUsernames 批量获取用户名映射（管理员视图填充归属信息，去重后一次查询避免 N+1）
+func fetchUsernames(userIDs []int) (map[int]string, error) {
+	idSet := make(map[int]struct{}, len(userIDs))
+	for _, id := range userIDs {
+		idSet[id] = struct{}{}
+	}
+	ids := make([]int, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return model.GetUsernamesByIDs(ids)
 }
 
 // DeleteProjectCascade 删除项目（级联删除分集/分镜/角色/场景/道具/剪辑工程/生成记录/素材）
@@ -130,8 +144,8 @@ func (s *ProjectService) DeleteEpisodeCascade(episodeID int) error {
 	})
 }
 
-// ListProjectsWithStats 分页获取项目列表（附带统计信息）
-func (s *ProjectService) ListProjectsWithStats(f model.DirectorProjectListFilter) ([]ProjectWithStats, int64, error) {
+// ListProjectsWithStats 分页获取项目列表（附带统计信息；withUsername 时填充归属用户名，供管理员视图）
+func (s *ProjectService) ListProjectsWithStats(f model.DirectorProjectListFilter, withUsername bool) ([]ProjectWithStats, int64, error) {
 	projects, total, err := model.ListDirectorProjects(f)
 	if err != nil {
 		return nil, 0, err
@@ -143,6 +157,19 @@ func (s *ProjectService) ListProjectsWithStats(f model.DirectorProjectListFilter
 		model.DB.Model(&model.DirectorCharacter{}).Where("project_id = ?", p.ID).Count(&item.CharacterCount)
 		model.DB.Model(&model.DirectorScene{}).Where("project_id = ?", p.ID).Count(&item.SceneCount)
 		list = append(list, item)
+	}
+	if withUsername && len(projects) > 0 {
+		userIDs := make([]int, 0, len(projects))
+		for _, p := range projects {
+			userIDs = append(userIDs, p.UserID)
+		}
+		usernames, err := fetchUsernames(userIDs)
+		if err != nil {
+			return nil, 0, err
+		}
+		for i := range list {
+			list[i].Username = usernames[list[i].UserID]
+		}
 	}
 	return list, total, nil
 }

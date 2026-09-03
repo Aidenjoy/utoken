@@ -560,7 +560,7 @@ export function ShotsStep(props: ShotsStepProps) {
 
       {/* 手动添加镜头弹窗（即创建分镜，字段与「分镜拆解」一致） */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className='sm:max-w-2xl'>
+        <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-2xl'>
           <DialogHeader>
             <DialogTitle>{t('Add Shot')}</DialogTitle>
           </DialogHeader>

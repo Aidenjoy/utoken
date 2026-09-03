@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,6 +17,9 @@ func DirectorGetEditProject(c *gin.Context) {
 	episodeID := directorQueryInt(c, "episodeId")
 	if episodeID <= 0 {
 		common.ApiErrorMsg(c, "缺少分集ID")
+		return
+	}
+	if !directorOwnedEpisodeID(c, episodeID) {
 		return
 	}
 	project, _, err := directorEditSvc.GetEditProject(episodeID)
@@ -43,6 +47,9 @@ func DirectorSaveEditProject(c *gin.Context) {
 		common.ApiErrorMsg(c, "缺少分集ID")
 		return
 	}
+	if !directorOwnedEpisodeID(c, req.EpisodeID) {
+		return
+	}
 	timeline := strings.TrimSpace(req.Timeline)
 	if timeline == "" || timeline == "null" {
 		common.ApiErrorMsg(c, "剪辑时间轴不能为空")
@@ -66,6 +73,9 @@ func DirectorSubmitEditRender(c *gin.Context) {
 		common.ApiErrorMsg(c, "缺少分集ID")
 		return
 	}
+	if !directorOwnedEpisodeID(c, req.EpisodeID) {
+		return
+	}
 	projectID, err := directorEditSvc.SubmitEditRender(userId, req.EpisodeID)
 	if err != nil {
 		common.ApiError(c, err)
@@ -79,6 +89,11 @@ func DirectorGetEditRenderProgress(c *gin.Context) {
 	projectID := directorQueryInt(c, "projectId")
 	if projectID <= 0 {
 		common.ApiErrorMsg(c, "缺少剪辑工程ID")
+		return
+	}
+	ep, err := model.GetDirectorEditProjectByID(projectID)
+	if err != nil || !directorOwned(c, ep.UserID) {
+		common.ApiErrorMsg(c, "剪辑工程不存在")
 		return
 	}
 	common.ApiSuccess(c, directorEditSvc.GetEditRenderProgress(projectID))
@@ -97,6 +112,9 @@ func DirectorCorrectSubtitles(c *gin.Context) {
 	}
 	if req.EpisodeID <= 0 || len(req.Subtitles) == 0 {
 		common.ApiErrorMsg(c, "缺少分集ID或字幕数据")
+		return
+	}
+	if !directorOwnedEpisodeID(c, req.EpisodeID) {
 		return
 	}
 	// 字幕结构由 service 层定义与校验，这里透传原始 JSON

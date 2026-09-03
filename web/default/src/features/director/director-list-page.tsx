@@ -51,10 +51,13 @@ import {
 } from '@/components/ui/pagination'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDebounce } from '@/hooks'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 
 import { deleteDirectorProject, getDirectorProjects } from './api'
+import { OwnerFilter } from './components/owner-filter'
+import { type OwnerSelection, ownerUserIdParam } from './lib/owner'
 import { ProjectCard } from './components/project-card'
 import { ProjectDialog } from './components/project-dialog'
 import { DIRECTOR_CATEGORY_CONFIG } from './constants'
@@ -73,10 +76,15 @@ export function DirectorListPage(props: DirectorListPageProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const categoryConfig = DIRECTOR_CATEGORY_CONFIG[props.category]
+  const isAdmin = useIsAdmin()
 
   const [page, setPage] = React.useState(1)
   const [keyword, setKeyword] = React.useState('')
   const debouncedKeyword = useDebounce(keyword, 400)
+  // 管理员归属筛选：默认自己，可选全部或指定用户（非管理员恒为 self，不下发参数）
+  const [owner, setOwner] = React.useState<OwnerSelection>({ kind: 'self' })
+  const ownerKey = owner.kind === 'user' ? `user:${owner.id}` : owner.kind
+  const ownerUserId = ownerUserIdParam(owner, isAdmin)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingProject, setEditingProject] =
     React.useState<DirectorProjectWithStats | null>(null)
@@ -85,14 +93,23 @@ export function DirectorListPage(props: DirectorListPageProps) {
 
   React.useEffect(() => {
     setPage(1)
-  }, [props.category, debouncedKeyword])
+  }, [props.category, debouncedKeyword, ownerKey])
 
   const { data, isPending } = useQuery({
-    queryKey: ['director', 'projects', props.category, page, debouncedKeyword],
+    queryKey: [
+      'director',
+      'projects',
+      props.category,
+      page,
+      debouncedKeyword,
+      isAdmin,
+      ownerKey,
+    ],
     queryFn: () =>
       getDirectorProjects({
         category: props.category,
         keyword: debouncedKeyword || undefined,
+        userId: ownerUserId,
         p: page,
         page_size: PAGE_SIZE,
       }),
@@ -155,6 +172,7 @@ export function DirectorListPage(props: DirectorListPageProps) {
             <ProjectCard
               project={project}
               category={props.category}
+              showOwner={isAdmin}
               onEdit={(p) => {
                 setEditingProject(p)
                 setDialogOpen(true)
@@ -174,6 +192,7 @@ export function DirectorListPage(props: DirectorListPageProps) {
         {t(categoryConfig.label)}
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        {isAdmin && <OwnerFilter value={owner} onChange={setOwner} />}
         <div className='relative'>
           <Search
             aria-hidden='true'

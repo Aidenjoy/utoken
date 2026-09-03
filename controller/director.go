@@ -71,6 +71,39 @@ func directorPage(c *gin.Context) (int, int) {
 	return directorQueryInt(c, "p"), directorQueryInt(c, "page_size")
 }
 
+// directorOwnerFilter 解析归属用户过滤：仅管理员生效，默认只看自己；
+// 显式传 userId=0 查看全部用户，userId=N 查看指定用户。
+// 非管理员恒返回当前用户 ID 且 isAdmin=false（强制只看自己、不返回用户名）。
+func directorOwnerFilter(c *gin.Context) (userID int, isAdmin bool) {
+	if !model.IsAdmin(c.GetInt("id")) {
+		return c.GetInt("id"), false
+	}
+	if c.Query("userId") == "" {
+		return c.GetInt("id"), true
+	}
+	return directorQueryInt(c, "userId"), true
+}
+
+// directorOwned 校验单条记录归属：所有者或管理员可访问。
+// 越权时调用方按"记录不存在"响应，避免通过错误差异探测他人数据 ID。
+func directorOwned(c *gin.Context, ownerID int) bool {
+	userID := c.GetInt("id")
+	return ownerID == userID || model.IsAdmin(userID)
+}
+
+// directorGenListUserScope 生成任务列表的归属过滤：非管理员强制只看自己；
+// 管理员显式传 userId 时按其值（0=全部，N=指定），缺省返回 0 不过滤
+// （管理员可进入任意项目工作室，需看到项目内所有任务）。
+func directorGenListUserScope(c *gin.Context) int {
+	if !model.IsAdmin(c.GetInt("id")) {
+		return c.GetInt("id")
+	}
+	if c.Query("userId") == "" {
+		return 0
+	}
+	return directorQueryInt(c, "userId")
+}
+
 // directorPageResult 统一分页返回结构
 func directorPageResult(list any, total int64, page, pageSize int) gin.H {
 	return gin.H{"list": list, "total": total, "page": page, "pageSize": pageSize}
@@ -131,7 +164,7 @@ func DirectorUpdateProject(c *gin.Context) {
 		return
 	}
 	p, err := model.GetDirectorProjectByID(req.ID)
-	if err != nil {
+	if err != nil || !directorOwned(c, p.UserID) {
 		common.ApiErrorMsg(c, "项目不存在")
 		return
 	}
@@ -185,6 +218,11 @@ func DirectorDeleteProject(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	p, err := model.GetDirectorProjectByID(id)
+	if err != nil || !directorOwned(c, p.UserID) {
+		common.ApiErrorMsg(c, "项目不存在")
+		return
+	}
 	if err := directorProjectSvc.DeleteProjectCascade(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -200,24 +238,26 @@ func DirectorGetProject(c *gin.Context) {
 		return
 	}
 	p, err := model.GetDirectorProjectByID(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, p.UserID) {
 		common.ApiErrorMsg(c, "项目不存在")
 		return
 	}
 	common.ApiSuccess(c, p)
 }
 
-// DirectorGetProjectList 项目列表（附带统计）
+// DirectorGetProjectList 项目列表（附带统计；管理员可按归属用户过滤并返回用户名）
 func DirectorGetProjectList(c *gin.Context) {
 	page, pageSize := directorPage(c)
+	ownerID, isAdmin := directorOwnerFilter(c)
 	f := model.DirectorProjectListFilter{
+		UserID:   ownerID,
 		Category: c.Query("category"),
 		Status:   c.Query("status"),
 		Keyword:  c.Query("keyword"),
 		Page:     page,
 		PageSize: pageSize,
 	}
-	list, total, err := directorProjectSvc.ListProjectsWithStats(f)
+	list, total, err := directorProjectSvc.ListProjectsWithStats(f, isAdmin)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -239,7 +279,8 @@ func DirectorCreateEpisode(c *gin.Context) {
 		common.ApiErrorMsg(c, "所属项目ID不能为空")
 		return
 	}
-	if _, err := model.GetDirectorProjectByID(e.ProjectID); err != nil {
+	proj, err := model.GetDirectorProjectByID(e.ProjectID)
+	if err != nil || !directorOwned(c, proj.UserID) {
 		common.ApiErrorMsg(c, "所属项目不存在")
 		return
 	}
@@ -268,6 +309,7 @@ func DirectorUpdateEpisode(c *gin.Context) {
 	var req struct {
 		ID             int     `json:"id"`
 		Title          *string `json:"title"`
+		Description    *string `json:"description"`
 		Content        *string `json:"content"`
 		ScriptContent  *string `json:"scriptContent"`
 		TargetDuration *int    `json:"targetDuration"`
@@ -285,13 +327,16 @@ func DirectorUpdateEpisode(c *gin.Context) {
 		return
 	}
 	e, err := model.GetDirectorEpisodeByID(req.ID)
-	if err != nil {
+	if err != nil || !directorOwned(c, e.UserID) {
 		common.ApiErrorMsg(c, "分集不存在")
 		return
 	}
 	fields := map[string]any{}
 	if req.Title != nil {
 		fields["title"] = *req.Title
+	}
+	if req.Description != nil {
+		fields["description"] = *req.Description
 	}
 	if req.Content != nil {
 		fields["content"] = *req.Content
@@ -336,6 +381,11 @@ func DirectorDeleteEpisode(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	e, err := model.GetDirectorEpisodeByID(id)
+	if err != nil || !directorOwned(c, e.UserID) {
+		common.ApiErrorMsg(c, "分集不存在")
+		return
+	}
 	if err := directorProjectSvc.DeleteEpisodeCascade(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -351,7 +401,7 @@ func DirectorGetEpisode(c *gin.Context) {
 		return
 	}
 	e, err := model.GetDirectorEpisodeDetail(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, e.UserID) {
 		common.ApiErrorMsg(c, "分集不存在")
 		return
 	}
@@ -363,6 +413,11 @@ func DirectorGetEpisodeList(c *gin.Context) {
 	projectID := directorQueryInt(c, "projectId")
 	if projectID <= 0 {
 		common.ApiErrorMsg(c, "缺少项目ID")
+		return
+	}
+	proj, err := model.GetDirectorProjectByID(projectID)
+	if err != nil || !directorOwned(c, proj.UserID) {
+		common.ApiErrorMsg(c, "项目不存在")
 		return
 	}
 	page, pageSize := directorPage(c)
@@ -381,6 +436,11 @@ func DirectorGetEpisodePipeline(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	e, err := model.GetDirectorEpisodeByID(id)
+	if err != nil || !directorOwned(c, e.UserID) {
+		common.ApiErrorMsg(c, "分集不存在")
+		return
+	}
 	episode, steps, err := directorProjectSvc.GetEpisodePipeline(id)
 	if err != nil {
 		common.ApiErrorMsg(c, "分集不存在")
@@ -396,12 +456,25 @@ type directorEpisodeAIRequest struct {
 	ID int `json:"id"`
 }
 
+// directorOwnedEpisodeID 校验分集归属（所有者或管理员），越权/不存在时响应错误并返回 false
+func directorOwnedEpisodeID(c *gin.Context, episodeID int) bool {
+	e, err := model.GetDirectorEpisodeByID(episodeID)
+	if err != nil || !directorOwned(c, e.UserID) {
+		common.ApiErrorMsg(c, "分集不存在")
+		return false
+	}
+	return true
+}
+
 // DirectorRewriteEpisodeScript AI 改写剧本
 func DirectorRewriteEpisodeScript(c *gin.Context) {
 	userId := c.GetInt("id")
 	var req directorEpisodeAIRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "分集ID不能为空")
+		return
+	}
+	if !directorOwnedEpisodeID(c, req.ID) {
 		return
 	}
 	if err := directorLLMSvc.RewriteScript(userId, req.ID); err != nil {
@@ -417,6 +490,9 @@ func DirectorExtractEpisodeRolesScenes(c *gin.Context) {
 	var req directorEpisodeAIRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "分集ID不能为空")
+		return
+	}
+	if !directorOwnedEpisodeID(c, req.ID) {
 		return
 	}
 	result, err := directorLLMSvc.ExtractRolesScenes(userId, req.ID)
@@ -435,6 +511,9 @@ func DirectorGenerateEpisodePrompts(c *gin.Context) {
 		common.ApiErrorMsg(c, "分集ID不能为空")
 		return
 	}
+	if !directorOwnedEpisodeID(c, req.ID) {
+		return
+	}
 	if err := directorLLMSvc.GenerateEpisodePrompts(userId, req.ID); err != nil {
 		common.ApiError(c, err)
 		return
@@ -448,6 +527,9 @@ func DirectorSplitEpisodeStoryboards(c *gin.Context) {
 	var req directorEpisodeAIRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "分集ID不能为空")
+		return
+	}
+	if !directorOwnedEpisodeID(c, req.ID) {
 		return
 	}
 	count, err := directorLLMSvc.SplitStoryboards(userId, req.ID)
@@ -473,6 +555,9 @@ func DirectorAddEpisodeCharacter(c *gin.Context) {
 		common.ApiErrorMsg(c, "分集ID与角色名称不能为空")
 		return
 	}
+	if !directorOwnedEpisodeID(c, req.EpisodeID) {
+		return
+	}
 	req.Character.ID = 0
 	if err := directorProjectSvc.AddEpisodeCharacter(userId, req.EpisodeID, &req.Character); err != nil {
 		common.ApiError(c, err)
@@ -494,6 +579,9 @@ func DirectorAddEpisodeScene(c *gin.Context) {
 	}
 	if req.EpisodeID <= 0 || req.Scene.Location == "" {
 		common.ApiErrorMsg(c, "分集ID与场景地点不能为空")
+		return
+	}
+	if !directorOwnedEpisodeID(c, req.EpisodeID) {
 		return
 	}
 	req.Scene.ID = 0

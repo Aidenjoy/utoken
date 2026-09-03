@@ -9,6 +9,16 @@ import (
 
 // ---------- 角色 ----------
 
+// directorOwnedProjectID 校验项目归属（所有者或管理员），越权/不存在时响应错误并返回 false
+func directorOwnedProjectID(c *gin.Context, projectID int) bool {
+	p, err := model.GetDirectorProjectByID(projectID)
+	if err != nil || !directorOwned(c, p.UserID) {
+		common.ApiErrorMsg(c, "项目不存在")
+		return false
+	}
+	return true
+}
+
 // DirectorCreateCharacter 创建角色（需指定所属项目）
 func DirectorCreateCharacter(c *gin.Context) {
 	userId := c.GetInt("id")
@@ -19,6 +29,9 @@ func DirectorCreateCharacter(c *gin.Context) {
 	}
 	if ch.ProjectID <= 0 || ch.Name == "" {
 		common.ApiErrorMsg(c, "所属项目ID与角色名称不能为空")
+		return
+	}
+	if !directorOwnedProjectID(c, ch.ProjectID) {
 		return
 	}
 	ch.ID = 0
@@ -49,7 +62,7 @@ func DirectorUpdateCharacter(c *gin.Context) {
 		return
 	}
 	ch, err := model.GetDirectorCharacterByID(req.ID)
-	if err != nil {
+	if err != nil || !directorOwned(c, ch.UserID) {
 		common.ApiErrorMsg(c, "角色不存在")
 		return
 	}
@@ -78,6 +91,11 @@ func DirectorDeleteCharacter(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	ch, err := model.GetDirectorCharacterByID(id)
+	if err != nil || !directorOwned(c, ch.UserID) {
+		common.ApiErrorMsg(c, "角色不存在")
+		return
+	}
 	if err := model.DeleteDirectorCharacter(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -93,7 +111,7 @@ func DirectorGetCharacter(c *gin.Context) {
 		return
 	}
 	ch, err := model.GetDirectorCharacterByID(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, ch.UserID) {
 		common.ApiErrorMsg(c, "角色不存在")
 		return
 	}
@@ -105,6 +123,9 @@ func DirectorGetCharacterList(c *gin.Context) {
 	projectID := directorQueryInt(c, "projectId")
 	if projectID <= 0 {
 		common.ApiErrorMsg(c, "缺少项目ID")
+		return
+	}
+	if !directorOwnedProjectID(c, projectID) {
 		return
 	}
 	page, pageSize := directorPage(c)
@@ -124,6 +145,11 @@ func DirectorGenerateCharacterImage(c *gin.Context) {
 		common.ApiErrorMsg(c, "角色ID不能为空")
 		return
 	}
+	ch, err := model.GetDirectorCharacterByID(req.ID)
+	if err != nil || !directorOwned(c, ch.UserID) {
+		common.ApiErrorMsg(c, "角色不存在")
+		return
+	}
 	genID, err := directorImageSvc.SubmitCharacterImage(userId, req.ID, req.Prompt, req.Size)
 	if err != nil {
 		common.ApiError(c, err)
@@ -138,6 +164,11 @@ func DirectorGenerateCharacterPrompt(c *gin.Context) {
 	var req directorGenSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "角色ID不能为空")
+		return
+	}
+	ch, err := model.GetDirectorCharacterByID(req.ID)
+	if err != nil || !directorOwned(c, ch.UserID) {
+		common.ApiErrorMsg(c, "角色不存在")
 		return
 	}
 	prompt, err := directorLLMSvc.GenerateCharacterPrompt(userId, req.ID)
@@ -160,6 +191,9 @@ func DirectorCreateScene(c *gin.Context) {
 	}
 	if sc.ProjectID <= 0 || sc.Location == "" {
 		common.ApiErrorMsg(c, "所属项目ID与场景地点不能为空")
+		return
+	}
+	if !directorOwnedProjectID(c, sc.ProjectID) {
 		return
 	}
 	sc.ID = 0
@@ -191,7 +225,7 @@ func DirectorUpdateScene(c *gin.Context) {
 		return
 	}
 	sc, err := model.GetDirectorSceneByID(req.ID)
-	if err != nil {
+	if err != nil || !directorOwned(c, sc.UserID) {
 		common.ApiErrorMsg(c, "场景不存在")
 		return
 	}
@@ -221,6 +255,11 @@ func DirectorDeleteScene(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	sc, err := model.GetDirectorSceneByID(id)
+	if err != nil || !directorOwned(c, sc.UserID) {
+		common.ApiErrorMsg(c, "场景不存在")
+		return
+	}
 	if err := model.DeleteDirectorScene(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -236,7 +275,7 @@ func DirectorGetScene(c *gin.Context) {
 		return
 	}
 	sc, err := model.GetDirectorSceneByID(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, sc.UserID) {
 		common.ApiErrorMsg(c, "场景不存在")
 		return
 	}
@@ -248,6 +287,9 @@ func DirectorGetSceneList(c *gin.Context) {
 	projectID := directorQueryInt(c, "projectId")
 	if projectID <= 0 {
 		common.ApiErrorMsg(c, "缺少项目ID")
+		return
+	}
+	if !directorOwnedProjectID(c, projectID) {
 		return
 	}
 	page, pageSize := directorPage(c)
@@ -267,6 +309,11 @@ func DirectorGenerateSceneImage(c *gin.Context) {
 		common.ApiErrorMsg(c, "场景ID不能为空")
 		return
 	}
+	sc, err := model.GetDirectorSceneByID(req.ID)
+	if err != nil || !directorOwned(c, sc.UserID) {
+		common.ApiErrorMsg(c, "场景不存在")
+		return
+	}
 	genID, err := directorImageSvc.SubmitSceneImage(userId, req.ID, req.Prompt, req.Size)
 	if err != nil {
 		common.ApiError(c, err)
@@ -281,6 +328,11 @@ func DirectorGenerateScenePrompt(c *gin.Context) {
 	var req directorGenSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "场景ID不能为空")
+		return
+	}
+	sc, err := model.GetDirectorSceneByID(req.ID)
+	if err != nil || !directorOwned(c, sc.UserID) {
+		common.ApiErrorMsg(c, "场景不存在")
 		return
 	}
 	prompt, err := directorLLMSvc.GenerateScenePrompt(userId, req.ID)
@@ -303,6 +355,9 @@ func DirectorCreateProp(c *gin.Context) {
 	}
 	if p.ProjectID <= 0 || p.Name == "" {
 		common.ApiErrorMsg(c, "所属项目ID与道具名称不能为空")
+		return
+	}
+	if !directorOwnedProjectID(c, p.ProjectID) {
 		return
 	}
 	p.ID = 0
@@ -334,7 +389,7 @@ func DirectorUpdateProp(c *gin.Context) {
 		return
 	}
 	p, err := model.GetDirectorPropByID(req.ID)
-	if err != nil {
+	if err != nil || !directorOwned(c, p.UserID) {
 		common.ApiErrorMsg(c, "道具不存在")
 		return
 	}
@@ -364,6 +419,11 @@ func DirectorDeleteProp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	p, err := model.GetDirectorPropByID(id)
+	if err != nil || !directorOwned(c, p.UserID) {
+		common.ApiErrorMsg(c, "道具不存在")
+		return
+	}
 	if err := model.DeleteDirectorProp(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -379,7 +439,7 @@ func DirectorGetProp(c *gin.Context) {
 		return
 	}
 	p, err := model.GetDirectorPropByID(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, p.UserID) {
 		common.ApiErrorMsg(c, "道具不存在")
 		return
 	}
@@ -391,6 +451,9 @@ func DirectorGetPropList(c *gin.Context) {
 	projectID := directorQueryInt(c, "projectId")
 	if projectID <= 0 {
 		common.ApiErrorMsg(c, "缺少项目ID")
+		return
+	}
+	if !directorOwnedProjectID(c, projectID) {
 		return
 	}
 	page, pageSize := directorPage(c)
@@ -410,6 +473,11 @@ func DirectorGeneratePropImage(c *gin.Context) {
 		common.ApiErrorMsg(c, "道具ID不能为空")
 		return
 	}
+	p, err := model.GetDirectorPropByID(req.ID)
+	if err != nil || !directorOwned(c, p.UserID) {
+		common.ApiErrorMsg(c, "道具不存在")
+		return
+	}
 	genID, err := directorImageSvc.SubmitPropImage(userId, req.ID, req.Prompt, req.Size)
 	if err != nil {
 		common.ApiError(c, err)
@@ -424,6 +492,11 @@ func DirectorGeneratePropPrompt(c *gin.Context) {
 	var req directorGenSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "道具ID不能为空")
+		return
+	}
+	p, err := model.GetDirectorPropByID(req.ID)
+	if err != nil || !directorOwned(c, p.UserID) {
+		common.ApiErrorMsg(c, "道具不存在")
 		return
 	}
 	prompt, err := directorLLMSvc.GeneratePropPrompt(userId, req.ID)
@@ -446,6 +519,9 @@ func DirectorCreateStoryboard(c *gin.Context) {
 	}
 	if sb.EpisodeID <= 0 {
 		common.ApiErrorMsg(c, "所属分集ID不能为空")
+		return
+	}
+	if !directorOwnedEpisodeID(c, sb.EpisodeID) {
 		return
 	}
 	if sb.StoryboardNumber <= 0 {
@@ -493,7 +569,7 @@ func DirectorUpdateStoryboard(c *gin.Context) {
 		return
 	}
 	sb, err := model.GetDirectorStoryboardByID(req.ID)
-	if err != nil {
+	if err != nil || !directorOwned(c, sb.UserID) {
 		common.ApiErrorMsg(c, "分镜不存在")
 		return
 	}
@@ -538,6 +614,11 @@ func DirectorDeleteStoryboard(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	sb, err := model.GetDirectorStoryboardByID(id)
+	if err != nil || !directorOwned(c, sb.UserID) {
+		common.ApiErrorMsg(c, "分镜不存在")
+		return
+	}
 	if err := model.DeleteDirectorStoryboard(id); err != nil {
 		common.ApiError(c, err)
 		return
@@ -553,7 +634,7 @@ func DirectorGetStoryboard(c *gin.Context) {
 		return
 	}
 	sb, err := model.GetDirectorStoryboardDetail(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, sb.UserID) {
 		common.ApiErrorMsg(c, "分镜不存在")
 		return
 	}
@@ -565,6 +646,9 @@ func DirectorGetStoryboardList(c *gin.Context) {
 	episodeID := directorQueryInt(c, "episodeId")
 	if episodeID <= 0 {
 		common.ApiErrorMsg(c, "缺少分集ID")
+		return
+	}
+	if !directorOwnedEpisodeID(c, episodeID) {
 		return
 	}
 	page, pageSize := directorPage(c)
@@ -596,6 +680,11 @@ func DirectorGenerateStoryboardImage(c *gin.Context) {
 		common.ApiErrorMsg(c, "分镜ID不能为空")
 		return
 	}
+	sb, err := model.GetDirectorStoryboardByID(req.ID)
+	if err != nil || !directorOwned(c, sb.UserID) {
+		common.ApiErrorMsg(c, "分镜不存在")
+		return
+	}
 	genID, err := directorImageSvc.SubmitStoryboardImage(userId, req.ID, req.Prompt, req.Size)
 	if err != nil {
 		common.ApiError(c, err)
@@ -610,6 +699,11 @@ func DirectorGenerateStoryboardPrompt(c *gin.Context) {
 	var req directorGenSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "分镜ID不能为空")
+		return
+	}
+	sb, err := model.GetDirectorStoryboardByID(req.ID)
+	if err != nil || !directorOwned(c, sb.UserID) {
+		common.ApiErrorMsg(c, "分镜不存在")
 		return
 	}
 	prompt, err := directorLLMSvc.GenerateStoryboardPrompt(userId, req.ID)
@@ -628,6 +722,11 @@ func DirectorGenerateStoryboardVideo(c *gin.Context) {
 		common.ApiErrorMsg(c, "分镜ID不能为空")
 		return
 	}
+	sb, err := model.GetDirectorStoryboardByID(req.ID)
+	if err != nil || !directorOwned(c, sb.UserID) {
+		common.ApiErrorMsg(c, "分镜不存在")
+		return
+	}
 	genID, err := directorVideoSvc.SubmitStoryboardVideo(userId, req.ID, req.Prompt, req.AspectRatio, req.Resolution, req.Duration, req.Count, req.FrameMode)
 	if err != nil {
 		common.ApiError(c, err)
@@ -642,6 +741,11 @@ func DirectorGenerateStoryboardVideoPrompt(c *gin.Context) {
 	var req directorGenSubmitRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.ID <= 0 {
 		common.ApiErrorMsg(c, "分镜ID不能为空")
+		return
+	}
+	sb, err := model.GetDirectorStoryboardByID(req.ID)
+	if err != nil || !directorOwned(c, sb.UserID) {
+		common.ApiErrorMsg(c, "分镜不存在")
 		return
 	}
 	prompt, err := directorLLMSvc.GenerateStoryboardVideoPrompt(userId, req.ID)
@@ -662,17 +766,18 @@ func DirectorGetImageGeneration(c *gin.Context) {
 		return
 	}
 	g, err := model.GetDirectorImageGenerationByID(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, g.UserID) {
 		common.ApiErrorMsg(c, "任务不存在")
 		return
 	}
 	common.ApiSuccess(c, g)
 }
 
-// DirectorGetImageGenerationList 图片生成任务列表
+// DirectorGetImageGenerationList 图片生成任务列表（非管理员强制只看自己）
 func DirectorGetImageGenerationList(c *gin.Context) {
 	page, pageSize := directorPage(c)
 	f := model.DirectorImageGenerationFilter{
+		UserID:       directorGenListUserScope(c),
 		StoryboardID: directorQueryIntPtr(c, "storyboardId"),
 		CharacterID:  directorQueryIntPtr(c, "characterId"),
 		SceneID:      directorQueryIntPtr(c, "sceneId"),
@@ -698,17 +803,18 @@ func DirectorGetVideoGeneration(c *gin.Context) {
 		return
 	}
 	g, err := model.GetDirectorVideoGenerationByID(id)
-	if err != nil {
+	if err != nil || !directorOwned(c, g.UserID) {
 		common.ApiErrorMsg(c, "任务不存在")
 		return
 	}
 	common.ApiSuccess(c, g)
 }
 
-// DirectorGetVideoGenerationList 视频生成任务列表
+// DirectorGetVideoGenerationList 视频生成任务列表（非管理员强制只看自己）
 func DirectorGetVideoGenerationList(c *gin.Context) {
 	page, pageSize := directorPage(c)
 	f := model.DirectorVideoGenerationFilter{
+		UserID:       directorGenListUserScope(c),
 		StoryboardID: directorQueryIntPtr(c, "storyboardId"),
 		ProjectID:    directorQueryIntPtr(c, "projectId"),
 		Status:       c.Query("status"),

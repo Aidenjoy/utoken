@@ -148,7 +148,7 @@ func (s *ImageGenerationService) SubmitSceneImage(userID, sceneID int, customPro
 	}
 	// @ 引用展开：提示词中的 @[char:x] 等标识替换为「参考图N」，资产地址作为参考图
 	var refImages []string
-	prompt, refImages, _ = expandMentions(prompt)
+	prompt, refImages, _ = expandMentions(prompt, userID)
 	gen := &model.DirectorImageGeneration{
 		UserID:    userID,
 		SceneID:   &sceneID,
@@ -200,7 +200,7 @@ func (s *ImageGenerationService) SubmitPropImage(userID, propID int, customPromp
 	}
 	// @ 引用展开：提示词中的 @[kind:x] 标识替换为「参考图N」并收集资产地址
 	var refImages []string
-	prompt, refImages, _ = expandMentions(prompt)
+	prompt, refImages, _ = expandMentions(prompt, userID)
 	gen := &model.DirectorImageGeneration{
 		UserID:    userID,
 		PropID:    &propID,
@@ -252,7 +252,7 @@ func (s *ImageGenerationService) SubmitStoryboardImage(userID, storyboardID int,
 	// 一致性参考图：提示词中的 @ 引用优先；未显式引用时回退自动收集
 	// （出镜角色形象图 + 同场景场景图），保证镜头人物与「角色形象」步骤产出的设定图一致
 	refImages := make([]string, 0, 4)
-	prompt, refImages, _ = expandMentions(prompt)
+	prompt, refImages, _ = expandMentions(prompt, userID)
 	if len(refImages) == 0 {
 		refImages = collectStoryboardRefs(storyboard, episode)
 	}

@@ -62,6 +62,7 @@ func GetDirectorImageGenerationByID(id int) (*DirectorImageGeneration, error) {
 
 // DirectorImageGenerationFilter 图片任务列表过滤
 type DirectorImageGenerationFilter struct {
+	UserID       int // 0 表示不过滤（仅管理员可用不过滤语义）
 	StoryboardID *int
 	CharacterID  *int
 	SceneID      *int
@@ -74,6 +75,9 @@ type DirectorImageGenerationFilter struct {
 
 func ListDirectorImageGenerations(f DirectorImageGenerationFilter) ([]*DirectorImageGeneration, int64, error) {
 	query := DB.Model(&DirectorImageGeneration{})
+	if f.UserID > 0 {
+		query = query.Where("user_id = ?", f.UserID)
+	}
 	if f.StoryboardID != nil {
 		query = query.Where("storyboard_id = ?", *f.StoryboardID)
 	}
@@ -151,6 +155,7 @@ func GetDirectorVideoGenerationByID(id int) (*DirectorVideoGeneration, error) {
 
 // DirectorVideoGenerationFilter 视频任务列表过滤
 type DirectorVideoGenerationFilter struct {
+	UserID       int // 0 表示不过滤（仅管理员可用不过滤语义）
 	StoryboardID *int
 	ProjectID    *int
 	Status       string
@@ -160,6 +165,9 @@ type DirectorVideoGenerationFilter struct {
 
 func ListDirectorVideoGenerations(f DirectorVideoGenerationFilter) ([]*DirectorVideoGeneration, int64, error) {
 	query := DB.Model(&DirectorVideoGeneration{})
+	if f.UserID > 0 {
+		query = query.Where("user_id = ?", f.UserID)
+	}
 	if f.StoryboardID != nil {
 		query = query.Where("storyboard_id = ?", *f.StoryboardID)
 	}

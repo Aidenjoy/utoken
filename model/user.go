@@ -931,6 +931,22 @@ func IsAdmin(userId int) bool {
 	return user.Role >= common.RoleAdminUser
 }
 
+// GetUsernamesByIDs 批量获取用户 ID → 用户名映射（不存在的用户不出现在结果中）
+func GetUsernamesByIDs(ids []int) (map[int]string, error) {
+	result := make(map[int]string, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+	var users []User
+	if err := DB.Where("id IN ?", ids).Select("id", "username").Find(&users).Error; err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		result[u.Id] = u.Username
+	}
+	return result, nil
+}
+
 func ValidateAccessToken(token string) (*User, error) {
 	if token == "" {
 		return nil, nil

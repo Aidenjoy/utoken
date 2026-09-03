@@ -45,6 +45,26 @@ import type {
 const BASE = '/api/director'
 
 // ============================================================================
+// 管理员：按用户名搜索用户（项目/素材归属筛选）
+// ============================================================================
+
+export interface DirectorOwnerOption {
+  id: number
+  username: string
+}
+
+export async function searchDirectorOwners(
+  keyword: string
+): Promise<
+  ApiResponse<{ items: DirectorOwnerOption[]; total: number }>
+> {
+  const res = await api.get('/api/user/search', {
+    params: { keyword, p: 1, page_size: 20 },
+  })
+  return res.data
+}
+
+// ============================================================================
 // 模型设定与内部令牌
 // ============================================================================
 

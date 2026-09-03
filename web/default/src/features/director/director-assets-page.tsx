@@ -56,6 +56,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 
@@ -69,6 +70,8 @@ import {
 } from './api'
 import { AssetCard } from './components/asset-card'
 import { AssetCategoryDialog } from './components/asset-category-dialog'
+import { OwnerFilter } from './components/owner-filter'
+import { type OwnerSelection, ownerUserIdParam } from './lib/owner'
 import { ASSET_TYPE_OPTIONS, BUILTIN_ASSET_CATEGORIES } from './constants'
 import type { DirectorAsset } from './types'
 
@@ -94,12 +97,17 @@ const SKELETON_KEYS = [
 export function DirectorAssetsPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const isAdmin = useIsAdmin()
 
   const [page, setPage] = React.useState(1)
   const [projectId, setProjectId] = React.useState<number | null>(null)
   const [episodeId, setEpisodeId] = React.useState<number | null>(null)
   const [type, setType] = React.useState('')
   const [category, setCategory] = React.useState('')
+  // 管理员归属筛选：默认自己，可选全部或指定用户（非管理员恒为 self，不下发参数）
+  const [owner, setOwner] = React.useState<OwnerSelection>({ kind: 'self' })
+  const ownerKey = owner.kind === 'user' ? `user:${owner.id}` : owner.kind
+  const ownerUserId = ownerUserIdParam(owner, isAdmin)
   const [uploading, setUploading] = React.useState(false)
   const [catDialogOpen, setCatDialogOpen] = React.useState(false)
   const [deletingAsset, setDeletingAsset] = React.useState<DirectorAsset | null>(
@@ -109,8 +117,9 @@ export function DirectorAssetsPage() {
 
   // 项目 / 分集 / 自定义分类选项
   const { data: projectsData } = useQuery({
-    queryKey: ['director', 'projects', 'asset-filter'],
-    queryFn: () => getDirectorProjects({ p: 1, page_size: 999 }),
+    queryKey: ['director', 'projects', 'asset-filter', isAdmin, ownerKey],
+    queryFn: () =>
+      getDirectorProjects({ p: 1, page_size: 999, userId: ownerUserId }),
   })
   const projects = projectsData?.data?.list ?? []
 
@@ -130,13 +139,24 @@ export function DirectorAssetsPage() {
 
   // 素材列表
   const { data, isPending } = useQuery({
-    queryKey: ['director', 'assets', projectId, episodeId, type, category, page],
+    queryKey: [
+      'director',
+      'assets',
+      projectId,
+      episodeId,
+      type,
+      category,
+      page,
+      isAdmin,
+      ownerKey,
+    ],
     queryFn: () =>
       getDirectorAssets({
         projectId: projectId ?? undefined,
         episodeId: episodeId ?? undefined,
         type: type || undefined,
         category: category || undefined,
+        userId: ownerUserId,
         p: page,
         page_size: PAGE_SIZE,
       }),
@@ -222,6 +242,14 @@ export function DirectorAssetsPage() {
     setPage(1)
   }
 
+  // 归属切换后项目/分集选项随之变化，需清空已选项
+  const onOwnerChange = (v: OwnerSelection) => {
+    setOwner(v)
+    setProjectId(null)
+    setEpisodeId(null)
+    setPage(1)
+  }
+
   const onReset = () => {
     setProjectId(null)
     setEpisodeId(null)
@@ -261,6 +289,7 @@ export function DirectorAssetsPage() {
             asset={asset}
             categoryLabel={categoryLabel}
             projectText={projectText}
+            showOwner={isAdmin}
             onDelete={setDeletingAsset}
           />
         ))}
@@ -297,6 +326,7 @@ export function DirectorAssetsPage() {
 
           {/* 筛选区 */}
           <div className='mb-4 flex flex-wrap items-center gap-2'>
+            {isAdmin && <OwnerFilter value={owner} onChange={onOwnerChange} />}
             <Select
               value={projectId === null ? ALL : String(projectId)}
               onValueChange={onProjectChange}
