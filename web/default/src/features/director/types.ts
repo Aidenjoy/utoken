@@ -268,6 +268,17 @@ export interface DirectorAssetCategory {
   name: string
 }
 
+// 实体图片同步渠道素材库后的 asset_id 映射（后端按当前视频模型过滤）
+export interface DirectorEntityAsset {
+  id: number
+  entityType: string
+  entityId: number
+  model: string
+  channelId: number
+  assetId: string
+  status: string
+}
+
 export interface AssetListParams {
   projectId?: number
   episodeId?: number

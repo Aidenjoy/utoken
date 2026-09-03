@@ -23,6 +23,7 @@ import type {
   AssetListParams,
   DirectorAsset,
   DirectorAssetCategory,
+  DirectorEntityAsset,
   DirectorCharacter,
   DirectorEditProject,
   DirectorEpisode,
@@ -460,19 +461,6 @@ export async function getDirectorAssets(
   return res.data
 }
 
-export async function updateDirectorAsset(data: {
-  id: number
-  name: string
-  type: string
-  category: string
-  url: string
-  isFavorite: boolean
-  projectId?: number
-}): Promise<ApiResponse<DirectorAsset>> {
-  const res = await api.put(`${BASE}/asset`, data)
-  return res.data
-}
-
 export async function deleteDirectorAsset(
   id: number
 ): Promise<ApiResponse<null>> {
@@ -492,6 +480,29 @@ export async function uploadDirectorAsset(params: {
   if (params.episodeId) form.append('episodeId', String(params.episodeId))
   if (params.category) form.append('category', params.category)
   const res = await api.post(`${BASE}/asset/upload`, form)
+  return res.data
+}
+
+// ============================================================================
+// 实体图片同步渠道素材库（asset_id）
+// ============================================================================
+
+// 同步实体图片到当前视频模型可用渠道的素材库，返回 asset_id 映射
+export async function syncDirectorEntityAsset(data: {
+  entityType: string
+  entityId: number
+}): Promise<ApiResponse<DirectorEntityAsset>> {
+  const res = await api.post(`${BASE}/asset/sync`, data)
+  return res.data
+}
+
+// 实体 asset_id 映射列表（仅当前视频模型；切换视频模型后为空）
+export async function getDirectorEntityAssets(
+  entityType: string
+): Promise<ApiResponse<DirectorEntityAsset[]>> {
+  const res = await api.get(`${BASE}/asset/entity/list`, {
+    params: { entityType },
+  })
   return res.data
 }
 

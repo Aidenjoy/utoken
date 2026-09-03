@@ -120,4 +120,10 @@ func registerDirectorRoutes(apiRouter *gin.RouterGroup) {
 		directorRoute.PUT("/asset/category", controller.DirectorUpdateAssetCategory)
 		directorRoute.DELETE("/asset/category", controller.DirectorDeleteAssetCategory)
 	}
+
+	// 实体图片同步渠道素材库（asset_id 映射）
+	{
+		directorRoute.POST("/asset/sync", controller.DirectorSyncEntityAsset)
+		directorRoute.GET("/asset/entity/list", controller.DirectorGetEntityAssetList)
+	}
 }

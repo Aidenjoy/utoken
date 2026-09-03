@@ -219,8 +219,12 @@ func (s *VideoGenerationService) SubmitStoryboardVideo(userID, storyboardID int,
 	if count <= 0 {
 		count = 1
 	}
-	// 镜头图引用：存储已全面 TOS 化，图片地址可直接被上游访问
+	// 镜头图引用：存储已全面 TOS 化，图片地址可直接被上游访问；
+	// 若镜头图片已同步渠道素材库且激活，则按 asset:// 引用（中间件锁定素材所属渠道）
 	frameURL := storyboard.FirstFrameImage
+	if ref := entityAssetRef(userID, model.DirectorEntityAssetStoryboard, storyboardID, cfg.Model); ref != "" {
+		frameURL = ref
+	}
 	// 帧模式：first_last 首尾帧（默认）/ reference 参考生成（兼容旧值 first）
 	useReference := frameMode == "reference" || frameMode == "first"
 	// 首尾帧模式：尾帧取同分集内列表序（镜号+ID）下一个已有镜头图片的分镜记录；
@@ -234,6 +238,9 @@ func (s *VideoGenerationService) SubmitStoryboardVideo(userID, storyboardID int,
 			Order("storyboard_number ASC, id ASC").First(&next).Error == nil {
 			lastFrameURL = next.FirstFrameImage
 			lastFrameStored = next.FirstFrameImage
+			if ref := entityAssetRef(userID, model.DirectorEntityAssetStoryboard, next.ID, cfg.Model); ref != "" {
+				lastFrameURL = ref
+			}
 		}
 		// 首尾帧生视频未指定画幅时用 adaptive（画幅跟随首尾帧图片）；指定画幅则按用户选择传递
 		if lastFrameURL != "" && aspectRatio == "" {
@@ -243,7 +250,7 @@ func (s *VideoGenerationService) SubmitStoryboardVideo(userID, storyboardID int,
 	// @ 引用展开：提示词中的 @[kind:x] 标识替换为「参考图N/参考视频N」并收集资产地址。
 	// 真正走首尾帧时剔除图片引用：不允许 last_frame 与 reference_image 混用（参考视频不受限）
 	var refImages, refVideos []string
-	prompt, refImages, refVideos = expandMentionsEx(prompt, lastFrameURL == "")
+	prompt, refImages, refVideos = expandMentionsEx(prompt, lastFrameURL == "", mentionEntityAssetRef(userID, cfg.Model))
 	// 参考生成模式：当前镜头图作为第一张参考图，不锁定首帧；
 	// 镜头图占据参考图1位置，@ 引用的序号需整体后移一位，与模型看到的图片顺序对齐
 	reqFirstURL := frameURL

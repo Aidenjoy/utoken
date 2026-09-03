@@ -74,12 +74,14 @@ func shiftRefIndex(prompt string, offset int) string {
 // 同时收集资产地址（图片经 toDataURL 校验，视频仅保留 http 地址）。
 // 同一资产多次引用复用同一编号；无图资产的标识直接剔除。
 func expandMentions(prompt string) (string, []string, []string) {
-	return expandMentionsEx(prompt, true)
+	return expandMentionsEx(prompt, true, nil)
 }
 
 // expandMentionsEx includeImages=false 时剔除图片类引用（不展开、不收集地址）。
 // 用于首尾帧生视频：不允许 last_frame 与 reference_image 混用，只能二选一。
-func expandMentionsEx(prompt string, includeImages bool) (string, []string, []string) {
+// assetRef 可选：把（kind, id）解析为 asset:// 渠道素材引用（仅视频生成传入）。
+// 命中时引用直接进入参考图列表（免 base64 转存），由网关中间件锁定素材所属渠道。
+func expandMentionsEx(prompt string, includeImages bool, assetRef func(kind string, id int) string) (string, []string, []string) {
 	imgIndex := map[string]int{} // 原始地址 -> 参考图编号
 	videoIndex := map[string]int{}
 	images := make([]string, 0, 4)
@@ -107,6 +109,17 @@ func expandMentionsEx(prompt string, includeImages bool) (string, []string, []st
 		}
 		if !includeImages {
 			return ""
+		}
+		// 已同步渠道素材库且激活：直接以 asset:// 引用，跳过 base64 转换
+		if assetRef != nil {
+			if ref := assetRef(kind, id); ref != "" {
+				if n, ok := imgIndex[ref]; ok {
+					return fmt.Sprintf("参考图%d", n)
+				}
+				images = append(images, ref)
+				imgIndex[ref] = len(images)
+				return fmt.Sprintf("参考图%d", len(images))
+			}
 		}
 		dataURL, err := toDataURL(url)
 		if err != nil {

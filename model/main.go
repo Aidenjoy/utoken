@@ -314,6 +314,7 @@ func migrateDB() error {
 		&DirectorAssetCategory{},
 		&DirectorModelSettings{},
 		&DirectorUserToken{},
+		&DirectorEntityAsset{},
 	)
 	if err != nil {
 		return err
