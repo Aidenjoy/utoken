@@ -65,7 +65,6 @@ import {
   getDirectorAssets,
   getDirectorEpisodes,
   getDirectorProjects,
-  updateDirectorAsset,
   uploadDirectorAsset,
 } from './api'
 import { AssetCard } from './components/asset-card'
@@ -177,18 +176,6 @@ export function DirectorAssetsPage() {
     return hit ? `#${hit.id} ${hit.title}` : t('Global Asset')
   }
 
-  const updateMutation = useMutation({
-    mutationFn: updateDirectorAsset,
-    onSuccess: (res) => {
-      if (res.success) {
-        invalidateAssets()
-      } else {
-        toast.error(res.message || t('Operation failed'))
-      }
-    },
-    onError: handleServerError,
-  })
-
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deleteDirectorAsset(id),
     onSuccess: (res) => {
@@ -202,67 +189,6 @@ export function DirectorAssetsPage() {
     },
     onError: handleServerError,
   })
-
-  // 移动素材到指定分类
-  const handleMoveCategory = (asset: DirectorAsset, cat: string) => {
-    updateMutation.mutate(
-      {
-        id: asset.id,
-        name: asset.name,
-        type: asset.type,
-        category: cat,
-        url: asset.url,
-        isFavorite: asset.isFavorite,
-      },
-      {
-        onSuccess: (res) => {
-          if (res.success) {
-            toast.success(t('Moved to "{{category}}"', { category: categoryLabel(cat) }))
-          }
-        },
-      }
-    )
-  }
-
-  // 调整项目归属（0 = 全局素材）
-  const handleMoveProject = (asset: DirectorAsset, targetProjectId: number) => {
-    updateMutation.mutate(
-      {
-        id: asset.id,
-        name: asset.name,
-        type: asset.type,
-        category: asset.category,
-        url: asset.url,
-        isFavorite: asset.isFavorite,
-        projectId: targetProjectId,
-      },
-      {
-        onSuccess: (res) => {
-          if (!res.success) return
-          if (targetProjectId > 0) {
-            toast.success(
-              t('Moved to "{{project}}"', {
-                project: projectText(targetProjectId),
-              })
-            )
-          } else {
-            toast.success(t('Changed to global asset'))
-          }
-        },
-      }
-    )
-  }
-
-  const handleToggleFavorite = (asset: DirectorAsset) => {
-    updateMutation.mutate({
-      id: asset.id,
-      name: asset.name,
-      type: asset.type,
-      category: asset.category,
-      url: asset.url,
-      isFavorite: !asset.isFavorite,
-    })
-  }
 
   // 手动上传素材：关联当前筛选的项目/分集/分类
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -333,13 +259,8 @@ export function DirectorAssetsPage() {
           <AssetCard
             key={asset.id}
             asset={asset}
-            projects={projects}
-            categories={movableCats}
             categoryLabel={categoryLabel}
             projectText={projectText}
-            onMoveProject={handleMoveProject}
-            onMoveCategory={handleMoveCategory}
-            onToggleFavorite={handleToggleFavorite}
             onDelete={setDeletingAsset}
           />
         ))}
@@ -351,7 +272,7 @@ export function DirectorAssetsPage() {
     <>
       <SectionPageLayout>
         <SectionPageLayout.Title>
-          {t('Virtual Human Asset Library')}
+          {t('Asset Library')}
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
           <Button

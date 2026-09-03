@@ -104,7 +104,7 @@ export function useSidebarData(): SidebarData {
             icon: Camera,
           },
           {
-            title: t('Virtual Human Asset Library'),
+            title: t('Asset Library'),
             url: '/director/assets',
             icon: Images,
           },

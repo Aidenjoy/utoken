@@ -16,47 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  Building2,
-  Download,
-  FileIcon,
-  Folder,
-  Music,
-  Star,
-  Trash2,
-} from 'lucide-react'
+import { Download, FileIcon, Music, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { ZoomableImage } from '@/components/zoomable-image'
 import dayjs from '@/lib/dayjs'
-import { cn } from '@/lib/utils'
 
-import type { DirectorAsset, DirectorProject } from '../types'
-
-export interface CategoryOption {
-  key: string
-  label: string
-}
+import type { DirectorAsset } from '../types'
 
 interface AssetCardProps {
   asset: DirectorAsset
-  projects: DirectorProject[]
-  /** 可移动到的分类（内置 + 自定义，label 已翻译） */
-  categories: CategoryOption[]
   categoryLabel: (key: string) => string
   projectText: (id?: number | null) => string
-  onMoveProject: (asset: DirectorAsset, projectId: number) => void
-  onMoveCategory: (asset: DirectorAsset, category: string) => void
-  onToggleFavorite: (asset: DirectorAsset) => void
   onDelete: (asset: DirectorAsset) => void
 }
 
@@ -74,11 +47,10 @@ export function AssetCard(props: AssetCardProps) {
   const cover = () => {
     if (asset.type === 'image') {
       return (
-        <img
+        <ZoomableImage
           src={asset.url}
           alt={asset.name}
-          loading='lazy'
-          className='size-full object-cover'
+          className='size-full'
         />
       )
     }
@@ -134,86 +106,6 @@ export function AssetCard(props: AssetCardProps) {
         </div>
       </div>
       <div className='border-border/60 flex items-center justify-end gap-1 border-t p-1.5'>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant='ghost'
-                size='icon'
-                className='size-7'
-                aria-label={t('Adjust project attribution')}
-                title={t('Adjust project attribution')}
-              />
-            }
-          >
-            <Building2 aria-hidden='true' className='size-3.5' />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>
-            <DropdownMenuLabel>
-              {t('Adjust project attribution')}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              disabled={!asset.projectId}
-              onClick={() => props.onMoveProject(asset, 0)}
-            >
-              {t('Global (no project)')}
-            </DropdownMenuItem>
-            {props.projects.map((p) => (
-              <DropdownMenuItem
-                key={p.id}
-                disabled={p.id === asset.projectId}
-                onClick={() => props.onMoveProject(asset, p.id)}
-              >
-                #{p.id} {p.title}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant='ghost'
-                size='icon'
-                className='size-7'
-                aria-label={t('Move to category')}
-                title={t('Move to category')}
-              />
-            }
-          >
-            <Folder aria-hidden='true' className='size-3.5' />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end'>
-            <DropdownMenuLabel>{t('Move to category')}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {props.categories.map((c) => (
-              <DropdownMenuItem
-                key={c.key}
-                disabled={c.key === asset.category}
-                onClick={() => props.onMoveCategory(asset, c.key)}
-              >
-                {c.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button
-          variant='ghost'
-          size='icon'
-          className='size-7'
-          aria-label={t('Favorite')}
-          title={t('Favorite')}
-          onClick={() => props.onToggleFavorite(asset)}
-        >
-          <Star
-            aria-hidden='true'
-            className={cn(
-              'size-3.5',
-              asset.isFavorite && 'fill-amber-400 text-amber-400'
-            )}
-          />
-        </Button>
         <a href={asset.url} target='_blank' rel='noreferrer'>
           <Button
             variant='ghost'
