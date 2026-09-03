@@ -159,7 +159,7 @@ export function ExtractStep(props: ExtractStepProps) {
     setDialogOpen(true)
   }
 
-  let extractLabel = t('Extract Roles & Scenes')
+  let extractLabel = t('Extract Resources')
   if (extractMutation.isPending) {
     extractLabel = t('Extracting...')
   } else if (hasResult) {
@@ -172,7 +172,7 @@ export function ExtractStep(props: ExtractStepProps) {
       <div className='flex flex-wrap items-start justify-between gap-2'>
         <div>
           <div className='text-base font-semibold'>
-            {t('Extract Roles & Scenes')}
+            {t('Extract Resources')}
           </div>
           <div className='text-muted-foreground mt-1 text-[13px]'>
             {t(

@@ -230,7 +230,7 @@ export const GEN_STATUS_BADGE_VARIANT: Record<
 export const PIPELINE_STEP_LABEL: Record<string, string> = {
   content: 'Content Input',
   rewrite: 'AI Rewrite',
-  extract: 'Extract Roles & Scenes',
+  extract: 'Extract Resources',
   chars: 'Character Images',
   props: 'Prop Images',
   scenes: 'Scene Images',
