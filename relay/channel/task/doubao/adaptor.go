@@ -326,6 +326,12 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	// 归一化后再发给上游，避免官方 Ark 或严格透传的中转站拒绝请求。
 	r.Resolution = strings.ToLower(strings.TrimSpace(r.Resolution))
 
+	// 火山方舟默认给视频盖水印：未显式传 watermark 时默认关闭去水印，
+	// 显式传值（含 true）原样透传。
+	if r.Watermark == nil {
+		r.Watermark = lo.ToPtr(dto.BoolValue(false))
+	}
+
 	// Add video/audio reference URLs from metadata (reference mode)
 	if videoURLs, ok := metadata["video_urls"].([]interface{}); ok {
 		for _, vu := range videoURLs {

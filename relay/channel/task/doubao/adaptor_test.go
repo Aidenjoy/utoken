@@ -70,6 +70,33 @@ func TestConvertToRequestPayloadNormalizesResolution(t *testing.T) {
 	}
 }
 
+// 火山方舟默认给视频盖水印：metadata 未传 watermark 时默认关闭去水印，
+// 显式传值（含 true）原样透传，不能覆盖用户的水印选择。
+func TestConvertToRequestPayloadWatermarkDefaultAndPassthrough(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata map[string]interface{}
+		want     bool
+	}{
+		{"未传 watermark 默认 false", nil, false},
+		{"显式 true 透传", map[string]interface{}{"watermark": true}, true},
+		{"显式 false 透传", map[string]interface{}{"watermark": false}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &relaycommon.TaskSubmitReq{
+				Model:    "doubao-seedance-2-0-260128",
+				Prompt:   "跳舞",
+				Metadata: tt.metadata,
+			}
+			payload, err := (&TaskAdaptor{}).convertToRequestPayload(req)
+			require.NoError(t, err)
+			require.NotNil(t, payload.Watermark)
+			assert.Equal(t, tt.want, bool(*payload.Watermark))
+		})
+	}
+}
+
 // 查询响应必须同时兼容官方火山格式（顶层 content/usage、数字时间戳）与
 // 中转站包装格式（resultSummary.content/resultSummary.usage、ISO 字符串时间戳、
 // 字符串 duration）。中转站样本来自 ai-tokenhub 真实响应，任何字段类型不匹配

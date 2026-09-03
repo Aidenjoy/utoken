@@ -42,6 +42,9 @@ type TaskAdaptor struct {
 	rawBody    []byte
 	resolution string
 	hasVideo   bool
+	// hasWatermark 记录客户端是否显式传了 watermark：未传时 BuildRequestBody
+	// 注入 false 去水印（方舟默认盖水印），显式传值则原样透传。
+	hasWatermark bool
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
@@ -85,9 +88,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	a.rawBody = raw
 
 	var req struct {
-		Model      string        `json:"model"`
-		Resolution string        `json:"resolution"`
-		Duration   *dto.IntValue `json:"duration"`
+		Model      string         `json:"model"`
+		Resolution string         `json:"resolution"`
+		Duration   *dto.IntValue  `json:"duration"`
+		Watermark  *dto.BoolValue `json:"watermark"`
 		Content    []struct {
 			Type string `json:"type"`
 		} `json:"content"`
@@ -108,6 +112,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 
 	a.resolution = req.Resolution
+	a.hasWatermark = req.Watermark != nil
 	for _, item := range req.Content {
 		if item.Type == "video_url" {
 			a.hasVideo = true
@@ -160,6 +165,16 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			return nil, errors.Wrap(err, "replace model field failed")
 		}
 		body = mapped
+	}
+
+	// 火山方舟默认给视频盖水印：客户端未显式传 watermark 时注入 false 去水印，
+	// 显式传值（含 true）保持原样透传。
+	if !a.hasWatermark {
+		defaulted, err := sjson.SetBytes(body, "watermark", false)
+		if err != nil {
+			return nil, errors.Wrap(err, "set default watermark failed")
+		}
+		body = defaulted
 	}
 
 	logBody := string(body)

@@ -129,6 +129,9 @@ function buildSubmitPayload(
     duration: config.duration,
     // Volcano Ark resolution enum is lowercase (480p/720p/1080p/4k)
     resolution: config.resolution.toLowerCase(),
+    // Ark stamps a watermark onto generated videos unless watermark is
+    // explicitly false, so it is always sent: the playground offers no toggle.
+    watermark: false,
     group: config.group,
   }
   if (config.ratio !== 'smart') {

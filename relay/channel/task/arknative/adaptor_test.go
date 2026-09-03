@@ -124,6 +124,53 @@ func TestValidateRequestAndSetAction(t *testing.T) {
 	}
 }
 
+// 火山方舟默认给视频盖水印：客户端未传 watermark 时注入 false 去水印，
+// 显式传值（含 true）必须原样透传，不能覆盖用户的水印选择。
+func TestBuildRequestBodyWatermarkDefaultAndPassthrough(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want any
+	}{
+		{
+			name: "absent watermark defaults to false",
+			body: `{"model": "m", "content": [{"type": "text", "text": "x"}]}`,
+			want: false,
+		},
+		{
+			name: "explicit true passes through",
+			body: `{"model": "m", "watermark": true, "content": [{"type": "text", "text": "x"}]}`,
+			want: true,
+		},
+		{
+			name: "explicit false passes through",
+			body: `{"model": "m", "watermark": false, "content": [{"type": "text", "text": "x"}]}`,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newTestContext(t, http.MethodPost, "/api/v3/contents/generations/tasks", tt.body)
+			a := &TaskAdaptor{}
+			info := &relaycommon.RelayInfo{
+				ChannelMeta:   &relaycommon.ChannelMeta{},
+				TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+			}
+			require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+
+			reader, err := a.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			out, err := io.ReadAll(reader)
+			require.NoError(t, err)
+
+			var parsed map[string]any
+			require.NoError(t, common.Unmarshal(out, &parsed))
+			assert.Equal(t, tt.want, parsed["watermark"])
+		})
+	}
+}
+
 func TestBuildRequestURL(t *testing.T) {
 	tests := []struct {
 		baseURL string
