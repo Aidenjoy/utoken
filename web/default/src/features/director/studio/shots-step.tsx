@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clapperboard, Image as ImageIcon, Loader2, Plus } from 'lucide-react'
+import {
+  Clapperboard,
+  Image as ImageIcon,
+  Loader2,
+  Plus,
+  Upload,
+} from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -50,9 +56,13 @@ import {
   createDirectorStoryboard,
   generateStoryboardImage,
   generateStoryboardPrompt,
+  getDirectorEntityAssets,
   getDirectorImageGenerations,
   getDirectorStoryboards,
+  updateDirectorStoryboard,
+  uploadDirectorFile,
 } from '../api'
+import { EntityAssetRow } from '../components/entity-asset-row'
 import { MentionEditor } from '../components/mention-editor'
 import {
   formatMentions,
@@ -109,6 +119,22 @@ export function ShotsStep(props: ShotsStepProps) {
   })
   const isGenerating = (id: number) => tracker.generatingIds.has(id)
 
+  // 镜头图片的 asset_id 映射（仅当前视频模型）；pending 素材 3s 轮询直到激活
+  const assetQueryKey = ['director', 'entity-assets', 'storyboard']
+  const assetQuery = useQuery({
+    queryKey: assetQueryKey,
+    queryFn: () => getDirectorEntityAssets('storyboard'),
+    refetchInterval: (query) =>
+      (query.state.data?.data ?? []).some((a) => a.status === 'pending')
+        ? 3000
+        : false,
+  })
+  const assetByStoryboard = new Map(
+    (assetQuery.data?.data ?? []).map((a) => [a.entityId, a])
+  )
+  const invalidateAssets = () =>
+    queryClient.invalidateQueries({ queryKey: assetQueryKey })
+
   // 首次进入：把仍在 processing 的本分集任务重新纳入跟踪
   const restoredRef = React.useRef(false)
   React.useEffect(() => {
@@ -163,6 +189,37 @@ export function ShotsStep(props: ShotsStepProps) {
     },
     onError: handleServerError,
     onSettled: () => setSubmittingId(0),
+  })
+
+  // 本机图片上传首帧：先传到素材库拿到 URL，再整体回写分镜（PUT 为全字段覆盖；
+  // characters 关联由后端单独维护，必须剔除，否则空数组会清空出镜角色）
+  const uploadInputRef = React.useRef<HTMLInputElement>(null)
+  const [uploadTarget, setUploadTarget] =
+    React.useState<DirectorStoryboard | null>(null)
+  const uploadMutation = useMutation({
+    mutationFn: async (params: { sb: DirectorStoryboard; file: File }) => {
+      const up = await uploadDirectorFile({
+        file: params.file,
+        projectId: props.episode.projectId,
+      })
+      if (!up.success || !up.data?.url) return up
+      const rest = { ...params.sb }
+      delete rest.characters
+      return updateDirectorStoryboard({
+        ...rest,
+        firstFrameImage: up.data.url,
+        status: 'imaged',
+      })
+    },
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success(t('Uploaded'))
+        refresh()
+      } else {
+        toast.error(res.message || t('Operation failed'))
+      }
+    },
+    onError: handleServerError,
   })
 
   // ---------- 批量生成 ----------
@@ -307,7 +364,7 @@ export function ShotsStep(props: ShotsStepProps) {
             #{s.storyboardNumber}
           </div>
         </div>
-        <div className='flex-1 px-3 py-2'>
+        <div className='flex-1 space-y-2 px-3 py-2'>
           <div
             className='text-muted-foreground line-clamp-2 text-xs leading-5'
             title={formatted}
@@ -343,7 +400,38 @@ export function ShotsStep(props: ShotsStepProps) {
           >
             {generateLabel}
           </Button>
+          <Button
+            size='sm'
+            variant='outline'
+            className='shrink-0 px-2.5'
+            disabled={
+              generating ||
+              (uploadMutation.isPending && uploadTarget?.id === s.id)
+            }
+            title={t('Upload')}
+            aria-label={t('Upload')}
+            onClick={() => {
+              setUploadTarget(s)
+              uploadInputRef.current?.click()
+            }}
+          >
+            {uploadMutation.isPending && uploadTarget?.id === s.id ? (
+              <Loader2 aria-hidden='true' className='size-4 animate-spin' />
+            ) : (
+              <Upload aria-hidden='true' className='size-4' />
+            )}
+          </Button>
         </div>
+        {s.firstFrameImage && (
+          <div className='border-t px-3 py-2'>
+            <EntityAssetRow
+              entityType='storyboard'
+              entityId={s.id}
+              asset={assetByStoryboard.get(s.id) ?? null}
+              onSynced={invalidateAssets}
+            />
+          </div>
+        )}
       </div>
     )
   }
@@ -409,6 +497,21 @@ export function ShotsStep(props: ShotsStepProps) {
       </div>
 
       {listContent}
+
+      {/* 本机上传首帧图的隐藏文件选择器（按卡片记录目标分镜） */}
+      <input
+        ref={uploadInputRef}
+        type='file'
+        accept='image/*'
+        className='hidden'
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file && uploadTarget) {
+            uploadMutation.mutate({ sb: uploadTarget, file })
+          }
+          e.target.value = ''
+        }}
+      />
 
       {/* 生成参数弹窗：图片 prompt 可编辑 */}
       <Dialog

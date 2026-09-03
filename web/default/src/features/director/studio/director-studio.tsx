@@ -96,11 +96,21 @@ export function DirectorStudio(props: DirectorStudioProps) {
       case 'extract':
         return <ExtractStep episode={episode} onSaved={refreshPipeline} />
       case 'chars':
-        return <EntityStep type='character' projectId={props.projectId} />
+        return (
+          <EntityStep
+            key='character'
+            type='character'
+            projectId={props.projectId}
+          />
+        )
       case 'props':
-        return <EntityStep type='prop' projectId={props.projectId} />
+        return (
+          <EntityStep key='prop' type='prop' projectId={props.projectId} />
+        )
       case 'scenes':
-        return <EntityStep type='scene' projectId={props.projectId} />
+        return (
+          <EntityStep key='scene' type='scene' projectId={props.projectId} />
+        )
       case 'storyboard':
         return <StoryboardStep episode={episode} onSaved={refreshPipeline} />
       case 'shots':
@@ -116,8 +126,8 @@ export function DirectorStudio(props: DirectorStudioProps) {
 
   return (
     <div className='flex flex-col gap-4 lg:flex-row'>
-      {/* 左侧步骤导航 */}
-      <div className='shrink-0 space-y-2 lg:w-64'>
+      {/* 左侧步骤导航：进度放在标题下方，宽度随标题自适应收窄给右侧内容让位 */}
+      <div className='shrink-0 space-y-2 lg:w-fit lg:min-w-28'>
         {pipelineQuery.isPending ? (
           <div className='space-y-2'>
             {['s1', 's2', 's3', 's4', 's5'].map((key) => (
@@ -173,29 +183,31 @@ function StepNavItem(props: StepNavItemProps) {
       type='button'
       onClick={props.onClick}
       className={cn(
-        'flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+        'flex shrink-0 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
         'hover:bg-accent hover:text-accent-foreground',
         props.active
           ? 'border-primary bg-accent text-accent-foreground'
           : 'border-transparent text-muted-foreground'
       )}
     >
-      <span
-        className={cn(
-          'flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px]',
-          badgeClass
-        )}
-      >
-        {props.step.done ? (
-          <Check aria-hidden='true' className='size-3' />
-        ) : (
-          props.index + 1
-        )}
+      <span className='flex w-full items-center gap-2'>
+        <span
+          className={cn(
+            'flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px]',
+            badgeClass
+          )}
+        >
+          {props.step.done ? (
+            <Check aria-hidden='true' className='size-3' />
+          ) : (
+            props.index + 1
+          )}
+        </span>
+        <span className='min-w-0 flex-1 truncate font-medium'>
+          {t(PIPELINE_STEP_LABEL[props.step.key] ?? props.step.name)}
+        </span>
       </span>
-      <span className='min-w-0 flex-1 truncate font-medium'>
-        {t(PIPELINE_STEP_LABEL[props.step.key] ?? props.step.name)}
-      </span>
-      <span className='text-muted-foreground shrink-0 text-xs'>
+      <span className='text-muted-foreground pl-7 text-xs'>
         {props.step.finished}/{props.step.total}
       </span>
     </button>
