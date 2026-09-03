@@ -96,6 +96,10 @@ func (s *ImageGenerationService) SubmitCharacterImage(userID, characterID int, c
 		character.Update(map[string]any{"prompt": description})
 	}
 	prompt := buildCharacterPrompt(description, character.Role, style)
+	// 角色形象图为「四角度并排」设定图，必须横屏排版；无论项目画面比例如何都固定横屏生成
+	if size == "" {
+		size = "2560x1440"
+	}
 	gen := &model.DirectorImageGeneration{
 		UserID:      userID,
 		CharacterID: &characterID,
