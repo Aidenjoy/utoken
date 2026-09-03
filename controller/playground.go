@@ -60,6 +60,51 @@ func Playground(c *gin.Context) {
 	Relay(c, types.RelayFormatOpenAI)
 }
 
+// PlaygroundImage handles image generation (text-to-image and image-to-image)
+// from the playground. It creates a temporary token like Playground does for chat
+// and delegates to Relay with the OpenAI image format, so the request follows the
+// exact same path as an external /v1/images/generations call.
+func PlaygroundImage(c *gin.Context) {
+	var newAPIError *types.NewAPIError
+
+	defer func() {
+		if newAPIError != nil {
+			c.JSON(newAPIError.StatusCode, gin.H{
+				"error": newAPIError.ToOpenAIError(),
+			})
+		}
+	}()
+
+	if c.GetBool("use_access_token") {
+		newAPIError = types.NewError(errors.New("暂不支持使用 access token"), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
+		return
+	}
+
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAIImage, nil, nil)
+	if err != nil {
+		newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		return
+	}
+
+	userId := c.GetInt("id")
+
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		newAPIError = types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		return
+	}
+	userCache.WriteContext(c)
+
+	tempToken := &model.Token{
+		UserId: userId,
+		Name:   fmt.Sprintf("playground-image-%s", relayInfo.UsingGroup),
+		Group:  relayInfo.UsingGroup,
+	}
+	_ = middleware.SetupContextForToken(c, tempToken)
+
+	Relay(c, types.RelayFormatOpenAIImage)
+}
+
 // PlaygroundTask handles video generation task submission from the playground.
 // It creates a temporary token (like Playground does for chat) and delegates to RelayTask.
 func PlaygroundTask(c *gin.Context) {

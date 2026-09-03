@@ -392,6 +392,8 @@ export function getChannelIcon(channelType) {
       return <Mistral.Color size={iconSize} />;
     case 45: // 字节火山方舟、豆包通用
       return <Doubao.Color size={iconSize} />;
+    case 60: // 火山方舟（图片）
+      return <Doubao.Color size={iconSize} />;
     case 48: // xAI
       return <XAI size={iconSize} />;
     case 49: // Coze
@@ -402,7 +404,7 @@ export function getChannelIcon(channelType) {
       return <Jimeng.Color size={iconSize} />;
     case 54: // 豆包视频 Doubao Video
       return <Doubao.Color size={iconSize} />;
-    case 59: // 火山方舟官方协议透传 Ark Native
+    case 59: // 火山方舟（视频）官方协议透传
       return <Doubao.Color size={iconSize} />;
     case 56: // Replicate
       return <Replicate size={iconSize} />;

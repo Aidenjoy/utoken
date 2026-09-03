@@ -140,6 +140,16 @@ export const CHANNEL_OPTIONS = [
     label: '字节火山方舟、豆包通用',
   },
   {
+    value: 60,
+    color: 'blue',
+    label: '火山方舟（图片）',
+  },
+  {
+    value: 59,
+    color: 'blue',
+    label: '火山方舟（视频）',
+  },
+  {
     value: 48,
     color: 'blue',
     label: 'xAI',
@@ -188,11 +198,6 @@ export const CHANNEL_OPTIONS = [
     value: 57,
     color: 'blue',
     label: 'ChatGPT Subscription (Codex)',
-  },
-  {
-    value: 59,
-    color: 'blue',
-    label: '火山方舟（官方协议）',
   },
 ];
 

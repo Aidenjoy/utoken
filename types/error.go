@@ -201,6 +201,12 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 			Code:    e.errorCode,
 		}
 	}
+	// RelayError may carry no message (e.g. upstream returned an empty body and only
+	// Err was filled in later); fall back to the wrapped error so the real reason
+	// reaches the client instead of the bare error type.
+	if result.Message == "" {
+		result.Message = e.Error()
+	}
 	if e.errorCode != ErrorCodeCountTokenFailed {
 		result.Message = common.MaskSensitiveInfo(result.Message)
 	}
@@ -229,6 +235,9 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 			Message: e.Error(),
 			Type:    string(e.errorType),
 		}
+	}
+	if result.Message == "" {
+		result.Message = e.Error()
 	}
 	if e.errorCode != ErrorCodeCountTokenFailed {
 		result.Message = common.MaskSensitiveInfo(result.Message)

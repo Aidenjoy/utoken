@@ -16,4 +16,11 @@ var ModelList = []string{
 	"seed-1-6-thinking-250715",
 }
 
+// ImageModelList is the default model set suggested for the image-generation
+// channel type (火山方舟（图片）), which only serves /v1/images/generations.
+var ImageModelList = []string{
+	"doubao-seedream-4-0-250828",
+	"seedream-4-0-250828",
+}
+
 var ChannelName = "volcengine"

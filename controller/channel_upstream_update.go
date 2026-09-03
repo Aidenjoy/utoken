@@ -295,7 +295,7 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		} else {
 			url = fmt.Sprintf("%s/api/paas/v4/models", baseURL)
 		}
-	case constant.ChannelTypeVolcEngine:
+	case constant.ChannelTypeVolcEngine, constant.ChannelTypeVolcEngineImage:
 		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
 			url = fmt.Sprintf("%s/v1/models", plan.OpenAIBaseURL)
 		} else {

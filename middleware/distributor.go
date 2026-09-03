@@ -83,8 +83,10 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-				// check path is /pg/chat/completions or /pg/video/generations
-				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") || strings.HasPrefix(c.Request.URL.Path, "/pg/video/generations") {
+				// playground 的生成类接口把 group 放在 body 里：对话、视频、图片
+				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") ||
+					strings.HasPrefix(c.Request.URL.Path, "/pg/video/generations") ||
+					strings.HasPrefix(c.Request.URL.Path, "/pg/images/generations") {
 					playgroundRequest := &dto.PlayGroundRequest{}
 					err = common.UnmarshalBodyReusable(c, playgroundRequest)
 					if err != nil {
@@ -449,8 +451,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
-		// playground chat completions
+	// playground 对话与图片生成：模型名和分组都从 body 读取
+	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") ||
+		strings.HasPrefix(c.Request.URL.Path, "/pg/images/generations") {
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err

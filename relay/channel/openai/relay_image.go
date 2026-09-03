@@ -42,9 +42,28 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
+	var imageResp dto.ImageResponse
+	if err := common.Unmarshal(responseBody, &imageResp); err == nil {
+		recordReturnedImageCount(info, len(imageResp.Data))
+	}
+
 	normalizeOpenAIUsage(&usageResp.Usage)
 	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
 	return &usageResp.Usage, nil
+}
+
+// recordReturnedImageCount bills by the number of images the upstream actually
+// returned. Providers that decide the count server-side (Volcengine Ark
+// sequential_image_generation) can return more images than the requested n, and
+// relay.ImageHelper only falls back to the request value while no adaptor has set
+// the ratio yet. Guarded by UsePrice for the same reason as that fallback: on the
+// ratio-based path the upstream usage tokens already account for every returned
+// image, so multiplying by the count would double-charge.
+func recordReturnedImageCount(info *relaycommon.RelayInfo, imageCount int) {
+	if info == nil || imageCount <= 0 || !info.PriceData.UsePrice {
+		return
+	}
+	info.PriceData.AddOtherRatio("n", float64(imageCount))
 }
 
 // normalizeOpenAIUsage maps the OpenAI Images usage shape (input_tokens /
@@ -220,6 +239,7 @@ func OpenaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 	if created == 0 {
 		created = time.Now().Unix()
 	}
+	recordReturnedImageCount(info, len(imageResp.Data))
 	if info != nil {
 		info.SetFirstResponseTime()
 	}

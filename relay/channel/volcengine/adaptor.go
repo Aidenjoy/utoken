@@ -30,6 +30,7 @@ const (
 )
 
 type Adaptor struct {
+	ChannelType int
 }
 
 func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
@@ -107,8 +108,12 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
-	case constant.RelayModeImagesGenerations:
-		return request, nil
+	// 文生图与图生图共用同一个 Ark 端点（见 GetRequestURL），两者的官方 body
+	// 都可以带 Ark 专有参数（seed / max_tokens / guidance_scale /
+	// sequential_image_generation 等），这些字段不在 dto.ImageRequest 里，
+	// 直接返回 request 会被 MarshalJSON 丢掉。
+	case constant.RelayModeImagesGenerations, constant.RelayModeImagesEdits:
+		return buildArkImagePayload(request)
 	// 根据官方文档,并没有发现豆包生图支持表单请求:https://www.volcengine.com/docs/82379/1824121
 	//case constant.RelayModeImagesEdits:
 	//
@@ -234,6 +239,9 @@ func detectImageMimeType(filename string) string {
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
+	if info != nil && info.ChannelMeta != nil {
+		a.ChannelType = info.ChannelType
+	}
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -394,6 +402,9 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 }
 
 func (a *Adaptor) GetModelList() []string {
+	if a.ChannelType == channelconstant.ChannelTypeVolcEngineImage {
+		return ImageModelList
+	}
 	return ModelList
 }
 

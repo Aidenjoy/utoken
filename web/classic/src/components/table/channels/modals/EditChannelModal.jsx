@@ -444,6 +444,27 @@ const EditChannelModal = (props) => {
     </Tooltip>
   );
 
+  // 火山方舟（图片）渠道不提供 Coding 套餐：该额度仅适用于对话调用
+  const arkBaseUrlOptions = [
+    {
+      value: 'https://ark.cn-beijing.volces.com',
+      label: 'https://ark.cn-beijing.volces.com',
+    },
+    {
+      value: 'https://ark.ap-southeast.bytepluses.com',
+      label: 'https://ark.ap-southeast.bytepluses.com',
+    },
+    ...(inputs.type === 45
+      ? [
+          {
+            value: DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL,
+            label: doubaoCodingPlanOptionLabel,
+            disabled: !canKeepDeprecatedDoubaoCodingPlan,
+          },
+        ]
+      : []),
+  ];
+
   // 2FA状态更新辅助函数
   const updateTwoFAState = (updates) => {
     setTwoFAState((prev) => ({ ...prev, ...updates }));
@@ -666,10 +687,19 @@ const EditChannelModal = (props) => {
           localModels = ['suno_music', 'suno_lyrics'];
           break;
         case 45:
+        case 60:
           localModels = getChannelModels(value);
           setInputs((prevInputs) => ({
             ...prevInputs,
             base_url: 'https://ark.cn-beijing.volces.com',
+          }));
+          break;
+        case 59:
+          // 视频渠道走官方协议透传，base_url 必须自带 /api/v3 版本路径
+          localModels = getChannelModels(value);
+          setInputs((prevInputs) => ({
+            ...prevInputs,
+            base_url: 'https://ark.cn-beijing.volces.com/api/v3',
           }));
           break;
         default:
@@ -965,7 +995,7 @@ const EditChannelModal = (props) => {
       }
 
       if (
-        data.type === 45 &&
+        (data.type === 45 || data.type === 60) &&
         (!data.base_url ||
           (typeof data.base_url === 'string' && data.base_url.trim() === ''))
       ) {
@@ -1653,7 +1683,7 @@ const EditChannelModal = (props) => {
       return;
     }
     if (
-      localInputs.type === 45 &&
+      (localInputs.type === 45 || localInputs.type === 60) &&
       (!localInputs.base_url || localInputs.base_url.trim() === '')
     ) {
       showInfo(t('请输入API地址！'));
@@ -3339,6 +3369,7 @@ const EditChannelModal = (props) => {
                         inputs.type !== 8 &&
                         inputs.type !== 22 &&
                         inputs.type !== 36 &&
+                        inputs.type !== 60 &&
                         (inputs.type !== 45 || doubaoApiEditUnlocked) && (
                           <div>
                             <Form.Input
@@ -3395,7 +3426,8 @@ const EditChannelModal = (props) => {
                         </div>
                       )}
 
-                      {inputs.type === 45 && !doubaoApiEditUnlocked && (
+                      {(inputs.type === 45 || inputs.type === 60) &&
+                        !doubaoApiEditUnlocked && (
                         <div>
                           <Form.Select
                             field='base_url'
@@ -3404,23 +3436,7 @@ const EditChannelModal = (props) => {
                             onChange={(value) =>
                               handleInputChange('base_url', value)
                             }
-                            optionList={[
-                              {
-                                value: 'https://ark.cn-beijing.volces.com',
-                                label: 'https://ark.cn-beijing.volces.com',
-                              },
-                              {
-                                value:
-                                  'https://ark.ap-southeast.bytepluses.com',
-                                label:
-                                  'https://ark.ap-southeast.bytepluses.com',
-                              },
-                              {
-                                value: DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL,
-                                label: doubaoCodingPlanOptionLabel,
-                                disabled: !canKeepDeprecatedDoubaoCodingPlan,
-                              },
-                            ]}
+                            optionList={arkBaseUrlOptions}
                             defaultValue='https://ark.cn-beijing.volces.com'
                             disabled={isIonetLocked}
                           />

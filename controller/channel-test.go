@@ -135,8 +135,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			requestPath = "/v1/embeddings" // 修改请求路径
 		}
 
-		// VolcEngine 图像生成模型
-		if channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream") {
+		// VolcEngine 图像生成渠道，或 VolcEngine 渠道下的 seedream 图像模型
+		if channel.Type == constant.ChannelTypeVolcEngineImage ||
+			(channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream")) {
 			requestPath = "/v1/images/generations"
 		}
 

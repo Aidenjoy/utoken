@@ -51,7 +51,7 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeDeepSeek
 	case constant.ChannelTypeMokaAI:
 		apiType = constant.APITypeMokaAI
-	case constant.ChannelTypeVolcEngine:
+	case constant.ChannelTypeVolcEngine, constant.ChannelTypeVolcEngineImage:
 		apiType = constant.APITypeVolcEngine
 	case constant.ChannelTypeBaiduV2:
 		apiType = constant.APITypeBaiduV2
