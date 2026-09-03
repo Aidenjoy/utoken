@@ -657,22 +657,16 @@ func main() {
 	for _, ch := range characters {
 		characterIDs[ch.ID] = true
 		newCharacters = append(newCharacters, model.DirectorCharacter{
-			ID:              int(ch.ID),
-			CreatedAt:       unixOf(ch.CreatedAt),
-			UpdatedAt:       unixOf(ch.UpdatedAt),
-			UserID:          adminUserID,
-			ProjectID:       int(ch.DramaID),
-			Name:            ch.Name,
-			Role:            ch.Role,
-			Description:     ch.Description,
-			Appearance:      ch.Appearance,
-			Prompt:          ch.Prompt,
-			Personality:     ch.Personality,
-			ImageURL:        transferMaybe(ch.ImageURL, int(ch.DramaID), tosOK),
-			Source:          ch.Source,
-			ReferenceImages: transferRefMaybe(ch.ReferenceImages, int(ch.DramaID), tosOK),
-			SeedValue:       ch.SeedValue,
-			SortOrder:       ch.SortOrder,
+			ID:        int(ch.ID),
+			CreatedAt: unixOf(ch.CreatedAt),
+			UpdatedAt: unixOf(ch.UpdatedAt),
+			UserID:    adminUserID,
+			ProjectID: int(ch.DramaID),
+			Name:      ch.Name,
+			Role:      ch.Role,
+			Prompt:    firstNonEmpty(ch.Prompt, ch.Appearance),
+			ImageURL:  transferMaybe(ch.ImageURL, int(ch.DramaID), tosOK),
+			Source:    ch.Source,
 		})
 	}
 	batchInsert(newCharacters)
@@ -683,19 +677,18 @@ func main() {
 	for _, sc := range scenes {
 		sceneIDs[sc.ID] = true
 		newScenes = append(newScenes, model.DirectorScene{
-			ID:              int(sc.ID),
-			CreatedAt:       unixOf(sc.CreatedAt),
-			UpdatedAt:       unixOf(sc.UpdatedAt),
-			UserID:          adminUserID,
-			ProjectID:       int(sc.DramaID),
-			EpisodeID:       uintPtr2IntPtr(sc.EpisodeID),
-			Location:        sc.Location,
-			Time:            sc.Time,
-			Prompt:          sc.Prompt,
-			StoryboardCount: sc.StoryboardCount,
-			ImageURL:        transferMaybe(sc.ImageURL, int(sc.DramaID), tosOK),
-			Source:          sc.Source,
-			Status:          sc.Status,
+			ID:        int(sc.ID),
+			CreatedAt: unixOf(sc.CreatedAt),
+			UpdatedAt: unixOf(sc.UpdatedAt),
+			UserID:    adminUserID,
+			ProjectID: int(sc.DramaID),
+			EpisodeID: uintPtr2IntPtr(sc.EpisodeID),
+			Location:  sc.Location,
+			Time:      sc.Time,
+			Prompt:    sc.Prompt,
+			ImageURL:  transferMaybe(sc.ImageURL, int(sc.DramaID), tosOK),
+			Source:    sc.Source,
+			Status:    sc.Status,
 		})
 	}
 	batchInsert(newScenes)
@@ -704,19 +697,17 @@ func main() {
 	newProps := make([]model.DirectorProp, 0, len(props))
 	for _, p := range props {
 		newProps = append(newProps, model.DirectorProp{
-			ID:              int(p.ID),
-			CreatedAt:       unixOf(p.CreatedAt),
-			UpdatedAt:       unixOf(p.UpdatedAt),
-			UserID:          adminUserID,
-			ProjectID:       int(p.DramaID),
-			Name:            p.Name,
-			Type:            p.Type,
-			Description:     p.Description,
-			Prompt:          p.Prompt,
-			ImageURL:        transferMaybe(p.ImageURL, int(p.DramaID), tosOK),
-			Source:          p.Source,
-			Status:          p.Status,
-			ReferenceImages: transferRefMaybe(p.ReferenceImages, int(p.DramaID), tosOK),
+			ID:        int(p.ID),
+			CreatedAt: unixOf(p.CreatedAt),
+			UpdatedAt: unixOf(p.UpdatedAt),
+			UserID:    adminUserID,
+			ProjectID: int(p.DramaID),
+			Name:      p.Name,
+			Type:      p.Type,
+			Prompt:    firstNonEmpty(p.Prompt, p.Description),
+			ImageURL:  transferMaybe(p.ImageURL, int(p.DramaID), tosOK),
+			Source:    p.Source,
+			Status:    p.Status,
 		})
 	}
 	batchInsert(newProps)
@@ -979,6 +970,16 @@ func transferMaybe(raw string, projectID int, tosOK bool) string {
 		return raw
 	}
 	return transferURL(raw, projectID)
+}
+
+// firstNonEmpty 返回第一个非空字符串（旧库 prompt 为空时回退旧字段）
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func transferRefMaybe(jsonStr string, projectID int, tosOK bool) string {

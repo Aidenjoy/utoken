@@ -104,20 +104,21 @@ func DirectorCreateProject(c *gin.Context) {
 }
 
 // DirectorUpdateProject 更新项目字段
+// PATCH 语义：仅更新请求中显式提交的字段，未提交字段保持原值
 func DirectorUpdateProject(c *gin.Context) {
 	var req struct {
-		ID            int    `json:"id"`
-		Title         string `json:"title"`
-		Category      string `json:"category"`
-		Description   string `json:"description"`
-		Genre         string `json:"genre"`
-		Style         string `json:"style"`
-		TotalEpisodes int    `json:"totalEpisodes"`
-		TotalDuration int    `json:"totalDuration"`
-		Status        string `json:"status"`
-		Thumbnail     string `json:"thumbnail"`
-		Tags          string `json:"tags"`
-		Metadata      string `json:"metadata"`
+		ID            int     `json:"id"`
+		Title         *string `json:"title"`
+		Category      *string `json:"category"`
+		Description   *string `json:"description"`
+		Genre         *string `json:"genre"`
+		Style         *string `json:"style"`
+		TotalEpisodes *int    `json:"totalEpisodes"`
+		TotalDuration *int    `json:"totalDuration"`
+		Status        *string `json:"status"`
+		Thumbnail     *string `json:"thumbnail"`
+		Tags          *string `json:"tags"`
+		Metadata      *string `json:"metadata"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -127,7 +128,7 @@ func DirectorUpdateProject(c *gin.Context) {
 		common.ApiErrorMsg(c, "项目ID不能为空")
 		return
 	}
-	if req.Category != "" && !model.IsValidDirectorCategory(req.Category) {
+	if req.Category != nil && *req.Category != "" && !model.IsValidDirectorCategory(*req.Category) {
 		common.ApiErrorMsg(c, "无效的项目类型")
 		return
 	}
@@ -136,18 +137,43 @@ func DirectorUpdateProject(c *gin.Context) {
 		common.ApiErrorMsg(c, "项目不存在")
 		return
 	}
-	fields := map[string]any{
-		"title":          req.Title,
-		"category":       req.Category,
-		"description":    req.Description,
-		"genre":          req.Genre,
-		"style":          req.Style,
-		"total_episodes": req.TotalEpisodes,
-		"total_duration": req.TotalDuration,
-		"status":         req.Status,
-		"thumbnail":      req.Thumbnail,
-		"tags":           req.Tags,
-		"metadata":       req.Metadata,
+	fields := map[string]any{}
+	if req.Title != nil {
+		fields["title"] = *req.Title
+	}
+	if req.Category != nil && *req.Category != "" {
+		fields["category"] = *req.Category
+	}
+	if req.Description != nil {
+		fields["description"] = *req.Description
+	}
+	if req.Genre != nil {
+		fields["genre"] = *req.Genre
+	}
+	if req.Style != nil {
+		fields["style"] = *req.Style
+	}
+	if req.TotalEpisodes != nil {
+		fields["total_episodes"] = *req.TotalEpisodes
+	}
+	if req.TotalDuration != nil {
+		fields["total_duration"] = *req.TotalDuration
+	}
+	if req.Status != nil {
+		fields["status"] = *req.Status
+	}
+	if req.Thumbnail != nil {
+		fields["thumbnail"] = *req.Thumbnail
+	}
+	if req.Tags != nil {
+		fields["tags"] = *req.Tags
+	}
+	if req.Metadata != nil {
+		fields["metadata"] = *req.Metadata
+	}
+	if len(fields) == 0 {
+		common.ApiErrorMsg(c, "没有需要更新的字段")
+		return
 	}
 	if err := p.Update(fields); err != nil {
 		common.ApiError(c, err)
@@ -245,21 +271,22 @@ func DirectorCreateEpisode(c *gin.Context) {
 }
 
 // DirectorUpdateEpisode 更新分集字段（角色/场景关联由专用接口维护）
+// PATCH 语义：仅更新请求中显式提交的字段，未提交字段保持原值
 func DirectorUpdateEpisode(c *gin.Context) {
 	var req struct {
-		ID             int    `json:"id"`
-		Title          string `json:"title"`
-		Content        string `json:"content"`
-		ScriptContent  string `json:"scriptContent"`
-		Description    string `json:"description"`
-		Duration       int    `json:"duration"`
-		TargetDuration int    `json:"targetDuration"`
-		AspectRatio    string `json:"aspectRatio"`
-		Resolution     string `json:"resolution"`
-		Metadata       string `json:"metadata"`
-		Status         string `json:"status"`
-		VideoURL       string `json:"videoUrl"`
-		Thumbnail      string `json:"thumbnail"`
+		ID             int     `json:"id"`
+		Title          *string `json:"title"`
+		Content        *string `json:"content"`
+		ScriptContent  *string `json:"scriptContent"`
+		Description    *string `json:"description"`
+		Duration       *int    `json:"duration"`
+		TargetDuration *int    `json:"targetDuration"`
+		AspectRatio    *string `json:"aspectRatio"`
+		Resolution     *string `json:"resolution"`
+		Metadata       *string `json:"metadata"`
+		Status         *string `json:"status"`
+		VideoURL       *string `json:"videoUrl"`
+		Thumbnail      *string `json:"thumbnail"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -274,19 +301,46 @@ func DirectorUpdateEpisode(c *gin.Context) {
 		common.ApiErrorMsg(c, "分集不存在")
 		return
 	}
-	fields := map[string]any{
-		"title":           req.Title,
-		"content":         req.Content,
-		"script_content":  req.ScriptContent,
-		"description":     req.Description,
-		"duration":        req.Duration,
-		"target_duration": req.TargetDuration,
-		"aspect_ratio":    req.AspectRatio,
-		"resolution":      req.Resolution,
-		"metadata":        req.Metadata,
-		"status":          req.Status,
-		"video_url":       req.VideoURL,
-		"thumbnail":       req.Thumbnail,
+	fields := map[string]any{}
+	if req.Title != nil {
+		fields["title"] = *req.Title
+	}
+	if req.Content != nil {
+		fields["content"] = *req.Content
+	}
+	if req.ScriptContent != nil {
+		fields["script_content"] = *req.ScriptContent
+	}
+	if req.Description != nil {
+		fields["description"] = *req.Description
+	}
+	if req.Duration != nil {
+		fields["duration"] = *req.Duration
+	}
+	if req.TargetDuration != nil {
+		fields["target_duration"] = *req.TargetDuration
+	}
+	if req.AspectRatio != nil {
+		fields["aspect_ratio"] = *req.AspectRatio
+	}
+	if req.Resolution != nil {
+		fields["resolution"] = *req.Resolution
+	}
+	if req.Metadata != nil {
+		fields["metadata"] = *req.Metadata
+	}
+	if req.Status != nil {
+		fields["status"] = *req.Status
+	}
+	if req.VideoURL != nil {
+		fields["video_url"] = *req.VideoURL
+	}
+	if req.Thumbnail != nil {
+		fields["thumbnail"] = *req.Thumbnail
+	}
+	if len(fields) == 0 {
+		common.ApiErrorMsg(c, "没有需要更新的字段")
+		return
 	}
 	if err := e.Update(fields); err != nil {
 		common.ApiError(c, err)

@@ -22,23 +22,12 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { updateDirectorEpisode } from '../api'
 import type { DirectorEpisode } from '../types'
-
-const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '3:4', '4:3']
-const RESOLUTIONS = ['720p', '1080p']
 
 interface ContentStepProps {
   episode: DirectorEpisode
@@ -49,21 +38,9 @@ export function ContentStep(props: ContentStepProps) {
   const { t } = useTranslation()
 
   const [content, setContent] = React.useState(props.episode.content ?? '')
-  const [targetDuration, setTargetDuration] = React.useState(
-    props.episode.targetDuration || 60
-  )
-  const [aspectRatio, setAspectRatio] = React.useState(
-    props.episode.aspectRatio || '9:16'
-  )
-  const [resolution, setResolution] = React.useState(
-    props.episode.resolution || '1080p'
-  )
 
   React.useEffect(() => {
     setContent(props.episode.content ?? '')
-    setTargetDuration(props.episode.targetDuration || 60)
-    setAspectRatio(props.episode.aspectRatio || '9:16')
-    setResolution(props.episode.resolution || '1080p')
   }, [props.episode])
 
   const saveMutation = useMutation({
@@ -71,9 +48,6 @@ export function ContentStep(props: ContentStepProps) {
       updateDirectorEpisode({
         id: props.episode.id,
         content,
-        targetDuration,
-        aspectRatio,
-        resolution,
       } as Partial<DirectorEpisode>),
     onSuccess: (res) => {
       if (res.success) {
@@ -85,12 +59,32 @@ export function ContentStep(props: ContentStepProps) {
   })
 
   return (
-    <div className='space-y-5'>
+    <div className='flex flex-col gap-3.5'>
+      {/* 顶部：标题 + 操作 */}
+      <div className='flex flex-wrap items-start justify-between gap-2'>
+        <div>
+          <div className='text-base font-semibold'>{t('Original Content')}</div>
+          <div className='text-muted-foreground mt-1 text-[13px]'>
+            {t(
+              'Enter the original story content of this episode as the source material for AI rewriting'
+            )}
+          </div>
+        </div>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Button
+            size='sm'
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? t('Saving...') : t('Save Content')}
+          </Button>
+        </div>
+      </div>
       <div className='grid gap-2'>
         <Label htmlFor='director-content'>{t('Original Content')}</Label>
         <Textarea
           id='director-content'
-          rows={14}
+          className='min-h-96'
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder={t(
@@ -98,64 +92,6 @@ export function ContentStep(props: ContentStepProps) {
           )}
         />
       </div>
-      <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
-        <div className='grid gap-2'>
-          <Label htmlFor='director-target-duration'>
-            {t('Target Duration (seconds)')}
-          </Label>
-          <Input
-            id='director-target-duration'
-            type='number'
-            min={1}
-            value={targetDuration}
-            onChange={(e) =>
-              setTargetDuration(Math.max(1, Number(e.target.value) || 60))
-            }
-          />
-        </div>
-        <div className='grid gap-2'>
-          <Label>{t('Aspect Ratio')}</Label>
-          <Select
-            value={aspectRatio}
-            onValueChange={(value) => setAspectRatio(value ?? '')}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ASPECT_RATIOS.map((ratio) => (
-                <SelectItem key={ratio} value={ratio}>
-                  {ratio}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className='grid gap-2'>
-          <Label>{t('Resolution')}</Label>
-          <Select
-            value={resolution}
-            onValueChange={(value) => setResolution(value ?? '')}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RESOLUTIONS.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <Button
-        onClick={() => saveMutation.mutate()}
-        disabled={saveMutation.isPending}
-      >
-        {saveMutation.isPending ? t('Saving...') : t('Save')}
-      </Button>
     </div>
   )
 }

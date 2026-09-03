@@ -57,6 +57,7 @@ import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedDirectorSettingsRouteImport } from './routes/_authenticated/director/settings'
+import { Route as AuthenticatedDirectorAssetsRouteImport } from './routes/_authenticated/director/assets'
 import { Route as AuthenticatedDirectorCategoryRouteImport } from './routes/_authenticated/director/$category'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
@@ -68,6 +69,7 @@ import { Route as AuthenticatedSystemSettingsModelsIndexRouteImport } from './ro
 import { Route as AuthenticatedSystemSettingsContentIndexRouteImport } from './routes/_authenticated/system-settings/content/index'
 import { Route as AuthenticatedSystemSettingsBillingIndexRouteImport } from './routes/_authenticated/system-settings/billing/index'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
+import { Route as AuthenticatedDirectorCategoryIndexRouteImport } from './routes/_authenticated/director/$category/index'
 import { Route as AuthenticatedSystemSettingsSiteSectionRouteImport } from './routes/_authenticated/system-settings/site/$section'
 import { Route as AuthenticatedSystemSettingsSecuritySectionRouteImport } from './routes/_authenticated/system-settings/security/$section'
 import { Route as AuthenticatedSystemSettingsOperationsSectionRouteImport } from './routes/_authenticated/system-settings/operations/$section'
@@ -76,6 +78,7 @@ import { Route as AuthenticatedSystemSettingsContentSectionRouteImport } from '.
 import { Route as AuthenticatedSystemSettingsBillingSectionRouteImport } from './routes/_authenticated/system-settings/billing/$section'
 import { Route as AuthenticatedSystemSettingsAuthSectionRouteImport } from './routes/_authenticated/system-settings/auth/$section'
 import { Route as AuthenticatedDirectorCategoryProjectIdRouteImport } from './routes/_authenticated/director/$category/$projectId'
+import { Route as AuthenticatedDirectorCategoryProjectIdIndexRouteImport } from './routes/_authenticated/director/$category/$projectId.index'
 import { Route as AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRouteImport } from './routes/_authenticated/director/$category/$projectId.episode.$episodeId'
 
 const UserAgreementRoute = UserAgreementRouteImport.update({
@@ -336,6 +339,12 @@ const AuthenticatedDirectorSettingsRoute =
     path: '/director/settings',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDirectorAssetsRoute =
+  AuthenticatedDirectorAssetsRouteImport.update({
+    id: '/director/assets',
+    path: '/director/assets',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedDirectorCategoryRoute =
   AuthenticatedDirectorCategoryRouteImport.update({
     id: '/director/$category',
@@ -400,6 +409,12 @@ const AuthenticatedSystemSettingsAuthIndexRoute =
     path: '/auth/',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
   } as any)
+const AuthenticatedDirectorCategoryIndexRoute =
+  AuthenticatedDirectorCategoryIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedDirectorCategoryRoute,
+  } as any)
 const AuthenticatedSystemSettingsSiteSectionRoute =
   AuthenticatedSystemSettingsSiteSectionRouteImport.update({
     id: '/site/$section',
@@ -448,6 +463,12 @@ const AuthenticatedDirectorCategoryProjectIdRoute =
     path: '/$projectId',
     getParentRoute: () => AuthenticatedDirectorCategoryRoute,
   } as any)
+const AuthenticatedDirectorCategoryProjectIdIndexRoute =
+  AuthenticatedDirectorCategoryProjectIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedDirectorCategoryProjectIdRoute,
+  } as any)
 const AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute =
   AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRouteImport.update({
     id: '/episode/$episodeId',
@@ -484,6 +505,7 @@ export interface FileRoutesByFullPath {
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/director/$category': typeof AuthenticatedDirectorCategoryRouteWithChildren
+  '/director/assets': typeof AuthenticatedDirectorAssetsRoute
   '/director/settings': typeof AuthenticatedDirectorSettingsRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -514,6 +536,7 @@ export interface FileRoutesByFullPath {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/director/$category/': typeof AuthenticatedDirectorCategoryIndexRoute
   '/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -521,6 +544,7 @@ export interface FileRoutesByFullPath {
   '/system-settings/operations/': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/system-settings/security/': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/system-settings/site/': typeof AuthenticatedSystemSettingsSiteIndexRoute
+  '/director/$category/$projectId/': typeof AuthenticatedDirectorCategoryProjectIdIndexRoute
   '/director/$category/$projectId/episode/$episodeId': typeof AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute
 }
 export interface FileRoutesByTo {
@@ -550,7 +574,7 @@ export interface FileRoutesByTo {
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
-  '/director/$category': typeof AuthenticatedDirectorCategoryRouteWithChildren
+  '/director/assets': typeof AuthenticatedDirectorAssetsRoute
   '/director/settings': typeof AuthenticatedDirectorSettingsRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -573,7 +597,6 @@ export interface FileRoutesByTo {
   '/users': typeof AuthenticatedUsersIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
-  '/director/$category/$projectId': typeof AuthenticatedDirectorCategoryProjectIdRouteWithChildren
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -581,6 +604,7 @@ export interface FileRoutesByTo {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/director/$category': typeof AuthenticatedDirectorCategoryIndexRoute
   '/system-settings/auth': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -588,6 +612,7 @@ export interface FileRoutesByTo {
   '/system-settings/operations': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/system-settings/security': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/system-settings/site': typeof AuthenticatedSystemSettingsSiteIndexRoute
+  '/director/$category/$projectId': typeof AuthenticatedDirectorCategoryProjectIdIndexRoute
   '/director/$category/$projectId/episode/$episodeId': typeof AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute
 }
 export interface FileRoutesById {
@@ -622,6 +647,7 @@ export interface FileRoutesById {
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/director/$category': typeof AuthenticatedDirectorCategoryRouteWithChildren
+  '/_authenticated/director/assets': typeof AuthenticatedDirectorAssetsRoute
   '/_authenticated/director/settings': typeof AuthenticatedDirectorSettingsRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -652,6 +678,7 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/_authenticated/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/_authenticated/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/_authenticated/director/$category/': typeof AuthenticatedDirectorCategoryIndexRoute
   '/_authenticated/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/_authenticated/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/_authenticated/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -659,6 +686,7 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/operations/': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/_authenticated/system-settings/security/': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/_authenticated/system-settings/site/': typeof AuthenticatedSystemSettingsSiteIndexRoute
+  '/_authenticated/director/$category/$projectId/': typeof AuthenticatedDirectorCategoryProjectIdIndexRoute
   '/_authenticated/director/$category/$projectId/episode/$episodeId': typeof AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute
 }
 export interface FileRouteTypes {
@@ -692,6 +720,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/dashboard/$section'
     | '/director/$category'
+    | '/director/assets'
     | '/director/settings'
     | '/errors/$error'
     | '/models/$section'
@@ -722,6 +751,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
+    | '/director/$category/'
     | '/system-settings/auth/'
     | '/system-settings/billing/'
     | '/system-settings/content/'
@@ -729,6 +759,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations/'
     | '/system-settings/security/'
     | '/system-settings/site/'
+    | '/director/$category/$projectId/'
     | '/director/$category/$projectId/episode/$episodeId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -758,7 +789,7 @@ export interface FileRouteTypes {
     | '/user/reset'
     | '/chat/$chatId'
     | '/dashboard/$section'
-    | '/director/$category'
+    | '/director/assets'
     | '/director/settings'
     | '/errors/$error'
     | '/models/$section'
@@ -781,7 +812,6 @@ export interface FileRouteTypes {
     | '/users'
     | '/wallet'
     | '/pricing/$modelId'
-    | '/director/$category/$projectId'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
     | '/system-settings/content/$section'
@@ -789,6 +819,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
+    | '/director/$category'
     | '/system-settings/auth'
     | '/system-settings/billing'
     | '/system-settings/content'
@@ -796,6 +827,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations'
     | '/system-settings/security'
     | '/system-settings/site'
+    | '/director/$category/$projectId'
     | '/director/$category/$projectId/episode/$episodeId'
   id:
     | '__root__'
@@ -829,6 +861,7 @@ export interface FileRouteTypes {
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/director/$category'
+    | '/_authenticated/director/assets'
     | '/_authenticated/director/settings'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
@@ -859,6 +892,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/operations/$section'
     | '/_authenticated/system-settings/security/$section'
     | '/_authenticated/system-settings/site/$section'
+    | '/_authenticated/director/$category/'
     | '/_authenticated/system-settings/auth/'
     | '/_authenticated/system-settings/billing/'
     | '/_authenticated/system-settings/content/'
@@ -866,6 +900,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/operations/'
     | '/_authenticated/system-settings/security/'
     | '/_authenticated/system-settings/site/'
+    | '/_authenticated/director/$category/$projectId/'
     | '/_authenticated/director/$category/$projectId/episode/$episodeId'
   fileRoutesById: FileRoutesById
 }
@@ -1228,6 +1263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDirectorSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/director/assets': {
+      id: '/_authenticated/director/assets'
+      path: '/director/assets'
+      fullPath: '/director/assets'
+      preLoaderRoute: typeof AuthenticatedDirectorAssetsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/director/$category': {
       id: '/_authenticated/director/$category'
       path: '/director/$category'
@@ -1305,6 +1347,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSystemSettingsAuthIndexRouteImport
       parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
     }
+    '/_authenticated/director/$category/': {
+      id: '/_authenticated/director/$category/'
+      path: '/'
+      fullPath: '/director/$category/'
+      preLoaderRoute: typeof AuthenticatedDirectorCategoryIndexRouteImport
+      parentRoute: typeof AuthenticatedDirectorCategoryRoute
+    }
     '/_authenticated/system-settings/site/$section': {
       id: '/_authenticated/system-settings/site/$section'
       path: '/site/$section'
@@ -1360,6 +1409,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/director/$category/$projectId'
       preLoaderRoute: typeof AuthenticatedDirectorCategoryProjectIdRouteImport
       parentRoute: typeof AuthenticatedDirectorCategoryRoute
+    }
+    '/_authenticated/director/$category/$projectId/': {
+      id: '/_authenticated/director/$category/$projectId/'
+      path: '/'
+      fullPath: '/director/$category/$projectId/'
+      preLoaderRoute: typeof AuthenticatedDirectorCategoryProjectIdIndexRouteImport
+      parentRoute: typeof AuthenticatedDirectorCategoryProjectIdRoute
     }
     '/_authenticated/director/$category/$projectId/episode/$episodeId': {
       id: '/_authenticated/director/$category/$projectId/episode/$episodeId'
@@ -1455,11 +1511,14 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
   )
 
 interface AuthenticatedDirectorCategoryProjectIdRouteChildren {
+  AuthenticatedDirectorCategoryProjectIdIndexRoute: typeof AuthenticatedDirectorCategoryProjectIdIndexRoute
   AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute: typeof AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute
 }
 
 const AuthenticatedDirectorCategoryProjectIdRouteChildren: AuthenticatedDirectorCategoryProjectIdRouteChildren =
   {
+    AuthenticatedDirectorCategoryProjectIdIndexRoute:
+      AuthenticatedDirectorCategoryProjectIdIndexRoute,
     AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute:
       AuthenticatedDirectorCategoryProjectIdEpisodeEpisodeIdRoute,
   }
@@ -1471,12 +1530,15 @@ const AuthenticatedDirectorCategoryProjectIdRouteWithChildren =
 
 interface AuthenticatedDirectorCategoryRouteChildren {
   AuthenticatedDirectorCategoryProjectIdRoute: typeof AuthenticatedDirectorCategoryProjectIdRouteWithChildren
+  AuthenticatedDirectorCategoryIndexRoute: typeof AuthenticatedDirectorCategoryIndexRoute
 }
 
 const AuthenticatedDirectorCategoryRouteChildren: AuthenticatedDirectorCategoryRouteChildren =
   {
     AuthenticatedDirectorCategoryProjectIdRoute:
       AuthenticatedDirectorCategoryProjectIdRouteWithChildren,
+    AuthenticatedDirectorCategoryIndexRoute:
+      AuthenticatedDirectorCategoryIndexRoute,
   }
 
 const AuthenticatedDirectorCategoryRouteWithChildren =
@@ -1490,6 +1552,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedDirectorCategoryRoute: typeof AuthenticatedDirectorCategoryRouteWithChildren
+  AuthenticatedDirectorAssetsRoute: typeof AuthenticatedDirectorAssetsRoute
   AuthenticatedDirectorSettingsRoute: typeof AuthenticatedDirectorSettingsRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
@@ -1520,6 +1583,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedDirectorCategoryRoute:
     AuthenticatedDirectorCategoryRouteWithChildren,
+  AuthenticatedDirectorAssetsRoute: AuthenticatedDirectorAssetsRoute,
   AuthenticatedDirectorSettingsRoute: AuthenticatedDirectorSettingsRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,

@@ -41,6 +41,8 @@ func (p *ImageGenerationService) generateImage(cfg directorCallConfig, req Image
 		"n":               1,
 		"size":            size,
 		"response_format": "url",
+		// 火山 Ark 默认在图片右下角盖「AI 生成」水印，显式关闭（与 Playground 图片一致）
+		"watermark": false,
 	}
 	// 参考图输入：image 数组（http URL，多图融合保证角色/场景一致性）
 	if len(req.ReferenceImages) > 0 {
@@ -82,13 +84,13 @@ func (s *ImageGenerationService) SubmitCharacterImage(userID, characterID int, c
 	if project != nil {
 		style = project.Style
 	}
-	// customPrompt 为用户编辑的角色描述（非完整提示词），为空时用角色外貌描述
+	// customPrompt 为用户编辑的描述（非完整提示词），为空时用角色现有提示词
 	description := strings.TrimSpace(customPrompt)
 	if description == "" {
-		if strings.TrimSpace(character.Appearance) == "" {
-			return 0, errors.New("该角色还没有外貌描述，请先完善角色信息")
+		if strings.TrimSpace(character.Prompt) == "" {
+			return 0, errors.New("该角色还没有提示词，请先完善角色信息")
 		}
-		description = character.Appearance
+		description = character.Prompt
 	} else {
 		// 保存用户最后一次编辑的描述，重新打开弹窗时回显
 		character.Update(map[string]any{"prompt": description})
@@ -180,7 +182,7 @@ func (s *ImageGenerationService) SubmitPropImage(userID, propID int, customPromp
 	if prompt == "" {
 		prompt = strings.TrimSpace(prop.Prompt)
 		if prompt == "" {
-			prompt = fmt.Sprintf("%s，%s，产品道具单品图，主体居中完整入画，干净简约背景，摄影棚柔光，高清细节", prop.Name, prop.Description)
+			prompt = fmt.Sprintf("%s，产品道具单品图，主体居中完整入画，干净简约背景，摄影棚柔光，高清细节", prop.Name)
 		}
 		project, _ := model.GetDirectorProjectByID(prop.ProjectID)
 		style := ""

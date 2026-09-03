@@ -16,11 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
 
-import { Main } from '@/components/layout'
 import { isDirectorCategory } from '@/features/director/constants'
-import { ProjectDetailPage } from '@/features/director/director-project-detail-page'
 
 export const Route = createFileRoute(
   '/_authenticated/director/$category/$projectId'
@@ -30,17 +28,5 @@ export const Route = createFileRoute(
       throw redirect({ to: '/dashboard' })
     }
   },
-  component: DirectorProjectRoutePage,
+  component: Outlet,
 })
-
-function DirectorProjectRoutePage() {
-  const { category, projectId } = Route.useParams()
-  if (!isDirectorCategory(category)) {
-    return null
-  }
-  return (
-    <Main>
-      <ProjectDetailPage category={category} projectId={Number(projectId)} />
-    </Main>
-  )
-}

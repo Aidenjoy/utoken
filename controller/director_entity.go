@@ -33,18 +33,12 @@ func DirectorCreateCharacter(c *gin.Context) {
 // DirectorUpdateCharacter 更新角色字段
 func DirectorUpdateCharacter(c *gin.Context) {
 	var req struct {
-		ID              int    `json:"id"`
-		Name            string `json:"name"`
-		Role            string `json:"role"`
-		Description     string `json:"description"`
-		Appearance      string `json:"appearance"`
-		Prompt          string `json:"prompt"`
-		Personality     string `json:"personality"`
-		ImageURL        string `json:"imageUrl"`
-		Source          string `json:"source"`
-		ReferenceImages string `json:"referenceImages"`
-		SeedValue       string `json:"seedValue"`
-		SortOrder       int    `json:"sortOrder"`
+		ID       int    `json:"id"`
+		Name     string `json:"name"`
+		Role     string `json:"role"`
+		Prompt   string `json:"prompt"`
+		ImageURL string `json:"imageUrl"`
+		Source   string `json:"source"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -60,17 +54,11 @@ func DirectorUpdateCharacter(c *gin.Context) {
 		return
 	}
 	fields := map[string]any{
-		"name":             req.Name,
-		"role":             req.Role,
-		"description":      req.Description,
-		"appearance":       req.Appearance,
-		"prompt":           req.Prompt,
-		"personality":      req.Personality,
-		"image_url":        req.ImageURL,
-		"source":           req.Source,
-		"reference_images": req.ReferenceImages,
-		"seed_value":       req.SeedValue,
-		"sort_order":       req.SortOrder,
+		"name":      req.Name,
+		"role":      req.Role,
+		"prompt":    req.Prompt,
+		"image_url": req.ImageURL,
+		"source":    req.Source,
 	}
 	if err := ch.Update(fields); err != nil {
 		common.ApiError(c, err)
@@ -186,14 +174,13 @@ func DirectorCreateScene(c *gin.Context) {
 // DirectorUpdateScene 更新场景字段
 func DirectorUpdateScene(c *gin.Context) {
 	var req struct {
-		ID              int    `json:"id"`
-		Location        string `json:"location"`
-		Time            string `json:"time"`
-		Prompt          string `json:"prompt"`
-		StoryboardCount int    `json:"storyboardCount"`
-		ImageURL        string `json:"imageUrl"`
-		Source          string `json:"source"`
-		Status          string `json:"status"`
+		ID       int    `json:"id"`
+		Location string `json:"location"`
+		Time     string `json:"time"`
+		Prompt   string `json:"prompt"`
+		ImageURL string `json:"imageUrl"`
+		Source   string `json:"source"`
+		Status   string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -209,13 +196,12 @@ func DirectorUpdateScene(c *gin.Context) {
 		return
 	}
 	fields := map[string]any{
-		"location":         req.Location,
-		"time":             req.Time,
-		"prompt":           req.Prompt,
-		"storyboard_count": req.StoryboardCount,
-		"image_url":        req.ImageURL,
-		"source":           req.Source,
-		"status":           req.Status,
+		"location":  req.Location,
+		"time":      req.Time,
+		"prompt":    req.Prompt,
+		"image_url": req.ImageURL,
+		"source":    req.Source,
+		"status":    req.Status,
 	}
 	if err := sc.Update(fields); err != nil {
 		common.ApiError(c, err)
@@ -331,15 +317,13 @@ func DirectorCreateProp(c *gin.Context) {
 // DirectorUpdateProp 更新道具字段
 func DirectorUpdateProp(c *gin.Context) {
 	var req struct {
-		ID              int    `json:"id"`
-		Name            string `json:"name"`
-		Type            string `json:"type"`
-		Description     string `json:"description"`
-		Prompt          string `json:"prompt"`
-		ImageURL        string `json:"imageUrl"`
-		Source          string `json:"source"`
-		Status          string `json:"status"`
-		ReferenceImages string `json:"referenceImages"`
+		ID       int    `json:"id"`
+		Name     string `json:"name"`
+		Type     string `json:"type"`
+		Prompt   string `json:"prompt"`
+		ImageURL string `json:"imageUrl"`
+		Source   string `json:"source"`
+		Status   string `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -355,14 +339,12 @@ func DirectorUpdateProp(c *gin.Context) {
 		return
 	}
 	fields := map[string]any{
-		"name":             req.Name,
-		"type":             req.Type,
-		"description":      req.Description,
-		"prompt":           req.Prompt,
-		"image_url":        req.ImageURL,
-		"source":           req.Source,
-		"status":           req.Status,
-		"reference_images": req.ReferenceImages,
+		"name":      req.Name,
+		"type":      req.Type,
+		"prompt":    req.Prompt,
+		"image_url": req.ImageURL,
+		"source":    req.Source,
+		"status":    req.Status,
 	}
 	if err := p.Update(fields); err != nil {
 		common.ApiError(c, err)

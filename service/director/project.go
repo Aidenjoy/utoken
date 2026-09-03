@@ -22,15 +22,59 @@ type ProjectWithStats struct {
 // DeleteProjectCascade 删除项目（级联删除分集/分镜/角色/场景/道具/剪辑工程/生成记录/素材）
 func (s *ProjectService) DeleteProjectCascade(projectID int) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("episode_id IN (?)",
-			tx.Model(&model.DirectorEpisode{}).Select("id").Where("project_id = ?", projectID)).
-			Delete(&model.DirectorStoryboard{}).Error; err != nil {
+		// 先物化各实体 ID 列表，避免 GORM 子查询复用问题
+		var episodeIDs []int
+		if err := tx.Model(&model.DirectorEpisode{}).Where("project_id = ?", projectID).Pluck("id", &episodeIDs).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("episode_id IN (?)",
-			tx.Model(&model.DirectorEpisode{}).Select("id").Where("project_id = ?", projectID)).
-			Delete(&model.DirectorEditProject{}).Error; err != nil {
+		var storyboardIDs []int
+		if len(episodeIDs) > 0 {
+			if err := tx.Model(&model.DirectorStoryboard{}).Where("episode_id IN ?", episodeIDs).Pluck("id", &storyboardIDs).Error; err != nil {
+				return err
+			}
+		}
+		var characterIDs []int
+		if err := tx.Model(&model.DirectorCharacter{}).Where("project_id = ?", projectID).Pluck("id", &characterIDs).Error; err != nil {
 			return err
+		}
+		var sceneIDs []int
+		if err := tx.Model(&model.DirectorScene{}).Where("project_id = ?", projectID).Pluck("id", &sceneIDs).Error; err != nil {
+			return err
+		}
+		// 先清 many2many 关联表（按两侧外键清理，库内外键指向 episodes/storyboards/characters/scenes，不清会触发 1451）
+		if len(storyboardIDs) > 0 {
+			if err := tx.Exec("DELETE FROM director_storyboard_characters WHERE director_storyboard_id IN ?", storyboardIDs).Error; err != nil {
+				return err
+			}
+		}
+		if len(characterIDs) > 0 {
+			if err := tx.Exec("DELETE FROM director_storyboard_characters WHERE director_character_id IN ?", characterIDs).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("DELETE FROM director_episode_characters WHERE director_character_id IN ?", characterIDs).Error; err != nil {
+				return err
+			}
+		}
+		if len(episodeIDs) > 0 {
+			if err := tx.Exec("DELETE FROM director_episode_characters WHERE director_episode_id IN ?", episodeIDs).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("DELETE FROM director_episode_scenes WHERE director_episode_id IN ?", episodeIDs).Error; err != nil {
+				return err
+			}
+		}
+		if len(sceneIDs) > 0 {
+			if err := tx.Exec("DELETE FROM director_episode_scenes WHERE director_scene_id IN ?", sceneIDs).Error; err != nil {
+				return err
+			}
+		}
+		if len(episodeIDs) > 0 {
+			if err := tx.Where("episode_id IN ?", episodeIDs).Delete(&model.DirectorStoryboard{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("episode_id IN ?", episodeIDs).Delete(&model.DirectorEditProject{}).Error; err != nil {
+				return err
+			}
 		}
 		if err := tx.Where("project_id = ?", projectID).Delete(&model.DirectorEpisode{}).Error; err != nil {
 			return err
@@ -50,6 +94,9 @@ func (s *ProjectService) DeleteProjectCascade(projectID int) error {
 		if err := tx.Where("project_id = ?", projectID).Delete(&model.DirectorVideoGeneration{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("project_id = ?", projectID).Delete(&model.DirectorVideoMerge{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("project_id = ?", projectID).Delete(&model.DirectorAsset{}).Error; err != nil {
 			return err
 		}
@@ -60,10 +107,29 @@ func (s *ProjectService) DeleteProjectCascade(projectID int) error {
 // DeleteEpisodeCascade 删除分集（级联删除分镜与剪辑工程）
 func (s *ProjectService) DeleteEpisodeCascade(episodeID int) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
+		var storyboardIDs []int
+		if err := tx.Model(&model.DirectorStoryboard{}).Where("episode_id = ?", episodeID).Pluck("id", &storyboardIDs).Error; err != nil {
+			return err
+		}
+		// 先清 many2many 关联表（库内外键指向 episodes/storyboards，不清会触发 1451）
+		if len(storyboardIDs) > 0 {
+			if err := tx.Exec("DELETE FROM director_storyboard_characters WHERE director_storyboard_id IN ?", storyboardIDs).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Exec("DELETE FROM director_episode_characters WHERE director_episode_id = ?", episodeID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM director_episode_scenes WHERE director_episode_id = ?", episodeID).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("episode_id = ?", episodeID).Delete(&model.DirectorStoryboard{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("episode_id = ?", episodeID).Delete(&model.DirectorEditProject{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("episode_id = ?", episodeID).Delete(&model.DirectorVideoMerge{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.DirectorEpisode{}, episodeID).Error
@@ -105,22 +171,15 @@ func (s *ProjectService) GetEpisodePipeline(episodeID int) (episode model.Direct
 	episode = *e
 	db := model.DB
 
-	// 角色 / 场景（many2many 关联）
+	// 角色 / 场景（项目级，提取环节入库；与 extract-step / entity-step 的项目级列表展示口径一致，
+	// 不按分集关联表聚合，避免列表已完成但步骤不亮绿勾、删除关联后绿勾消失）
 	var characterTotal, characterImaged int64
-	db.Table("director_episode_characters ec").
-		Joins("JOIN director_characters c ON c.id = ec.character_id").
-		Where("ec.episode_id = ?", episodeID).Count(&characterTotal)
-	db.Table("director_episode_characters ec").
-		Joins("JOIN director_characters c ON c.id = ec.character_id").
-		Where("ec.episode_id = ? AND c.image_url <> ''", episodeID).Count(&characterImaged)
+	db.Model(&model.DirectorCharacter{}).Where("project_id = ?", episode.ProjectID).Count(&characterTotal)
+	db.Model(&model.DirectorCharacter{}).Where("project_id = ? AND image_url <> ''", episode.ProjectID).Count(&characterImaged)
 
 	var sceneTotal, sceneImaged int64
-	db.Table("director_episode_scenes es").
-		Joins("JOIN director_scenes s ON s.id = es.scene_id").
-		Where("es.episode_id = ?", episodeID).Count(&sceneTotal)
-	db.Table("director_episode_scenes es").
-		Joins("JOIN director_scenes s ON s.id = es.scene_id").
-		Where("es.episode_id = ? AND s.image_url <> ''", episodeID).Count(&sceneImaged)
+	db.Model(&model.DirectorScene{}).Where("project_id = ?", episode.ProjectID).Count(&sceneTotal)
+	db.Model(&model.DirectorScene{}).Where("project_id = ? AND image_url <> ''", episode.ProjectID).Count(&sceneImaged)
 
 	// 道具（项目级，提取环节入库）
 	var propTotal, propImaged int64

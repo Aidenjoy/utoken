@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clapperboard, Plus, Sparkles } from 'lucide-react'
+import { Clapperboard, Pencil, Plus, Trash2 } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -39,6 +39,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -50,7 +58,6 @@ import {
   updateDirectorStoryboard,
 } from '../api'
 import type { DirectorEpisode, DirectorStoryboard } from '../types'
-import { StoryboardCard } from './storyboard-card'
 
 interface StoryboardStepProps {
   episode: DirectorEpisode
@@ -118,6 +125,18 @@ export function StoryboardStep(props: StoryboardStepProps) {
 
   const canSplit = Boolean(props.episode.scriptContent || props.episode.content)
 
+  const renderEmpty = () => (
+    <Empty>
+      <EmptyMedia>
+        <Clapperboard aria-hidden='true' />
+      </EmptyMedia>
+      <EmptyTitle>{t('No storyboards yet')}</EmptyTitle>
+      <EmptyDescription>
+        {t('Split the script into storyboards with AI, or add one manually.')}
+      </EmptyDescription>
+    </Empty>
+  )
+
   const renderList = () => {
     if (listQuery.isPending) {
       return (
@@ -129,51 +148,114 @@ export function StoryboardStep(props: StoryboardStepProps) {
       )
     }
     if (storyboards.length === 0) {
-      return (
-        <Empty>
-          <EmptyMedia>
-            <Clapperboard aria-hidden='true' />
-          </EmptyMedia>
-          <EmptyTitle>{t('No storyboards yet')}</EmptyTitle>
-          <EmptyDescription>
-            {t(
-              'Split the script into storyboards with AI, or add one manually.'
-            )}
-          </EmptyDescription>
-        </Empty>
-      )
+      return renderEmpty()
     }
     return (
-      <div className='space-y-4'>
-        {storyboards.map((storyboard) => (
-          <StoryboardCard
-            key={storyboard.id}
-            storyboard={storyboard}
-            episode={props.episode}
-            onEdit={() => {
-              setEditingItem(storyboard)
-              setDialogOpen(true)
-            }}
-            onDelete={() => deleteMutation.mutate(storyboard.id)}
-            onChanged={invalidate}
-          />
-        ))}
+      <div className='rounded-lg border'>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className='w-14 text-center'>
+                {t('Shot No')}
+              </TableHead>
+              <TableHead className='w-36'>{t('Scene')}</TableHead>
+              <TableHead className='w-20'>{t('Shot Type')}</TableHead>
+              <TableHead className='w-24'>
+                {t('Camera Movement')}
+              </TableHead>
+              <TableHead>{t('Image Prompt')}</TableHead>
+              <TableHead className='w-16 text-center'>
+                {t('Duration')}
+              </TableHead>
+              <TableHead className='w-24 text-center'>
+                {t('Actions')}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {storyboards.map((storyboard) => {
+              const deleting =
+                deleteMutation.isPending &&
+                deleteMutation.variables === storyboard.id
+              return (
+                <TableRow key={storyboard.id}>
+                  <TableCell className='text-center font-medium'>
+                    {storyboard.storyboardNumber}
+                  </TableCell>
+                  <TableCell>
+                    {storyboard.location || '—'}
+                    {storyboard.time && (
+                      <span className='text-muted-foreground'>
+                        {' '}
+                        · {storyboard.time}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>{storyboard.shotType || '—'}</TableCell>
+                  <TableCell>{storyboard.movement || '—'}</TableCell>
+                  <TableCell className='max-w-64'>
+                    <span className='line-clamp-2' title={storyboard.imagePrompt}>
+                      {storyboard.imagePrompt || t('Not generated')}
+                    </span>
+                  </TableCell>
+                  <TableCell className='text-center'>
+                    {storyboard.duration > 0 ? `${storyboard.duration}s` : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <span className='flex justify-center gap-1'>
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        className='size-7'
+                        aria-label={t('Edit')}
+                        onClick={() => {
+                          setEditingItem(storyboard)
+                          setDialogOpen(true)
+                        }}
+                      >
+                        <Pencil aria-hidden='true' className='size-3.5' />
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        className='text-destructive hover:text-destructive size-7'
+                        aria-label={t('Delete')}
+                        disabled={deleting}
+                        onClick={() => deleteMutation.mutate(storyboard.id)}
+                      >
+                        <Trash2 aria-hidden='true' className='size-3.5' />
+                      </Button>
+                    </span>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
       </div>
     )
   }
 
   return (
-    <div className='space-y-4'>
-      <div className='flex items-center justify-between'>
-        <h3 className='text-base font-semibold'>{t('Storyboards')}</h3>
-        <div className='flex gap-2'>
+    <div className='flex flex-col gap-3.5'>
+      {/* 顶部：标题 + 操作 */}
+      <div className='flex flex-wrap items-start justify-between gap-2'>
+        <div>
+          <div className='text-base font-semibold'>
+            {t('Storyboard Split')}
+          </div>
+          <div className='text-muted-foreground mt-1 text-[13px]'>
+            {t(
+              'Split the script into storyboards (shot type, camera movement, image prompts); each storyboard can be edited individually'
+            )}
+          </div>
+        </div>
+        <div className='flex flex-wrap items-center gap-2'>
           <Button
-            variant='outline'
             size='sm'
             disabled={splitMutation.isPending || !canSplit}
             onClick={() => splitMutation.mutate()}
           >
-            <Sparkles aria-hidden='true' />
             {splitMutation.isPending
               ? t('Splitting...')
               : t('AI Split Storyboards')}

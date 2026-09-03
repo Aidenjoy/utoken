@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Film, Plus, Trash2 } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, Clapperboard, Pencil, Plus, Trash2 } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -36,30 +36,32 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { ZoomableImage } from '@/components/zoomable-image'
+import dayjs from '@/lib/dayjs'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import {
-  createDirectorEpisode,
   deleteDirectorEpisode,
   deleteDirectorProject,
   getDirectorEpisodes,
   getDirectorProject,
 } from './api'
-import { DIRECTOR_CATEGORY_CONFIG } from './constants'
+import { EpisodeDialog } from './components/episode-dialog'
+import { ProjectDialog } from './components/project-dialog'
+import {
+  DIRECTOR_CATEGORY_CONFIG,
+  PROJECT_STATUS_LABEL,
+} from './constants'
 import type { DirectorCategory, DirectorEpisode } from './types'
 
 interface ProjectDetailPageProps {
@@ -69,9 +71,14 @@ interface ProjectDetailPageProps {
 
 export function ProjectDetailPage(props: ProjectDetailPageProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const categoryConfig = DIRECTOR_CATEGORY_CONFIG[props.category]
 
+  const [editProjectOpen, setEditProjectOpen] = React.useState(false)
+  const [episodeDialogOpen, setEpisodeDialogOpen] = React.useState(false)
+  const [editingEpisode, setEditingEpisode] =
+    React.useState<DirectorEpisode | null>(null)
   const [deletingEpisode, setDeletingEpisode] =
     React.useState<DirectorEpisode | null>(null)
   const [deletingProject, setDeletingProject] = React.useState(false)
@@ -85,20 +92,6 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
     queryKey: ['director', 'episodes', props.projectId],
     queryFn: () =>
       getDirectorEpisodes({ projectId: props.projectId, page_size: 200 }),
-  })
-
-  const createEpisodeMutation = useMutation({
-    mutationFn: () =>
-      createDirectorEpisode({ projectId: props.projectId } as DirectorEpisode),
-    onSuccess: (res) => {
-      if (res.success) {
-        toast.success(t('Episode created'))
-        queryClient.invalidateQueries({
-          queryKey: ['director', 'episodes', props.projectId],
-        })
-      }
-    },
-    onError: handleServerError,
   })
 
   const deleteEpisodeMutation = useMutation({
@@ -120,7 +113,10 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
     onSuccess: (res) => {
       if (res.success) {
         toast.success(t('Project deleted'))
-        window.history.back()
+        navigate({
+          to: '/director/$category',
+          params: { category: props.category },
+        })
       }
     },
     onError: handleServerError,
@@ -128,27 +124,107 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
 
   const project = projectQuery.data?.data
   const episodes = episodesQuery.data?.data?.list ?? []
+  const nextEpisodeNumber = episodes.length + 1
 
-  const renderProjectInfo = () => {
+  const invalidateProject = () => {
+    queryClient.invalidateQueries({
+      queryKey: ['director', 'project', props.projectId],
+    })
+    queryClient.invalidateQueries({
+      queryKey: ['director', 'projects'],
+    })
+    queryClient.invalidateQueries({
+      queryKey: ['director', 'episodes', props.projectId],
+    })
+  }
+
+  // 编辑项目后若类别变更，跳转到新类别的列表页
+  const handleProjectSaved = () => {
+    invalidateProject()
+    if (project && project.category !== props.category) {
+      navigate({
+        to: '/director/$category',
+        params: { category: project.category },
+      })
+    }
+  }
+
+  const openCreateEpisode = () => {
+    setEditingEpisode(null)
+    setEpisodeDialogOpen(true)
+  }
+
+  const openEditEpisode = (episode: DirectorEpisode) => {
+    setEditingEpisode(episode)
+    setEpisodeDialogOpen(true)
+  }
+
+  const renderOverview = () => {
     if (projectQuery.isPending) {
-      return <Skeleton className='h-24 w-full' />
+      return <Skeleton className='h-28 w-full' />
     }
     if (!project) {
       return null
     }
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>{project.title}</CardTitle>
-          <CardDescription>{project.description}</CardDescription>
-        </CardHeader>
-        <CardContent className='flex flex-wrap items-center gap-2 text-sm'>
-          <Badge variant='secondary'>{t(categoryConfig.label)}</Badge>
-          {project.genre && <Badge variant='outline'>{project.genre}</Badge>}
-          {project.style && <Badge variant='outline'>{project.style}</Badge>}
-          <span className='text-muted-foreground'>
-            {t('Total Episodes')}: {project.totalEpisodes}
-          </span>
+        <CardContent className='flex gap-4 py-4'>
+          <div className='bg-muted relative h-[90px] w-[120px] shrink-0 overflow-hidden rounded-md'>
+            {project.thumbnail ? (
+              <ZoomableImage
+                src={project.thumbnail}
+                alt={project.title}
+                className='size-full'
+              />
+            ) : (
+              <div className='text-muted-foreground flex size-full items-center justify-center'>
+                <Clapperboard aria-hidden='true' className='size-7' />
+              </div>
+            )}
+          </div>
+          <div className='min-w-0 flex-1'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <h1 className='text-lg font-semibold'>{project.title}</h1>
+              <Badge variant='secondary'>
+                {t(PROJECT_STATUS_LABEL[project.status] ?? project.status)}
+              </Badge>
+              {categoryConfig.showGenre && project.genre ? (
+                <Badge variant='outline'>{project.genre}</Badge>
+              ) : null}
+            </div>
+            <p className='text-muted-foreground mt-2 line-clamp-2 text-sm'>
+              {project.description || t('No description')}
+            </p>
+            <div className='text-muted-foreground mt-2 flex flex-wrap gap-4 text-xs'>
+              <span>
+                {t('Planned')} {project.totalEpisodes} {t(categoryConfig.itemUnit)}
+              </span>
+              <span>
+                {t('Style')}: {project.style || '-'}
+              </span>
+              <span>
+                {t('Updated at')} {dayjs.unix(project.updatedAt).format('YYYY-MM-DD HH:mm')}
+              </span>
+            </div>
+          </div>
+          <div className='flex shrink-0 flex-col gap-2'>
+            <Button variant='outline' onClick={() => setEditProjectOpen(true)}>
+              <Pencil aria-hidden='true' />
+              {t('Edit Project')}
+            </Button>
+            <Button
+              variant='outline'
+              onClick={() =>
+                navigate({
+                  to: '/director/$category',
+                  params: { category: props.category },
+                })
+              }
+            >
+              <ArrowLeft aria-hidden='true' />
+              {t('Back to List')}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )
@@ -158,104 +234,173 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
     if (episodesQuery.isPending) {
       return (
         <div className='space-y-2'>
-          <Skeleton className='h-16 w-full' />
-          <Skeleton className='h-16 w-full' />
+          <Skeleton className='h-12 w-full' />
+          <Skeleton className='h-12 w-full' />
         </div>
       )
     }
     if (episodes.length === 0) {
       return (
-        <Empty>
-          <EmptyMedia>
-            <Film aria-hidden='true' />
-          </EmptyMedia>
-          <EmptyTitle>{t('No episodes yet')}</EmptyTitle>
-          <EmptyDescription>
-            {t('Add an episode to start creating content')}
-          </EmptyDescription>
-        </Empty>
+        <div className='text-muted-foreground py-8 text-center text-sm'>
+          {t('No episodes yet')}
+        </div>
       )
     }
     return (
-      <div className='space-y-2'>
-        {episodes.map((episode) => (
-          <Card key={episode.id}>
-            <CardContent className='flex items-center justify-between gap-4 py-4'>
-              <Link
-                to='/director/$category/$projectId/episode/$episodeId'
-                params={{
-                  category: props.category,
-                  projectId: String(props.projectId),
-                  episodeId: String(episode.id),
-                }}
-                className='flex min-w-0 flex-1 items-center gap-3 hover:underline'
-              >
-                <Badge variant='outline' className='shrink-0'>
-                  {episode.episodeNumber}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className='w-16 text-center'>
+              {t('Episode Number')}
+            </TableHead>
+            <TableHead>{t('Title')}</TableHead>
+            <TableHead className='w-24 text-center'>{t('Status')}</TableHead>
+            <TableHead className='w-20 text-center'>{t('Duration')}</TableHead>
+            <TableHead className='w-32'>{t('Created At')}</TableHead>
+            <TableHead className='w-56 text-right'>{t('Actions')}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {episodes.map((episode) => (
+            <TableRow key={episode.id}>
+              <TableCell className='text-center'>
+                {episode.episodeNumber}
+              </TableCell>
+              <TableCell className='max-w-0'>
+                <Link
+                  to='/director/$category/$projectId/episode/$episodeId'
+                  params={{
+                    category: props.category,
+                    projectId: String(props.projectId),
+                    episodeId: String(episode.id),
+                  }}
+                  className='truncate font-medium hover:underline'
+                >
+                  {episode.title}
+                </Link>
+              </TableCell>
+              <TableCell className='text-center'>
+                <Badge variant='secondary'>
+                  {t(PROJECT_STATUS_LABEL[episode.status] ?? episode.status)}
                 </Badge>
-                <span className='truncate font-medium'>{episode.title}</span>
-                {episode.videoUrl ? (
-                  <Badge variant='secondary'>{t('Completed')}</Badge>
-                ) : null}
-              </Link>
-              <Button
-                variant='ghost'
-                size='icon'
-                aria-label={t('Delete Episode')}
-                onClick={() => setDeletingEpisode(episode)}
-              >
-                <Trash2 aria-hidden='true' className='size-4' />
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </TableCell>
+              <TableCell className='text-center'>
+                {episode.duration ? `${episode.duration}s` : '-'}
+              </TableCell>
+              <TableCell>
+                {dayjs.unix(episode.createdAt).format('YYYY-MM-DD HH:mm')}
+              </TableCell>
+              <TableCell className='text-right'>
+                <div className='flex justify-end gap-1'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() =>
+                      navigate({
+                        to: '/director/$category/$projectId/episode/$episodeId',
+                        params: {
+                          category: props.category,
+                          projectId: String(props.projectId),
+                          episodeId: String(episode.id),
+                        },
+                      })
+                    }
+                  >
+                    <Clapperboard aria-hidden='true' />
+                    {t('Studio')}
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => openEditEpisode(episode)}
+                  >
+                    <Pencil aria-hidden='true' />
+                    {t('Edit')}
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='text-destructive hover:text-destructive'
+                    onClick={() => setDeletingEpisode(episode)}
+                  >
+                    <Trash2 aria-hidden='true' />
+                    {t('Delete')}
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     )
   }
 
   return (
-    <SectionPageLayout>
-      <SectionPageLayout.Breadcrumb>
-        <Link
-          to='/director/$category'
-          params={{ category: props.category }}
-          className='text-muted-foreground hover:text-foreground flex items-center gap-1'
-        >
-          <ArrowLeft aria-hidden='true' className='size-4' />
-          {t(categoryConfig.label)}
-        </Link>
-      </SectionPageLayout.Breadcrumb>
-      <SectionPageLayout.Title>
-        {project?.title ?? t('Project Detail')}
-      </SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        <Button
-          variant='outline'
-          onClick={() => createEpisodeMutation.mutate()}
-          disabled={createEpisodeMutation.isPending}
-        >
-          <Plus aria-hidden='true' />
-          {t('Add Episode')}
-        </Button>
-        <Button
-          variant='outline'
-          className='text-destructive hover:text-destructive'
-          onClick={() => setDeletingProject(true)}
-        >
-          <Trash2 aria-hidden='true' />
-          {t('Delete Project')}
-        </Button>
-      </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        <div className='space-y-6'>
-          {renderProjectInfo()}
-
-          <div className='space-y-3'>
-            <h2 className='text-lg font-semibold'>{t('Episodes')}</h2>
-            {renderEpisodes()}
+    <>
+      <SectionPageLayout>
+        <SectionPageLayout.Breadcrumb>
+          <Link
+            to='/director/$category'
+            params={{ category: props.category }}
+            className='text-muted-foreground hover:text-foreground flex items-center gap-1'
+          >
+            <ArrowLeft aria-hidden='true' className='size-4' />
+            {t(categoryConfig.label)}
+          </Link>
+        </SectionPageLayout.Breadcrumb>
+        <SectionPageLayout.Title>
+          {project?.title ?? t('Project Detail')}
+        </SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <Button onClick={openCreateEpisode}>
+            <Plus aria-hidden='true' />
+            {t('Add Episode')}
+          </Button>
+          <Button
+            variant='outline'
+            className='text-destructive hover:text-destructive'
+            onClick={() => setDeletingProject(true)}
+          >
+            <Trash2 aria-hidden='true' />
+            {t('Delete Project')}
+          </Button>
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <div className='space-y-6'>
+            {renderOverview()}
+            <Card>
+              <CardContent className='py-4'>
+                <h2 className='mb-3 text-base font-semibold'>
+                  {t('Episode List')}
+                </h2>
+                {renderEpisodes()}
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      </SectionPageLayout.Content>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+
+      <ProjectDialog
+        open={editProjectOpen}
+        onOpenChange={setEditProjectOpen}
+        category={props.category}
+        project={project}
+        onSaved={handleProjectSaved}
+      />
+
+      <EpisodeDialog
+        open={episodeDialogOpen}
+        onOpenChange={setEpisodeDialogOpen}
+        category={props.category}
+        projectId={props.projectId}
+        nextEpisodeNumber={nextEpisodeNumber}
+        episode={editingEpisode}
+        onSaved={() =>
+          queryClient.invalidateQueries({
+            queryKey: ['director', 'episodes', props.projectId],
+          })
+        }
+      />
 
       <AlertDialog
         open={Boolean(deletingEpisode)}
@@ -309,6 +454,6 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </SectionPageLayout>
+    </>
   )
 }

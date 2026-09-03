@@ -17,24 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, FolderOpen } from 'lucide-react'
+import { Check } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 import { getDirectorEpisodePipeline } from '../api'
 import { PIPELINE_STEP_LABEL } from '../constants'
 import type { DirectorPipelineStep } from '../types'
-import { AssetsDialog } from './assets-dialog'
 import { ContentStep } from './content-step'
 import { EditStep } from './edit-step'
 import { EntityStep } from './entity-step'
 import { ExtractStep } from './extract-step'
 import { RewriteStep } from './rewrite-step'
+import { ShotsStep } from './shots-step'
 import { StoryboardStep } from './storyboard-step'
+import { VideosStep } from './videos-step'
 
 interface DirectorStudioProps {
   episodeId: number
@@ -42,11 +42,9 @@ interface DirectorStudioProps {
 }
 
 export function DirectorStudio(props: DirectorStudioProps) {
-  const { t } = useTranslation()
   const queryClient = useQueryClient()
 
   const [activeKey, setActiveKey] = React.useState('content')
-  const [assetsOpen, setAssetsOpen] = React.useState(false)
 
   const pipelineQuery = useQuery({
     queryKey: ['director', 'pipeline', props.episodeId],
@@ -104,9 +102,11 @@ export function DirectorStudio(props: DirectorStudioProps) {
       case 'scenes':
         return <EntityStep type='scene' projectId={props.projectId} />
       case 'storyboard':
-      case 'shots':
-      case 'videos':
         return <StoryboardStep episode={episode} onSaved={refreshPipeline} />
+      case 'shots':
+        return <ShotsStep episode={episode} onSaved={refreshPipeline} />
+      case 'videos':
+        return <VideosStep episode={episode} onSaved={refreshPipeline} />
       case 'edit':
         return <EditStep episode={episode} onSaved={refreshPipeline} />
       default:
@@ -137,27 +137,12 @@ export function DirectorStudio(props: DirectorStudioProps) {
             ))}
           </nav>
         )}
-        <Button
-          variant='outline'
-          className='w-full lg:w-64'
-          onClick={() => setAssetsOpen(true)}
-        >
-          <FolderOpen aria-hidden='true' />
-          {t('Asset Library')}
-        </Button>
       </div>
 
       {/* 右侧步骤面板 */}
       <div className='min-w-0 flex-1 rounded-xl border p-4'>
         {renderPanel()}
       </div>
-
-      <AssetsDialog
-        open={assetsOpen}
-        onOpenChange={setAssetsOpen}
-        projectId={props.projectId}
-        episodeId={props.episodeId}
-      />
     </div>
   )
 }
@@ -210,11 +195,9 @@ function StepNavItem(props: StepNavItemProps) {
       <span className='min-w-0 flex-1 truncate font-medium'>
         {t(PIPELINE_STEP_LABEL[props.step.key] ?? props.step.name)}
       </span>
-      {props.step.total > 1 && (
-        <span className='text-muted-foreground shrink-0 text-xs'>
-          {props.step.finished}/{props.step.total}
-        </span>
-      )}
+      <span className='text-muted-foreground shrink-0 text-xs'>
+        {props.step.finished}/{props.step.total}
+      </span>
     </button>
   )
 }

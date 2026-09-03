@@ -45,14 +45,16 @@ export function ProjectCard(props: ProjectCardProps) {
   const { t } = useTranslation()
   const { project } = props
 
+  const linkParams = {
+    category: props.category,
+    projectId: String(project.id),
+  }
+
   return (
     <Card className='group overflow-hidden transition-shadow hover:shadow-md'>
       <Link
         to='/director/$category/$projectId'
-        params={{
-          category: props.category,
-          projectId: String(project.id),
-        }}
+        params={linkParams}
         className='block'
       >
         <div className='bg-muted relative aspect-video w-full overflow-hidden'>
@@ -60,7 +62,6 @@ export function ProjectCard(props: ProjectCardProps) {
             <img
               src={project.thumbnail}
               alt={project.title}
-              loading='lazy'
               className='size-full object-cover transition-transform group-hover:scale-105'
             />
           ) : (
@@ -80,10 +81,7 @@ export function ProjectCard(props: ProjectCardProps) {
         <CardTitle className='flex items-center justify-between gap-2 text-base'>
           <Link
             to='/director/$category/$projectId'
-            params={{
-              category: props.category,
-              projectId: String(project.id),
-            }}
+            params={linkParams}
             className='truncate hover:underline'
           >
             {project.title}
@@ -115,22 +113,28 @@ export function ProjectCard(props: ProjectCardProps) {
           </DropdownMenu>
         </CardTitle>
       </CardHeader>
-      <CardContent className='text-muted-foreground space-y-2 text-sm'>
-        {project.genre || project.style ? (
-          <div className='flex flex-wrap gap-1'>
-            {project.genre && <Badge variant='outline'>{project.genre}</Badge>}
-            {project.style && <Badge variant='outline'>{project.style}</Badge>}
+      <Link
+        to='/director/$category/$projectId'
+        params={linkParams}
+        className='block'
+      >
+        <CardContent className='text-muted-foreground space-y-2 text-sm'>
+          {project.genre || project.style ? (
+            <div className='flex flex-wrap gap-1'>
+              {project.genre && <Badge variant='outline'>{project.genre}</Badge>}
+              {project.style && <Badge variant='outline'>{project.style}</Badge>}
+            </div>
+          ) : null}
+          <p className='line-clamp-2 min-h-10'>{project.description}</p>
+          <div className='flex items-center justify-between text-xs'>
+            <span>
+              {project.episodeCount} {t('Episodes')} · {project.characterCount}{' '}
+              {t('Characters')} · {project.sceneCount} {t('Scenes')}
+            </span>
+            <span>{dayjs.unix(project.updatedAt).format('YYYY-MM-DD')}</span>
           </div>
-        ) : null}
-        <p className='line-clamp-2 min-h-10'>{project.description}</p>
-        <div className='flex items-center justify-between text-xs'>
-          <span>
-            {project.episodeCount} {t('Episodes')} · {project.characterCount}{' '}
-            {t('Characters')} · {project.sceneCount} {t('Scenes')}
-          </span>
-          <span>{dayjs.unix(project.updatedAt).format('YYYY-MM-DD')}</span>
-        </div>
-      </CardContent>
+        </CardContent>
+      </Link>
     </Card>
   )
 }

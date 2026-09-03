@@ -108,6 +108,16 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
+/* 云导演生成中光条（镜头图片/视频生成卡片） */
+@keyframes light-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
+}
+
 /* Override auto-skeleton-react inline styles with Vercel shimmer */
 .auto-skeleton-fade [class^='skeleton-'] {
   background: linear-gradient(

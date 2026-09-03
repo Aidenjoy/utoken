@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation } from '@tanstack/react-query'
-import { Sparkles } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -75,7 +74,35 @@ export function RewriteStep(props: RewriteStepProps) {
   const busy = rewriteMutation.isPending || saveMutation.isPending
 
   return (
-    <div className='space-y-5'>
+    <div className='flex flex-col gap-3.5'>
+      {/* 顶部：标题 + 操作 */}
+      <div className='flex flex-wrap items-start justify-between gap-2'>
+        <div>
+          <div className='text-base font-semibold'>{t('AI Rewrite')}</div>
+          <div className='text-muted-foreground mt-1 text-[13px]'>
+            {t('Rewrite the original content into a vertical short drama script')}
+          </div>
+        </div>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Button
+            size='sm'
+            onClick={() => rewriteMutation.mutate()}
+            disabled={busy || !props.episode.content}
+          >
+            {rewriteMutation.isPending
+              ? t('Rewriting with AI...')
+              : t('AI Rewrite')}
+          </Button>
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={() => saveMutation.mutate()}
+            disabled={busy}
+          >
+            {saveMutation.isPending ? t('Saving...') : t('Save Script')}
+          </Button>
+        </div>
+      </div>
       {!props.episode.content && (
         <Alert>
           <AlertDescription>
@@ -83,37 +110,16 @@ export function RewriteStep(props: RewriteStepProps) {
           </AlertDescription>
         </Alert>
       )}
-      <div className='flex items-center gap-3'>
-        <Button
-          onClick={() => rewriteMutation.mutate()}
-          disabled={busy || !props.episode.content}
-        >
-          <Sparkles aria-hidden='true' />
-          {rewriteMutation.isPending
-            ? t('Rewriting with AI...')
-            : t('AI Rewrite')}
-        </Button>
-        <span className='text-muted-foreground text-xs'>
-          {t('Rewriting may take a while depending on the content length.')}
-        </span>
-      </div>
       <div className='grid gap-2'>
         <Label htmlFor='director-script'>{t('Script')}</Label>
         <Textarea
           id='director-script'
-          rows={18}
+          className='min-h-96'
           value={script}
           onChange={(e) => setScript(e.target.value)}
           placeholder={t('The rewritten script will appear here...')}
         />
       </div>
-      <Button
-        variant='outline'
-        onClick={() => saveMutation.mutate()}
-        disabled={busy}
-      >
-        {saveMutation.isPending ? t('Saving...') : t('Save')}
-      </Button>
     </div>
   )
 }

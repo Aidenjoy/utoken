@@ -132,8 +132,8 @@ func (s *LLMService) GeneratePropPrompt(userID, propID int) (string, error) {
 	if prop.Type != "" {
 		parts = append(parts, "类型："+prop.Type)
 	}
-	if prop.Description != "" {
-		parts = append(parts, "描述："+prop.Description)
+	if prop.Prompt != "" {
+		parts = append(parts, "现有描述："+prop.Prompt)
 	}
 	if style != "" {
 		parts = append(parts, "剧集风格："+style)
@@ -371,11 +371,8 @@ func buildCharacterInfoText(c model.DirectorCharacter, style string) string {
 	if c.Role != "" {
 		parts = append(parts, "定位："+c.Role)
 	}
-	if c.Appearance != "" {
-		parts = append(parts, "外貌："+c.Appearance)
-	}
-	if c.Personality != "" {
-		parts = append(parts, "性格："+c.Personality)
+	if c.Prompt != "" {
+		parts = append(parts, "现有描述："+c.Prompt)
 	}
 	if style != "" {
 		parts = append(parts, "剧集风格："+style)

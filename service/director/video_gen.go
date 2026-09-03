@@ -54,6 +54,8 @@ func (s *VideoGenerationService) SubmitVideoTask(cfg directorCallConfig, req Vid
 		"mode":           mode,
 		"generate_audio": true,
 		"n":              1,
+		// 火山 Ark 默认给视频盖水印，显式关闭（metadata 透传至上游 watermark 字段）
+		"watermark": false,
 	}
 	if req.Resolution != "" {
 		metadata["resolution"] = req.Resolution

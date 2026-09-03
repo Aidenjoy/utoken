@@ -74,15 +74,9 @@ export interface DirectorCharacter {
   projectId: number
   name: string
   role: string
-  description: string
-  appearance: string
   prompt: string
-  personality: string
   imageUrl: string
   source: string
-  referenceImages: string
-  seedValue: string
-  sortOrder: number
 }
 
 export interface DirectorScene {
@@ -95,7 +89,6 @@ export interface DirectorScene {
   location: string
   time: string
   prompt: string
-  storyboardCount: number
   imageUrl: string
   source: string
   status: string
@@ -109,12 +102,10 @@ export interface DirectorProp {
   projectId: number
   name: string
   type: string
-  description: string
   prompt: string
   imageUrl: string
   source: string
   status: string
-  referenceImages: string
 }
 
 export interface DirectorEpisode {
@@ -275,6 +266,15 @@ export interface DirectorAssetCategory {
   updatedAt: number
   userId: number
   name: string
+}
+
+export interface AssetListParams {
+  projectId?: number
+  episodeId?: number
+  type?: string
+  category?: string
+  p?: number
+  page_size?: number
 }
 
 // ----------------------------------------------------------------------------

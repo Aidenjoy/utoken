@@ -3,6 +3,8 @@ package model
 import (
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // ===== 云导演（Cloud Director）核心实体 =====
@@ -77,9 +79,7 @@ func (p *DirectorProject) Update(fields map[string]any) error {
 	return DB.Model(p).Updates(fields).Error
 }
 
-func DeleteDirectorProject(id int) error {
-	return DB.Delete(&DirectorProject{}, id).Error
-}
+
 
 func GetDirectorProjectByID(id int) (*DirectorProject, error) {
 	var p DirectorProject
@@ -172,9 +172,7 @@ func (e *DirectorEpisode) Update(fields map[string]any) error {
 	return DB.Model(e).Updates(fields).Error
 }
 
-func DeleteDirectorEpisode(id int) error {
-	return DB.Delete(&DirectorEpisode{}, id).Error
-}
+
 
 func GetDirectorEpisodeByID(id int) (*DirectorEpisode, error) {
 	var e DirectorEpisode
@@ -203,22 +201,16 @@ func ListDirectorEpisodes(projectID int, page, pageSize int) ([]*DirectorEpisode
 
 // DirectorCharacter 角色
 type DirectorCharacter struct {
-	ID              int    `json:"id" gorm:"primaryKey"`
-	CreatedAt       int64  `json:"createdAt" gorm:"index"`
-	UpdatedAt       int64  `json:"updatedAt"`
-	UserID          int    `json:"userId" gorm:"index"`
-	ProjectID       int    `json:"projectId" gorm:"index;not null"`
-	Name            string `json:"name" gorm:"size:64;not null"`      // 角色名称
-	Role            string `json:"role" gorm:"size:64"`               // 角色定位 主角/配角/反派等
-	Description     string `json:"description" gorm:"type:text"`      // 角色描述
-	Appearance      string `json:"appearance" gorm:"type:text"`       // 外貌描述
-	Prompt          string `json:"prompt" gorm:"type:text"`           // 外貌prompt（形象图生成用）
-	Personality     string `json:"personality" gorm:"type:text"`      // 性格
-	ImageURL        string `json:"imageUrl" gorm:"size:512"`          // 形象图
-	Source          string `json:"source" gorm:"size:16"`             // 形象来源 ai/upload
-	ReferenceImages string `json:"referenceImages" gorm:"type:text"`  // 参考图JSON数组
-	SeedValue       string `json:"seedValue" gorm:"size:64"`          // 形象种子
-	SortOrder       int    `json:"sortOrder" gorm:"default:0"`        // 排序
+	ID        int    `json:"id" gorm:"primaryKey"`
+	CreatedAt int64  `json:"createdAt" gorm:"index"`
+	UpdatedAt int64  `json:"updatedAt"`
+	UserID    int    `json:"userId" gorm:"index"`
+	ProjectID int    `json:"projectId" gorm:"index;not null"`
+	Name      string `json:"name" gorm:"size:64;not null"` // 角色名称
+	Role      string `json:"role" gorm:"size:64"`          // 角色定位 主角/配角/反派等
+	Prompt    string `json:"prompt" gorm:"type:text"`      // 形象提示词（形象图生成用）
+	ImageURL  string `json:"imageUrl" gorm:"size:512"`     // 形象图
+	Source    string `json:"source" gorm:"size:16"`        // 形象来源 ai/upload
 }
 
 func (DirectorCharacter) TableName() string { return "director_characters" }
@@ -238,8 +230,17 @@ func (ch *DirectorCharacter) Update(fields map[string]any) error {
 	return DB.Model(ch).Updates(fields).Error
 }
 
+// DeleteDirectorCharacter 删除角色（先清 many2many 关联，避免外键 1451）
 func DeleteDirectorCharacter(id int) error {
-	return DB.Delete(&DirectorCharacter{}, id).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM director_episode_characters WHERE director_character_id = ?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM director_storyboard_characters WHERE director_character_id = ?", id).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&DirectorCharacter{}, id).Error
+	})
 }
 
 func GetDirectorCharacterByID(id int) (*DirectorCharacter, error) {
@@ -256,25 +257,24 @@ func ListDirectorCharacters(projectID int, page, pageSize int) ([]*DirectorChara
 	}
 	page, pageSize = normalizePage(page, pageSize)
 	var list []*DirectorCharacter
-	err := query.Order("sort_order ASC, id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&list).Error
+	err := query.Order("id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&list).Error
 	return list, total, err
 }
 
 // DirectorScene 场景
 type DirectorScene struct {
-	ID              int    `json:"id" gorm:"primaryKey"`
-	CreatedAt       int64  `json:"createdAt" gorm:"index"`
-	UpdatedAt       int64  `json:"updatedAt"`
-	UserID          int    `json:"userId" gorm:"index"`
-	ProjectID       int    `json:"projectId" gorm:"index;not null"`
-	EpisodeID       *int   `json:"episodeId" gorm:"index"`
-	Location        string `json:"location" gorm:"size:128;not null"` // 地点
-	Time            string `json:"time" gorm:"size:64"`               // 时间 日/夜/黄昏等
-	Prompt          string `json:"prompt" gorm:"type:text"`           // 场景图prompt
-	StoryboardCount int    `json:"storyboardCount" gorm:"default:1"`  // 分镜数
-	ImageURL        string `json:"imageUrl" gorm:"size:512"`          // 场景图
-	Source          string `json:"source" gorm:"size:16"`             // 场景图来源 ai/upload
-	Status          string `json:"status" gorm:"size:32"`             // 状态
+	ID        int    `json:"id" gorm:"primaryKey"`
+	CreatedAt int64  `json:"createdAt" gorm:"index"`
+	UpdatedAt int64  `json:"updatedAt"`
+	UserID    int    `json:"userId" gorm:"index"`
+	ProjectID int    `json:"projectId" gorm:"index;not null"`
+	EpisodeID *int   `json:"episodeId" gorm:"index"`
+	Location  string `json:"location" gorm:"size:128;not null"` // 地点
+	Time      string `json:"time" gorm:"size:64"`               // 时间 日/夜/黄昏等
+	Prompt    string `json:"prompt" gorm:"type:text"`           // 场景图prompt
+	ImageURL  string `json:"imageUrl" gorm:"size:512"`          // 场景图
+	Source    string `json:"source" gorm:"size:16"`             // 场景图来源 ai/upload
+	Status    string `json:"status" gorm:"size:32"`             // 状态
 }
 
 func (DirectorScene) TableName() string { return "director_scenes" }
@@ -289,9 +289,6 @@ func (s *DirectorScene) Insert() error {
 	if s.Status == "" {
 		s.Status = "pending"
 	}
-	if s.StoryboardCount <= 0 {
-		s.StoryboardCount = 1
-	}
 	return DB.Create(s).Error
 }
 
@@ -300,8 +297,14 @@ func (s *DirectorScene) Update(fields map[string]any) error {
 	return DB.Model(s).Updates(fields).Error
 }
 
+// DeleteDirectorScene 删除场景（先清 many2many 关联，避免外键 1451）
 func DeleteDirectorScene(id int) error {
-	return DB.Delete(&DirectorScene{}, id).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM director_episode_scenes WHERE director_scene_id = ?", id).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&DirectorScene{}, id).Error
+	})
 }
 
 func GetDirectorSceneByID(id int) (*DirectorScene, error) {
@@ -327,19 +330,17 @@ func ListDirectorScenes(projectID int, episodeID *int, page, pageSize int) ([]*D
 
 // DirectorProp 道具
 type DirectorProp struct {
-	ID              int    `json:"id" gorm:"primaryKey"`
-	CreatedAt       int64  `json:"createdAt" gorm:"index"`
-	UpdatedAt       int64  `json:"updatedAt"`
-	UserID          int    `json:"userId" gorm:"index"`
-	ProjectID       int    `json:"projectId" gorm:"index;not null"`
-	Name            string `json:"name" gorm:"size:64;not null"`     // 道具名称
-	Type            string `json:"type" gorm:"size:64"`              // 道具类型
-	Description     string `json:"description" gorm:"type:text"`     // 道具描述
-	Prompt          string `json:"prompt" gorm:"type:text"`          // 道具图prompt
-	ImageURL        string `json:"imageUrl" gorm:"size:512"`         // 道具图
-	Source          string `json:"source" gorm:"size:16"`            // 道具图来源 ai/upload
-	Status          string `json:"status" gorm:"size:32"`            // pending/imaged
-	ReferenceImages string `json:"referenceImages" gorm:"type:text"` // 参考图JSON数组
+	ID        int    `json:"id" gorm:"primaryKey"`
+	CreatedAt int64  `json:"createdAt" gorm:"index"`
+	UpdatedAt int64  `json:"updatedAt"`
+	UserID    int    `json:"userId" gorm:"index"`
+	ProjectID int    `json:"projectId" gorm:"index;not null"`
+	Name      string `json:"name" gorm:"size:64;not null"` // 道具名称
+	Type      string `json:"type" gorm:"size:64"`          // 道具类型
+	Prompt    string `json:"prompt" gorm:"type:text"`      // 道具图prompt
+	ImageURL  string `json:"imageUrl" gorm:"size:512"`     // 道具图
+	Source    string `json:"source" gorm:"size:16"`        // 道具图来源 ai/upload
+	Status    string `json:"status" gorm:"size:32"`        // pending/imaged
 }
 
 func (DirectorProp) TableName() string { return "director_props" }
@@ -434,8 +435,14 @@ func (sb *DirectorStoryboard) Update(fields map[string]any) error {
 	return DB.Model(sb).Updates(fields).Error
 }
 
+// DeleteDirectorStoryboard 删除分镜（先清 many2many 关联，避免外键 1451）
 func DeleteDirectorStoryboard(id int) error {
-	return DB.Delete(&DirectorStoryboard{}, id).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM director_storyboard_characters WHERE director_storyboard_id = ?", id).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&DirectorStoryboard{}, id).Error
+	})
 }
 
 func GetDirectorStoryboardByID(id int) (*DirectorStoryboard, error) {

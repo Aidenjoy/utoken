@@ -114,6 +114,7 @@ func registerDirectorRoutes(apiRouter *gin.RouterGroup) {
 		directorRoute.DELETE("/asset", controller.DirectorDeleteAsset)
 		directorRoute.GET("/asset/list", controller.DirectorGetAssetList)
 		directorRoute.POST("/asset/upload", controller.DirectorUploadAsset)
+		directorRoute.POST("/upload", controller.DirectorUploadFile)
 		directorRoute.GET("/asset/category/list", controller.DirectorGetAssetCategoryList)
 		directorRoute.POST("/asset/category", controller.DirectorCreateAssetCategory)
 		directorRoute.PUT("/asset/category", controller.DirectorUpdateAssetCategory)

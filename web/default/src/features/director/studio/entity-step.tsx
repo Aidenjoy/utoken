@@ -21,7 +21,6 @@ import {
   Image as ImageIcon,
   Pencil,
   Plus,
-  Sparkles,
   Trash2,
   Users,
 } from 'lucide-react'
@@ -49,6 +48,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import { ZoomableImage } from '@/components/zoomable-image'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import {
@@ -69,6 +69,8 @@ import type { DirectorCharacter, DirectorProp, DirectorScene } from '../types'
 
 type EntityItem = DirectorCharacter | DirectorScene | DirectorProp
 
+export type { EntityItem }
+
 // 各实体类型的表单字段配置
 const ENTITY_FIELDS: Record<
   DirectorEntityType,
@@ -77,9 +79,7 @@ const ENTITY_FIELDS: Record<
   character: [
     { key: 'name', label: 'Name' },
     { key: 'role', label: 'Role' },
-    { key: 'description', label: 'Description', textarea: true },
-    { key: 'appearance', label: 'Appearance', textarea: true },
-    { key: 'personality', label: 'Personality', textarea: true },
+    { key: 'prompt', label: 'Prompt', textarea: true },
   ],
   scene: [
     { key: 'location', label: 'Location' },
@@ -89,7 +89,7 @@ const ENTITY_FIELDS: Record<
   prop: [
     { key: 'name', label: 'Name' },
     { key: 'type', label: 'Type' },
-    { key: 'description', label: 'Description', textarea: true },
+    { key: 'prompt', label: 'Prompt', textarea: true },
   ],
 }
 
@@ -98,6 +98,23 @@ const ENTITY_TITLE: Record<DirectorEntityType, string> = {
   scene: 'Scenes',
   prop: 'Props',
 }
+
+// 页头标题与描述（标题键与流水线步骤名一致）
+const ENTITY_HEADER: Record<DirectorEntityType, { title: string; desc: string }> =
+  {
+    character: {
+      title: 'Character Images',
+      desc: 'Generate multi-angle character reference images as consistency references for storyboards and videos',
+    },
+    prop: {
+      title: 'Prop Images',
+      desc: 'Generate prop images from prompts as consistency references for storyboard images',
+    },
+    scene: {
+      title: 'Scene Images',
+      desc: 'Generate scene images from prompts as background references for storyboard images',
+    },
+  }
 
 function entityName(type: DirectorEntityType, item: EntityItem): string {
   if (type === 'scene') return (item as DirectorScene).location
@@ -111,12 +128,10 @@ function entityDescription(type: DirectorEntityType, item: EntityItem): string {
   }
   if (type === 'character') {
     const ch = item as DirectorCharacter
-    return [ch.role, ch.appearance || ch.description]
-      .filter(Boolean)
-      .join(' · ')
+    return [ch.role, ch.prompt].filter(Boolean).join(' · ')
   }
   const prop = item as DirectorProp
-  return [prop.type, prop.description].filter(Boolean).join(' · ')
+  return [prop.type, prop.prompt].filter(Boolean).join(' · ')
 }
 
 interface EntityStepProps {
@@ -146,7 +161,7 @@ export function EntityStep(props: EntityStepProps) {
     mutationFn: (id: number) => deleteDirectorEntity(props.type, id),
     onSuccess: (res) => {
       if (res.success) {
-        toast.success(t('Deleted'))
+        toast.success(t('Deleted successfully'))
         invalidate()
       }
     },
@@ -155,6 +170,39 @@ export function EntityStep(props: EntityStepProps) {
 
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingItem, setEditingItem] = React.useState<EntityItem | null>(null)
+
+  // ---------- 批量生成 ----------
+
+  // 各实体的生成任务 ID（提升到步骤层，批量提交后卡片可持续轮询）
+  const [genIds, setGenIds] = React.useState<Record<number, number>>({})
+
+  const pendingList = items.filter((item) => {
+    const it = item as DirectorCharacter
+    return !it.imageUrl && Boolean(it.prompt) && genIds[item.id] == null
+  })
+
+  const [batchSubmitting, setBatchSubmitting] = React.useState(false)
+  const generateAll = async () => {
+    setBatchSubmitting(true)
+    let ok = 0
+    try {
+      for (const item of pendingList) {
+        const res = await generateDirectorEntityImage(props.type, {
+          id: item.id,
+        })
+        const generationId = res.success ? res.data?.generationId : undefined
+        if (generationId != null) {
+          ok++
+          setGenIds((m) => ({ ...m, [item.id]: generationId }))
+        }
+      }
+      toast.success(
+        t('Submitted {{count}} image generation tasks', { count: ok })
+      )
+    } finally {
+      setBatchSubmitting(false)
+    }
+  }
 
   const renderList = () => {
     if (listQuery.isPending) {
@@ -186,6 +234,15 @@ export function EntityStep(props: EntityStepProps) {
             key={item.id}
             type={props.type}
             item={item}
+            genId={genIds[item.id] ?? null}
+            onGenIdChange={(id) =>
+              setGenIds((m) => {
+                const next = { ...m }
+                if (id == null) delete next[item.id]
+                else next[item.id] = id
+                return next
+              })
+            }
             onEdit={() => {
               setEditingItem(item)
               setDialogOpen(true)
@@ -199,22 +256,39 @@ export function EntityStep(props: EntityStepProps) {
   }
 
   return (
-    <div className='space-y-4'>
-      <div className='flex items-center justify-between'>
-        <h3 className='text-base font-semibold'>
-          {t(ENTITY_TITLE[props.type])}
-        </h3>
-        <Button
-          variant='outline'
-          size='sm'
-          onClick={() => {
-            setEditingItem(null)
-            setDialogOpen(true)
-          }}
-        >
-          <Plus aria-hidden='true' />
-          {t('Add')}
-        </Button>
+    <div className='flex flex-col gap-3.5'>
+      {/* 顶部：标题 + 操作 */}
+      <div className='flex flex-wrap items-start justify-between gap-2'>
+        <div>
+          <div className='text-base font-semibold'>
+            {t(ENTITY_HEADER[props.type].title)}
+          </div>
+          <div className='text-muted-foreground mt-1 text-[13px]'>
+            {t(ENTITY_HEADER[props.type].desc)}
+          </div>
+        </div>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Button
+            size='sm'
+            disabled={pendingList.length === 0 || batchSubmitting}
+            onClick={() => void generateAll()}
+          >
+            {batchSubmitting
+              ? t('Submitting...')
+              : t('Batch Generate ({{count}})', { count: pendingList.length })}
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              setEditingItem(null)
+              setDialogOpen(true)
+            }}
+          >
+            <Plus aria-hidden='true' />
+            {t('Add')}
+          </Button>
+        </div>
       </div>
       {renderList()}
 
@@ -237,6 +311,8 @@ export function EntityStep(props: EntityStepProps) {
 interface EntityCardProps {
   type: DirectorEntityType
   item: EntityItem
+  genId: number | null
+  onGenIdChange: (id: number | null) => void
   onEdit: () => void
   onDelete: () => void
   onChanged: () => void
@@ -247,8 +323,7 @@ function EntityCard(props: EntityCardProps) {
   const { item, type } = props
   const imageUrl = (item as DirectorCharacter).imageUrl ?? ''
 
-  const [genId, setGenId] = React.useState<number | null>(null)
-  const genQuery = useImageGenerationPoll(genId)
+  const genQuery = useImageGenerationPoll(props.genId)
   const gen = genQuery.data?.data ?? null
 
   // 生成完成后刷新实体列表（后端已把图片回写到实体）
@@ -257,6 +332,7 @@ function EntityCard(props: EntityCardProps) {
       if (gen.status === 'failed') {
         toast.error(gen.errorMsg || t('Image generation failed'))
       }
+      props.onGenIdChange(null)
       props.onChanged()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,7 +353,7 @@ function EntityCard(props: EntityCardProps) {
     mutationFn: () => generateDirectorEntityImage(type, { id: item.id }),
     onSuccess: (res) => {
       if (res.success && res.data) {
-        setGenId(res.data.generationId)
+        props.onGenIdChange(res.data.generationId)
         toast.success(t('Image generation started'))
       }
     },
@@ -287,15 +363,24 @@ function EntityCard(props: EntityCardProps) {
   const running =
     imageMutation.isPending || (gen != null && !generationFinished(gen))
 
+  let promptLabel: string
+  if (promptMutation.isPending) promptLabel = t('Generating...')
+  else if ((item as DirectorCharacter).prompt) promptLabel = t('Regenerate Prompt')
+  else promptLabel = t('Generate Prompt')
+
+  let imageLabel: string
+  if (running) imageLabel = t('Generating')
+  else if (imageUrl) imageLabel = t('Regenerate')
+  else imageLabel = t('Generate Image')
+
   return (
     <Card className='overflow-hidden'>
       <div className='bg-muted relative aspect-square w-full'>
         {imageUrl ? (
-          <img
+          <ZoomableImage
             src={imageUrl}
             alt={entityName(type, item)}
-            loading='lazy'
-            className='size-full object-cover'
+            className='size-full'
           />
         ) : (
           <div className='text-muted-foreground flex size-full items-center justify-center'>
@@ -344,21 +429,20 @@ function EntityCard(props: EntityCardProps) {
           <Button
             size='sm'
             variant='outline'
-            className='flex-1'
+            className='min-w-0 flex-1'
             disabled={promptMutation.isPending}
             onClick={() => promptMutation.mutate()}
           >
-            <Sparkles aria-hidden='true' className='size-3.5' />
-            {promptMutation.isPending ? t('Generating...') : t('Prompt')}
+            {promptLabel}
           </Button>
           <Button
             size='sm'
-            className='flex-1'
+            variant={imageUrl ? 'outline' : 'default'}
+            className='min-w-0 flex-1'
             disabled={running}
             onClick={() => imageMutation.mutate()}
           >
-            <ImageIcon aria-hidden='true' className='size-3.5' />
-            {running ? t('Generating...') : t('Image')}
+            {imageLabel}
           </Button>
         </div>
       </CardContent>
@@ -379,7 +463,7 @@ interface EntityDialogProps {
   onSaved: () => void
 }
 
-function EntityDialog(props: EntityDialogProps) {
+export function EntityDialog(props: EntityDialogProps) {
   const { t } = useTranslation()
   const fields = ENTITY_FIELDS[props.type]
   const isEdit = Boolean(props.item?.id)
@@ -412,7 +496,7 @@ function EntityDialog(props: EntityDialogProps) {
     },
     onSuccess: (res) => {
       if (res.success) {
-        toast.success(t(isEdit ? 'Updated' : 'Created'))
+        toast.success(t('Saved successfully'))
         props.onOpenChange(false)
         props.onSaved()
       }

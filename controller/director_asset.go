@@ -41,6 +41,7 @@ func DirectorUpdateAsset(c *gin.Context) {
 		Category   string `json:"category"`
 		URL        string `json:"url"`
 		IsFavorite bool   `json:"isFavorite"`
+		ProjectID  *int   `json:"projectId"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -61,6 +62,17 @@ func DirectorUpdateAsset(c *gin.Context) {
 		"category":    req.Category,
 		"url":         req.URL,
 		"is_favorite": req.IsFavorite,
+	}
+	// 调整项目归属：projectId > 0 归属项目，否则转为全局素材；
+	// 同时清空分集/分镜引用，避免跨项目脏关联
+	if req.ProjectID != nil {
+		if *req.ProjectID > 0 {
+			fields["project_id"] = *req.ProjectID
+		} else {
+			fields["project_id"] = nil
+		}
+		fields["episode_id"] = nil
+		fields["storyboard_id"] = nil
 	}
 	if err := a.Update(fields); err != nil {
 		common.ApiError(c, err)
@@ -124,6 +136,23 @@ func DirectorUploadAsset(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"url": asset.URL, "asset": asset})
+}
+
+// DirectorUploadFile 仅上传文件到 TOS 并返回 URL，不登记素材库（项目封面等纯引用场景）
+func DirectorUploadFile(c *gin.Context) {
+	userId := c.GetInt("id")
+	header, err := c.FormFile("file")
+	if err != nil {
+		common.ApiErrorMsg(c, "请选择要上传的文件")
+		return
+	}
+	projectID, _ := strconv.Atoi(c.PostForm("projectId"))
+	url, err := directorAssetSvc.UploadFile(header, userId, projectID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"url": url})
 }
 
 // ---------- 素材自定义分类 ----------

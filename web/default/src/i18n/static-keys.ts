@@ -540,4 +540,18 @@ export const STATIC_I18N_KEYS = [
   'Failed to load',
   'Expired at',
   'Cancelled at',
+
+  // Director asset library (dynamic labels from features/director/constants.ts)
+  'Character',
+  'Scene',
+  'Prop',
+  'Storyboard Clip',
+  'Composed Clip',
+  'Merged Video',
+  'Edited Video',
+  'Upload',
+  'Image',
+  'Video',
+  'Audio',
+  'File',
 ] as const

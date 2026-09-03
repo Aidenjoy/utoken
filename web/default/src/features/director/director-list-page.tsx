@@ -159,6 +159,7 @@ export function DirectorListPage(props: DirectorListPageProps) {
   }
 
   return (
+    <>
     <SectionPageLayout>
       <SectionPageLayout.Title>
         {t(categoryConfig.label)}
@@ -220,8 +221,9 @@ export function DirectorListPage(props: DirectorListPageProps) {
           </Pagination>
         )}
       </SectionPageLayout.Content>
+    </SectionPageLayout>
 
-      <ProjectDialog
+    <ProjectDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         category={props.category}
@@ -267,6 +269,6 @@ export function DirectorListPage(props: DirectorListPageProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </SectionPageLayout>
+    </>
   )
 }

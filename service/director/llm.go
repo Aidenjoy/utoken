@@ -266,7 +266,6 @@ func (s *LLMService) RewriteScript(userID, episodeID int) error {
 	}
 	return episode.Update(map[string]any{
 		"script_content": content,
-		"status":         "rewritten",
 	})
 }
 
@@ -279,19 +278,18 @@ type ExtractResult struct {
 
 type extractLLMOutput struct {
 	Characters []struct {
-		Name        string `json:"name"`
-		Role        string `json:"role"`
-		Appearance  string `json:"appearance"`
-		Personality string `json:"personality"`
+		Name   string `json:"name"`
+		Role   string `json:"role"`
+		Prompt string `json:"prompt"`
 	} `json:"characters"`
 	Scenes []struct {
 		Location string `json:"location"`
 		Time     string `json:"time"`
 	} `json:"scenes"`
 	Props []struct {
-		Name        string `json:"name"`
-		Type        string `json:"type"`
-		Description string `json:"description"`
+		Name   string `json:"name"`
+		Type   string `json:"type"`
+		Prompt string `json:"prompt"`
 	} `json:"props"`
 }
 
@@ -328,7 +326,7 @@ func (s *LLMService) ExtractRolesScenes(userID, episodeID int) (*ExtractResult, 
 	}
 	messages := []ChatMessage{
 		{Role: "system", Content: fmt.Sprintf(`你是剧本分析助手。从用户提供的%s中提取所有出场角色、场景和关键道具，严格按以下 JSON 格式输出，不要输出任何其他内容：
-{"characters":[{"name":"角色名","role":"主角|配角|反派|客串","appearance":"外貌描述(用于AI绘图,含年龄/性别/发型/服装)","personality":"性格"}],"scenes":[{"location":"地点","time":"白天|夜晚|黄昏|清晨"}],"props":[{"name":"道具名","type":"道具类型(如 产品/服装/食物/交通工具/摆件)","description":"外观描述(用于AI绘图,含造型/材质/颜色)"}]}
+{"characters":[{"name":"角色名","role":"主角|配角|反派|客串","prompt":"外貌描述(用于AI绘图,含年龄/性别/发型/服装)"}],"scenes":[{"location":"地点","time":"白天|夜晚|黄昏|清晨"}],"props":[{"name":"道具名","type":"道具类型(如 产品/服装/食物/交通工具/摆件)","prompt":"外观描述(用于AI绘图,含造型/材质/颜色)"}]}
 注意：角色去重；外貌描述要具体；时间只能是 白天/夜晚/黄昏/清晨 之一；道具只提取对剧情或展示重要的物品，电商与广告脚本务必包含主推产品；没有人物时 characters 可为空数组`, tag)},
 		{Role: "user", Content: script},
 	}
@@ -352,13 +350,11 @@ func (s *LLMService) ExtractRolesScenes(userID, episodeID int) (*ExtractResult, 
 		err = model.DB.Where("project_id = ? AND name = ?", episode.ProjectID, name).First(&exist).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			exist = model.DirectorCharacter{
-				UserID:      userID,
-				ProjectID:   episode.ProjectID,
-				Name:        name,
-				Role:        c.Role,
-				Appearance:  c.Appearance,
-				Personality: c.Personality,
-				Prompt:      strings.TrimSpace(c.Appearance), // 外貌描述作初始 prompt，避免提取后提示词列显示未生成
+				UserID:    userID,
+				ProjectID: episode.ProjectID,
+				Name:      name,
+				Role:      c.Role,
+				Prompt:    strings.TrimSpace(c.Prompt),
 			}
 			if err = exist.Insert(); err != nil {
 				return nil, err
@@ -398,13 +394,12 @@ func (s *LLMService) ExtractRolesScenes(userID, episodeID int) (*ExtractResult, 
 		err = model.DB.Where("project_id = ? AND name = ?", episode.ProjectID, name).First(&exist).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			exist = model.DirectorProp{
-				UserID:      userID,
-				ProjectID:   episode.ProjectID,
-				Name:        name,
-				Type:        p.Type,
-				Description: p.Description,
-				Prompt:      strings.TrimSpace(p.Description), // 道具描述作初始 prompt，与道具图步骤展示内容一致
-				Status:      "pending",
+				UserID:    userID,
+				ProjectID: episode.ProjectID,
+				Name:      name,
+				Type:      p.Type,
+				Prompt:    strings.TrimSpace(p.Prompt),
+				Status:    "pending",
 			}
 			if err = exist.Insert(); err != nil {
 				return nil, err
@@ -537,15 +532,14 @@ func (s *LLMService) SplitStoryboards(userID, episodeID int) (int, error) {
 			err := tx.Where("project_id = ? AND location = ? AND time = ?", episode.ProjectID, location, sc.Time).First(&scene).Error
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				scene = model.DirectorScene{
-					CreatedAt:       now,
-					UpdatedAt:       now,
-					UserID:          userID,
-					ProjectID:       episode.ProjectID,
-					Location:        location,
-					Time:            sc.Time,
-					StoryboardCount: len(sc.Storyboards),
-					Source:          "ai",
-					Status:          "pending",
+					CreatedAt: now,
+					UpdatedAt: now,
+					UserID:    userID,
+					ProjectID: episode.ProjectID,
+					Location:  location,
+					Time:      sc.Time,
+					Source:    "ai",
+					Status:    "pending",
 				}
 				if err := tx.Create(&scene).Error; err != nil {
 					return err
@@ -580,7 +574,6 @@ func (s *LLMService) SplitStoryboards(userID, episodeID int) (int, error) {
 				}
 				count++
 			}
-			tx.Model(&scene).Update("storyboard_count", len(sc.Storyboards))
 		}
 		return tx.Model(&model.DirectorEpisode{}).Where("id = ?", episodeID).Update("status", "storyboarded").Error
 	})

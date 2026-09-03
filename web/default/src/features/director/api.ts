@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 
 import type {
   ApiResponse,
+  AssetListParams,
   DirectorAsset,
   DirectorAssetCategory,
   DirectorCharacter,
@@ -434,37 +435,39 @@ export async function correctDirectorSubtitles(params: {
 }
 
 // ============================================================================
-// 素材库
+// 文件上传（剪辑页素材替换 / 贴纸 / 音频）
 // ============================================================================
 
-export async function getDirectorAssets(params: {
+export async function uploadDirectorFile(params: {
+  file: File
   projectId?: number
-  episodeId?: number
-  storyboardId?: number
-  type?: string
-  category?: string
-  isFavorite?: boolean
-  p?: number
-  page_size?: number
-}): Promise<ApiResponse<PageResult<DirectorAsset>>> {
-  const res = await api.get(`${BASE}/asset/list`, { params })
+}): Promise<ApiResponse<{ url: string }>> {
+  const form = new FormData()
+  form.append('file', params.file)
+  if (params.projectId) form.append('projectId', String(params.projectId))
+  const res = await api.post(`${BASE}/upload`, form)
   return res.data
 }
 
-export async function createDirectorAsset(
-  data: Partial<DirectorAsset>
-): Promise<ApiResponse<DirectorAsset>> {
-  const res = await api.post(`${BASE}/asset`, data)
+// ============================================================================
+// 素材库
+// ============================================================================
+
+export async function getDirectorAssets(
+  params: AssetListParams = {}
+): Promise<ApiResponse<PageResult<DirectorAsset>>> {
+  const res = await api.get(`${BASE}/asset/list`, { params })
   return res.data
 }
 
 export async function updateDirectorAsset(data: {
   id: number
-  name?: string
-  type?: string
-  category?: string
-  url?: string
-  isFavorite?: boolean
+  name: string
+  type: string
+  category: string
+  url: string
+  isFavorite: boolean
+  projectId?: number
 }): Promise<ApiResponse<DirectorAsset>> {
   const res = await api.put(`${BASE}/asset`, data)
   return res.data
@@ -481,18 +484,20 @@ export async function uploadDirectorAsset(params: {
   file: File
   projectId?: number
   episodeId?: number
-  name?: string
   category?: string
 }): Promise<ApiResponse<{ url: string; asset: DirectorAsset }>> {
   const form = new FormData()
   form.append('file', params.file)
   if (params.projectId) form.append('projectId', String(params.projectId))
   if (params.episodeId) form.append('episodeId', String(params.episodeId))
-  if (params.name) form.append('name', params.name)
   if (params.category) form.append('category', params.category)
   const res = await api.post(`${BASE}/asset/upload`, form)
   return res.data
 }
+
+// ============================================================================
+// 素材自定义分类
+// ============================================================================
 
 export async function getDirectorAssetCategories(): Promise<
   ApiResponse<DirectorAssetCategory[]>
@@ -511,7 +516,7 @@ export async function createDirectorAssetCategory(
 export async function updateDirectorAssetCategory(params: {
   id: number
   name: string
-}): Promise<ApiResponse<DirectorAssetCategory>> {
+}): Promise<ApiResponse<null>> {
   const res = await api.put(`${BASE}/asset/category`, params)
   return res.data
 }
@@ -519,6 +524,8 @@ export async function updateDirectorAssetCategory(params: {
 export async function deleteDirectorAssetCategory(
   id: number
 ): Promise<ApiResponse<null>> {
-  const res = await api.delete(`${BASE}/asset/category`, { params: { id } })
+  const res = await api.delete(`${BASE}/asset/category`, {
+    data: { id },
+  })
   return res.data
 }

@@ -327,6 +327,59 @@ func migrateDB() error {
 			return err
 		}
 	}
+	// 归一化历史脏状态：AI 改写曾把分集 status 写成枚举外的 "rewritten"，改写进度现由 script_content 判断
+	if err := DB.Model(&DirectorEpisode{}).Where("status = ?", "rewritten").
+		Update("status", DirectorStatusDraft).Error; err != nil {
+		return err
+	}
+	return dropDirectorRedundantColumns()
+}
+
+// dropDirectorRedundantColumns 清理云导演实体表的冗余列（外观/描述等已统一合并进 prompt 列）。
+// 先将旧列内容回填到空的 prompt，再删列；幂等：列不存在时跳过。
+// GORM Migrator 按方言生成 DROP COLUMN（SQLite 需 3.35+）。
+func dropDirectorRedundantColumns() error {
+	// 回填：旧行 prompt 为空但外观/描述有值时，先搬进 prompt
+	backfills := []struct {
+		model  interface{}
+		source string
+	}{
+		{&DirectorCharacter{}, "appearance"},
+		{&DirectorProp{}, "description"},
+	}
+	m := DB.Migrator()
+	for _, b := range backfills {
+		if m.HasColumn(b.model, b.source) {
+			table := DB.Model(b.model)
+			if err := table.Where("prompt = '' AND "+b.source+" <> ''").
+				Update("prompt", gorm.Expr(b.source)).Error; err != nil {
+				return fmt.Errorf("backfill %s: %w", b.source, err)
+			}
+		}
+	}
+	drops := []struct {
+		model  interface{}
+		column string
+	}{
+		{&DirectorCharacter{}, "description"},
+		{&DirectorCharacter{}, "appearance"},
+		{&DirectorCharacter{}, "personality"},
+		{&DirectorCharacter{}, "reference_images"},
+		{&DirectorCharacter{}, "seed_value"},
+		{&DirectorCharacter{}, "sort_order"},
+		{&DirectorScene{}, "storyboard_count"},
+		{&DirectorProp{}, "description"},
+		{&DirectorProp{}, "reference_images"},
+	}
+	for _, d := range drops {
+		if !m.HasColumn(d.model, d.column) {
+			continue
+		}
+		if err := m.DropColumn(d.model, d.column); err != nil {
+			return fmt.Errorf("drop column %s: %w", d.column, err)
+		}
+		common.SysLog("dropped redundant director column: " + d.column)
+	}
 	return nil
 }
 

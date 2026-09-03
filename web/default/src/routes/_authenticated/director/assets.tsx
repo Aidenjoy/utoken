@@ -16,15 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
-import { isDirectorCategory } from '@/features/director/constants'
+import { Main } from '@/components/layout'
+import { DirectorAssetsPage } from '@/features/director/director-assets-page'
 
-export const Route = createFileRoute('/_authenticated/director/$category')({
-  beforeLoad: ({ params }) => {
-    if (!isDirectorCategory(params.category)) {
-      throw redirect({ to: '/dashboard' })
-    }
-  },
-  component: Outlet,
+export const Route = createFileRoute('/_authenticated/director/assets')({
+  component: DirectorAssetsRoutePage,
 })
+
+function DirectorAssetsRoutePage() {
+  return (
+    <Main>
+      <DirectorAssetsPage />
+    </Main>
+  )
+}

@@ -46,6 +46,11 @@ func (s *AssetService) UploadAsset(header *multipart.FileHeader, userID, project
 	return asset, asset.Insert()
 }
 
+// UploadFile 仅上传文件到 TOS 并返回 URL，不登记素材库（项目封面等纯引用场景）
+func (s *AssetService) UploadFile(header *multipart.FileHeader, userID, projectID int) (string, error) {
+	return storeHeaderToTOS(header, userID, projectID)
+}
+
 // detectUploadType 按 Content-Type / 扩展名推断素材类型（image/video/audio/file）
 func detectUploadType(header *multipart.FileHeader) string {
 	ct := header.Header.Get("Content-Type")
