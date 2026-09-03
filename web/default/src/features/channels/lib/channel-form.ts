@@ -211,7 +211,7 @@ export const channelFormSchema = z
     upstream_model_update_ignored_models: z.string().optional(),
     // Asset library settings (Volcengine Ark Native type 59; stored in settings JSON)
     asset_upload_protocol: z
-      .enum(['', 'relay', 'ark_official', 'ecloud', 'bit_official'])
+      .enum(['', 'relay', 'ark_official', 'ecloud', 'bit_official', 'xswj_official'])
       .optional(),
     asset_upload_path: z.string().optional(),
     asset_query_path: z.string().optional(),
@@ -222,7 +222,7 @@ export const channelFormSchema = z
     asset_region: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
+    if ([3, 8, 36, 45, 60].includes(data.type) && !data.base_url?.trim()) {
       addRequiredIssue(
         ctx,
         'base_url',
@@ -430,7 +430,8 @@ export function transformChannelToFormDefaults(
     | 'relay'
     | 'ark_official'
     | 'ecloud'
-    | 'bit_official' = ''
+    | 'bit_official'
+    | 'xswj_official' = ''
   let assetUploadPath = ''
   let assetQueryPath = ''
   let assetAk = ''
@@ -470,7 +471,8 @@ export function transformChannelToFormDefaults(
         parsed.asset_upload_protocol === 'relay' ||
         parsed.asset_upload_protocol === 'ark_official' ||
         parsed.asset_upload_protocol === 'ecloud' ||
-        parsed.asset_upload_protocol === 'bit_official'
+        parsed.asset_upload_protocol === 'bit_official' ||
+        parsed.asset_upload_protocol === 'xswj_official'
           ? parsed.asset_upload_protocol
           : ''
       assetUploadPath = String(parsed.asset_upload_path || '')
@@ -703,7 +705,8 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     }
     if (
       formData.asset_upload_protocol === 'ark_official' ||
-      formData.asset_upload_protocol === 'bit_official'
+      formData.asset_upload_protocol === 'bit_official' ||
+      formData.asset_upload_protocol === 'xswj_official'
     ) {
       settingsObj.asset_ak = (formData.asset_ak || '').trim()
       settingsObj.asset_sk = (formData.asset_sk || '').trim()

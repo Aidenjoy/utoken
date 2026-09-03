@@ -36,6 +36,7 @@ const (
 	AssetUploadProtocolArkOfficial = "ark_official" // 火山方舟官方：AK/SK 签名调 CreateAsset
 	AssetUploadProtocolEcloud      = "ecloud"       // 移动云 MoMA 官方：query 参数签名调素材资产库 API
 	AssetUploadProtocolBitOfficial = "bit_official" // TokenBit 官方：方舟兼容 V4 签名走 tokenbit 网关
+	AssetUploadProtocolXswjOfficial = "xswj_official" // 星枢无极：方舟兼容 V4 签名走 mintel.591ll.com 网关
 )
 
 const (
@@ -66,7 +67,7 @@ type ChannelOtherSettings struct {
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
 
 	// 虚拟人像素材库（asset:// 引用）配置
-	AssetUploadProtocol string `json:"asset_upload_protocol,omitempty"` // ""/relay/ark_official/ecloud/bit_official
+	AssetUploadProtocol string `json:"asset_upload_protocol,omitempty"` // ""/relay/ark_official/ecloud/bit_official/xswj_official
 	AssetUploadPath     string `json:"asset_upload_path,omitempty"`     // relay 协议注册路径，默认 /api/assets/upload
 	AssetQueryPath      string `json:"asset_query_path,omitempty"`      // relay 协议查询路径模板，默认 /api/assets/{id}
 	AssetAK             string `json:"asset_ak,omitempty"`              // 官方协议 AccessKey

@@ -22,6 +22,11 @@ type ArkOfficialProtocol struct {
 	endpoint string
 	// now 允许测试注入固定时间做确定性签名断言。
 	now func() time.Time
+	// signHost 覆写签名规范请求中的 host 头值（用于网关把路径前缀纳入 host 签名的场景，
+	// 如星枢无极 mintel.591ll.com/render/api）。空时用 URL.Host。
+	signHost string
+	// signPath 覆写签名规范请求中的 URI 路径（如 "/assets/"）。空时用 URL.Path。
+	signPath string
 }
 
 const (
@@ -153,13 +158,21 @@ func (p *ArkOfficialProtocol) call(action string, body []byte, out any) error {
 	if p.now != nil {
 		now = p.now
 	}
+	signHost := httpReq.URL.Host
+	if p.signHost != "" {
+		signHost = p.signHost
+	}
+	signPath := httpReq.URL.Path
+	if p.signPath != "" {
+		signPath = p.signPath
+	}
 	signRequest(httpReq, signParams{
 		AK:      p.cfg.Settings.AssetAK,
 		SK:      p.cfg.Settings.AssetSK,
 		Region:  p.cfg.Settings.AssetRegionOrDefault(),
 		Service: arkOfficialService,
-		Host:    httpReq.URL.Host,
-		Path:    httpReq.URL.Path,
+		Host:    signHost,
+		Path:    signPath,
 		Query:   query,
 		Headers: http.Header{"content-type": []string{"application/json"}},
 		Body:    body,

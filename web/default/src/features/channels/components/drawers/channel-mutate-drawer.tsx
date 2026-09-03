@@ -762,7 +762,7 @@ export function ChannelMutateDrawer({
     reset: resetDoubaoApiUnlock,
   } = useHiddenClickUnlock({
     requiredClicks: 10,
-    disabled: currentType !== 45 || sensitiveLocked,
+    disabled: ![45, 60].includes(currentType) || sensitiveLocked,
     onUnlock: () => {
       toast.info(t('Doubao custom API address editing unlocked'))
     },
@@ -952,8 +952,17 @@ export function ChannelMutateDrawer({
   )
   const advancedHaveErrors =
     hasAdvancedSettingsErrors(formErrors) || Boolean(formErrors.advanced_custom)
-  const providerRequiresBaseUrl = [3, 8, 36, 45].includes(currentType)
+  const providerRequiresBaseUrl = [3, 8, 36, 45, 60].includes(currentType)
   const providerRequiresOther = [3, 18, 21, 39, 41, 49].includes(currentType)
+  // VolcEngine (45) and VolcEngine Image (60) pick from the official Ark
+  // regions; the free-form URL input stays behind the hidden 10-click unlock.
+  const showArkRegionSelect =
+    [45, 60].includes(currentType) && !doubaoApiEditUnlocked
+  // Types that render a dedicated API-address field; the generic Base URL
+  // input must stay hidden for them so the two never conflict.
+  const hasDedicatedBaseUrlField = [
+    3, 8, 22, 36, 45, 59, 60,
+  ].includes(currentType)
   const identityComplete = Boolean(currentName?.trim() && currentType > 0)
   const credentialsComplete = Boolean(
     (isEditing || currentKey?.trim()) &&
@@ -1254,19 +1263,33 @@ export function ChannelMutateDrawer({
   useEffect(() => {
     if (isEditing) return // Don't auto-set defaults when editing
 
-    // Type 45 (VolcEngine) - set default base_url
-    if (currentType === 45) {
-      const currentBaseUrlValue = form.getValues('base_url')
-      if (!currentBaseUrlValue || currentBaseUrlValue === '') {
-        form.setValue('base_url', 'https://ark.cn-beijing.volces.com')
-      }
-    }
-
-    // Type 59 (Volcengine Ark Native) - set default base_url with official version path
-    if (currentType === 59) {
-      const currentBaseUrlValue = form.getValues('base_url')
-      if (!currentBaseUrlValue || currentBaseUrlValue === '') {
-        form.setValue('base_url', 'https://ark.cn-beijing.volces.com/api/v3')
+    // VolcEngine Ark types disagree on the version path: 45 (chat) and 60
+    // (image) must not carry /api/v3 because the adaptor appends it, while 59
+    // (video) uses the base URL verbatim. Switching between them with a stale
+    // value silently doubles the path upstream (.../api/v3/api/v3/...), so
+    // rewrite any value that is empty or already a known Ark endpoint instead
+    // of only filling blanks, keeping the region the user picked.
+    if ([45, 59, 60].includes(currentType)) {
+      const arkRegions = [
+        'https://ark.cn-beijing.volces.com',
+        'https://ark.ap-southeast.bytepluses.com',
+      ]
+      const currentBaseUrlValue = form.getValues('base_url') ?? ''
+      const matchedRegion = arkRegions.find(
+        (region) =>
+          currentBaseUrlValue === region ||
+          currentBaseUrlValue === `${region}/api/v3`
+      )
+      const shouldResetBaseUrl =
+        !currentBaseUrlValue ||
+        matchedRegion !== undefined ||
+        currentBaseUrlValue === 'doubao-coding-plan'
+      if (shouldResetBaseUrl) {
+        const region = matchedRegion ?? arkRegions[0]
+        form.setValue(
+          'base_url',
+          currentType === 59 ? `${region}/api/v3` : region
+        )
       }
     }
 
@@ -2628,8 +2651,8 @@ export function ChannelMutateDrawer({
                               </>
                             )}
 
-                            {/* VolcEngine (type 45) */}
-                            {currentType === 45 && !doubaoApiEditUnlocked && (
+                            {/* VolcEngine (type 45) / VolcEngine Image (type 60) */}
+                            {showArkRegionSelect && (
                               <FormField
                                 control={form.control}
                                 name='base_url'
@@ -2746,7 +2769,7 @@ export function ChannelMutateDrawer({
                             )}
 
                             {/* General base_url for other types */}
-                            {![3, 8, 22, 36, 45, 59].includes(currentType) && (
+                            {!hasDedicatedBaseUrlField && (
                               <FormField
                                 control={form.control}
                                 name='base_url'
@@ -2844,6 +2867,10 @@ export function ChannelMutateDrawer({
                                               value: 'bit_official',
                                               label: t('Bit Official'),
                                             },
+                                            {
+                                              value: 'xswj_official',
+                                              label: t('Xingshu Wuji'),
+                                            },
                                           ]}
                                           onValueChange={(value) =>
                                             field.onChange(
@@ -2875,6 +2902,9 @@ export function ChannelMutateDrawer({
                                               </SelectItem>
                                               <SelectItem value='bit_official'>
                                                 {t('Bit Official')}
+                                              </SelectItem>
+                                              <SelectItem value='xswj_official'>
+                                                {t('Xingshu Wuji')}
                                               </SelectItem>
                                             </SelectGroup>
                                           </SelectContent>
@@ -2943,7 +2973,9 @@ export function ChannelMutateDrawer({
                                   {(currentAssetUploadProtocol ===
                                     'ark_official' ||
                                     currentAssetUploadProtocol ===
-                                      'bit_official') && (
+                                      'bit_official' ||
+                                    currentAssetUploadProtocol ===
+                                      'xswj_official') && (
                                     <>
                                       <FormField
                                         control={form.control}
@@ -2992,9 +3024,14 @@ export function ChannelMutateDrawer({
                                                 ? t(
                                                     'Asset group of the Bit official asset library; if empty, a default group is created automatically'
                                                   )
-                                                : t(
-                                                    'Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically'
-                                                  )}
+                                                : currentAssetUploadProtocol ===
+                                                    'xswj_official'
+                                                  ? t(
+                                                      'Asset group of the Xingshu Wuji asset library; if empty, a default group is created automatically'
+                                                    )
+                                                  : t(
+                                                      'Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically'
+                                                    )}
                                             </FormDescription>
                                             <FormMessage />
                                           </FormItem>

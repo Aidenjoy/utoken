@@ -72,6 +72,11 @@ func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 			return nil, fmt.Errorf("bit_official asset protocol requires asset_ak and asset_sk")
 		}
 		return newBitOfficialProtocol(cfg), nil
+	case dto.AssetUploadProtocolXswjOfficial:
+		if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
+			return nil, fmt.Errorf("xswj_official asset protocol requires asset_ak and asset_sk")
+		}
+		return newXswjOfficialProtocol(cfg), nil
 	default:
 		return nil, fmt.Errorf("asset upload protocol is not enabled on this channel")
 	}
