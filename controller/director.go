@@ -114,11 +114,9 @@ func DirectorUpdateProject(c *gin.Context) {
 		Genre         *string `json:"genre"`
 		Style         *string `json:"style"`
 		TotalEpisodes *int    `json:"totalEpisodes"`
-		TotalDuration *int    `json:"totalDuration"`
 		Status        *string `json:"status"`
 		Thumbnail     *string `json:"thumbnail"`
 		Tags          *string `json:"tags"`
-		Metadata      *string `json:"metadata"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -156,9 +154,6 @@ func DirectorUpdateProject(c *gin.Context) {
 	if req.TotalEpisodes != nil {
 		fields["total_episodes"] = *req.TotalEpisodes
 	}
-	if req.TotalDuration != nil {
-		fields["total_duration"] = *req.TotalDuration
-	}
 	if req.Status != nil {
 		fields["status"] = *req.Status
 	}
@@ -167,9 +162,6 @@ func DirectorUpdateProject(c *gin.Context) {
 	}
 	if req.Tags != nil {
 		fields["tags"] = *req.Tags
-	}
-	if req.Metadata != nil {
-		fields["metadata"] = *req.Metadata
 	}
 	if len(fields) == 0 {
 		common.ApiErrorMsg(c, "没有需要更新的字段")
@@ -278,15 +270,11 @@ func DirectorUpdateEpisode(c *gin.Context) {
 		Title          *string `json:"title"`
 		Content        *string `json:"content"`
 		ScriptContent  *string `json:"scriptContent"`
-		Description    *string `json:"description"`
-		Duration       *int    `json:"duration"`
 		TargetDuration *int    `json:"targetDuration"`
 		AspectRatio    *string `json:"aspectRatio"`
 		Resolution     *string `json:"resolution"`
 		Metadata       *string `json:"metadata"`
 		Status         *string `json:"status"`
-		VideoURL       *string `json:"videoUrl"`
-		Thumbnail      *string `json:"thumbnail"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -311,12 +299,6 @@ func DirectorUpdateEpisode(c *gin.Context) {
 	if req.ScriptContent != nil {
 		fields["script_content"] = *req.ScriptContent
 	}
-	if req.Description != nil {
-		fields["description"] = *req.Description
-	}
-	if req.Duration != nil {
-		fields["duration"] = *req.Duration
-	}
 	if req.TargetDuration != nil {
 		fields["target_duration"] = *req.TargetDuration
 	}
@@ -331,12 +313,6 @@ func DirectorUpdateEpisode(c *gin.Context) {
 	}
 	if req.Status != nil {
 		fields["status"] = *req.Status
-	}
-	if req.VideoURL != nil {
-		fields["video_url"] = *req.VideoURL
-	}
-	if req.Thumbnail != nil {
-		fields["thumbnail"] = *req.Thumbnail
 	}
 	if len(fields) == 0 {
 		common.ApiErrorMsg(c, "没有需要更新的字段")

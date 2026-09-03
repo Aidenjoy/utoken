@@ -40,17 +40,15 @@ type DirectorProject struct {
 	CreatedAt     int64  `json:"createdAt" gorm:"index"`
 	UpdatedAt     int64  `json:"updatedAt"`
 	UserID        int    `json:"userId" gorm:"index"`
-	Title         string `json:"title" gorm:"size:128;not null"`              // 项目名称
-	Category      string `json:"category" gorm:"size:32;index"`               // 项目类型
-	Description   string `json:"description" gorm:"type:text"`                // 项目简介
-	Genre         string `json:"genre" gorm:"size:64"`                        // 题材类型
-	Style         string `json:"style" gorm:"size:64"`                        // 画风
-	TotalEpisodes int    `json:"totalEpisodes" gorm:"default:1"`              // 计划总集数
-	TotalDuration int    `json:"totalDuration" gorm:"default:0"`              // 总时长(秒)
-	Status        string `json:"status" gorm:"size:32;index"`                 // draft/producing/completed
-	Thumbnail     string `json:"thumbnail" gorm:"size:512"`                   // 封面图
-	Tags          string `json:"tags" gorm:"type:text"`                       // 标签JSON数组
-	Metadata      string `json:"metadata" gorm:"type:text"`                   // 扩展元数据JSON（类型差异化字段）
+	Title         string `json:"title" gorm:"size:128;not null"` // 项目名称
+	Category      string `json:"category" gorm:"size:32;index"`  // 项目类型
+	Description   string `json:"description" gorm:"type:text"`   // 项目简介
+	Genre         string `json:"genre" gorm:"size:64"`           // 题材类型
+	Style         string `json:"style" gorm:"size:64"`           // 画风
+	TotalEpisodes int    `json:"totalEpisodes" gorm:"default:1"` // 计划总集数
+	Status        string `json:"status" gorm:"size:32;index"`    // draft/producing/completed
+	Thumbnail     string `json:"thumbnail" gorm:"size:512"`      // 封面图
+	Tags          string `json:"tags" gorm:"type:text"`          // 标签JSON数组
 }
 
 func (DirectorProject) TableName() string { return "director_projects" }
@@ -79,8 +77,6 @@ func (p *DirectorProject) Update(fields map[string]any) error {
 	return DB.Model(p).Updates(fields).Error
 }
 
-
-
 func GetDirectorProjectByID(id int) (*DirectorProject, error) {
 	var p DirectorProject
 	err := DB.First(&p, id).Error
@@ -89,7 +85,7 @@ func GetDirectorProjectByID(id int) (*DirectorProject, error) {
 
 // DirectorProjectListFilter 项目列表过滤条件
 type DirectorProjectListFilter struct {
-	UserID   int    // 0 表示不过滤
+	UserID   int // 0 表示不过滤
 	Category string
 	Status   string
 	Keyword  string // 标题模糊搜索
@@ -123,26 +119,22 @@ func ListDirectorProjects(f DirectorProjectListFilter) ([]*DirectorProject, int6
 
 // DirectorEpisode 项目分集
 type DirectorEpisode struct {
-	ID             int                     `json:"id" gorm:"primaryKey"`
-	CreatedAt      int64                   `json:"createdAt" gorm:"index"`
-	UpdatedAt      int64                   `json:"updatedAt"`
-	UserID         int                     `json:"userId" gorm:"index"`
-	ProjectID      int                     `json:"projectId" gorm:"index;not null"`          // 所属项目
-	EpisodeNumber  int                     `json:"episodeNumber" gorm:"not null"`            // 集号
-	Title          string                  `json:"title" gorm:"size:128;not null"`           // 集标题
-	Content        string                  `json:"content" gorm:"type:text"`                 // 原始内容
-	ScriptContent  string                  `json:"scriptContent" gorm:"type:text"`           // AI改写后剧本
-	Description    string                  `json:"description" gorm:"type:text"`             // 本集简介
-	Duration       int                     `json:"duration" gorm:"default:0"`                // 时长(秒)
-	TargetDuration int                     `json:"targetDuration" gorm:"default:60"`         // 目标总时长(秒)
-	AspectRatio    string                  `json:"aspectRatio" gorm:"size:16"`               // 画面比例
-	Resolution     string                  `json:"resolution" gorm:"size:16"`                // 分辨率
-	Metadata       string                  `json:"metadata" gorm:"type:text"`                // 类型差异化录入字段JSON
-	Status         string                  `json:"status" gorm:"size:32"`                    // 状态
-	VideoURL       string                  `json:"videoUrl" gorm:"size:512"`                 // 成片地址
-	Thumbnail      string                  `json:"thumbnail" gorm:"size:512"`                // 封面
-	Characters     []*DirectorCharacter    `json:"characters" gorm:"many2many:director_episode_characters"` // 出场角色
-	Scenes         []*DirectorScene        `json:"scenes" gorm:"many2many:director_episode_scenes"`         // 关联场景
+	ID             int                  `json:"id" gorm:"primaryKey"`
+	CreatedAt      int64                `json:"createdAt" gorm:"index"`
+	UpdatedAt      int64                `json:"updatedAt"`
+	UserID         int                  `json:"userId" gorm:"index"`
+	ProjectID      int                  `json:"projectId" gorm:"index;not null"`                         // 所属项目
+	EpisodeNumber  int                  `json:"episodeNumber" gorm:"not null"`                           // 集号
+	Title          string               `json:"title" gorm:"size:128;not null"`                          // 集标题
+	Content        string               `json:"content" gorm:"type:text"`                                // 原始内容
+	ScriptContent  string               `json:"scriptContent" gorm:"type:text"`                          // AI改写后剧本
+	TargetDuration int                  `json:"targetDuration" gorm:"default:60"`                        // 目标总时长(秒)
+	AspectRatio    string               `json:"aspectRatio" gorm:"size:16"`                              // 画面比例
+	Resolution     string               `json:"resolution" gorm:"size:16"`                               // 分辨率
+	Metadata       string               `json:"metadata" gorm:"type:text"`                               // 类型差异化录入字段JSON
+	Status         string               `json:"status" gorm:"size:32"`                                   // 状态
+	Characters     []*DirectorCharacter `json:"characters" gorm:"many2many:director_episode_characters"` // 出场角色
+	Scenes         []*DirectorScene     `json:"scenes" gorm:"many2many:director_episode_scenes"`         // 关联场景
 }
 
 func (DirectorEpisode) TableName() string { return "director_episodes" }
@@ -171,8 +163,6 @@ func (e *DirectorEpisode) Update(fields map[string]any) error {
 	e.UpdatedAt = time.Now().Unix()
 	return DB.Model(e).Updates(fields).Error
 }
-
-
 
 func GetDirectorEpisodeByID(id int) (*DirectorEpisode, error) {
 	var e DirectorEpisode
@@ -387,34 +377,27 @@ func ListDirectorProps(projectID int, page, pageSize int) ([]*DirectorProp, int6
 
 // DirectorStoryboard 分镜
 type DirectorStoryboard struct {
-	ID               int                 `json:"id" gorm:"primaryKey"`
-	CreatedAt        int64               `json:"createdAt" gorm:"index"`
-	UpdatedAt        int64               `json:"updatedAt"`
-	UserID           int                 `json:"userId" gorm:"index"`
-	EpisodeID        int                 `json:"episodeId" gorm:"index;not null"`
-	SceneID          *int                `json:"sceneId" gorm:"index"`
-	StoryboardNumber int                 `json:"storyboardNumber" gorm:"not null"`       // 镜号
-	Title            string              `json:"title" gorm:"size:128"`                  // 分镜标题
-	Location         string              `json:"location" gorm:"size:128"`               // 地点
-	Time             string              `json:"time" gorm:"size:64"`                    // 时间
-	ShotType         string              `json:"shotType" gorm:"size:64"`                // 景别 远/全/中/近/特
-	Angle            string              `json:"angle" gorm:"size:64"`                   // 机位角度
-	Movement         string              `json:"movement" gorm:"size:64"`                // 运镜
-	Result           string              `json:"result" gorm:"type:text"`                // 画面结果
-	ImagePrompt      string              `json:"imagePrompt" gorm:"type:text"`           // 图片prompt
-	VideoPrompt      string              `json:"videoPrompt" gorm:"type:text"`           // 视频prompt
-	BgmPrompt        string              `json:"bgmPrompt" gorm:"type:text"`             // 配乐prompt
-	SoundEffect      string              `json:"soundEffect" gorm:"type:text"`           // 音效
-	Description      string              `json:"description" gorm:"type:text"`           // 备注
-	Duration         int                 `json:"duration" gorm:"default:0"`              // 时长(秒)
-	FirstFrameImage  string              `json:"firstFrameImage" gorm:"size:512"`        // 首帧图
-	LastFrameImage   string              `json:"lastFrameImage" gorm:"size:512"`         // 尾帧图
-	ComposedImage    string              `json:"composedImage" gorm:"size:512"`          // 合成图(九宫格)
-	ReferenceImages  string              `json:"referenceImages" gorm:"type:text"`       // 参考图JSON数组
-	VideoURL         string              `json:"videoUrl" gorm:"size:512"`               // 生成视频
-	SubtitleURL      string              `json:"subtitleUrl" gorm:"size:512"`            // 字幕文件
-	ComposedVideoURL string              `json:"composedVideoUrl" gorm:"size:512"`       // 合成后视频
-	Status           string              `json:"status" gorm:"size:32;index"`            // 状态
+	ID               int                  `json:"id" gorm:"primaryKey"`
+	CreatedAt        int64                `json:"createdAt" gorm:"index"`
+	UpdatedAt        int64                `json:"updatedAt"`
+	UserID           int                  `json:"userId" gorm:"index"`
+	EpisodeID        int                  `json:"episodeId" gorm:"index;not null"`
+	SceneID          *int                 `json:"sceneId" gorm:"index"`
+	StoryboardNumber int                  `json:"storyboardNumber" gorm:"not null"`                           // 镜号
+	Title            string               `json:"title" gorm:"size:128"`                                      // 分镜标题
+	Location         string               `json:"location" gorm:"size:128"`                                   // 地点
+	Time             string               `json:"time" gorm:"size:64"`                                        // 时间
+	ShotType         string               `json:"shotType" gorm:"size:64"`                                    // 景别 远/全/中/近/特
+	Angle            string               `json:"angle" gorm:"size:64"`                                       // 机位角度
+	Movement         string               `json:"movement" gorm:"size:64"`                                    // 运镜
+	Result           string               `json:"result" gorm:"type:text"`                                    // 画面结果
+	ImagePrompt      string               `json:"imagePrompt" gorm:"type:text"`                               // 图片prompt
+	VideoPrompt      string               `json:"videoPrompt" gorm:"type:text"`                               // 视频prompt
+	BgmPrompt        string               `json:"bgmPrompt" gorm:"type:text"`                                 // 配乐prompt
+	Duration         int                  `json:"duration" gorm:"default:0"`                                  // 时长(秒)
+	FirstFrameImage  string               `json:"firstFrameImage" gorm:"size:512"`                            // 首帧图
+	VideoURL         string               `json:"videoUrl" gorm:"size:512"`                                   // 生成视频
+	Status           string               `json:"status" gorm:"size:32;index"`                                // 状态
 	Characters       []*DirectorCharacter `json:"characters" gorm:"many2many:director_storyboard_characters"` // 出镜角色
 }
 

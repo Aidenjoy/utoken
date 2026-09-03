@@ -53,11 +53,9 @@ export interface DirectorProject {
   genre: string
   style: string
   totalEpisodes: number
-  totalDuration: number
   status: string
   thumbnail: string
   tags: string
-  metadata: string
 }
 
 export interface DirectorProjectWithStats extends DirectorProject {
@@ -118,15 +116,11 @@ export interface DirectorEpisode {
   title: string
   content: string
   scriptContent: string
-  description: string
-  duration: number
   targetDuration: number
   aspectRatio: string
   resolution: string
   metadata: string
   status: string
-  videoUrl: string
-  thumbnail: string
   characters?: DirectorCharacter[]
   scenes?: DirectorScene[]
 }
@@ -153,16 +147,9 @@ export interface DirectorStoryboard {
   imagePrompt: string
   videoPrompt: string
   bgmPrompt: string
-  soundEffect: string
-  description: string
   duration: number
   firstFrameImage: string
-  lastFrameImage: string
-  composedImage: string
-  referenceImages: string
   videoUrl: string
-  subtitleUrl: string
-  composedVideoUrl: string
   status: string
   characters?: DirectorCharacter[]
 }
@@ -178,12 +165,9 @@ export interface DirectorImageGeneration {
   characterId?: number | null
   propId?: number | null
   imageType: string
-  frameType: string
   prompt: string
-  negativePrompt: string
   model: string
   size: string
-  seed: number
   imageUrl: string
   status: DirectorGenStatus
   taskId: string
@@ -199,18 +183,15 @@ export interface DirectorVideoGeneration {
   userId: number
   storyboardId?: number | null
   projectId?: number | null
-  imageGenId?: number | null
   prompt: string
   model: string
   referenceMode: string
-  imageUrl: string
   firstFrameUrl: string
   lastFrameUrl: string
   referenceImageUrls: string
   duration: number
   resolution: string
   aspectRatio: string
-  seed: number
   videoUrl: string
   status: DirectorGenStatus
   taskId: string

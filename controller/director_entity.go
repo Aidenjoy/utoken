@@ -467,29 +467,22 @@ func DirectorCreateStoryboard(c *gin.Context) {
 // DirectorUpdateStoryboard 更新分镜字段（出镜角色关联由前端随完整对象提交）
 func DirectorUpdateStoryboard(c *gin.Context) {
 	var req struct {
-		ID               int                        `json:"id"`
-		Title            string                     `json:"title"`
-		Location         string                     `json:"location"`
-		Time             string                     `json:"time"`
-		ShotType         string                     `json:"shotType"`
-		Angle            string                     `json:"angle"`
-		Movement         string                     `json:"movement"`
-		Result           string                     `json:"result"`
-		ImagePrompt      string                     `json:"imagePrompt"`
-		VideoPrompt      string                     `json:"videoPrompt"`
-		BgmPrompt        string                     `json:"bgmPrompt"`
-		SoundEffect      string                     `json:"soundEffect"`
-		Description      string                     `json:"description"`
-		Duration         int                        `json:"duration"`
-		FirstFrameImage  string                     `json:"firstFrameImage"`
-		LastFrameImage   string                     `json:"lastFrameImage"`
-		ComposedImage    string                     `json:"composedImage"`
-		ReferenceImages  string                     `json:"referenceImages"`
-		VideoURL         string                     `json:"videoUrl"`
-		SubtitleURL      string                     `json:"subtitleUrl"`
-		ComposedVideoURL string                     `json:"composedVideoUrl"`
-		Status           string                     `json:"status"`
-		Characters       []*model.DirectorCharacter `json:"characters"`
+		ID              int                        `json:"id"`
+		Title           string                     `json:"title"`
+		Location        string                     `json:"location"`
+		Time            string                     `json:"time"`
+		ShotType        string                     `json:"shotType"`
+		Angle           string                     `json:"angle"`
+		Movement        string                     `json:"movement"`
+		Result          string                     `json:"result"`
+		ImagePrompt     string                     `json:"imagePrompt"`
+		VideoPrompt     string                     `json:"videoPrompt"`
+		BgmPrompt       string                     `json:"bgmPrompt"`
+		Duration        int                        `json:"duration"`
+		FirstFrameImage string                     `json:"firstFrameImage"`
+		VideoURL        string                     `json:"videoUrl"`
+		Status          string                     `json:"status"`
+		Characters      []*model.DirectorCharacter `json:"characters"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiError(c, err)
@@ -505,27 +498,20 @@ func DirectorUpdateStoryboard(c *gin.Context) {
 		return
 	}
 	fields := map[string]any{
-		"title":              req.Title,
-		"location":           req.Location,
-		"time":               req.Time,
-		"shot_type":          req.ShotType,
-		"angle":              req.Angle,
-		"movement":           req.Movement,
-		"result":             req.Result,
-		"image_prompt":       req.ImagePrompt,
-		"video_prompt":       req.VideoPrompt,
-		"bgm_prompt":         req.BgmPrompt,
-		"sound_effect":       req.SoundEffect,
-		"description":        req.Description,
-		"duration":           req.Duration,
-		"first_frame_image":  req.FirstFrameImage,
-		"last_frame_image":   req.LastFrameImage,
-		"composed_image":     req.ComposedImage,
-		"reference_images":   req.ReferenceImages,
-		"video_url":          req.VideoURL,
-		"subtitle_url":       req.SubtitleURL,
-		"composed_video_url": req.ComposedVideoURL,
-		"status":             req.Status,
+		"title":             req.Title,
+		"location":          req.Location,
+		"time":              req.Time,
+		"shot_type":         req.ShotType,
+		"angle":             req.Angle,
+		"movement":          req.Movement,
+		"result":            req.Result,
+		"image_prompt":      req.ImagePrompt,
+		"video_prompt":      req.VideoPrompt,
+		"bgm_prompt":        req.BgmPrompt,
+		"duration":          req.Duration,
+		"first_frame_image": req.FirstFrameImage,
+		"video_url":         req.VideoURL,
+		"status":            req.Status,
 	}
 	if err := sb.Update(fields); err != nil {
 		common.ApiError(c, err)

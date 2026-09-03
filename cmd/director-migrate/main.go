@@ -241,25 +241,6 @@ type srcVideoGeneration struct {
 
 func (srcVideoGeneration) TableName() string { return "drama_video_generations" }
 
-type srcVideoMerge struct {
-	ID          uint           `gorm:"column:id;primaryKey"`
-	CreatedAt   time.Time      `gorm:"column:created_at"`
-	UpdatedAt   time.Time      `gorm:"column:updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"column:deleted_at"`
-	EpisodeID   *uint
-	DramaID     *uint
-	Title       string
-	Status      string
-	Scenes      string
-	MergedURL   string
-	Duration    int
-	TaskID      string
-	ErrorMsg    string
-	CompletedAt *time.Time
-}
-
-func (srcVideoMerge) TableName() string { return "drama_video_merges" }
-
 type srcEditProject struct {
 	ID        uint           `gorm:"column:id;primaryKey"`
 	CreatedAt time.Time      `gorm:"column:created_at"`
@@ -559,7 +540,6 @@ func main() {
 	var storyboards []srcStoryboard
 	var imageGens []srcImageGeneration
 	var videoGens []srcVideoGeneration
-	var merges []srcVideoMerge
 	var editProjects []srcEditProject
 	var assets []srcAsset
 	var categories []srcAssetCategory
@@ -577,7 +557,6 @@ func main() {
 	src.Find(&storyboards)
 	src.Find(&imageGens)
 	src.Find(&videoGens)
-	src.Find(&merges)
 	src.Find(&editProjects)
 	src.Find(&assets)
 	src.Find(&categories)
@@ -591,9 +570,9 @@ func main() {
 		fatal("读取 drama_storyboard_characters 失败", err)
 	}
 
-	fmt.Printf("源数据: 项目 %d, 分集 %d, 角色 %d, 场景 %d, 道具 %d, 分镜 %d, 图任务 %d, 视频任务 %d, 拼接 %d, 剪辑 %d, 素材 %d, 分类 %d\n",
+	fmt.Printf("源数据: 项目 %d, 分集 %d, 角色 %d, 场景 %d, 道具 %d, 分镜 %d, 图任务 %d, 视频任务 %d, 剪辑 %d, 素材 %d, 分类 %d\n",
 		len(dramas), len(episodes), len(characters), len(scenes), len(props), len(storyboards),
-		len(imageGens), len(videoGens), len(merges), len(editProjects), len(assets), len(categories))
+		len(imageGens), len(videoGens), len(editProjects), len(assets), len(categories))
 	fmt.Printf("源关联: 分集-角色 %d, 分集-场景 %d, 分镜-角色 %d\n", len(epChars), len(epScenes), len(sbChars))
 
 	// 分集 → 项目（旧 drama_id）映射
@@ -616,11 +595,9 @@ func main() {
 			Genre:         d.Genre,
 			Style:         d.Style,
 			TotalEpisodes: d.TotalEpisodes,
-			TotalDuration: d.TotalDuration,
 			Status:        d.Status,
 			Thumbnail:     transferMaybe(d.Thumbnail, int(d.ID), tosOK),
 			Tags:          d.Tags,
-			Metadata:      d.Metadata,
 		})
 	}
 	batchInsert(newProjects)
@@ -638,15 +615,11 @@ func main() {
 			Title:          e.Title,
 			Content:        e.Content,
 			ScriptContent:  e.ScriptContent,
-			Description:    e.Description,
-			Duration:       e.Duration,
 			TargetDuration: e.TargetDuration,
 			AspectRatio:    e.AspectRatio,
 			Resolution:     e.Resolution,
 			Metadata:       e.Metadata,
 			Status:         e.Status,
-			VideoURL:       transferMaybe(e.VideoURL, int(e.DramaID), tosOK),
-			Thumbnail:      transferMaybe(e.Thumbnail, int(e.DramaID), tosOK),
 		})
 	}
 	batchInsert(newEpisodes)
@@ -736,16 +709,9 @@ func main() {
 			ImagePrompt:      sb.ImagePrompt,
 			VideoPrompt:      sb.VideoPrompt,
 			BgmPrompt:        sb.BgmPrompt,
-			SoundEffect:      sb.SoundEffect,
-			Description:      sb.Description,
 			Duration:         sb.Duration,
 			FirstFrameImage:  transferMaybe(sb.FirstFrameImage, projectID, tosOK),
-			LastFrameImage:   transferMaybe(sb.LastFrameImage, projectID, tosOK),
-			ComposedImage:    transferMaybe(sb.ComposedImage, projectID, tosOK),
-			ReferenceImages:  transferRefMaybe(sb.ReferenceImages, projectID, tosOK),
 			VideoURL:         transferMaybe(sb.VideoURL, projectID, tosOK),
-			SubtitleURL:      transferMaybe(sb.SubtitleURL, projectID, tosOK),
-			ComposedVideoURL: transferMaybe(sb.ComposedVideoURL, projectID, tosOK),
 			Status:           sb.Status,
 		})
 	}
@@ -765,12 +731,9 @@ func main() {
 			CharacterID:     uintPtr2IntPtr(g.CharacterID),
 			PropID:          uintPtr2IntPtr(g.PropID),
 			ImageType:       g.ImageType,
-			FrameType:       g.FrameType,
 			Prompt:          g.Prompt,
-			NegativePrompt:  g.NegativePrompt,
 			Model:           g.Model,
 			Size:            g.Size,
-			Seed:            g.Seed,
 			ImageURL:        transferMaybe(g.ImageURL, int(derefUint(g.DramaID)), tosOK),
 			Status:          g.Status,
 			TaskID:          g.TaskID,
@@ -791,18 +754,15 @@ func main() {
 			UserID:             adminUserID,
 			StoryboardID:       uintPtr2IntPtr(g.StoryboardID),
 			ProjectID:          uintPtr2IntPtr(g.DramaID),
-			ImageGenID:         uintPtr2IntPtr(g.ImageGenID),
 			Prompt:             g.Prompt,
 			Model:              g.Model,
 			ReferenceMode:      g.ReferenceMode,
-			ImageURL:           transferMaybe(g.ImageURL, int(derefUint(g.DramaID)), tosOK),
 			FirstFrameURL:      transferMaybe(g.FirstFrameURL, int(derefUint(g.DramaID)), tosOK),
 			LastFrameURL:       transferMaybe(g.LastFrameURL, int(derefUint(g.DramaID)), tosOK),
 			ReferenceImageURLs: transferRefMaybe(g.ReferenceImageURLs, int(derefUint(g.DramaID)), tosOK),
 			Duration:           g.Duration,
 			Resolution:         g.Resolution,
 			AspectRatio:        g.AspectRatio,
-			Seed:               g.Seed,
 			VideoURL:           transferMaybe(g.VideoURL, int(derefUint(g.DramaID)), tosOK),
 			Status:             g.Status,
 			TaskID:             g.TaskID,
@@ -811,28 +771,6 @@ func main() {
 		})
 	}
 	batchInsert(newVideoGens)
-
-	// ===== 整集拼接任务 =====
-	newMerges := make([]model.DirectorVideoMerge, 0, len(merges))
-	for _, m := range merges {
-		newMerges = append(newMerges, model.DirectorVideoMerge{
-			ID:          int(m.ID),
-			CreatedAt:   unixOf(m.CreatedAt),
-			UpdatedAt:   unixOf(m.UpdatedAt),
-			UserID:      adminUserID,
-			EpisodeID:   uintPtr2IntPtr(m.EpisodeID),
-			ProjectID:   uintPtr2IntPtr(m.DramaID),
-			Title:       m.Title,
-			Status:      m.Status,
-			Scenes:      m.Scenes,
-			MergedURL:   transferMaybe(m.MergedURL, int(derefUint(m.DramaID)), tosOK),
-			Duration:    m.Duration,
-			TaskID:      m.TaskID,
-			ErrorMsg:    m.ErrorMsg,
-			CompletedAt: unixPtr(m.CompletedAt),
-		})
-	}
-	batchInsert(newMerges)
 
 	// ===== 剪辑工程 =====
 	newEditProjects := make([]model.DirectorEditProject, 0, len(editProjects))
@@ -1011,7 +949,6 @@ func cleanTargetTables() {
 		"director_episode_scenes",
 		"director_image_generations",
 		"director_video_generations",
-		"director_video_merges",
 		"director_edit_projects",
 		"director_storyboards",
 		"director_characters",

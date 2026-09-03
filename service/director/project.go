@@ -94,9 +94,6 @@ func (s *ProjectService) DeleteProjectCascade(projectID int) error {
 		if err := tx.Where("project_id = ?", projectID).Delete(&model.DirectorVideoGeneration{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("project_id = ?", projectID).Delete(&model.DirectorVideoMerge{}).Error; err != nil {
-			return err
-		}
 		if err := tx.Where("project_id = ?", projectID).Delete(&model.DirectorAsset{}).Error; err != nil {
 			return err
 		}
@@ -127,9 +124,6 @@ func (s *ProjectService) DeleteEpisodeCascade(episodeID int) error {
 			return err
 		}
 		if err := tx.Where("episode_id = ?", episodeID).Delete(&model.DirectorEditProject{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("episode_id = ?", episodeID).Delete(&model.DirectorVideoMerge{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.DirectorEpisode{}, episodeID).Error

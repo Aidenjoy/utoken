@@ -264,7 +264,6 @@ func (s *ImageGenerationService) SubmitStoryboardImage(userID, storyboardID int,
 		StoryboardID: &storyboardID,
 		ProjectID:    &episode.ProjectID,
 		ImageType:    "storyboard",
-		FrameType:    "first",
 		Prompt:       prompt,
 		Status:       model.DirectorGenStatusProcessing,
 	}

@@ -308,7 +308,6 @@ func migrateDB() error {
 		&DirectorStoryboard{},
 		&DirectorImageGeneration{},
 		&DirectorVideoGeneration{},
-		&DirectorVideoMerge{},
 		&DirectorEditProject{},
 		&DirectorAsset{},
 		&DirectorAssetCategory{},
@@ -371,6 +370,25 @@ func dropDirectorRedundantColumns() error {
 		{&DirectorScene{}, "storyboard_count"},
 		{&DirectorProp{}, "description"},
 		{&DirectorProp{}, "reference_images"},
+		{&DirectorProject{}, "total_duration"},
+		{&DirectorProject{}, "metadata"},
+		{&DirectorEpisode{}, "description"},
+		{&DirectorEpisode{}, "duration"},
+		{&DirectorEpisode{}, "thumbnail"},
+		{&DirectorEpisode{}, "video_url"},
+		{&DirectorStoryboard{}, "sound_effect"},
+		{&DirectorStoryboard{}, "description"},
+		{&DirectorStoryboard{}, "last_frame_image"},
+		{&DirectorStoryboard{}, "composed_image"},
+		{&DirectorStoryboard{}, "reference_images"},
+		{&DirectorStoryboard{}, "subtitle_url"},
+		{&DirectorStoryboard{}, "composed_video_url"},
+		{&DirectorImageGeneration{}, "frame_type"},
+		{&DirectorImageGeneration{}, "negative_prompt"},
+		{&DirectorImageGeneration{}, "seed"},
+		{&DirectorVideoGeneration{}, "image_gen_id"},
+		{&DirectorVideoGeneration{}, "image_url"},
+		{&DirectorVideoGeneration{}, "seed"},
 	}
 	for _, d := range drops {
 		if !m.HasColumn(d.model, d.column) {
@@ -380,6 +398,13 @@ func dropDirectorRedundantColumns() error {
 			return fmt.Errorf("drop column %s: %w", d.column, err)
 		}
 		common.SysLog("dropped redundant director column: " + d.column)
+	}
+	// 整集拼接功能已被在线剪辑取代，废弃表整体删除
+	if m.HasTable("director_video_merges") {
+		if err := m.DropTable("director_video_merges"); err != nil {
+			return fmt.Errorf("drop table director_video_merges: %w", err)
+		}
+		common.SysLog("dropped obsolete director table: director_video_merges")
 	}
 	return nil
 }
@@ -428,7 +453,6 @@ func migrateDBFast() error {
 		{&DirectorStoryboard{}, "DirectorStoryboard"},
 		{&DirectorImageGeneration{}, "DirectorImageGeneration"},
 		{&DirectorVideoGeneration{}, "DirectorVideoGeneration"},
-		{&DirectorVideoMerge{}, "DirectorVideoMerge"},
 		{&DirectorEditProject{}, "DirectorEditProject"},
 		{&DirectorAsset{}, "DirectorAsset"},
 		{&DirectorAssetCategory{}, "DirectorAssetCategory"},

@@ -26,12 +26,9 @@ type DirectorImageGeneration struct {
 	CharacterID     *int   `json:"characterId" gorm:"index"`
 	PropID          *int   `json:"propId" gorm:"index"`
 	ImageType       string `json:"imageType" gorm:"size:32;index"`         // character/scene/storyboard/prop
-	FrameType       string `json:"frameType" gorm:"size:32"`               // first/last/composed
 	Prompt          string `json:"prompt" gorm:"type:text"`                // 提示词
-	NegativePrompt  string `json:"negativePrompt" gorm:"type:text"`        // 负向提示词
 	Model           string `json:"model" gorm:"size:128"`                  // 模型
 	Size            string `json:"size" gorm:"size:32"`                    // 尺寸
-	Seed            int64  `json:"seed"`                                   // 种子
 	ImageURL        string `json:"imageUrl" gorm:"size:512"`               // 图片地址
 	Status          string `json:"status" gorm:"size:32;index"`            // pending/processing/success/failed
 	TaskID          string `json:"taskId" gorm:"size:128"`                 // 第三方任务ID
@@ -113,18 +110,15 @@ type DirectorVideoGeneration struct {
 	UserID             int    `json:"userId" gorm:"index"`
 	StoryboardID       *int   `json:"storyboardId" gorm:"index"`
 	ProjectID          *int   `json:"projectId" gorm:"index"`
-	ImageGenID         *int   `json:"imageGenId"`                        // 来源图片任务ID
 	Prompt             string `json:"prompt" gorm:"type:text"`           // 提示词
 	Model              string `json:"model" gorm:"size:128"`             // 模型
 	ReferenceMode      string `json:"referenceMode" gorm:"size:32"`      // first_frame/last_frame/images
-	ImageURL           string `json:"imageUrl" gorm:"size:512"`          // 参考图
 	FirstFrameURL      string `json:"firstFrameUrl" gorm:"size:512"`     // 首帧图
 	LastFrameURL       string `json:"lastFrameUrl" gorm:"size:512"`      // 尾帧图
 	ReferenceImageURLs string `json:"referenceImageUrls" gorm:"type:text"` // 参考图JSON数组
 	Duration           int    `json:"duration"`                          // 时长(秒)
 	Resolution         string `json:"resolution" gorm:"size:32"`         // 分辨率
 	AspectRatio        string `json:"aspectRatio" gorm:"size:16"`        // 宽高比
-	Seed               int64  `json:"seed"`                              // 种子
 	VideoURL           string `json:"videoUrl" gorm:"size:512"`          // 视频地址
 	Status             string `json:"status" gorm:"size:32;index"`       // pending/processing/success/failed
 	TaskID             string `json:"taskId" gorm:"size:128"`            // 第三方任务ID
@@ -192,45 +186,4 @@ func ListPendingDirectorVideoGenerations() ([]*DirectorVideoGeneration, error) {
 		Where("task_id != ''").
 		Find(&list).Error
 	return list, err
-}
-
-// DirectorVideoMerge 整集拼接任务
-type DirectorVideoMerge struct {
-	ID          int    `json:"id" gorm:"primaryKey"`
-	CreatedAt   int64  `json:"createdAt" gorm:"index"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	UserID      int    `json:"userId" gorm:"index"`
-	EpisodeID   *int   `json:"episodeId" gorm:"index"`
-	ProjectID   *int   `json:"projectId" gorm:"index"`
-	Title       string `json:"title" gorm:"size:128"`          // 成片标题
-	Status      string `json:"status" gorm:"size:32;index"`    // pending/processing/success/failed
-	Scenes      string `json:"scenes" gorm:"type:text"`        // 分镜序列JSON
-	MergedURL   string `json:"mergedUrl" gorm:"size:512"`      // 成片地址
-	Duration    int    `json:"duration"`                       // 总时长(秒)
-	TaskID      string `json:"taskId" gorm:"size:128"`         // 任务标识
-	ErrorMsg    string `json:"errorMsg" gorm:"type:text"`      // 错误信息
-	CompletedAt *int64 `json:"completedAt"`                    // 完成时间
-}
-
-func (DirectorVideoMerge) TableName() string { return "director_video_merges" }
-
-func (m *DirectorVideoMerge) Insert() error {
-	now := time.Now().Unix()
-	m.CreatedAt = now
-	m.UpdatedAt = now
-	if m.Status == "" {
-		m.Status = DirectorGenStatusPending
-	}
-	return DB.Create(m).Error
-}
-
-func (m *DirectorVideoMerge) Update(fields map[string]any) error {
-	m.UpdatedAt = time.Now().Unix()
-	return DB.Model(m).Updates(fields).Error
-}
-
-func GetDirectorVideoMergeByID(id int) (*DirectorVideoMerge, error) {
-	var m DirectorVideoMerge
-	err := DB.First(&m, id).Error
-	return &m, err
 }
