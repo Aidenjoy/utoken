@@ -1,22 +1,32 @@
-export type PlaygroundMode = 'chat' | 'video'
+/*
+Copyright (C) 2023-2026 QuantumNous
 
-const VIDEO_MODEL_PATTERNS = [
-  /seedance/i,
-  /sora/i,
-  /hailuo/i,
-  /vidu/i,
-  /kling/i,
-  /jimeng/i,
-  /veo/i,
-  /wan-/i,
-  /hunyuanvideo/i,
-  /pika/i,
-  /video/i,
-]
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { getModelCategory, type ModelCategory } from '@/lib/model-category'
+
+// The three playground pages: chat (text), image and video.
+export type PlaygroundMode = 'chat' | 'video' | 'image'
+
+const CATEGORY_TO_MODE: Record<ModelCategory, PlaygroundMode> = {
+  text: 'chat',
+  image: 'image',
+  video: 'video',
+}
 
 export function getModelType(modelName: string): PlaygroundMode {
-  if (VIDEO_MODEL_PATTERNS.some((p) => p.test(modelName))) {
-    return 'video'
-  }
-  return 'chat'
+  return CATEGORY_TO_MODE[getModelCategory(modelName)]
 }

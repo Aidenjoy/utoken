@@ -22,6 +22,9 @@ import type {
   AspectRatio,
   VideoConfig,
   VideoMode,
+  ImageConfig,
+  ImageMode,
+  ImageOutputFormat,
 } from './types'
 
 // Message constants
@@ -134,7 +137,9 @@ export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
 ]
 
 export const RESOLUTIONS = ['480P', '720P', '1080P', '4K'] as const
-export const DURATION_OPTIONS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] as const
+export const DURATION_OPTIONS = [
+  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+] as const
 export const VIDEO_COUNT_RANGE = { min: 1, max: 8 } as const
 
 export const VIDEO_STORAGE_KEYS = {
@@ -149,7 +154,11 @@ export const MAX_AUDIOS = 3 // 最多音频数
 export const MAX_REFERENCE_IMAGES = 9 // 参考模式最多图片数
 export const IMAGE_ASPECT_RATIO_RANGE = { min: 0.4, max: 2.5 } // 图片宽高比范围（Volcengine Seedance API 限制）
 
-export const VIDEO_MODES: { value: VideoMode; label: string; maxImages?: number }[] = [
+export const VIDEO_MODES: {
+  value: VideoMode
+  label: string
+  maxImages?: number
+}[] = [
   { value: 'reference', label: 'Reference Generation' },
   { value: 'first_last_frame', label: 'First & Last Frame', maxImages: 2 },
   { value: 'first_frame', label: 'First Frame', maxImages: 1 },
@@ -157,6 +166,102 @@ export const VIDEO_MODES: { value: VideoMode; label: string; maxImages?: number 
 ]
 
 export const VIDEO_POLL_INTERVAL_MS = 3000
+
+// Image mode constants
+export const IMAGE_API_ENDPOINTS = {
+  GENERATIONS: '/pg/images/generations',
+} as const
+
+// Ark reference-image limit, and the hard cap on references plus generated
+// images in one request. Both come from the Seedream docs; exceeding either is a
+// 400 rather than a truncation.
+export const MAX_IMAGE_REFERENCE = 10
+export const MAX_IMAGE_TOTAL = 15
+export const MAX_IMAGE_FILE_BYTES = 10 * 1024 * 1024 // 参考图单文件上限（转 base64 内联发送）
+
+// The three scenarios Ark serves on one endpoint: they differ only in how many
+// reference images travel with the prompt.
+export const IMAGE_MODES: {
+  value: ImageMode
+  label: string
+  maxImages: number
+}[] = [
+  { value: 'text_to_image', label: 'Text to Image', maxImages: 0 },
+  { value: 'single_image', label: 'Single Image to Image', maxImages: 1 },
+  {
+    value: 'multi_image',
+    label: 'Multi Image to Image',
+    maxImages: MAX_IMAGE_REFERENCE,
+  },
+]
+
+export const DEFAULT_IMAGE_CONFIG: ImageConfig = {
+  model: '',
+  group: DEFAULT_GROUP,
+  mode: 'text_to_image',
+  size: '2K',
+  count: 1,
+  outputFormat: 'png',
+  referenceImages: [],
+}
+
+// The WxH sizes Ark documents as recommended. Every one of them lands inside
+// both the standard total-pixel range ([2560x1440=3686400, 4096x4096=16777216])
+// and Seedream 5.0 Pro's 4.19M ceiling, so the same list is safe for every Ark
+// model and only the presets differ between them.
+const ARK_RECOMMENDED_DIMENSIONS = [
+  '2048x2048',
+  '2304x1728',
+  '1728x2304',
+  '2560x1440',
+  '1440x2560',
+  '2496x1664',
+  '1664x2496',
+  '3024x1296',
+] as const
+
+// Ark answers an unsupported size with a 400 instead of falling back, so only
+// the presets each model documents are offered: 2K/4K for Seedream 4.x and
+// 5.0, 1K/2K for 5.0 Pro (its WxH ceiling rules 4K out).
+export const ARK_IMAGE_SIZES = [
+  '2K',
+  '4K',
+  ...ARK_RECOMMENDED_DIMENSIONS,
+] as const
+
+export const ARK_PRO_IMAGE_SIZES = [
+  '2K',
+  '1K',
+  ...ARK_RECOMMENDED_DIMENSIONS,
+] as const
+
+export const OPENAI_IMAGE_SIZES = [
+  '1024x1024',
+  '1536x1024',
+  '1024x1536',
+  '1792x1024',
+  '1024x1792',
+  'auto',
+  '512x512',
+  '256x256',
+] as const
+
+// output_format is documented for Seedream 5.0 only (png or jpeg); the 4.x line
+// always returns jpeg and rejects the field, so it gets no choice at all. webp
+// is OpenAI-side only.
+export const ARK_IMAGE_OUTPUT_FORMATS = ['png', 'jpeg'] as const
+export const OPENAI_IMAGE_OUTPUT_FORMATS: readonly ImageOutputFormat[] = [
+  'png',
+  'jpeg',
+  'webp',
+] as const
+
+export const IMAGE_COUNT_RANGE = { min: 1, max: 10 } as const
+
+export const IMAGE_STORAGE_KEYS = {
+  IMAGE_CONFIG: 'playground_image_config',
+  IMAGE_TASKS: 'playground_image_tasks',
+} as const
 
 // Message action labels
 export const MESSAGE_ACTION_LABELS = {

@@ -1,4 +1,12 @@
-import { ChevronsUpDown, Check, CpuIcon, LayersIcon } from 'lucide-react'
+import {
+  ChevronsUpDown,
+  Check,
+  CpuIcon,
+  ImageIcon,
+  LayersIcon,
+  MessageSquareIcon,
+  VideoIcon,
+} from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,7 +25,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import React, { useState, useMemo, useCallback } from 'react'
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -41,7 +54,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useIsMobile } from '@/hooks/use-mobile'
+import type { ModelCategory } from '@/lib/model-category'
 import { cn } from '@/lib/utils'
 
 interface ModelOption {
@@ -542,6 +563,8 @@ export interface ModelGroupSelectorProps {
   selectedGroup: string
   groups: GroupOption[]
   onGroupChange: (value: string) => void
+  // Classifies a model name into text/image/video for the sidebar
+  categorizeModel: (modelName: string) => ModelCategory
   // Common props
   className?: string
   disabled?: boolean
@@ -558,13 +581,44 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   selectedGroup,
   groups,
   onGroupChange,
+  categorizeModel,
   className,
   disabled = false,
 }) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<ModelCategory>(
+    () => categorizeModel(selectedModel)
+  )
   const isMobile = useIsMobile()
+
+  // Keep the sidebar category in sync with the active model, including
+  // model changes coming from outside the popover (fallbacks, page switches).
+  useEffect(() => {
+    setSelectedCategory(categorizeModel(selectedModel))
+  }, [selectedModel, categorizeModel])
+
+  const modelCategories = useMemo(
+    () => [
+      {
+        value: 'text' as ModelCategory,
+        label: t('Text Models'),
+        icon: MessageSquareIcon,
+      },
+      {
+        value: 'image' as ModelCategory,
+        label: t('Image Models'),
+        icon: ImageIcon,
+      },
+      {
+        value: 'video' as ModelCategory,
+        label: t('Video Models'),
+        icon: VideoIcon,
+      },
+    ],
+    [t]
+  )
 
   const currentModel = useMemo(
     () => models.find((model) => model.value === selectedModel),
@@ -574,25 +628,44 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
     () => groups.find((group) => group.value === selectedGroup),
     [groups, selectedGroup]
   )
+  const categoryCounts = useMemo(
+    () =>
+      models.reduce(
+        (acc, model) => {
+          acc[categorizeModel(model.value)] += 1
+          return acc
+        },
+        { text: 0, image: 0, video: 0 } as Record<ModelCategory, number>
+      ),
+    [models, categorizeModel]
+  )
   const filteredModels = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-    if (!query) {
-      return models
+    const matchedModels = query
+      ? models.filter((model) => {
+          const searchableText = [
+            model.label,
+            model.value,
+            model.description || '',
+            model.category || '',
+          ]
+            .join(' ')
+            .toLowerCase()
+
+          return searchableText.includes(query)
+        })
+      : models
+
+    // Searching scans every category so a model is never hidden just
+    // because the sidebar happens to sit on another category.
+    if (query) {
+      return matchedModels
     }
 
-    return models.filter((model) => {
-      const searchableText = [
-        model.label,
-        model.value,
-        model.description || '',
-        model.category || '',
-      ]
-        .join(' ')
-        .toLowerCase()
-
-      return searchableText.includes(query)
-    })
-  }, [models, searchQuery])
+    return matchedModels.filter(
+      (model) => categorizeModel(model.value) === selectedCategory
+    )
+  }, [models, searchQuery, selectedCategory, categorizeModel])
 
   const handleModelChange = useCallback(
     (value: string) => {
@@ -635,14 +708,46 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
     </Button>
   )
 
-  const renderGroupList = () => (
+  const renderGroupSelect = () => (
+    <div className='flex items-center gap-2 border-b px-1 py-1.5'>
+      <LayersIcon className='text-muted-foreground size-3.5 shrink-0' />
+      <span className='text-muted-foreground shrink-0 text-[11px] leading-4 font-medium'>
+        {t('Model Group')}
+      </span>
+      <Select
+        items={groups.map((group) => ({
+          value: group.value,
+          label: group.label,
+        }))}
+        onValueChange={handleGroupChange}
+        value={selectedGroup}
+      >
+        <SelectTrigger
+          className='h-7 min-w-0 flex-1 border-0 bg-transparent px-1.5 text-xs shadow-none dark:bg-transparent'
+          size='sm'
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align='start' alignItemWithTrigger={false}>
+          {groups.map((group) => (
+            <SelectItem key={group.value} value={group.value}>
+              {group.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+
+  const renderCategoryList = () => (
     <div className='min-w-0 space-y-2'>
       <div className='text-muted-foreground px-1 text-[11px] leading-4 font-medium'>
-        {t('Model Group')}
+        {t('Model Category')}
       </div>
       <div className='grid gap-1'>
-        {groups.map((group) => {
-          const isSelected = selectedGroup === group.value
+        {modelCategories.map((category) => {
+          const isSelected = selectedCategory === category.value
+          const Icon = category.icon
 
           return (
             <button
@@ -653,19 +758,17 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
                   : 'text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
               disabled={disabled}
-              key={group.value}
-              onClick={() => handleGroupChange(group.value)}
+              key={category.value}
+              onClick={() => setSelectedCategory(category.value)}
               type='button'
             >
-              <span className='min-w-0 truncate font-medium'>
-                {group.label}
+              <span className='flex min-w-0 items-center gap-1.5'>
+                <Icon className='size-3.5 shrink-0' />
+                <span className='truncate font-medium'>{category.label}</span>
               </span>
-              <Check
-                className={cn(
-                  'size-3.5 shrink-0',
-                  isSelected ? 'opacity-100' : 'opacity-0'
-                )}
-              />
+              <span className='shrink-0 text-[10px] opacity-70'>
+                {categoryCounts[category.value]}
+              </span>
             </button>
           )
         })}
@@ -717,10 +820,13 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   )
 
   const renderContent = () => (
-    <div className='grid gap-3 p-2 md:grid-cols-[9.5rem_minmax(0,1fr)]'>
-      {renderGroupList()}
-      <div className='min-w-0 overflow-hidden rounded-lg border'>
-        {renderModelList()}
+    <div className='flex flex-col'>
+      {renderGroupSelect()}
+      <div className='grid gap-3 p-2 md:grid-cols-[9.5rem_minmax(0,1fr)]'>
+        {renderCategoryList()}
+        <div className='min-w-0 overflow-hidden rounded-lg border'>
+          {renderModelList()}
+        </div>
       </div>
     </div>
   )

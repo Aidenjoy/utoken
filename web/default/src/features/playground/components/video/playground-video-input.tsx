@@ -24,6 +24,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { getModelCategory } from '@/lib/model-category'
 import { cn } from '@/lib/utils'
 
 import { listAssets } from '../../api'
@@ -1086,6 +1087,7 @@ export function PlaygroundVideoInput({
               selectedGroup={config.group}
               groups={groups}
               onGroupChange={onGroupChange}
+              categorizeModel={getModelCategory}
             />
 
             {isGenerating ? (

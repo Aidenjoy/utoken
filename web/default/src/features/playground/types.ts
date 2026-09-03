@@ -151,10 +151,26 @@ export interface GroupOption {
 }
 
 // Video mode types
-export type VideoMode = 'reference' | 'first_last_frame' | 'first_frame' | 'text_to_video'
-export type AspectRatio = 'smart' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16'
+export type VideoMode =
+  | 'reference'
+  | 'first_last_frame'
+  | 'first_frame'
+  | 'text_to_video'
+export type AspectRatio =
+  | 'smart'
+  | '21:9'
+  | '16:9'
+  | '4:3'
+  | '1:1'
+  | '3:4'
+  | '9:16'
 export type Resolution = '480P' | '720P' | '1080P' | '4K'
-export type VideoTaskStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+export type VideoTaskStatus =
+  | 'queued'
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
 
 export interface MediaItem {
   /** Local preview URL (blob: or data:) */
@@ -248,6 +264,7 @@ export interface VideoSubmitRequest {
   ratio?: string
   resolution?: string
   duration?: number
+  watermark?: boolean
   group?: string
 }
 
@@ -277,4 +294,86 @@ export interface VideoTaskResponse {
     message: string
     code: string
   }
+}
+
+// Image mode types
+export type ImageOutputFormat = 'png' | 'jpeg' | 'webp'
+export type ImageTaskStatus = 'pending' | 'completed' | 'failed' | 'cancelled'
+
+/**
+ * The three image-generation scenarios Ark serves on one endpoint: they differ
+ * only in how many reference images travel with the prompt.
+ */
+export type ImageMode = 'text_to_image' | 'single_image' | 'multi_image'
+
+/**
+ * An image held by the playground, either a reference picked by the user
+ * (inline data URL) or a generated result (public URL or inline base64).
+ * The id is a stable React key; `src` is what goes on the wire.
+ */
+export interface ImageItem {
+  id: string
+  src: string
+}
+
+export interface ImageConfig {
+  model: string
+  group: string
+  mode: ImageMode
+  /** Ark preset (2K/4K) or explicit WxH; OpenAI-compatible providers only take WxH */
+  size: string
+  count: number
+  outputFormat: ImageOutputFormat
+  /** Reference images for image-to-image */
+  referenceImages: ImageItem[]
+}
+
+export interface ImageTask {
+  id: string
+  status: ImageTaskStatus
+  model: string
+  prompt: string
+  size: string
+  /** Generated images */
+  images: ImageItem[]
+  /** Reference images the task was generated from */
+  referenceImages: ImageItem[]
+  /** True when the generated images were inline base64 and did not survive a refresh */
+  imagesExpired?: boolean
+  error?: string
+  createdAt: number
+  completedAt?: number
+}
+
+// OpenAI-compatible /v1/images/generations body. `group` is a gateway-specific
+// extension for group selection and is dropped before the request goes upstream.
+// Ark accepts `image` as a single URL/base64 string or an array of them, and
+// documents the same reference list as `images` on Seedream 4.5/5.0.
+export interface ImageGenerationRequest {
+  model: string
+  prompt: string
+  group?: string
+  n?: number
+  size?: string
+  output_format?: string
+  response_format?: string
+  watermark?: boolean
+  seed?: number
+  image?: string | string[]
+  images?: string[]
+  stream?: boolean
+  /** Ark multi-output switch: Seedream ignores `n`, so several images need this */
+  sequential_image_generation?: 'auto' | 'disabled'
+  sequential_image_generation_options?: { max_images?: number }
+}
+
+export interface ImageGenerationDataItem {
+  url?: string
+  b64_json?: string
+  revised_prompt?: string
+}
+
+export interface ImageGenerationResponse {
+  created: number
+  data: ImageGenerationDataItem[]
 }

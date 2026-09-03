@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
+import { PlaygroundImageMode } from './components/playground-image-mode'
 import { PlaygroundVideoMode } from './components/playground-video-mode'
 import {
   useChatHandler,
@@ -75,12 +76,25 @@ export function Playground() {
     updateConfig,
   })
 
-  // Detect model type to switch between chat and video UI
+  // Detect model type to switch between chat, video and image UI
   const modelType = getModelType(config.model)
 
   if (modelType === 'video') {
     return (
       <PlaygroundVideoMode
+        group={config.group}
+        groups={groups}
+        model={config.model}
+        models={models}
+        onGroupChange={(value) => updateConfig('group', value)}
+        onModelChange={(value) => updateConfig('model', value)}
+      />
+    )
+  }
+
+  if (modelType === 'image') {
+    return (
+      <PlaygroundImageMode
         group={config.group}
         groups={groups}
         model={config.model}

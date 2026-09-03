@@ -21,6 +21,7 @@ import { api } from '@/lib/api'
 import {
   API_ENDPOINTS,
   ASSET_API_ENDPOINTS,
+  IMAGE_API_ENDPOINTS,
   VIDEO_API_ENDPOINTS,
 } from './constants'
 import type {
@@ -29,6 +30,8 @@ import type {
   AssetType,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ImageGenerationRequest,
+  ImageGenerationResponse,
   ModelOption,
   GroupOption,
   VideoSubmitRequest,
@@ -101,6 +104,25 @@ export async function submitVideoTask(
     skipErrorHandler: true,
   } as Record<string, unknown>)
   return res.data
+}
+
+/**
+ * Generate images (text-to-image and image-to-image).
+ *
+ * The playground body is the same OpenAI-compatible body an external caller sends
+ * to /v1/images/generations, plus the gateway-specific `group` field. Failures come
+ * back as `{ error: { message } }`, so skipErrorHandler is used and the caller
+ * surfaces the message itself.
+ */
+export async function generateImages(
+  payload: ImageGenerationRequest,
+  signal?: AbortSignal
+): Promise<ImageGenerationResponse> {
+  const res = await api.post(IMAGE_API_ENDPOINTS.GENERATIONS, payload, {
+    signal,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  return res.data as ImageGenerationResponse
 }
 
 /**

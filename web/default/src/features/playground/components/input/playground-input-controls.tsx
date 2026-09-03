@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { PromptInputButton } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
+import { getModelCategory } from '@/lib/model-category'
 
 import { getInputControlState } from '../../lib'
 import type { GroupOption, ModelOption } from '../../types'
@@ -75,6 +76,7 @@ export function PlaygroundInputControls({
       selectedGroup={groupValue}
       groups={groups}
       onGroupChange={onGroupChange}
+      categorizeModel={getModelCategory}
       disabled={isSelectorDisabled}
     />
   )
@@ -105,19 +107,11 @@ export function PlaygroundInputControls({
 
   return (
     <div className='flex w-full flex-col gap-2.5 md:flex-row md:items-center md:justify-between'>
-      <div className='flex min-w-0 items-center justify-end md:hidden'>
-        {renderSelector()}
-      </div>
+      {/* Selector leads on the left, matching the image/video footers */}
+      <div className='flex min-w-0 items-center'>{renderSelector()}</div>
 
-      <div className='flex items-center justify-between gap-2 md:justify-start'>
+      <div className='flex items-center justify-between gap-2 md:justify-end'>
         {tools}
-        <div className='flex items-center gap-1.5 md:hidden'>
-          {renderSubmitButton()}
-        </div>
-      </div>
-
-      <div className='hidden min-w-0 items-center gap-2 md:flex'>
-        {renderSelector()}
         {renderSubmitButton()}
       </div>
     </div>
