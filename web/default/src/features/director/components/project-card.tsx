@@ -51,7 +51,7 @@ export function ProjectCard(props: ProjectCardProps) {
   }
 
   return (
-    <Card className='group h-full gap-0 rounded-2xl py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/10'>
+    <Card className='group h-full gap-0 rounded-xl py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/10'>
       <Link
         to='/director/$category/$projectId'
         params={linkParams}
@@ -71,24 +71,24 @@ export function ProjectCard(props: ProjectCardProps) {
           )}
           {/* 悬停遮罩：暗示点击进入项目 */}
           <div className='absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 backdrop-blur-[2px] transition-opacity duration-300 group-hover:opacity-100'>
-            <span className='bg-background/90 text-foreground flex size-11 items-center justify-center rounded-full shadow-lg'>
-              <Play aria-hidden='true' className='size-4 fill-current' />
+            <span className='bg-background/90 text-foreground flex size-9 items-center justify-center rounded-full shadow-lg'>
+              <Play aria-hidden='true' className='size-3.5 fill-current' />
             </span>
           </div>
           <Badge
             variant='secondary'
-            className='absolute top-2.5 left-2.5 border-0 bg-black/45 text-white backdrop-blur-sm'
+            className='absolute top-2 left-2 border-0 bg-black/45 px-1.5 py-0 text-[11px] text-white backdrop-blur-sm'
           >
             {t(PROJECT_STATUS_LABEL[project.status] ?? project.status)}
           </Badge>
         </div>
       </Link>
-      <div className='flex flex-1 flex-col gap-2 p-3.5'>
+      <div className='flex flex-1 flex-col gap-1.5 p-2.5'>
         <div className='flex items-center justify-between gap-1.5'>
           <Link
             to='/director/$category/$projectId'
             params={linkParams}
-            className='truncate font-semibold tracking-tight hover:underline'
+            className='truncate text-sm font-semibold tracking-tight hover:underline'
           >
             {project.title}
           </Link>
@@ -132,10 +132,10 @@ export function ProjectCard(props: ProjectCardProps) {
             )}
           </div>
         ) : null}
-        <p className='text-muted-foreground line-clamp-2 text-xs leading-relaxed'>
+        <p className='text-muted-foreground line-clamp-1 text-xs leading-relaxed'>
           {project.description}
         </p>
-        <div className='text-muted-foreground mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs tabular-nums'>
+        <div className='text-muted-foreground mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs tabular-nums'>
           <span className='truncate'>
             {project.episodeCount} {t('Episodes')} · {project.characterCount}{' '}
             {t('Characters')} · {project.sceneCount} {t('Scenes')}

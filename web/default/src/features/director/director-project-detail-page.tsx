@@ -27,7 +27,6 @@ import {
   Palette,
   Pencil,
   Plus,
-  Timer,
   Trash2,
 } from 'lucide-react'
 import * as React from 'react'
@@ -287,13 +286,12 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
                 {episode.title}
               </Link>
               <div className='text-muted-foreground mt-1 flex items-center gap-3 text-xs tabular-nums'>
-                <span className='flex items-center gap-1'>
+                <span
+                  className='flex items-center gap-1'
+                  title={t('Created At')}
+                >
                   <CalendarDays aria-hidden='true' className='size-3' />
                   {dayjs.unix(episode.createdAt).format('YYYY-MM-DD HH:mm')}
-                </span>
-                <span className='flex items-center gap-1'>
-                  <Timer aria-hidden='true' className='size-3' />
-                  {episode.duration ? `${episode.duration}s` : '-'}
                 </span>
               </div>
             </div>
