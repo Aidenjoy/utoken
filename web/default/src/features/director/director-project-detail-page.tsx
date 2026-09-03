@@ -18,7 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Clapperboard, Pencil, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clapperboard,
+  Clock,
+  Film,
+  Palette,
+  Pencil,
+  Plus,
+  Timer,
+  Trash2,
+} from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -37,15 +48,12 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  Empty,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ZoomableImage } from '@/components/zoomable-image'
 import dayjs from '@/lib/dayjs'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -161,59 +169,65 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
 
   const renderOverview = () => {
     if (projectQuery.isPending) {
-      return <Skeleton className='h-28 w-full' />
+      return <Skeleton className='h-70 w-full rounded-2xl' />
     }
     if (!project) {
       return null
     }
     return (
-      <Card>
-        <CardContent className='flex gap-4 py-4'>
-          <div className='bg-muted relative h-[90px] w-[120px] shrink-0 overflow-hidden rounded-md'>
+      <Card className='gap-0 rounded-2xl py-0'>
+        <CardContent className='flex flex-col gap-5 p-5 md:flex-row'>
+          <div className='bg-muted relative aspect-[3/4] w-36 shrink-0 overflow-hidden rounded-xl ring-1 ring-foreground/10 md:w-44'>
             {project.thumbnail ? (
               <ZoomableImage
                 src={project.thumbnail}
                 alt={project.title}
-                className='size-full'
+                className='size-full object-cover'
               />
             ) : (
-              <div className='text-muted-foreground flex size-full items-center justify-center'>
-                <Clapperboard aria-hidden='true' className='size-7' />
+              <div className='text-muted-foreground/50 flex size-full items-center justify-center'>
+                <Clapperboard aria-hidden='true' className='size-9' />
               </div>
             )}
           </div>
-          <div className='min-w-0 flex-1'>
+          <div className='min-w-0 flex-1 space-y-3'>
             <div className='flex flex-wrap items-center gap-2'>
-              <h1 className='text-lg font-semibold'>{project.title}</h1>
               <Badge variant='secondary'>
                 {t(PROJECT_STATUS_LABEL[project.status] ?? project.status)}
               </Badge>
               {categoryConfig.showGenre && project.genre ? (
-                <Badge variant='outline'>{project.genre}</Badge>
+                <Badge variant='outline' className='font-normal'>
+                  {project.genre}
+                </Badge>
               ) : null}
             </div>
-            <p className='text-muted-foreground mt-2 line-clamp-2 text-sm'>
+            <p className='text-muted-foreground line-clamp-3 text-sm leading-relaxed'>
               {project.description || t('No description')}
             </p>
-            <div className='text-muted-foreground mt-2 flex flex-wrap gap-4 text-xs'>
-              <span>
-                {t('Planned')} {project.totalEpisodes} {t(categoryConfig.itemUnit)}
+            <div className='flex flex-wrap gap-2'>
+              <span className='bg-muted text-muted-foreground flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs tabular-nums'>
+                <Film aria-hidden='true' className='size-3.5' />
+                {t('Planned')} {project.totalEpisodes}{' '}
+                {t(categoryConfig.itemUnit)}
               </span>
-              <span>
+              <span className='bg-muted text-muted-foreground flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs'>
+                <Palette aria-hidden='true' className='size-3.5' />
                 {t('Style')}: {project.style || '-'}
               </span>
-              <span>
-                {t('Updated at')} {dayjs.unix(project.updatedAt).format('YYYY-MM-DD HH:mm')}
+              <span className='bg-muted text-muted-foreground flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs tabular-nums'>
+                <Clock aria-hidden='true' className='size-3.5' />
+                {t('Updated at')}{' '}
+                {dayjs.unix(project.updatedAt).format('YYYY-MM-DD HH:mm')}
               </span>
             </div>
           </div>
-          <div className='flex shrink-0 flex-col gap-2'>
+          <div className='flex shrink-0 gap-2 md:flex-col'>
             <Button variant='outline' onClick={() => setEditProjectOpen(true)}>
               <Pencil aria-hidden='true' />
               {t('Edit Project')}
             </Button>
             <Button
-              variant='outline'
+              variant='ghost'
               onClick={() =>
                 navigate({
                   to: '/director/$category',
@@ -233,105 +247,98 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
   const renderEpisodes = () => {
     if (episodesQuery.isPending) {
       return (
-        <div className='space-y-2'>
-          <Skeleton className='h-12 w-full' />
-          <Skeleton className='h-12 w-full' />
+        <div className='space-y-2 p-4'>
+          <Skeleton className='h-16 w-full rounded-xl' />
+          <Skeleton className='h-16 w-full rounded-xl' />
+          <Skeleton className='h-16 w-full rounded-xl' />
         </div>
       )
     }
     if (episodes.length === 0) {
       return (
-        <div className='text-muted-foreground py-8 text-center text-sm'>
-          {t('No episodes yet')}
-        </div>
+        <Empty className='py-10'>
+          <EmptyMedia>
+            <Film aria-hidden='true' />
+          </EmptyMedia>
+          <EmptyTitle>{t('No episodes yet')}</EmptyTitle>
+        </Empty>
       )
     }
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className='w-16 text-center'>
-              {t('Episode Number')}
-            </TableHead>
-            <TableHead>{t('Title')}</TableHead>
-            <TableHead className='w-24 text-center'>{t('Status')}</TableHead>
-            <TableHead className='w-20 text-center'>{t('Duration')}</TableHead>
-            <TableHead className='w-32'>{t('Created At')}</TableHead>
-            <TableHead className='w-56 text-right'>{t('Actions')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {episodes.map((episode) => (
-            <TableRow key={episode.id}>
-              <TableCell className='text-center'>
-                {episode.episodeNumber}
-              </TableCell>
-              <TableCell className='max-w-0'>
-                <Link
-                  to='/director/$category/$projectId/episode/$episodeId'
-                  params={{
-                    category: props.category,
-                    projectId: String(props.projectId),
-                    episodeId: String(episode.id),
-                  }}
-                  className='truncate font-medium hover:underline'
-                >
-                  {episode.title}
-                </Link>
-              </TableCell>
-              <TableCell className='text-center'>
-                <Badge variant='secondary'>
-                  {t(PROJECT_STATUS_LABEL[episode.status] ?? episode.status)}
-                </Badge>
-              </TableCell>
-              <TableCell className='text-center'>
-                {episode.duration ? `${episode.duration}s` : '-'}
-              </TableCell>
-              <TableCell>
-                {dayjs.unix(episode.createdAt).format('YYYY-MM-DD HH:mm')}
-              </TableCell>
-              <TableCell className='text-right'>
-                <div className='flex justify-end gap-1'>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() =>
-                      navigate({
-                        to: '/director/$category/$projectId/episode/$episodeId',
-                        params: {
-                          category: props.category,
-                          projectId: String(props.projectId),
-                          episodeId: String(episode.id),
-                        },
-                      })
-                    }
-                  >
-                    <Clapperboard aria-hidden='true' />
-                    {t('Studio')}
-                  </Button>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => openEditEpisode(episode)}
-                  >
-                    <Pencil aria-hidden='true' />
-                    {t('Edit')}
-                  </Button>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='text-destructive hover:text-destructive'
-                    onClick={() => setDeletingEpisode(episode)}
-                  >
-                    <Trash2 aria-hidden='true' />
-                    {t('Delete')}
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <div className='divide-y divide-border/60'>
+        {episodes.map((episode) => (
+          <div
+            key={episode.id}
+            className='flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/50'
+          >
+            <div className='bg-muted flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold tabular-nums'>
+              {episode.episodeNumber}
+            </div>
+            <div className='min-w-0 flex-1 basis-40'>
+              <Link
+                to='/director/$category/$projectId/episode/$episodeId'
+                params={{
+                  category: props.category,
+                  projectId: String(props.projectId),
+                  episodeId: String(episode.id),
+                }}
+                className='block truncate font-medium hover:underline'
+              >
+                {episode.title}
+              </Link>
+              <div className='text-muted-foreground mt-1 flex items-center gap-3 text-xs tabular-nums'>
+                <span className='flex items-center gap-1'>
+                  <CalendarDays aria-hidden='true' className='size-3' />
+                  {dayjs.unix(episode.createdAt).format('YYYY-MM-DD HH:mm')}
+                </span>
+                <span className='flex items-center gap-1'>
+                  <Timer aria-hidden='true' className='size-3' />
+                  {episode.duration ? `${episode.duration}s` : '-'}
+                </span>
+              </div>
+            </div>
+            <Badge variant='secondary' className='shrink-0'>
+              {t(PROJECT_STATUS_LABEL[episode.status] ?? episode.status)}
+            </Badge>
+            <div className='ml-auto flex shrink-0 items-center gap-1'>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() =>
+                  navigate({
+                    to: '/director/$category/$projectId/episode/$episodeId',
+                    params: {
+                      category: props.category,
+                      projectId: String(props.projectId),
+                      episodeId: String(episode.id),
+                    },
+                  })
+                }
+              >
+                <Clapperboard aria-hidden='true' />
+                {t('Studio')}
+              </Button>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => openEditEpisode(episode)}
+              >
+                <Pencil aria-hidden='true' />
+                {t('Edit')}
+              </Button>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='text-destructive hover:text-destructive'
+                onClick={() => setDeletingEpisode(episode)}
+              >
+                <Trash2 aria-hidden='true' />
+                {t('Delete')}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
     )
   }
 
@@ -368,13 +375,18 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
         <SectionPageLayout.Content>
           <div className='space-y-6'>
             {renderOverview()}
-            <Card>
-              <CardContent className='py-4'>
-                <h2 className='mb-3 text-base font-semibold'>
+            <Card className='gap-0 rounded-2xl py-0'>
+              <div className='flex items-center justify-between border-b border-border/60 px-4 py-3.5'>
+                <h2 className='font-semibold tracking-tight'>
                   {t('Episode List')}
                 </h2>
-                {renderEpisodes()}
-              </CardContent>
+                {episodes.length > 0 && (
+                  <span className='text-muted-foreground text-xs tabular-nums'>
+                    {episodes.length} {t('Episodes')}
+                  </span>
+                )}
+              </div>
+              {renderEpisodes()}
             </Card>
           </div>
         </SectionPageLayout.Content>

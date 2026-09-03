@@ -122,7 +122,11 @@ export function DirectorListPage(props: DirectorListPageProps) {
       return (
         <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
           {SKELETON_KEYS.map((key) => (
-            <Skeleton key={key} className='h-56 rounded-xl' />
+            <div key={key} className='space-y-2.5'>
+              <Skeleton className='aspect-[3/4] w-full rounded-2xl' />
+              <Skeleton className='h-4 w-2/3' />
+              <Skeleton className='h-3 w-1/2' />
+            </div>
           ))}
         </div>
       )
@@ -142,17 +146,22 @@ export function DirectorListPage(props: DirectorListPageProps) {
     }
     return (
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-        {list.map((project) => (
-          <ProjectCard
+        {list.map((project, index) => (
+          <div
             key={project.id}
-            project={project}
-            category={props.category}
-            onEdit={(p) => {
-              setEditingProject(p)
-              setDialogOpen(true)
-            }}
-            onDelete={setDeletingProject}
-          />
+            className='animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-500'
+            style={{ animationDelay: `${Math.min(index, 11) * 45}ms` }}
+          >
+            <ProjectCard
+              project={project}
+              category={props.category}
+              onEdit={(p) => {
+                setEditingProject(p)
+                setDialogOpen(true)
+              }}
+              onDelete={setDeletingProject}
+            />
+          </div>
         ))}
       </div>
     )
