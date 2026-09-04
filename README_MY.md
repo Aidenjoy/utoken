@@ -126,3 +126,51 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+
+
+# 服务器安装 ffmpeg — 剪辑合成必需
+```
+# x86_64 ECS
+wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+
+tar -xf ffmpeg-release-amd64-static.tar.xz
+cd ffmpeg-7.0.2-amd64-static
+
+# 拷贝二进制到系统PATH目录
+cp ffmpeg /usr/local/bin/
+cp ffprobe /usr/local/bin/
+
+chmod +x /usr/local/bin/ffmpeg
+chmod +x /usr/local/bin/ffprobe
+
+# 验证
+ffmpeg -version
+ffprobe -version
+ffmpeg -hide_banner -filters | grep -E ' (ass|drawtext|xfade) '
+
+
+# 重启服务生效
+./deploy/stop.sh && ./deploy/start.sh
+```
+
+
+
+# 服务器安装中文字体 — 字幕必需（不装字幕会烧成方块）
+```
+# Linux 上程序按顺序解析：请求字体 → 系统已装中文字体(fc-list :lang=zh) → resource/fonts 内置字体 → 明确报错
+yum install -y fontconfig
+yum install -y google-noto-sans-cjk-ttc-fonts || yum install -y wqy-zenhei-fonts wqy-microhei-fonts
+fc-cache -f
+
+# 验证（有输出即中文字体可用）
+fc-list :lang=zh
+
+# 备选：yum 源装不上时，把任意中文字体文件（如 simhei.ttf、NotoSansSC-Regular.otf）放到
+# 程序所在目录的 resource/fonts 下即可被自动加载（免系统安装，scp 上传后重启）：
+mkdir -p ~/utoken/resource/fonts
+
+# 重启服务生效（字体探测有缓存，必须重启）
+./deploy/stop.sh && ./deploy/start.sh
+```
+

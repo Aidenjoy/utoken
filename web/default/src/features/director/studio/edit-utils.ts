@@ -334,17 +334,6 @@ export const SUBTITLE_POSITIONS = [
   { value: 'bottom', label: 'Bottom' },
 ]
 
-export const SUBTITLE_FONTS = [
-  'PingFang SC',
-  'Microsoft YaHei',
-  'SimHei',
-  'SimSun',
-  'KaiTi',
-  'Noto Sans SC',
-  'WenQuanYi Micro Hei',
-  'Arial',
-]
-
 export const ASPECT_RATIO_OPTIONS = [
   '21:9',
   '16:9',

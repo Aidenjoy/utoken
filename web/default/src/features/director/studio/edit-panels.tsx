@@ -42,7 +42,6 @@ import {
   outputSize,
   probeVideoDuration,
   sliderNumber,
-  SUBTITLE_FONTS,
   SUBTITLE_POSITIONS,
   TRANSITION_TYPES,
   type EditClip,
@@ -816,26 +815,8 @@ export function EditPanels(props: EditPanelsProps) {
                   />
                 </Row>
                 <Row>
-                  <RowLabel>{t('Font')}</RowLabel>
-                  <NativeSelect
-                    className='min-w-25 flex-1'
-                    value={subtitle.style.fontFamily}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      mutateSubtitle((s) => {
-                        s.style.fontFamily = v
-                      })
-                    }}
-                  >
-                    <NativeSelectOption value=''>
-                      {t('Default')} PingFang SC
-                    </NativeSelectOption>
-                    {SUBTITLE_FONTS.map((f) => (
-                      <NativeSelectOption key={f} value={f}>
-                        {f}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                  {/* 字体由渲染主机自动解析可用中文字体（服务器环境字体不一），不提供选项 */}
+                  <RowLabel>{t('Font Size')}</RowLabel>
                   <Input
                     type='number'
                     className='w-20'
