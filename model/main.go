@@ -372,7 +372,6 @@ func dropDirectorRedundantColumns() error {
 		{&DirectorProp{}, "reference_images"},
 		{&DirectorProject{}, "total_duration"},
 		{&DirectorProject{}, "metadata"},
-		{&DirectorEpisode{}, "description"},
 		{&DirectorEpisode{}, "duration"},
 		{&DirectorEpisode{}, "thumbnail"},
 		{&DirectorEpisode{}, "video_url"},
