@@ -3459,6 +3459,7 @@
     "Output format": "输出格式",
     "Output image size": "输出图像尺寸",
     "Output price": "输出价格",
+    "Output ratio follows the first frame image": "输出画幅跟随首帧图片",
     "Output token price for generated tokens.": "生成内容的输出 token 价格。",
     "Output tokens": "输出 token",
     "Output Tokens": "输出 Token",

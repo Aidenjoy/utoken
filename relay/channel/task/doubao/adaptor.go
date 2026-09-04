@@ -288,14 +288,13 @@ func convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, e
 	}
 
 	// Add images if present — Volcengine API requires `role` for image contents
-	if req.HasImage() {
-		mode := ""
-		if m, ok := req.Metadata["mode"]; ok {
-			if ms, ok := m.(string); ok {
-				mode = ms
-			}
+	mode := ""
+	if m, ok := req.Metadata["mode"]; ok {
+		if ms, ok := m.(string); ok {
+			mode = ms
 		}
-
+	}
+	if req.HasImage() {
 		for i, imgURL := range req.Images {
 			role := "reference_image"
 			if mode == "first_last_frame" {
@@ -325,6 +324,12 @@ func convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, e
 	// 火山方舟 resolution 枚举为小写（480p/720p/1080p/4k），而前端 Playground 传大写（480P/4K），
 	// 归一化后再发给上游，避免官方 Ark 或严格透传的中转站拒绝请求。
 	r.Resolution = strings.ToLower(strings.TrimSpace(r.Resolution))
+
+	// Ark 约束：首帧/首尾帧生成不接受固定画幅（InvalidParameter.TaskTypeConstraint），
+	// 输出比例跟随首帧图片，ratio 只能为 adaptive
+	if mode == "first_frame" || mode == "first_last_frame" {
+		r.Ratio = "adaptive"
+	}
 
 	// 火山方舟默认给视频盖水印：未显式传 watermark 时默认关闭去水印，
 	// 显式传值（含 true）原样透传。

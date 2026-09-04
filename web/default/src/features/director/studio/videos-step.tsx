@@ -83,7 +83,8 @@ import type {
 } from '../types'
 import { sliderNumber } from './edit-utils'
 
-const RATIO_OPTIONS = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
+// adaptive=智能比例（上游按输入图片自适应画幅）；首帧/首尾帧模式上游强制 adaptive
+const RATIO_OPTIONS = ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
 const RESOLUTION_OPTIONS = ['480p', '720p', '1080p', '4k']
 const COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8]
 
@@ -636,11 +637,13 @@ export function VideosStep(props: VideosStepProps) {
                   </button>
                   <button
                     type='button'
-                    onClick={() =>
+                    onClick={() => {
+                      // 首尾帧模式上游强制画幅跟随首帧（adaptive），切到该模式即锁定智能比例
+                      setAspectRatio('adaptive')
                       setGenDialog((d) =>
                         d ? { ...d, frameMode: 'first_last' } : d
                       )
-                    }
+                    }}
                     className={cn(
                       'flex gap-2.5 rounded-[10px] border p-3 text-left transition-all hover:-translate-y-px hover:border-primary/60',
                       genDialog.frameMode === 'first_last' &&
@@ -832,6 +835,7 @@ export function VideosStep(props: VideosStepProps) {
                     size='sm'
                     spacing={2}
                     value={[aspectRatio]}
+                    disabled={genDialog.frameMode === 'first_last'}
                     onValueChange={(v) => {
                       const next = v.find((x) => x !== aspectRatio)
                       if (next) setAspectRatio(next)
@@ -839,11 +843,16 @@ export function VideosStep(props: VideosStepProps) {
                   >
                     {RATIO_OPTIONS.map((r) => (
                       <ToggleGroupItem key={r} value={r}>
-                        {r}
+                        {r === 'adaptive' ? t('Smart Ratio') : r}
                       </ToggleGroupItem>
                     ))}
                   </ToggleGroup>
                 </div>
+                {genDialog.frameMode === 'first_last' && (
+                  <p className='text-muted-foreground text-xs'>
+                    {t('Output ratio follows the first frame image')}
+                  </p>
+                )}
               </div>
 
               {/* 分辨率 */}

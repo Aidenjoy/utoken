@@ -70,6 +70,42 @@ func TestConvertToRequestPayloadNormalizesResolution(t *testing.T) {
 	}
 }
 
+// Ark 约束：首帧/首尾帧生视频不接受固定画幅（InvalidParameter.TaskTypeConstraint），
+// 输出比例跟随首帧图片，convertToRequestPayload 必须把这两种模式的 ratio 强制为 adaptive；
+// 参考/文生视频模式则原样透传用户选择的画幅（含 adaptive 与未传）。
+func TestConvertToRequestPayloadRatioForFrameModes(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      string
+		inRatio   string
+		wantRatio string
+	}{
+		{"首尾帧传固定画幅被强制 adaptive", "first_last_frame", "9:16", "adaptive"},
+		{"首尾帧未传画幅补 adaptive", "first_last_frame", "", "adaptive"},
+		{"首帧传固定画幅被强制 adaptive", "first_frame", "16:9", "adaptive"},
+		{"参考模式固定画幅原样透传", "reference", "16:9", "16:9"},
+		{"参考模式 adaptive 透传", "reference", "adaptive", "adaptive"},
+		{"文生视频固定画幅原样透传", "text_to_video", "9:16", "9:16"},
+		{"文生视频未传画幅保持为空", "text_to_video", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			metadata := map[string]interface{}{"mode": tt.mode}
+			if tt.inRatio != "" {
+				metadata["ratio"] = tt.inRatio
+			}
+			req := &relaycommon.TaskSubmitReq{
+				Model:    "doubao-seedance-2-0-260128",
+				Prompt:   "跳舞",
+				Metadata: metadata,
+			}
+			payload, err := convertToRequestPayload(req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantRatio, payload.Ratio)
+		})
+	}
+}
+
 // 火山方舟默认给视频盖水印：metadata 未传 watermark 时默认关闭去水印，
 // 显式传值（含 true）原样透传，不能覆盖用户的水印选择。
 func TestConvertToRequestPayloadWatermarkDefaultAndPassthrough(t *testing.T) {

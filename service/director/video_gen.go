@@ -242,8 +242,9 @@ func (s *VideoGenerationService) SubmitStoryboardVideo(userID, storyboardID int,
 				lastFrameURL = ref
 			}
 		}
-		// 首尾帧生视频未指定画幅时用 adaptive（画幅跟随首尾帧图片）；指定画幅则按用户选择传递
-		if lastFrameURL != "" && aspectRatio == "" {
+		// 首帧/首尾帧生视频：上游约束输出画幅跟随首帧图片（ratio 只能为 adaptive），
+		// 未指定画幅时直接按 adaptive 记录，与适配器实际发送值一致
+		if aspectRatio == "" {
 			aspectRatio = "adaptive"
 		}
 	}
