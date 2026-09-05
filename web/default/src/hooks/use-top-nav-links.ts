@@ -95,6 +95,9 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
+  // Developer Docs — static API usage guide, always visible
+  links.push({ title: t('Developer Docs'), href: '/docs' })
+
   // Docs (supports external links) — hidden by default, enable via backend config
   if (modules?.docs === true) {
     if (docsLink) {

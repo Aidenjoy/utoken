@@ -1502,6 +1502,7 @@
     "Detection failed": "検出に失敗しました",
     "Determines how this group is applied elsewhere.": "このグループが他の場所でどのように適用されるかを決定します。",
     "Deterministic sampling seed (best-effort)": "可能な限り再現性のあるサンプリングシード",
+    "Developer Docs": "開発者ドキュメント",
     "Developer Friendly": "開発者向け",
     "Device Type Preference": "優先デバイスタイプ",
     "Dify": "Dify",
