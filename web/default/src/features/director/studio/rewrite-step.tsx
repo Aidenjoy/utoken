@@ -32,6 +32,10 @@ import type { DirectorEpisode } from '../types'
 
 interface RewriteStepProps {
   episode: DirectorEpisode
+  /** 后端异步改写任务是否执行中（流水线轮询透出） */
+  running?: boolean
+  /** 改写任务最近一次失败原因 */
+  taskError?: string
   onSaved: () => void
 }
 
@@ -48,8 +52,8 @@ export function RewriteStep(props: RewriteStepProps) {
     mutationFn: () => rewriteDirectorEpisode(props.episode.id),
     onSuccess: (res) => {
       if (res.success) {
-        toast.success(t('Script rewritten'))
-        setScript(res.data?.scriptContent ?? '')
+        // 后端异步执行：立即返回，结果由流水线轮询回填 scriptContent
+        toast.info(t('AI rewrite started. It may take about a minute; the script will update automatically when done.'))
         props.onSaved()
       }
     },
@@ -71,7 +75,22 @@ export function RewriteStep(props: RewriteStepProps) {
     onError: handleServerError,
   })
 
-  const busy = rewriteMutation.isPending || saveMutation.isPending
+  const busy =
+    rewriteMutation.isPending || saveMutation.isPending || !!props.running
+
+  // 后台任务结束（running true → false）时提示结果；内容已由 episode 轮询回填的 useEffect 同步
+  const prevRunningRef = React.useRef(false)
+  React.useEffect(() => {
+    const running = !!props.running
+    if (prevRunningRef.current && !running) {
+      if (props.taskError) {
+        toast.error(props.taskError)
+      } else {
+        toast.success(t('Script rewritten'))
+      }
+    }
+    prevRunningRef.current = running
+  }, [props.running, props.taskError, t])
 
   return (
     <div className='flex flex-col gap-3.5'>
@@ -89,7 +108,7 @@ export function RewriteStep(props: RewriteStepProps) {
             onClick={() => rewriteMutation.mutate()}
             disabled={busy || !props.episode.content}
           >
-            {rewriteMutation.isPending
+            {rewriteMutation.isPending || props.running
               ? t('Rewriting with AI...')
               : t('AI Rewrite')}
           </Button>

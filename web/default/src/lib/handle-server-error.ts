@@ -35,8 +35,17 @@ export function handleServerError(error: unknown) {
     errMsg = i18next.t('Content not found.')
   }
 
-  if (error instanceof AxiosError) {
-    errMsg = error.response?.data.title
+  if (error instanceof AxiosError && error.response) {
+    // HTTP 错误已由 lib/api.ts 全局响应拦截器统一 toast（含网关 504 等 HTML 响应）；
+    // 未跳过全局处理时这里直接返回，避免同一错误弹出两个重复/空内容的提示
+    if (!error.config?.skipErrorHandler) {
+      return
+    }
+    const data = error.response.data as
+      | { title?: string; message?: string }
+      | undefined
+    errMsg =
+      data?.title || data?.message || error.message || errMsg
   }
 
   toast.error(errMsg)

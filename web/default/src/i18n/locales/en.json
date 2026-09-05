@@ -310,6 +310,7 @@
     "AI Proxy": "AI Proxy",
     "AI Proxy Library": "AI Proxy Library",
     "AI Rewrite": "AI Rewrite",
+    "AI rewrite started. It may take about a minute; the script will update automatically when done.": "AI rewrite started. It may take about a minute; the script will update automatically when done.",
     "AI Split Storyboards": "AI Split Storyboards",
     "AI will read the script and extract characters, scenes and props, then save them for the following steps. Re-running will skip duplicates.": "AI will read the script and extract characters, scenes and props, then save them for the following steps. Re-running will skip duplicates.",
     "AIGC2D": "AIGC2D",

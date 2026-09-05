@@ -29,7 +29,7 @@ type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
   error?: unknown
 }
 
-function getHttpStatus(error: unknown): number | undefined {
+export function getHttpStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined
   const response = (error as Record<string, unknown>).response
   if (typeof response !== 'object' || response === null) return undefined

@@ -104,6 +104,8 @@ server {
 
     # 添加这一行，允许最大 200MB 上传
     client_max_body_size 200m;
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
 
     gzip on;
     gzip_static on;     # 需要http_gzip_static_module 模块

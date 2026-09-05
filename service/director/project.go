@@ -176,11 +176,20 @@ func (s *ProjectService) ListProjectsWithStats(f model.DirectorProjectListFilter
 
 // PipelineStep 流水线步骤进度
 type PipelineStep struct {
-	Key      string `json:"key"`      // 步骤标识
-	Name     string `json:"name"`     // 步骤名称
-	Total    int64  `json:"total"`    // 待完成总数
-	Finished int64  `json:"finished"` // 已完成数
-	Done     bool   `json:"done"`     // 是否完成
+	Key       string `json:"key"`                 // 步骤标识
+	Name      string `json:"name"`                // 步骤名称
+	Total     int64  `json:"total"`               // 待完成总数
+	Finished  int64  `json:"finished"`            // 已完成数
+	Done      bool   `json:"done"`                // 是否完成
+	Running   bool   `json:"running"`             // 关联的异步 AI 任务是否执行中
+	TaskError string `json:"taskError,omitempty"` // 关联任务最近一次失败原因
+}
+
+// pipelineStepTaskKey 步骤 → 分集级 AI 任务锁名称（limiter.go）；异步/长耗时任务透出执行状态供前端轮询
+var pipelineStepTaskKey = map[string]string{
+	"rewrite":    "rewrite",
+	"extract":    "extract",
+	"storyboard": "split",
 }
 
 // GetEpisodePipeline 获取分集流水线进度聚合（内容录入 → … → 剪辑）
@@ -231,6 +240,11 @@ func (s *ProjectService) GetEpisodePipeline(episodeID int) (episode model.Direct
 		{Key: "shots", Name: "镜头图片", Total: sbTotal, Finished: sbImaged, Done: sbTotal > 0 && sbImaged >= sbTotal},
 		{Key: "videos", Name: "视频生成", Total: sbTotal, Finished: sbVideo, Done: sbTotal > 0 && sbVideo >= sbTotal},
 		{Key: "edit", Name: "视频剪辑", Total: 1, Finished: boolToInt(editDone > 0), Done: editDone > 0},
+	}
+	for i := range steps {
+		if taskKey, ok := pipelineStepTaskKey[steps[i].Key]; ok {
+			steps[i].Running, steps[i].TaskError = EpisodeTaskStatus(taskKey, episodeID)
+		}
 	}
 	return
 }

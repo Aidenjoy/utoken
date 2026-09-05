@@ -310,6 +310,7 @@
     "AI Proxy": "AI Proxy",
     "AI Proxy Library": "Библиотека прокси AI",
     "AI Rewrite": "ИИ-переписывание",
+    "AI rewrite started. It may take about a minute; the script will update automatically when done.": "ИИ-переписывание запущено. Это может занять около минуты; сценарий обновится автоматически.",
     "AI Split Storyboards": "ИИ-разбивка на кадры",
     "AI will read the script and extract characters, scenes and props, then save them for the following steps. Re-running will skip duplicates.": "ИИ прочитает сценарий, извлечёт персонажей, сцены и реквизит и сохранит их для следующих шагов. Повторный запуск пропустит дубликаты.",
     "AIGC2D": "AIGC2D",

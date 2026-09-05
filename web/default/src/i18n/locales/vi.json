@@ -310,6 +310,7 @@
     "AI Proxy": "AI Proxy",
     "AI Proxy Library": "Thư viện AI Proxy",
     "AI Rewrite": "AI viết lại",
+    "AI rewrite started. It may take about a minute; the script will update automatically when done.": "Đã bắt đầu viết lại bằng AI. Quá trình này có thể mất khoảng một phút; kịch bản sẽ tự động cập nhật khi hoàn tất.",
     "AI Split Storyboards": "AI tách phân cảnh",
     "AI will read the script and extract characters, scenes and props, then save them for the following steps. Re-running will skip duplicates.": "AI sẽ đọc kịch bản, trích xuất nhân vật, bối cảnh và đạo cụ, rồi lưu lại cho các bước tiếp theo. Chạy lại sẽ bỏ qua các mục trùng lặp.",
     "AIGC2D": "AIGC2D",

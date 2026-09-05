@@ -310,6 +310,7 @@
     "AI Proxy": "AI Proxy",
     "AI Proxy Library": "Bibliothèque AI Proxy",
     "AI Rewrite": "Réécriture IA",
+    "AI rewrite started. It may take about a minute; the script will update automatically when done.": "Réécriture IA lancée. Cela peut prendre environ une minute ; le script se mettra à jour automatiquement.",
     "AI Split Storyboards": "Découpage IA en storyboards",
     "AI will read the script and extract characters, scenes and props, then save them for the following steps. Re-running will skip duplicates.": "L'IA lira le script, extraira les personnages, décors et accessoires, puis les enregistrera pour les étapes suivantes. Une nouvelle exécution ignorera les doublons.",
     "AIGC2D": "AIGC2D",

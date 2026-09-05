@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -50,10 +50,10 @@ export function DirectorStudio(props: DirectorStudioProps) {
     queryKey: ['director', 'pipeline', props.episodeId],
     queryFn: () => getDirectorEpisodePipeline(props.episodeId),
     refetchInterval: (query) => {
-      // 存在未完成步骤时轮询刷新进度
+      // 存在未完成步骤或后台 AI 任务执行中时轮询刷新进度
       const steps = query.state.data?.data?.steps
       if (!steps) return false
-      return steps.some((s) => !s.done) ? 10000 : false
+      return steps.some((s) => !s.done || s.running) ? 10000 : false
     },
   })
 
@@ -92,7 +92,14 @@ export function DirectorStudio(props: DirectorStudioProps) {
       case 'content':
         return <ContentStep episode={episode} onSaved={refreshPipeline} />
       case 'rewrite':
-        return <RewriteStep episode={episode} onSaved={refreshPipeline} />
+        return (
+          <RewriteStep
+            episode={episode}
+            running={steps.find((s) => s.key === 'rewrite')?.running ?? false}
+            taskError={steps.find((s) => s.key === 'rewrite')?.taskError}
+            onSaved={refreshPipeline}
+          />
+        )
       case 'extract':
         return <ExtractStep episode={episode} onSaved={refreshPipeline} />
       case 'chars':
@@ -199,6 +206,8 @@ function StepNavItem(props: StepNavItemProps) {
         >
           {props.step.done ? (
             <Check aria-hidden='true' className='size-3' />
+          ) : props.step.running ? (
+            <Loader2 aria-hidden='true' className='size-3 animate-spin' />
           ) : (
             props.index + 1
           )}

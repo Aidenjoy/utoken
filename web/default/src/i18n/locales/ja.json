@@ -310,6 +310,7 @@
     "AI Proxy": "AIプロキシ",
     "AI Proxy Library": "AIプロキシライブラリ",
     "AI Rewrite": "AI リライト",
+    "AI rewrite started. It may take about a minute; the script will update automatically when done.": "AI 改写を開始しました。約 1 分かかります。完了するとスクリプトは自動的に更新されます。",
     "AI Split Storyboards": "AI で絵コンテ分割",
     "AI will read the script and extract characters, scenes and props, then save them for the following steps. Re-running will skip duplicates.": "AI が脚本を読み取り、キャラクター・シーン・小道具を抽出して以降のステップ用に保存します。再実行時は重複をスキップします。",
     "AIGC2D": "AIGC2D",

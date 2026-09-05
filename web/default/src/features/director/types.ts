@@ -299,6 +299,10 @@ export interface DirectorPipelineStep {
   total: number
   finished: number
   done: boolean
+  /** 关联的异步 AI 任务是否执行中（后端任务锁状态） */
+  running?: boolean
+  /** 关联任务最近一次失败原因 */
+  taskError?: string
 }
 
 export interface DirectorEpisodePipeline {

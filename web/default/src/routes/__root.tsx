@@ -28,7 +28,7 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { Toaster } from '@/components/ui/sonner'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { saveAffiliateCode } from '@/features/auth/lib/storage'
-import { GeneralError } from '@/features/errors/general-error'
+import { RootError } from '@/features/errors/auto-reload-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
 import { getSetupStatus } from '@/features/setup/api'
 
@@ -119,5 +119,6 @@ export const Route = createRootRouteWithContext<{
   },
   component: RootComponent,
   notFoundComponent: NotFoundError,
-  errorComponent: GeneralError,
+  // 运行时崩溃（如部署后旧会话加载旧 chunk）先自动刷新恢复一次，再回退错误页
+  errorComponent: RootError,
 })

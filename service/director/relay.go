@@ -75,7 +75,13 @@ func getDirectorConfig(userID int, serviceType string) (directorCallConfig, erro
 	return directorCallConfig{APIKey: key, Model: modelName}, nil
 }
 
-var directorHTTPClient = &http.Client{Timeout: 300 * time.Second}
+// directorLLMTimeout 云导演经网关回环调用大模型（/v1/...）的 HTTP 超时。
+// 大模型响应本就慢，批量任务在并发信号量上排队时单次可达数分钟，默认放宽到 10 分钟，
+// 可用环境变量 DIRECTOR_LLM_TIMEOUT（单位：秒）覆盖。
+// 注意：该值需 ≤ 部署侧反向代理的 proxy_read_timeout，否则代理会先于后端返回 504。
+var directorLLMTimeout = time.Duration(common.GetEnvOrDefault("DIRECTOR_LLM_TIMEOUT", 600)) * time.Second
+
+var directorHTTPClient = &http.Client{Timeout: directorLLMTimeout}
 
 // relayPost 以用户令牌向回环地址发起 POST JSON 请求（路径形如 /v1/chat/completions）
 func relayPost(cfg directorCallConfig, path string, body any, out any) error {

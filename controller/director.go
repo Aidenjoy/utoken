@@ -466,7 +466,8 @@ func directorOwnedEpisodeID(c *gin.Context, episodeID int) bool {
 	return true
 }
 
-// DirectorRewriteEpisodeScript AI 改写剧本
+// DirectorRewriteEpisodeScript AI 改写剧本（异步启动：同步等待会超过反向代理读超时导致前端 504，
+// 结果由前端轮询流水线进度接口获取）
 func DirectorRewriteEpisodeScript(c *gin.Context) {
 	userId := c.GetInt("id")
 	var req directorEpisodeAIRequest
@@ -477,7 +478,7 @@ func DirectorRewriteEpisodeScript(c *gin.Context) {
 	if !directorOwnedEpisodeID(c, req.ID) {
 		return
 	}
-	if err := directorLLMSvc.RewriteScript(userId, req.ID); err != nil {
+	if err := directorLLMSvc.StartRewriteScript(userId, req.ID); err != nil {
 		common.ApiError(c, err)
 		return
 	}

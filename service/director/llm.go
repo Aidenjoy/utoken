@@ -1,10 +1,12 @@
 package director
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -29,6 +31,9 @@ type chatRequest struct {
 	Temperature    float64         `json:"temperature"`
 	MaxTokens      int             `json:"max_tokens,omitempty"`
 	ResponseFormat *responseFormat `json:"response_format,omitempty"`
+	// 关闭思考参数（按模型名注入，见 applyThinkingOff）；omitempty 保证未识别的模型不发送任何字段
+	EnableThinking json.RawMessage `json:"enable_thinking,omitempty"` // 阿里 Qwen
+	Thinking       json.RawMessage `json:"thinking,omitempty"`        // 豆包 Seed / 智谱 GLM
 }
 
 type responseFormat struct {
@@ -42,6 +47,42 @@ type chatResponse struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
+}
+
+// directorThinkingEnv 环境变量：显式设为 enabled/keep/on/true 时保留模型思考（不注入关闭参数）；
+// 默认（未设或其他值）对已识别的思考模型自动关闭思考，减少 reasoning token、降低耗时。
+const directorThinkingEnv = "DIRECTOR_THINKING"
+
+// applyThinkingOff 按模型名注入“关闭思考”参数：云导演的改写/提取/拆镜不需要思维链，
+// 关闭思考可显著减少 reasoning token 与耗时（任务排队时尤为明显）。
+// 仅覆盖模型广场实际配置、且关闭参数格式已确认的厂商；未识别的模型保持原样，
+// 避免向不支持该参数的上游发送未知字段导致 400。
+func applyThinkingOff(req *chatRequest, modelName string) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(directorThinkingEnv))) {
+	case "enabled", "enable", "keep", "on", "true", "1":
+		return // 显式保留思考
+	}
+
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	if idx := strings.LastIndex(name, "/"); idx >= 0 {
+		name = name[idx+1:] // 去掉命名空间前缀
+	}
+	switch {
+	// 阿里 Qwen（qwen3.6-plus / qwen3.8-max / qwen3-coder-plus 等）：非流式关闭思考用 enable_thinking
+	case strings.Contains(name, "qwen") || strings.Contains(name, "qwq"):
+		req.EnableThinking = json.RawMessage("false")
+	// 豆包 Seed 文本（doubao-seed-2-1-pro/turbo）与智谱 GLM（glm-5/5.3）：thinking.type=disabled。
+	// 用 seed- 子串精确匹配豆包文本模型，可排除 doubao-seedance（视频）/ doubao-seedream（图片）——它们含 doubao 但不含 seed-。
+	case strings.Contains(name, "seed-") || strings.Contains(name, "豆包") ||
+		strings.Contains(name, "glm") || strings.Contains(name, "zhipu"):
+		req.Thinking = json.RawMessage(`{"type":"disabled"}`)
+	default:
+		// kimi / MiniMax / deepseek 等走 OpenAI 兼容中转渠道，关闭思考的参数名取决于上游实现，
+		// 未确认前不注入任何字段，避免误发未知参数导致 400
+		return
+	}
+	common.SysLog(fmt.Sprintf("云导演关闭模型思考: model=%s, enable_thinking=%s, thinking=%s",
+		modelName, string(req.EnableThinking), string(req.Thinking)))
 }
 
 // llmMaxAttempts LLM 调用最大尝试次数（含首次），针对超时/429/5xx 等瞬时故障退避重试
@@ -58,6 +99,7 @@ func (s *LLMService) Chat(cfg directorCallConfig, messages []ChatMessage, jsonMo
 	if jsonMode {
 		reqBody.ResponseFormat = &responseFormat{Type: "json_object"}
 	}
+	applyThinkingOff(&reqBody, cfg.Model)
 
 	var lastErr error
 	for attempt := 1; attempt <= llmMaxAttempts; attempt++ {
@@ -222,13 +264,10 @@ func episodeMetaText(category, metadata string) string {
 	return "项目参数：\n" + strings.Join(lines, "\n")
 }
 
-// RewriteScript 剧本改写：将分集原始内容改写为结构化脚本（按项目类型差异化），写回 scriptContent
-func (s *LLMService) RewriteScript(userID, episodeID int) error {
-	if unlock, ok := tryAcquireEpisodeTask("rewrite", episodeID); !ok {
-		return errors.New("AI 改写正在处理中，请勿重复提交")
-	} else {
-		defer unlock()
-	}
+// StartRewriteScript 启动剧本改写（异步）：同步完成参数预检与任务占位后，LLM 调用转入后台执行。
+// 改写单次可达 1 分钟以上，同步等待会超过反向代理读超时（表现为前端 504 而后端仍在执行），
+// 因此立即返回，进度与结果由前端轮询流水线（running/task_error + scriptContent）获取。
+func (s *LLMService) StartRewriteScript(userID, episodeID int) error {
 	episode, err := model.GetDirectorEpisodeByID(episodeID)
 	if err != nil {
 		return errors.New("分集不存在")
@@ -239,6 +278,10 @@ func (s *LLMService) RewriteScript(userID, episodeID int) error {
 	cfg, err := getDirectorTextConfig(userID)
 	if err != nil {
 		return err
+	}
+	finish, ok := tryAcquireEpisodeTask("rewrite", episodeID)
+	if !ok {
+		return errors.New("AI 改写正在处理中，请勿重复提交")
 	}
 	project, _ := model.GetDirectorProjectByID(episode.ProjectID)
 	category := model.DirectorCategoryDrama
@@ -260,13 +303,19 @@ func (s *LLMService) RewriteScript(userID, episodeID int) error {
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userContent},
 	}
-	content, err := s.Chat(cfg, messages, false, 8192)
-	if err != nil {
-		return err
-	}
-	return episode.Update(map[string]any{
-		"script_content": content,
-	})
+	go func() {
+		content, chatErr := s.Chat(cfg, messages, false, 8192)
+		if chatErr == nil {
+			chatErr = episode.Update(map[string]any{
+				"script_content": content,
+			})
+		}
+		if chatErr != nil {
+			common.SysError(fmt.Sprintf("云导演剧本改写失败: episode_id=%d, err=%v", episodeID, chatErr))
+		}
+		finish(chatErr)
+	}()
+	return nil
 }
 
 // ExtractResult 提取结果
@@ -294,11 +343,11 @@ type extractLLMOutput struct {
 }
 
 // ExtractRolesScenes 从剧本提取角色与场景，去重后入库并返回全量结果
-func (s *LLMService) ExtractRolesScenes(userID, episodeID int) (*ExtractResult, error) {
-	if unlock, ok := tryAcquireEpisodeTask("extract", episodeID); !ok {
+func (s *LLMService) ExtractRolesScenes(userID, episodeID int) (result *ExtractResult, err error) {
+	if finish, ok := tryAcquireEpisodeTask("extract", episodeID); !ok {
 		return nil, errors.New("AI 提取正在处理中，请勿重复提交")
 	} else {
-		defer unlock()
+		defer func() { finish(err) }()
 	}
 	episode, err := model.GetDirectorEpisodeByID(episodeID)
 	if err != nil {
@@ -339,7 +388,7 @@ func (s *LLMService) ExtractRolesScenes(userID, episodeID int) (*ExtractResult, 
 		return nil, fmt.Errorf("解析提取结果失败: %w", err)
 	}
 
-	result := &ExtractResult{}
+	result = &ExtractResult{}
 	// 角色去重入库（按 项目+名称）
 	for _, c := range output.Characters {
 		name := strings.TrimSpace(c.Name)
@@ -445,11 +494,11 @@ type storyboardLLMOutput struct {
 }
 
 // SplitStoryboards 分镜拆解：将剧本拆解为分镜脚本并入库（清空旧分镜）
-func (s *LLMService) SplitStoryboards(userID, episodeID int) (int, error) {
-	if unlock, ok := tryAcquireEpisodeTask("split", episodeID); !ok {
+func (s *LLMService) SplitStoryboards(userID, episodeID int) (count int, err error) {
+	if finish, ok := tryAcquireEpisodeTask("split", episodeID); !ok {
 		return 0, errors.New("分镜拆解正在处理中，请勿重复提交")
 	} else {
-		defer unlock()
+		defer func() { finish(err) }()
 	}
 	episode, err := model.GetDirectorEpisodeByID(episodeID)
 	if err != nil {
@@ -513,7 +562,7 @@ func (s *LLMService) SplitStoryboards(userID, episodeID int) (int, error) {
 		}
 	}
 
-	count := 0
+	count = 0
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
 		// 清空旧分镜，重新生成
 		if err := tx.Where("episode_id = ?", episodeID).Delete(&model.DirectorStoryboard{}).Error; err != nil {

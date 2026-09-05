@@ -310,6 +310,7 @@
     "AI Proxy": "AI Proxy",
     "AI Proxy Library": "AI 代理库",
     "AI Rewrite": "AI 改写",
+    "AI rewrite started. It may take about a minute; the script will update automatically when done.": "AI 改写已启动，约需 1 分钟，完成后剧本将自动更新。",
     "AI Split Storyboards": "AI 拆分镜",
     "AI will read the script and extract characters, scenes and props, then save them for the following steps. Re-running will skip duplicates.": "AI 将读取剧本并提取角色、场景和道具，保存以供后续步骤使用。重新运行将跳过重复项。",
     "AIGC2D": "AIGC2D",

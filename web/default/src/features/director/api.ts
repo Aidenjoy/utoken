@@ -190,7 +190,8 @@ export async function getDirectorEpisodePipeline(
 
 export async function rewriteDirectorEpisode(
   id: number
-): Promise<ApiResponse<DirectorEpisode>> {
+): Promise<ApiResponse<null>> {
+  // 后端异步执行改写，立即返回；进度与结果由流水线轮询获取
   const res = await api.post(`${BASE}/episode/rewrite`, { id })
   return res.data
 }
