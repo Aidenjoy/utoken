@@ -88,6 +88,11 @@ func applyThinkingOff(req *chatRequest, modelName string) {
 // llmMaxAttempts LLM 调用最大尝试次数（含首次），针对超时/429/5xx 等瞬时故障退避重试
 const llmMaxAttempts = 3
 
+// jsonParseMaxAttempts 结构化 JSON 输出的解析尝试次数（含首次）：模型（尤其关闭思考后一次性生成
+// 长嵌套 JSON 时）偶发括号错乱——提前闭合 scenes 数组与顶层对象、把后续场景游离成顶层多余内容，
+// 表现为 "invalid character ',' after top-level value"。温度 0.7 下重新采样通常可得到合法 JSON。
+const jsonParseMaxAttempts = 3
+
 // Chat 调用回环 /v1/chat/completions（瞬时故障自动重试）
 func (s *LLMService) Chat(cfg directorCallConfig, messages []ChatMessage, jsonMode bool, maxTokens int) (string, error) {
 	reqBody := chatRequest{
@@ -150,6 +155,34 @@ func (s *LLMService) chatOnce(cfg directorCallConfig, reqBody chatRequest) (stri
 func isTimeoutErr(err error) bool {
 	var ne net.Error
 	return errors.As(err, &ne) && ne.Timeout()
+}
+
+// chatStructured 要求 LLM 以 JSON 模式输出并反序列化到调用方的目标结构：内部对 Chat 结果做
+// extractJSON + decode，解析失败则重新采样重试（见 retryStructuredDecode），重试耗尽返回最后一次错误。
+// decode 为回调（目标结构因调用方而异）；Chat 层已就瞬时故障重试，故这里只处理“拿到了内容但 JSON 不合法”。
+func (s *LLMService) chatStructured(cfg directorCallConfig, messages []ChatMessage, maxTokens int, decode func(jsonText string) error) error {
+	return retryStructuredDecode(cfg.Model, func() (string, error) {
+		return s.Chat(cfg, messages, true, maxTokens)
+	}, decode)
+}
+
+// retryStructuredDecode 反复调用 call 取得 LLM 文本、extractJSON 提取后交给 decode 反序列化：
+// decode 成功即返回 nil；失败则重试至 jsonParseMaxAttempts 次并返回最后一次解析错误。
+// call 返回错误（如瞬时故障重试耗尽）时立即返回，不再重试解析。
+func retryStructuredDecode(model string, call func() (string, error), decode func(jsonText string) error) error {
+	var lastErr error
+	for attempt := 1; attempt <= jsonParseMaxAttempts; attempt++ {
+		content, err := call()
+		if err != nil {
+			return err
+		}
+		if lastErr = decode(extractJSON(content)); lastErr == nil {
+			return nil
+		}
+		common.SysError(fmt.Sprintf("云导演结构化输出解析失败(model=%s, attempt=%d/%d): %v; content=%s",
+			model, attempt, jsonParseMaxAttempts, lastErr, truncate(content, 800)))
+	}
+	return lastErr
 }
 
 // extractJSON 从 LLM 输出中提取 JSON 主体（容错 markdown 代码块）
@@ -379,12 +412,10 @@ func (s *LLMService) ExtractRolesScenes(userID, episodeID int) (result *ExtractR
 注意：角色去重；外貌描述要具体；时间只能是 白天/夜晚/黄昏/清晨 之一；道具只提取对剧情或展示重要的物品，电商与广告脚本务必包含主推产品；没有人物时 characters 可为空数组`, tag)},
 		{Role: "user", Content: script},
 	}
-	content, err := s.Chat(cfg, messages, true, 4096)
-	if err != nil {
-		return nil, err
-	}
 	var output extractLLMOutput
-	if err = common.Unmarshal([]byte(extractJSON(content)), &output); err != nil {
+	if err = s.chatStructured(cfg, messages, 4096, func(jsonText string) error {
+		return common.Unmarshal([]byte(jsonText), &output)
+	}); err != nil {
 		return nil, fmt.Errorf("解析提取结果失败: %w", err)
 	}
 
@@ -534,15 +565,13 @@ func (s *LLMService) SplitStoryboards(userID, episodeID int) (count int, err err
 	messages := []ChatMessage{
 		{Role: "system", Content: withMentionSystem(fmt.Sprintf(`你是专业影视分镜师。将用户提供的%s按场景拆解为分镜脚本，严格按以下 JSON 格式输出，不要输出任何其他内容：
 {"scenes":[{"location":"地点","time":"白天|夜晚|黄昏|清晨","storyboards":[{"storyboardNumber":1,"shotType":"远景|全景|中景|近景|特写","angle":"平视|俯视|仰视|侧面","movement":"固定|推|拉|摇|移|跟","imagePrompt":"首帧图AI绘图提示词(详细描述人物/场景/光影)","duration":5}]}]}
-注意：每个场景 2-6 个分镜；duration 单位秒，单个 4-15 秒（视频模型仅支持 4-15 秒整数）；imagePrompt 必须与剧情人物外观一致；所有分镜 duration 之和必须等于 %d 秒（目标总时长）`, tag, targetDuration), candidates)},
+注意：每个场景 2-6 个分镜；duration 单位秒，单个 4-15 秒（视频模型仅支持 4-15 秒整数）；imagePrompt 必须与剧情人物外观一致；所有分镜 duration 之和必须等于 %d 秒（目标总时长）；只输出一个合法 JSON 对象，所有场景都必须位于 scenes 数组内，切勿在数组未结束前提前闭合 ] 或 }`, tag, targetDuration), candidates)},
 		{Role: "user", Content: script},
 	}
-	content, err := s.Chat(cfg, messages, true, 8192)
-	if err != nil {
-		return 0, err
-	}
 	var output storyboardLLMOutput
-	if err = common.Unmarshal([]byte(extractJSON(content)), &output); err != nil {
+	if err = s.chatStructured(cfg, messages, 8192, func(jsonText string) error {
+		return common.Unmarshal([]byte(jsonText), &output)
+	}); err != nil {
 		return 0, fmt.Errorf("解析分镜结果失败: %w", err)
 	}
 	// 服务端归一化校准：模型给出的时长往往不精确，等比缩放 + clamp + 差值摊还，保证总和精确等于目标时长

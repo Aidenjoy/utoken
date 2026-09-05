@@ -390,7 +390,11 @@ export async function getDirectorImageGenerations(params: {
   p?: number
   page_size?: number
 }): Promise<ApiResponse<PageResult<DirectorImageGeneration>>> {
-  const res = await api.get(`${BASE}/imageGeneration/list`, { params })
+  // 轮询专用：瞬时错误（如限流 429）由调用方静默重试，不弹 toast，避免批量生成时红色错误刷屏
+  const res = await api.get(`${BASE}/imageGeneration/list`, {
+    params,
+    skipErrorHandler: true,
+  })
   return res.data
 }
 
@@ -408,7 +412,11 @@ export async function getDirectorVideoGenerations(params: {
   p?: number
   page_size?: number
 }): Promise<ApiResponse<PageResult<DirectorVideoGeneration>>> {
-  const res = await api.get(`${BASE}/videoGeneration/list`, { params })
+  // 轮询专用：瞬时错误（如限流 429）由调用方静默重试，不弹 toast
+  const res = await api.get(`${BASE}/videoGeneration/list`, {
+    params,
+    skipErrorHandler: true,
+  })
   return res.data
 }
 
@@ -521,8 +529,10 @@ export async function syncDirectorEntityAsset(data: {
 export async function getDirectorEntityAssets(
   entityType: string
 ): Promise<ApiResponse<DirectorEntityAsset[]>> {
+  // 轮询专用：pending 素材每 3s 刷新，瞬时错误静默重试不弹 toast
   const res = await api.get(`${BASE}/asset/entity/list`, {
     params: { entityType },
+    skipErrorHandler: true,
   })
   return res.data
 }

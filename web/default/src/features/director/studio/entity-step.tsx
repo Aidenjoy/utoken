@@ -58,20 +58,15 @@ import {
   generateDirectorEntityPrompt,
   getDirectorEntities,
   getDirectorEntityAssets,
-  getDirectorImageGenerations,
   updateDirectorEntity,
   uploadDirectorFile,
   type DirectorEntityType,
 } from '../api'
 import { EntityAssetRow } from '../components/entity-asset-row'
-import {
-  generationFinished,
-  useImageGenerationPoll,
-} from '../hooks/use-generation-polling'
+import { useEntityGenTracker } from '../hooks/use-entity-gen-tracker'
 import type {
   DirectorCharacter,
   DirectorEntityAsset,
-  DirectorImageGeneration,
   DirectorProp,
   DirectorScene,
 } from '../types'
@@ -124,44 +119,6 @@ const ENTITY_HEADER: Record<DirectorEntityType, { title: string; desc: string }>
       desc: 'Generate scene images from prompts as background references for storyboard images',
     },
   }
-
-// 生成任务记录中与本实体类型对应的外键字段
-function entityIdOf(
-  type: DirectorEntityType,
-  task: DirectorImageGeneration
-): number | null | undefined {
-  if (type === 'character') return task.characterId
-  if (type === 'scene') return task.sceneId
-  return task.propId
-}
-
-// 「生成中」任务 ID 持久化：切步骤/刷新后同步恢复，避免用户重复提交异步任务。
-// 任务完成后由卡片轮询确认并清出缓存，缓存可自愈，不会长期残留。
-function readGenIdCache(storageKey: string): Record<number, number> {
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (!raw) return {}
-    const parsed: unknown = JSON.parse(raw)
-    if (typeof parsed !== 'object' || parsed == null || Array.isArray(parsed)) {
-      return {}
-    }
-    return parsed as Record<number, number>
-  } catch {
-    return {}
-  }
-}
-
-function writeGenIdCache(storageKey: string, value: Record<number, number>) {
-  try {
-    if (Object.keys(value).length === 0) {
-      localStorage.removeItem(storageKey)
-    } else {
-      localStorage.setItem(storageKey, JSON.stringify(value))
-    }
-  } catch {
-    // 存储不可用（隐私模式等）时退化为仅内存跟踪
-  }
-}
 
 function entityName(type: DirectorEntityType, item: EntityItem): string {
   if (type === 'scene') return (item as DirectorScene).location
@@ -236,56 +193,19 @@ export function EntityStep(props: EntityStepProps) {
 
   // ---------- 批量生成 ----------
 
-  // 各实体的生成任务 ID（提升到步骤层，批量提交后卡片可持续轮询）。
-  // 初始值从 localStorage 同步恢复，切换步骤/刷新后「生成中」标识不丢失
-  const storageKey = `director-image-gen:${props.type}:${props.projectId}`
-  const [genIds, setGenIdsState] = React.useState<Record<number, number>>(() =>
-    readGenIdCache(storageKey)
-  )
-  const setGenIds = React.useCallback(
-    (updater: React.SetStateAction<Record<number, number>>) => {
-      setGenIdsState((m) => {
-        const next = typeof updater === 'function' ? updater(m) : updater
-        writeGenIdCache(storageKey, next)
-        return next
-      })
-    },
-    [storageKey]
-  )
-
-  // 首次进入：把仍在 processing 的本项目任务重新纳入跟踪，
-  // 切页/刷新回来后卡片继续显示「生成中」，避免用户重复提交异步任务
-  const restoredRef = React.useRef(false)
-  React.useEffect(() => {
-    if (restoredRef.current || items.length === 0) return
-    restoredRef.current = true
-    const local = new Set(items.map((item) => item.id))
-    void getDirectorImageGenerations({
-      projectId: props.projectId,
-      status: 'processing',
-      page_size: 100,
-    })
-      .then((res) => {
-        // 列表按 id DESC 返回，同一实体有多个任务时取最新的一条
-        const restored: Record<number, number> = {}
-        for (const task of res.data?.list ?? []) {
-          const entityId = entityIdOf(props.type, task)
-          if (entityId && local.has(entityId) && restored[entityId] == null) {
-            restored[entityId] = task.id
-          }
-        }
-        if (Object.keys(restored).length > 0) {
-          // 本次会话内新提交的任务优先
-          setGenIds((m) => ({ ...restored, ...m }))
-        }
-      })
-      .catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length > 0])
+  // 生成中状态跟踪：用单个列表轮询统一驱动所有卡片（而非每卡各自轮询单条任务），
+  // 避免批量生成时 N 路并发轮询击穿全局限流触发 429 风暴；挂载时自动纳管处理中的任务
+  const tracker = useEntityGenTracker({
+    type: props.type,
+    projectId: props.projectId,
+    onChange: invalidate,
+  })
 
   const pendingList = items.filter((item) => {
     const it = item as DirectorCharacter
-    return !it.imageUrl && Boolean(it.prompt) && genIds[item.id] == null
+    return (
+      !it.imageUrl && Boolean(it.prompt) && !tracker.generatingIds.has(item.id)
+    )
   })
 
   const [batchSubmitting, setBatchSubmitting] = React.useState(false)
@@ -297,10 +217,9 @@ export function EntityStep(props: EntityStepProps) {
         const res = await generateDirectorEntityImage(props.type, {
           id: item.id,
         })
-        const generationId = res.success ? res.data?.generationId : undefined
-        if (generationId != null) {
+        if (res.success) {
           ok++
-          setGenIds((m) => ({ ...m, [item.id]: generationId }))
+          tracker.markGenerating(item.id)
         }
       }
       toast.success(
@@ -342,17 +261,10 @@ export function EntityStep(props: EntityStepProps) {
             type={props.type}
             projectId={props.projectId}
             item={item}
-            genId={genIds[item.id] ?? null}
+            generating={tracker.generatingIds.has(item.id)}
             asset={assetByEntity.get(item.id) ?? null}
             onAssetSynced={invalidateAssets}
-            onGenIdChange={(id) =>
-              setGenIds((m) => {
-                const next = { ...m }
-                if (id == null) delete next[item.id]
-                else next[item.id] = id
-                return next
-              })
-            }
+            onSubmitted={() => tracker.markGenerating(item.id)}
             onEdit={() => {
               setEditingItem(item)
               setDialogOpen(true)
@@ -422,10 +334,10 @@ interface EntityCardProps {
   type: DirectorEntityType
   projectId: number
   item: EntityItem
-  genId: number | null
+  generating: boolean
   asset: DirectorEntityAsset | null
   onAssetSynced: () => void
-  onGenIdChange: (id: number | null) => void
+  onSubmitted: () => void
   onEdit: () => void
   onDelete: () => void
   onChanged: () => void
@@ -435,21 +347,6 @@ function EntityCard(props: EntityCardProps) {
   const { t } = useTranslation()
   const { item, type } = props
   const imageUrl = (item as DirectorCharacter).imageUrl ?? ''
-
-  const genQuery = useImageGenerationPoll(props.genId)
-  const gen = genQuery.data?.data ?? null
-
-  // 生成完成后刷新实体列表（后端已把图片回写到实体）
-  React.useEffect(() => {
-    if (gen && generationFinished(gen)) {
-      if (gen.status === 'failed') {
-        toast.error(gen.errorMsg || t('Image generation failed'))
-      }
-      props.onGenIdChange(null)
-      props.onChanged()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gen?.status])
 
   const promptMutation = useMutation({
     mutationFn: () => generateDirectorEntityPrompt(type, item.id),
@@ -465,8 +362,8 @@ function EntityCard(props: EntityCardProps) {
   const imageMutation = useMutation({
     mutationFn: () => generateDirectorEntityImage(type, { id: item.id }),
     onSuccess: (res) => {
-      if (res.success && res.data) {
-        props.onGenIdChange(res.data.generationId)
+      if (res.success) {
+        props.onSubmitted()
         toast.success(t('Image generation started'))
       }
     },
@@ -502,8 +399,7 @@ function EntityCard(props: EntityCardProps) {
     onError: handleServerError,
   })
 
-  const running =
-    imageMutation.isPending || (gen != null && !generationFinished(gen))
+  const running = imageMutation.isPending || props.generating
 
   // 图片区与镜头图片卡片一致：生成中光条占位 → 成图 → 未生成占位
   let imageContent: React.ReactNode
