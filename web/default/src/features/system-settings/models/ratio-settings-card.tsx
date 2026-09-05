@@ -110,6 +110,8 @@ const createModelSchema = (t: Translate) =>
     ExposeRatioEnabled: z.boolean(),
     BillingMode: createJsonStringField(t),
     BillingExpr: createJsonStringField(t),
+    SeedanceConfig: createJsonStringField(t),
+    SeedreamConfig: createJsonStringField(t),
   })
 
 const createGroupSchema = (t: Translate) =>
@@ -182,6 +184,8 @@ export function RatioSettingsCard({
     ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
     BillingMode: normalizeJsonString(modelDefaults.BillingMode),
     BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
+    SeedanceConfig: normalizeJsonString(modelDefaults.SeedanceConfig),
+    SeedreamConfig: normalizeJsonString(modelDefaults.SeedreamConfig),
   })
   const [savedModelValues, setSavedModelValues] = useState(
     modelNormalizedDefaults.current
@@ -218,6 +222,8 @@ export function RatioSettingsCard({
       ),
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
+      SeedanceConfig: formatJsonForTextarea(modelDefaults.SeedanceConfig),
+      SeedreamConfig: formatJsonForTextarea(modelDefaults.SeedreamConfig),
     },
   })
 
@@ -252,6 +258,8 @@ export function RatioSettingsCard({
       ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
       BillingMode: normalizeJsonString(modelDefaults.BillingMode),
       BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
+      SeedanceConfig: normalizeJsonString(modelDefaults.SeedanceConfig),
+      SeedreamConfig: normalizeJsonString(modelDefaults.SeedreamConfig),
     }
     setSavedModelValues(modelNormalizedDefaults.current)
 
@@ -269,6 +277,8 @@ export function RatioSettingsCard({
       ),
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
+      SeedanceConfig: formatJsonForTextarea(modelDefaults.SeedanceConfig),
+      SeedreamConfig: formatJsonForTextarea(modelDefaults.SeedreamConfig),
     })
   }, [modelDefaults, modelForm])
 
@@ -312,11 +322,15 @@ export function RatioSettingsCard({
         ExposeRatioEnabled: values.ExposeRatioEnabled,
         BillingMode: normalizeJsonString(values.BillingMode),
         BillingExpr: normalizeJsonString(values.BillingExpr),
+        SeedanceConfig: normalizeJsonString(values.SeedanceConfig),
+        SeedreamConfig: normalizeJsonString(values.SeedreamConfig),
       }
 
       const apiKeyMap: Record<string, string> = {
         BillingMode: 'billing_setting.billing_mode',
         BillingExpr: 'billing_setting.billing_expr',
+        SeedanceConfig: 'billing_setting.seedance_config',
+        SeedreamConfig: 'billing_setting.seedream_config',
       }
 
       const updates = (
@@ -437,6 +451,8 @@ export function RatioSettingsCard({
           AudioCompletionRatio: modelDefaults.AudioCompletionRatio,
           'billing_setting.billing_mode': modelDefaults.BillingMode,
           'billing_setting.billing_expr': modelDefaults.BillingExpr,
+          'billing_setting.seedance_config': modelDefaults.SeedanceConfig,
+          'billing_setting.seedream_config': modelDefaults.SeedreamConfig,
         }}
       />
     )

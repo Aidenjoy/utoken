@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -77,6 +78,12 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	// Check if this model uses tiered_expr billing
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
 		return modelPriceHelperTiered(c, info, promptTokens, meta, groupRatioInfo)
+	}
+
+	// seedream：同步图片按张计费，用请求侧估算预扣（输出≈n，输入≈参考图张数），
+	// 响应后由 service.calculateTextQuotaSummary 按上游 usage 的真实张数差额结算。
+	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeSeedream {
+		return modelPriceHelperSeedream(c, info, groupRatioInfo)
 	}
 
 	var preConsumedQuota int
@@ -308,4 +315,58 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 
 	info.PriceData = priceData
 	return priceData, nil
+}
+
+// modelPriceHelperSeedream 为 seedream 同步图片按张计费做预扣：用请求侧估算的
+// 输入/输出图张数×配置单价×QuotaPerUnit×groupRatio 预扣，响应后由结算侧按上游
+// usage 的真实张数重算并差额结算。模型标为 seedream 但缺少单价配置时直接报错（400）。
+func modelPriceHelperSeedream(c *gin.Context, info *relaycommon.RelayInfo, groupRatioInfo types.GroupRatioInfo) (types.PriceData, error) {
+	inputImages, generatedImages := seedreamRequestImageCounts(info)
+	preConsumedQuota, _, ok := billing_setting.ComputeSeedreamQuota(info.OriginModelName, inputImages, generatedImages, groupRatioInfo.GroupRatio)
+	if !ok {
+		return types.PriceData{}, fmt.Errorf("model %s is configured as seedream but has no seedream price config", info.OriginModelName)
+	}
+
+	freeModel := false
+	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume && groupRatioInfo.GroupRatio == 0 {
+		preConsumedQuota = 0
+		freeModel = true
+	}
+
+	priceData := types.PriceData{
+		FreeModel:         freeModel,
+		UsePrice:          true,
+		GroupRatioInfo:    groupRatioInfo,
+		QuotaToPreConsume: preConsumedQuota,
+	}
+	info.PriceData = priceData
+	logger.LogDebug(c, "model_price_helper_seedream result: model=%s input=%d generated=%d preConsume=%d groupRatio=%.2f", info.OriginModelName, inputImages, generatedImages, preConsumedQuota, groupRatioInfo.GroupRatio)
+	return priceData, nil
+}
+
+// seedreamRequestImageCounts 从请求估算图张数用于预扣：输出图张数≈n（缺省 1），
+// 输入图张数≈请求携带的参考图数量（image 单张 + images 数组）。张数钳制与饱和由
+// billing_setting.ComputeSeedreamQuota 统一处理；上游响应的真实张数在结算侧覆盖，
+// 这里只需一个足够覆盖成本的估算。
+func seedreamRequestImageCounts(info *relaycommon.RelayInfo) (input, generated int) {
+	generated = 1
+	req, ok := info.Request.(*dto.ImageRequest)
+	if !ok {
+		return 0, generated
+	}
+	if req.N != nil && *req.N > 0 {
+		generated = int(*req.N)
+	}
+	if len(req.Image) > 0 && string(req.Image) != "null" {
+		input++
+	}
+	if len(req.Images) > 0 && string(req.Images) != "null" {
+		var arr []any
+		if err := common.Unmarshal(req.Images, &arr); err == nil {
+			input += len(arr)
+		} else {
+			input++
+		}
+	}
+	return input, generated
 }

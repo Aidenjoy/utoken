@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -109,7 +110,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	// {prompt, images, metadata}，而官方协议要求 content 数组；缺 content 时按
 	// doubao 规则转换（见 buildUnifiedRequestBody）
 	if len(req.Content) == 0 && (strings.TrimSpace(req.Prompt) != "" || len(req.Images) > 0 || strings.TrimSpace(req.Image) != "") {
-		return a.validateUnifiedSubmit(&req)
+		if taskErr := a.validateUnifiedSubmit(&req); taskErr != nil {
+			return taskErr
+		}
+		return a.validateSeedanceResolution(info, req.Model)
 	}
 	a.resolution = req.Resolution
 	a.hasWatermark = req.Watermark != nil
@@ -118,6 +122,19 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			a.hasVideo = true
 			break
 		}
+	}
+	return a.validateSeedanceResolution(info, req.Model)
+}
+
+// validateSeedanceResolution 校验模型是否支持用户请求的分辨率：显式指定了不支持的
+// 分辨率时返回 400「该模型不支持此分辨率」，避免提交上游后才失败与错误预扣费。
+func (a *TaskAdaptor) validateSeedanceResolution(info *relaycommon.RelayInfo, reqModel string) *dto.TaskError {
+	modelName := info.OriginModelName
+	if modelName == "" {
+		modelName = reqModel
+	}
+	if err := doubao.ValidateResolutionSupported(modelName, a.resolution, a.hasVideo); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 	return nil
 }
@@ -188,11 +205,18 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 
 // EstimateBilling 与豆包视频渠道一致：按输出分辨率档/是否含视频输入相对基准价计费。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
-	ratio, ok := doubao.GetVideoInputRatio(info.OriginModelName, a.resolution, a.hasVideo)
-	if !ok || ratio == 1.0 {
+	// 记录是否含视频输入，提交后存入 BillingContext.HasVideo，供结算阶段按响应分辨率重算
+	info.HasVideoInput = a.hasVideo
+	ratio, status := doubao.GetVideoInputRatio(info.OriginModelName, a.resolution, a.hasVideo)
+	if status != doubao.VideoRatioOK || ratio == 1.0 {
 		return nil
 	}
 	return map[string]float64{"video_input": ratio}
+}
+
+// AdjustBillingOnComplete 任务完成时按上游响应的实际分辨率重算 seedance 计费（与 doubao 渠道共用逻辑）。
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	return doubao.AdjustSeedanceBillingOnComplete(task, taskResult)
 }
 
 // BuildRequestBody 原样透传客户端请求体，仅按模型映射替换 model 字段。

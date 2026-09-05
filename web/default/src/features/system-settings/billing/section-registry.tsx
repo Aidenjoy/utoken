@@ -38,6 +38,8 @@ const getModelDefaults = (settings: BillingSettings) => ({
   ExposeRatioEnabled: settings.ExposeRatioEnabled,
   BillingMode: settings['billing_setting.billing_mode'],
   BillingExpr: settings['billing_setting.billing_expr'],
+  SeedanceConfig: settings['billing_setting.seedance_config'],
+  SeedreamConfig: settings['billing_setting.seedream_config'],
 })
 
 const getGroupDefaults = (settings: BillingSettings) => ({

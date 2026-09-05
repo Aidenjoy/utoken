@@ -49,6 +49,8 @@ export const SYNC_FIELD_ORDER: RatioType[] = [
   'model_price',
   'billing_mode',
   'billing_expr',
+  'seedance_config',
+  'seedream_config',
 ]
 
 export const NUMERIC_SYNC_FIELDS = new Set<string>([

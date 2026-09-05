@@ -681,6 +681,11 @@ type TaskRelayInfo struct {
 
 	ConsumeQuota bool
 
+	// HasVideoInput 标记视频生成请求是否包含视频输入（video_url）。
+	// 由 seedance 适配器在校验/估算阶段写入，提交后存入 BillingContext.HasVideo，
+	// 供轮询结算阶段按响应分辨率重算 video_input 倍率时复用。
+	HasVideoInput bool
+
 	// LockedChannel holds the full channel object when the request is bound to
 	// a specific channel (e.g., remix on origin task's channel). Stored as any
 	// to avoid an import cycle with model; callers type-assert to *model.Channel.
@@ -779,6 +784,7 @@ type TaskInfo struct {
 	Progress         string `json:"progress,omitempty"`
 	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	Resolution       string `json:"resolution,omitempty"`        // 上游返回的实际输出分辨率，用于 seedance 按分辨率结算
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

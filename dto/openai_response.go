@@ -238,6 +238,12 @@ type Usage struct {
 	ClaudeCacheCreation5mTokens int `json:"claude_cache_creation_5_m_tokens"`
 	ClaudeCacheCreation1hTokens int `json:"claude_cache_creation_1_h_tokens"`
 
+	// Volcengine Ark seedream image billing: number of reference images fed in
+	// and images actually generated. Parsed verbatim from the upstream usage so
+	// the seedream per-image billing settles on provider-reported counts.
+	InputImages     int `json:"input_images,omitempty"`
+	GeneratedImages int `json:"generated_images,omitempty"`
+
 	// OpenRouter Params
 	Cost any `json:"cost,omitempty"`
 }

@@ -92,7 +92,22 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	// Accept only POST /v1/video/generations as "generate" action.
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); taskErr != nil {
+		return taskErr
+	}
+	// seedance：用户显式指定了模型不支持的分辨率时提前拦截（400），
+	// 避免提交上游后才失败，也避免按错误分辨率预扣费。
+	if req, err := relaycommon.GetTaskRequest(c); err == nil {
+		modelName := info.OriginModelName
+		if modelName == "" {
+			modelName = req.Model
+		}
+		resolution, _ := req.Metadata["resolution"].(string)
+		if verr := ValidateResolutionSupported(modelName, resolution, hasVideoInMetadata(req.Metadata)); verr != nil {
+			return service.TaskErrorWrapperLocal(verr, "invalid_request", http.StatusBadRequest)
+		}
+	}
+	return nil
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -115,12 +130,62 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 	hasVideo := hasVideoInMetadata(req.Metadata)
+	// 记录是否含视频输入，提交后存入 BillingContext.HasVideo，供结算阶段按响应分辨率重算
+	info.HasVideoInput = hasVideo
 	resolution, _ := req.Metadata["resolution"].(string)
-	ratio, ok := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
-	if !ok || ratio == 1.0 {
+	ratio, status := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
+	if status != VideoRatioOK || ratio == 1.0 {
 		return nil
 	}
 	return map[string]float64{"video_input": ratio}
+}
+
+// AdjustBillingOnComplete 任务完成时按上游响应的实际分辨率重算 seedance 计费。
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	return AdjustSeedanceBillingOnComplete(task, taskResult)
+}
+
+// AdjustSeedanceBillingOnComplete 是 doubao / arknative 共用的 seedance 完成结算逻辑：
+// 提交时预估用的是请求分辨率，可能与上游实际输出分辨率不同（如未指定分辨率时
+// 上游自选默认档），此处以响应 resolution + 提交时记录的 hasVideo 重算 video_input 倍率，
+// 更新 BillingContext 后复用 service.ComputeTaskQuotaByTokens（含分组倍率与饱和）计算最终额度。
+// 返回 > 0 时触发差额结算；返回 0 表示保持既有估算（响应缺分辨率 / 不支持 / 未配置倍率）。
+func AdjustSeedanceBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	if task == nil || taskResult == nil || taskResult.TotalTokens <= 0 {
+		return 0
+	}
+	// 响应未返回分辨率时不覆盖提交估算，避免误降到基准档
+	resolution := strings.TrimSpace(taskResult.Resolution)
+	if resolution == "" {
+		return 0
+	}
+	bc := task.PrivateData.BillingContext
+	if bc == nil {
+		return 0
+	}
+	modelName := bc.OriginModelName
+	if modelName == "" {
+		modelName = task.Properties.OriginModelName
+	}
+	ratio, status := GetVideoInputRatio(modelName, resolution, bc.HasVideo)
+	if status != VideoRatioOK {
+		// 响应分辨率不在配置内（或模型无单价配置）：保持提交估算，交由默认 token 重算
+		return 0
+	}
+	// 用响应分辨率对应的倍率更新快照，保留其它附加倍率
+	if bc.OtherRatios == nil {
+		bc.OtherRatios = make(map[string]float64)
+	}
+	if ratio == 1.0 {
+		delete(bc.OtherRatios, "video_input")
+	} else {
+		bc.OtherRatios["video_input"] = ratio
+	}
+	quota, ok := service.ComputeTaskQuotaByTokens(task, taskResult.TotalTokens)
+	if !ok || quota <= 0 {
+		return 0
+	}
+	return quota
 }
 
 // hasVideoInMetadata 直接检查 metadata 的 content 数组是否包含 video_url 条目，

@@ -51,6 +51,7 @@ type VolcTaskResponse struct {
 			CompletionTokens int `json:"completion_tokens"`
 			TotalTokens      int `json:"total_tokens"`
 		} `json:"usage"`
+		Resolution string `json:"resolution"`
 	} `json:"resultSummary"`
 	Seed            int          `json:"seed"`
 	Resolution      string       `json:"resolution"`
@@ -91,6 +92,12 @@ func (r *VolcTaskResponse) TotalTokens() int {
 	return lo.CoalesceOrEmpty(r.Usage.TotalTokens, r.ResultSummary.Usage.TotalTokens)
 }
 
+// OutputResolution 返回任务实际输出分辨率：官方顶层 resolution 优先，中转站 resultSummary 兜底。
+// 用于 seedance 按分辨率结算（转小写比较）。方法名避开与顶层 Resolution 字段重名。
+func (r *VolcTaskResponse) OutputResolution() string {
+	return lo.CoalesceOrEmpty(r.Resolution, r.ResultSummary.Resolution)
+}
+
 // ParseVolcTaskResult 解析火山方舟任务查询响应为内部 TaskInfo。
 // logPrefix 用于日志归因（如 "[DoubaoVideo]" / "[ArkNative]"）。
 func ParseVolcTaskResult(respBody []byte, logPrefix string) (*relaycommon.TaskInfo, error) {
@@ -128,6 +135,8 @@ func ParseVolcTaskResult(respBody []byte, logPrefix string) (*relaycommon.TaskIn
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.CompletionTokens()
 		taskResult.TotalTokens = resTask.TotalTokens()
+		// 解析实际输出分辨率用于 seedance 按分辨率结算
+		taskResult.Resolution = resTask.OutputResolution()
 	case "failed":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"

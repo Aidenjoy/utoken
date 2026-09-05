@@ -73,6 +73,8 @@ type UpstreamRatioSyncProps = {
     AudioCompletionRatio: string
     'billing_setting.billing_mode': string
     'billing_setting.billing_expr': string
+    'billing_setting.seedance_config': string
+    'billing_setting.seedream_config': string
   }
 }
 
@@ -92,7 +94,12 @@ function getDefaultEndpointForChannel(channel: UpstreamChannel): string {
 
 function getBillingCategory(ratioType: string): 'price' | 'ratio' | 'tiered' {
   if (ratioType === 'model_price') return 'price'
-  if (ratioType === 'billing_mode' || ratioType === 'billing_expr')
+  if (
+    ratioType === 'billing_mode' ||
+    ratioType === 'billing_expr' ||
+    ratioType === 'seedance_config' ||
+    ratioType === 'seedream_config'
+  )
     return 'tiered'
   return 'ratio'
 }
@@ -101,6 +108,8 @@ function optionKeyBySyncField(ratioType: string): string {
   const explicit: Record<string, string> = {
     billing_mode: 'billing_setting.billing_mode',
     billing_expr: 'billing_setting.billing_expr',
+    seedance_config: 'billing_setting.seedance_config',
+    seedream_config: 'billing_setting.seedream_config',
   }
   if (explicit[ratioType]) return explicit[ratioType]
   return ratioType
@@ -352,6 +361,12 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
       'billing_setting.billing_expr': parseJsonRecord<string>(
         modelRatios['billing_setting.billing_expr']
       ),
+      'billing_setting.seedance_config': parseJsonRecord<string>(
+        modelRatios['billing_setting.seedance_config']
+      ),
+      'billing_setting.seedream_config': parseJsonRecord<string>(
+        modelRatios['billing_setting.seedream_config']
+      ),
     }
   }, [modelRatios])
 
@@ -391,6 +406,12 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
         },
         'billing_setting.billing_expr': {
           ...currentRatios['billing_setting.billing_expr'],
+        },
+        'billing_setting.seedance_config': {
+          ...currentRatios['billing_setting.seedance_config'],
+        },
+        'billing_setting.seedream_config': {
+          ...currentRatios['billing_setting.seedream_config'],
         },
       }
 

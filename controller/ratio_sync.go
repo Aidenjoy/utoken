@@ -72,6 +72,8 @@ var pricingSyncFields = []string{
 	"model_price",
 	billing_setting.BillingModeField,
 	billing_setting.BillingExprField,
+	billing_setting.SeedanceConfigField,
+	billing_setting.SeedreamConfigField,
 }
 
 var numericPricingSyncFields = map[string]bool{

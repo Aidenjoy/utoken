@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -245,6 +246,17 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 
 	ratio := dModelRatio.Mul(dGroupRatio)
+
+	// seedream：按上游 usage 上报的输入/输出图张数计费，取代下面的按 token/按次算式。
+	// 仅当模型缺少 seedream 单价配置（ok=false）时才回退常规计费。
+	if billing_setting.GetBillingMode(summary.ModelName) == billing_setting.BillingModeSeedream {
+		if quota, clamp, ok := billing_setting.ComputeSeedreamQuota(summary.ModelName, usage.InputImages, usage.GeneratedImages, summary.GroupRatio); ok {
+			noteQuotaClamp(relayInfo, clamp)
+			summary.Quota = quota
+			return summary
+		}
+	}
+
 	summary.ToolCallSurchargeQuota = calculateTextToolCallSurcharge(ctx, relayInfo, &summary)
 
 	var audioInputQuota decimal.Decimal
@@ -471,6 +483,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
+	}
+	if billing_setting.GetBillingMode(summary.ModelName) == billing_setting.BillingModeSeedream && usage != nil {
+		other["seedream_input_images"] = usage.InputImages
+		other["seedream_generated_images"] = usage.GeneratedImages
 	}
 
 	attachQuotaSaturation(ctx, relayInfo, other)

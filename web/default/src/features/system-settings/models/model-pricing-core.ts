@@ -20,6 +20,7 @@ import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
+import { safeJsonParse } from '../utils/json-parser'
 import { formatPricingNumber } from './pricing-format'
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
@@ -39,7 +40,42 @@ export type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-export type PricingMode = 'per-token' | 'per-request' | 'tiered_expr'
+export type PricingMode =
+  | 'per-token'
+  | 'per-request'
+  | 'tiered_expr'
+  | 'seedance'
+  | 'seedream'
+
+// seedance：4 档分辨率×（含/不含视频输入）共 8 个单价（元/百万 token）。
+// 编辑器以字符串持有输入，序列化为后端 {with_video, without_video} 结构。
+export const SEEDANCE_RESOLUTIONS = ['480p', '720p', '1080p', '4k'] as const
+export type SeedanceResolution = (typeof SEEDANCE_RESOLUTIONS)[number]
+
+export type SeedancePriceForm = Record<
+  SeedanceResolution,
+  { withVideo: string; withoutVideo: string }
+>
+
+// seedream：输入图单价 / 输出图单价（单位跟随系统币种，与按次 ModelPrice 同量纲）。
+export type SeedreamPriceForm = {
+  inputImagePrice: string
+  outputImagePrice: string
+}
+
+export const emptySeedancePrices = (): SeedancePriceForm =>
+  SEEDANCE_RESOLUTIONS.reduce(
+    (acc, res) => {
+      acc[res] = { withVideo: '', withoutVideo: '' }
+      return acc
+    },
+    {} as SeedancePriceForm
+  )
+
+export const emptySeedreamPrices = (): SeedreamPriceForm => ({
+  inputImagePrice: '',
+  outputImagePrice: '',
+})
 
 export type LaneKey =
   | 'completion'
@@ -62,6 +98,10 @@ export type ModelRatioData = {
   billingMode?: PricingMode
   billingExpr?: string
   requestRuleExpr?: string
+  // seedance/seedream 每模型配置的原始 JSON 字符串（对应
+  // billing_setting.seedance_config[model] / seedream_config[model] 的值）。
+  seedanceConfig?: string
+  seedreamConfig?: string
 }
 
 export type PreviewRow = {
@@ -173,6 +213,64 @@ function deriveLanePrice(
   return formatPricingNumber(ratioNumber * denominatorNumber)
 }
 
+// parseSeedanceConfig / serializeSeedanceConfig 在编辑器的按分辨率字符串表单与
+// 后端 billing_setting.seedance_config[model] 存储的 JSON 之间双向映射。
+export function parseSeedanceConfig(raw?: string): SeedancePriceForm {
+  const form = emptySeedancePrices()
+  const parsed = safeJsonParse<
+    Record<string, { with_video?: number; without_video?: number }>
+  >(raw, { fallback: {}, silent: true })
+  for (const res of SEEDANCE_RESOLUTIONS) {
+    const tier = parsed?.[res]
+    if (!tier) continue
+    form[res] = {
+      withVideo: tier.with_video !== undefined ? String(tier.with_video) : '',
+      withoutVideo:
+        tier.without_video !== undefined ? String(tier.without_video) : '',
+    }
+  }
+  return form
+}
+
+export function serializeSeedanceConfig(form: SeedancePriceForm): string {
+  const out: Record<string, { with_video: number; without_video: number }> = {}
+  for (const res of SEEDANCE_RESOLUTIONS) {
+    const withVideo = toNumberOrNull(form[res]?.withVideo)
+    const withoutVideo = toNumberOrNull(form[res]?.withoutVideo)
+    if (withVideo === null && withoutVideo === null) continue
+    out[res] = { with_video: withVideo ?? 0, without_video: withoutVideo ?? 0 }
+  }
+  return Object.keys(out).length > 0 ? JSON.stringify(out) : ''
+}
+
+// parseSeedreamConfig / serializeSeedreamConfig 同理映射 seedream 的两个单价。
+export function parseSeedreamConfig(raw?: string): SeedreamPriceForm {
+  const parsed = safeJsonParse<{
+    input_image_price?: number
+    output_image_price?: number
+  }>(raw, { fallback: {}, silent: true })
+  return {
+    inputImagePrice:
+      parsed?.input_image_price !== undefined
+        ? String(parsed.input_image_price)
+        : '',
+    outputImagePrice:
+      parsed?.output_image_price !== undefined
+        ? String(parsed.output_image_price)
+        : '',
+  }
+}
+
+export function serializeSeedreamConfig(form: SeedreamPriceForm): string {
+  const inputImagePrice = toNumberOrNull(form.inputImagePrice)
+  const outputImagePrice = toNumberOrNull(form.outputImagePrice)
+  if (inputImagePrice === null && outputImagePrice === null) return ''
+  return JSON.stringify({
+    input_image_price: inputImagePrice ?? 0,
+    output_image_price: outputImagePrice ?? 0,
+  })
+}
+
 export function createInitialLaneState(data?: ModelRatioData | null) {
   if (!data) {
     return {
@@ -215,8 +313,48 @@ export function buildPreviewRows(
   promptPrice: string,
   lanePrices: Record<LaneKey, string>,
   laneEnabled: Record<LaneKey, boolean>,
+  seedancePrices: SeedancePriceForm,
+  seedreamPrices: SeedreamPriceForm,
   t: (key: string) => string
 ): PreviewRow[] {
+  if (mode === 'seedream') {
+    return [
+      { key: 'mode', label: 'BillingMode', value: 'seedream' },
+      {
+        key: 'inputImage',
+        label: t('Input image price'),
+        value: seedreamPrices.inputImagePrice
+          ? `$${seedreamPrices.inputImagePrice}`
+          : t('Empty'),
+      },
+      {
+        key: 'outputImage',
+        label: t('Output image price'),
+        value: seedreamPrices.outputImagePrice
+          ? `$${seedreamPrices.outputImagePrice}`
+          : t('Empty'),
+      },
+    ]
+  }
+
+  if (mode === 'seedance') {
+    const rows: PreviewRow[] = [
+      { key: 'mode', label: 'BillingMode', value: 'seedance' },
+    ]
+    for (const res of SEEDANCE_RESOLUTIONS) {
+      const { withVideo, withoutVideo } = seedancePrices[res]
+      rows.push({
+        key: res,
+        label: res,
+        value:
+          withVideo || withoutVideo
+            ? `${t('With video input')} $${withVideo || '0'} · ${t('Without video input')} $${withoutVideo || '0'}`
+            : t('Empty'),
+      })
+    }
+    return rows
+  }
+
   if (mode === 'tiered_expr') {
     const effectiveExpr = combineBillingExpr(billingExpr, requestRuleExpr)
     return [

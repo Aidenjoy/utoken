@@ -32,6 +32,8 @@ export type ModelPricingSnapshotInput = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  seedanceConfig: string
+  seedreamConfig: string
 }
 
 export type ModelPricingSnapshot = {
@@ -47,6 +49,8 @@ export type ModelPricingSnapshot = {
   billingMode?: string
   billingExpr?: string
   requestRuleExpr?: string
+  seedanceConfig?: string
+  seedreamConfig?: string
   hasConflict: boolean
 }
 
@@ -77,14 +81,18 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
 export const getModeLabel = (mode?: string) => {
   if (mode === 'per-request') return 'Per-request'
   if (mode === 'tiered_expr') return 'Expression'
+  if (mode === 'seedance') return 'Seedance'
+  if (mode === 'seedream') return 'Seedream'
   return 'Per-token'
 }
 
 export const getModeVariant = (
   mode?: string
-): 'warning' | 'info' | 'success' => {
+): 'warning' | 'info' | 'success' | 'purple' | 'teal' => {
   if (mode === 'per-request') return 'warning'
   if (mode === 'tiered_expr') return 'info'
+  if (mode === 'seedance') return 'purple'
+  if (mode === 'seedream') return 'teal'
   return 'success'
 }
 
@@ -108,6 +116,20 @@ export const getPriceSummary = (
   }
   if (row.billingMode === 'per-request') {
     return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
+  }
+  if (row.billingMode === 'seedream') {
+    const cfg = safeJsonParse<{
+      input_image_price?: number
+      output_image_price?: number
+    }>(row.seedreamConfig, { fallback: {}, silent: true })
+    const input = cfg?.input_image_price
+    const output = cfg?.output_image_price
+    if (input === undefined && output === undefined) return t('Unset price')
+    return `${t('Input')} $${input ?? 0} · ${t('Output')} $${output ?? 0}`
+  }
+  if (row.billingMode === 'seedance') {
+    const basePrice = ratioToPrice(row.ratio)
+    return basePrice ? `${t('Input')} $${basePrice}` : t('Unset price')
   }
 
   const inputPrice = ratioToPrice(row.ratio)
@@ -139,6 +161,19 @@ export const getPriceDetail = (
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
   }
+  if (row.billingMode === 'seedream') {
+    return t('Per-image pricing')
+  }
+  if (row.billingMode === 'seedance') {
+    const cfg = safeJsonParse<Record<string, unknown>>(row.seedanceConfig, {
+      fallback: {},
+      silent: true,
+    })
+    const count = cfg ? Object.keys(cfg).length : 0
+    return count > 0
+      ? `${count} ${t('resolutions')}`
+      : t('Per-resolution pricing')
+  }
 
   const inputPrice = ratioToPrice(row.ratio)
   if (!inputPrice) return t('No base input price')
@@ -168,6 +203,8 @@ export const buildModelSnapshots = ({
   audioCompletionRatio,
   billingMode,
   billingExpr,
+  seedanceConfig,
+  seedreamConfig,
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
   const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
     fallback: {},
@@ -209,6 +246,14 @@ export const buildModelSnapshots = ({
     fallback: {},
     context: 'billing expression',
   })
+  const seedanceConfigMap = safeJsonParse<Record<string, string>>(
+    seedanceConfig,
+    { fallback: {}, context: 'seedance config' }
+  )
+  const seedreamConfigMap = safeJsonParse<Record<string, string>>(
+    seedreamConfig,
+    { fallback: {}, context: 'seedream config' }
+  )
 
   const modelNames = new Set([
     ...Object.keys(priceMap),
@@ -221,6 +266,8 @@ export const buildModelSnapshots = ({
     ...Object.keys(audioCompletionMap),
     ...Object.keys(billingModeMap),
     ...Object.keys(billingExprMap),
+    ...Object.keys(seedanceConfigMap),
+    ...Object.keys(seedreamConfigMap),
   ])
 
   return Array.from(modelNames).map((name) => {
@@ -243,6 +290,40 @@ export const buildModelSnapshots = ({
         billingMode: 'tiered_expr',
         billingExpr: pureExpr,
         requestRuleExpr,
+        price,
+        ratio,
+        cacheRatio: cache,
+        createCacheRatio: createCache,
+        completionRatio: completion,
+        imageRatio: image,
+        audioRatio: audio,
+        audioCompletionRatio: audioCompletion,
+        hasConflict: false,
+      }
+    }
+
+    if (modeForModel === 'seedance') {
+      return {
+        name,
+        billingMode: 'seedance',
+        seedanceConfig: seedanceConfigMap[name] || '',
+        price,
+        ratio,
+        cacheRatio: cache,
+        createCacheRatio: createCache,
+        completionRatio: completion,
+        imageRatio: image,
+        audioRatio: audio,
+        audioCompletionRatio: audioCompletion,
+        hasConflict: false,
+      }
+    }
+
+    if (modeForModel === 'seedream') {
+      return {
+        name,
+        billingMode: 'seedream',
+        seedreamConfig: seedreamConfigMap[name] || '',
         price,
         ratio,
         cacheRatio: cache,
@@ -293,5 +374,7 @@ export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
     billingMode: snapshot.billingMode || 'per-token',
     billingExpr: snapshot.billingExpr || '',
     requestRuleExpr: snapshot.requestRuleExpr || '',
+    seedanceConfig: snapshot.seedanceConfig || '',
+    seedreamConfig: snapshot.seedreamConfig || '',
   })
 }

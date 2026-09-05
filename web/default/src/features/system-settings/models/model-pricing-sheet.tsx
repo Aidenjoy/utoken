@@ -66,18 +66,28 @@ import { cn } from '@/lib/utils'
 import {
   EMPTY_LANE_ENABLED,
   EMPTY_LANE_PRICES,
+  SEEDANCE_RESOLUTIONS,
   buildPreviewRows,
   createInitialLaneState,
   createModelPricingSchema,
+  emptySeedancePrices,
+  emptySeedreamPrices,
   hasValue,
   laneConfigs,
   numericDraftRegex,
+  parseSeedanceConfig,
+  parseSeedreamConfig,
   ratioFieldByLane,
+  serializeSeedanceConfig,
+  serializeSeedreamConfig,
   toNumberOrNull,
   type LaneKey,
   type ModelPricingFormValues,
   type ModelRatioData,
   type PricingMode,
+  type SeedancePriceForm,
+  type SeedanceResolution,
+  type SeedreamPriceForm,
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
 import { formatPricingNumber } from './pricing-format'
@@ -155,6 +165,12 @@ export const ModelPricingEditorPanel = forwardRef<
   })
   const [billingExpr, setBillingExpr] = useState('')
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
+  const [seedancePrices, setSeedancePrices] = useState<SeedancePriceForm>(
+    emptySeedancePrices()
+  )
+  const [seedreamPrices, setSeedreamPrices] = useState<SeedreamPriceForm>(
+    emptySeedreamPrices()
+  )
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
 
@@ -191,12 +207,18 @@ export const ModelPricingEditorPanel = forwardRef<
       setPricingMode(
         editData.billingMode === 'tiered_expr'
           ? 'tiered_expr'
-          : editData.price
-            ? 'per-request'
-            : 'per-token'
+          : editData.billingMode === 'seedance'
+            ? 'seedance'
+            : editData.billingMode === 'seedream'
+              ? 'seedream'
+              : editData.price
+                ? 'per-request'
+                : 'per-token'
       )
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
+      setSeedancePrices(parseSeedanceConfig(editData.seedanceConfig))
+      setSeedreamPrices(parseSeedreamConfig(editData.seedreamConfig))
     } else {
       form.reset({
         name: '',
@@ -212,6 +234,8 @@ export const ModelPricingEditorPanel = forwardRef<
       setPricingMode('per-token')
       setBillingExpr('')
       setRequestRuleExpr('')
+      setSeedancePrices(emptySeedancePrices())
+      setSeedreamPrices(emptySeedreamPrices())
     }
 
     setPromptPrice(nextLaneState.promptPrice)
@@ -340,6 +364,29 @@ export const ModelPricingEditorPanel = forwardRef<
     }
   }
 
+  const handleSeedancePriceChange = useCallback(
+    (
+      res: SeedanceResolution,
+      field: 'withVideo' | 'withoutVideo',
+      value: string
+    ) => {
+      if (!numericDraftRegex.test(value)) return
+      setSeedancePrices((prev) => ({
+        ...prev,
+        [res]: { ...prev[res], [field]: value },
+      }))
+    },
+    []
+  )
+
+  const handleSeedreamPriceChange = useCallback(
+    (field: 'inputImagePrice' | 'outputImagePrice', value: string) => {
+      if (!numericDraftRegex.test(value)) return
+      setSeedreamPrices((prev) => ({ ...prev, [field]: value }))
+    },
+    []
+  )
+
   const watchedValues = form.watch()
   const previewRows = useMemo(
     () =>
@@ -351,6 +398,8 @@ export const ModelPricingEditorPanel = forwardRef<
         promptPrice,
         lanePrices,
         laneEnabled,
+        seedancePrices,
+        seedreamPrices,
         t
       ),
     [
@@ -360,6 +409,8 @@ export const ModelPricingEditorPanel = forwardRef<
       pricingMode,
       promptPrice,
       requestRuleExpr,
+      seedancePrices,
+      seedreamPrices,
       t,
       watchedValues,
     ]
@@ -458,9 +509,22 @@ export const ModelPricingEditorPanel = forwardRef<
         data.requestRuleExpr = requestRuleExpr
       }
 
+      if (pricingMode === 'seedance') {
+        data.seedanceConfig = serializeSeedanceConfig(seedancePrices)
+        // 基准价（480p 不含视频）即 ModelRatio，后端据此换算档间倍率。
+        data.ratio = seedancePrices['480p'].withoutVideo || ''
+        data.price = ''
+      }
+
+      if (pricingMode === 'seedream') {
+        data.seedreamConfig = serializeSeedreamConfig(seedreamPrices)
+        data.price = ''
+        data.ratio = ''
+      }
+
       return data
     },
-    [billingExpr, pricingMode, requestRuleExpr]
+    [billingExpr, pricingMode, requestRuleExpr, seedancePrices, seedreamPrices]
   )
 
   useImperativeHandle(
@@ -544,7 +608,7 @@ export const ModelPricingEditorPanel = forwardRef<
                   onValueChange={handleModeChange}
                   className='gap-4'
                 >
-                  <TabsList className='grid w-full grid-cols-3'>
+                  <TabsList className='grid w-full grid-cols-5'>
                     <TabsTrigger value='per-token'>
                       {t('Per-token')}
                     </TabsTrigger>
@@ -554,6 +618,8 @@ export const ModelPricingEditorPanel = forwardRef<
                     <TabsTrigger value='tiered_expr'>
                       {t('Expression')}
                     </TabsTrigger>
+                    <TabsTrigger value='seedance'>{t('Seedance')}</TabsTrigger>
+                    <TabsTrigger value='seedream'>{t('Seedream')}</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value='per-token' className='pt-0'>
@@ -649,6 +715,117 @@ export const ModelPricingEditorPanel = forwardRef<
                         onBillingExprChange={setBillingExpr}
                         onRequestRuleExprChange={setRequestRuleExpr}
                       />
+                    </FieldGroup>
+                  </TabsContent>
+
+                  <TabsContent value='seedance' className='pt-0'>
+                    <FieldGroup className='gap-5'>
+                      <Field>
+                        <FieldLabel>{t('Resolution pricing')}</FieldLabel>
+                        <FieldDescription>
+                          {t(
+                            'Price per 1M tokens for each resolution, with and without video input. The 480p without-video price is the base ratio; other tiers are scaled relative to it.'
+                          )}
+                        </FieldDescription>
+                      </Field>
+                      <div className='grid gap-3'>
+                        {SEEDANCE_RESOLUTIONS.map((res) => (
+                          <div
+                            key={res}
+                            className='grid gap-3 rounded-lg border p-3 sm:grid-cols-[64px_1fr_1fr] sm:items-end'
+                          >
+                            <span className='text-sm font-medium'>{res}</span>
+                            <Field>
+                              <FieldLabel className='text-muted-foreground text-xs'>
+                                {t('Without video input')}
+                              </FieldLabel>
+                              <PriceInput
+                                value={seedancePrices[res].withoutVideo}
+                                placeholder='0'
+                                onChange={(value) =>
+                                  handleSeedancePriceChange(
+                                    res,
+                                    'withoutVideo',
+                                    value
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field>
+                              <FieldLabel className='text-muted-foreground text-xs'>
+                                {t('With video input')}
+                              </FieldLabel>
+                              <PriceInput
+                                value={seedancePrices[res].withVideo}
+                                placeholder='0'
+                                onChange={(value) =>
+                                  handleSeedancePriceChange(
+                                    res,
+                                    'withVideo',
+                                    value
+                                  )
+                                }
+                              />
+                            </Field>
+                          </div>
+                        ))}
+                      </div>
+                      <FieldDescription>
+                        {t(
+                          'Resolutions left empty will be rejected with a 400 for this model.'
+                        )}
+                      </FieldDescription>
+                    </FieldGroup>
+                  </TabsContent>
+
+                  <TabsContent value='seedream' className='pt-0'>
+                    <FieldGroup className='gap-5'>
+                      <Field>
+                        <FieldLabel>{t('Input image price')}</FieldLabel>
+                        <InputGroup>
+                          <InputGroupAddon>$</InputGroupAddon>
+                          <InputGroupInput
+                            inputMode='decimal'
+                            placeholder='0.02'
+                            value={seedreamPrices.inputImagePrice}
+                            onChange={(event) =>
+                              handleSeedreamPriceChange(
+                                'inputImagePrice',
+                                event.target.value
+                              )
+                            }
+                          />
+                          <InputGroupAddon align='inline-end'>
+                            {t('per image')}
+                          </InputGroupAddon>
+                        </InputGroup>
+                        <FieldDescription>
+                          {t('Cost per input (reference) image.')}
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel>{t('Output image price')}</FieldLabel>
+                        <InputGroup>
+                          <InputGroupAddon>$</InputGroupAddon>
+                          <InputGroupInput
+                            inputMode='decimal'
+                            placeholder='0.3'
+                            value={seedreamPrices.outputImagePrice}
+                            onChange={(event) =>
+                              handleSeedreamPriceChange(
+                                'outputImagePrice',
+                                event.target.value
+                              )
+                            }
+                          />
+                          <InputGroupAddon align='inline-end'>
+                            {t('per image')}
+                          </InputGroupAddon>
+                        </InputGroup>
+                        <FieldDescription>
+                          {t('Cost per generated image.')}
+                        </FieldDescription>
+                      </Field>
                     </FieldGroup>
                   </TabsContent>
                 </Tabs>

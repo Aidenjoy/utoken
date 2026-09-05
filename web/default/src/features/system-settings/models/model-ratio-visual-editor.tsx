@@ -75,6 +75,8 @@ type ModelRatioVisualEditorProps = {
   savedAudioCompletionRatio: string
   savedBillingMode: string
   savedBillingExpr: string
+  savedSeedanceConfig: string
+  savedSeedreamConfig: string
   modelPrice: string
   modelRatio: string
   cacheRatio: string
@@ -85,6 +87,8 @@ type ModelRatioVisualEditorProps = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  seedanceConfig: string
+  seedreamConfig: string
   onChange: (field: string, value: string) => void
   onSave: () => void | Promise<void>
   isSaving: boolean
@@ -111,6 +115,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedAudioCompletionRatio,
     savedBillingMode,
     savedBillingExpr,
+    savedSeedanceConfig,
+    savedSeedreamConfig,
     modelPrice,
     modelRatio,
     cacheRatio,
@@ -121,6 +127,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     audioCompletionRatio,
     billingMode,
     billingExpr,
+    seedanceConfig,
+    seedreamConfig,
     onChange,
     onSave,
     isSaving,
@@ -192,6 +200,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio: savedAudioCompletionRatio,
       billingMode: savedBillingMode,
       billingExpr: savedBillingExpr,
+      seedanceConfig: savedSeedanceConfig,
+      seedreamConfig: savedSeedreamConfig,
     })
     const draftRows = buildModelSnapshots({
       modelPrice,
@@ -204,6 +214,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      seedanceConfig,
+      seedreamConfig,
     })
 
     const savedByName = new Map(savedRows.map((row) => [row.name, row]))
@@ -240,6 +252,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedAudioCompletionRatio,
     savedBillingMode,
     savedBillingExpr,
+    savedSeedanceConfig,
+    savedSeedreamConfig,
     modelPrice,
     modelRatio,
     cacheRatio,
@@ -250,6 +264,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     audioCompletionRatio,
     billingMode,
     billingExpr,
+    seedanceConfig,
+    seedreamConfig,
   ])
 
   const modeCounts = useMemo(
@@ -258,7 +274,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
         (acc, model) => {
           const mode =
             model.billingMode === 'per-request' ||
-            model.billingMode === 'tiered_expr'
+            model.billingMode === 'tiered_expr' ||
+            model.billingMode === 'seedance' ||
+            model.billingMode === 'seedream'
               ? model.billingMode
               : 'per-token'
           acc[mode] += 1
@@ -268,7 +286,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
           'per-token': 0,
           'per-request': 0,
           tiered_expr: 0,
-        } as Record<'per-token' | 'per-request' | 'tiered_expr', number>
+          seedance: 0,
+          seedream: 0,
+        } as Record<
+          | 'per-token'
+          | 'per-request'
+          | 'tiered_expr'
+          | 'seedance'
+          | 'seedream',
+          number
+        >
       ),
     [models]
   )
@@ -289,11 +316,17 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingMode:
           editableModel.billingMode === 'tiered_expr'
             ? 'tiered_expr'
-            : editableModel.price && editableModel.price !== ''
-              ? 'per-request'
-              : 'per-token',
+            : editableModel.billingMode === 'seedance'
+              ? 'seedance'
+              : editableModel.billingMode === 'seedream'
+                ? 'seedream'
+                : editableModel.price && editableModel.price !== ''
+                  ? 'per-request'
+                  : 'per-token',
         billingExpr: editableModel.billingExpr,
         requestRuleExpr: editableModel.requestRuleExpr,
+        seedanceConfig: editableModel.seedanceConfig,
+        seedreamConfig: editableModel.seedreamConfig,
       })
       setEditorOpen(true)
       if (isMobile) setSheetOpen(true)
@@ -364,6 +397,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr,
         { fallback: {}, silent: true }
       )
+      const seedanceConfigMap = safeJsonParse<Record<string, string>>(
+        seedanceConfig,
+        { fallback: {}, silent: true }
+      )
+      const seedreamConfigMap = safeJsonParse<Record<string, string>>(
+        seedreamConfig,
+        { fallback: {}, silent: true }
+      )
 
       delete priceMap[name]
       delete ratioMap[name]
@@ -375,6 +416,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       delete audioCompletionMap[name]
       delete billingModeMap[name]
       delete billingExprMap[name]
+      delete seedanceConfigMap[name]
+      delete seedreamConfigMap[name]
 
       onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
       onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
@@ -395,6 +438,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         'billing_setting.billing_expr',
         JSON.stringify(billingExprMap, null, 2)
       )
+      onChange(
+        'billing_setting.seedance_config',
+        JSON.stringify(seedanceConfigMap, null, 2)
+      )
+      onChange(
+        'billing_setting.seedream_config',
+        JSON.stringify(seedreamConfigMap, null, 2)
+      )
 
       if (editData?.name === name) {
         setEditData(null)
@@ -413,6 +464,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      seedanceConfig,
+      seedreamConfig,
       onChange,
       editData,
     ]
@@ -493,6 +546,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr,
         { fallback: {}, silent: true }
       )
+      const seedanceConfigMap = safeJsonParse<Record<string, string>>(
+        seedanceConfig,
+        { fallback: {}, silent: true }
+      )
+      const seedreamConfigMap = safeJsonParse<Record<string, string>>(
+        seedreamConfig,
+        { fallback: {}, silent: true }
+      )
 
       const setIfPresent = (
         target: Record<string, number>,
@@ -515,6 +576,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
         delete audioCompletionMap[name]
         delete billingModeMap[name]
         delete billingExprMap[name]
+        delete seedanceConfigMap[name]
+        delete seedreamConfigMap[name]
 
         if (data.billingMode === 'tiered_expr') {
           const combined = combineBillingExpr(
@@ -537,6 +600,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
           setIfPresent(imageMap, name, data.imageRatio)
           setIfPresent(audioMap, name, data.audioRatio)
           setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
+        } else if (data.billingMode === 'seedance') {
+          billingModeMap[name] = 'seedance'
+          if (data.seedanceConfig) seedanceConfigMap[name] = data.seedanceConfig
+          // 基准价（480p 不含视频）写入 ModelRatio，后端据此换算档间倍率。
+          setIfPresent(ratioMap, name, data.ratio)
+        } else if (data.billingMode === 'seedream') {
+          billingModeMap[name] = 'seedream'
+          if (data.seedreamConfig) seedreamConfigMap[name] = data.seedreamConfig
         } else if (data.price && data.price !== '') {
           setIfPresent(priceMap, name, data.price)
         } else {
@@ -569,6 +640,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         'billing_setting.billing_expr',
         JSON.stringify(billingExprMap, null, 2)
       )
+      onChange(
+        'billing_setting.seedance_config',
+        JSON.stringify(seedanceConfigMap, null, 2)
+      )
+      onChange(
+        'billing_setting.seedream_config',
+        JSON.stringify(seedreamConfigMap, null, 2)
+      )
     },
     [
       modelPrice,
@@ -581,6 +660,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      seedanceConfig,
+      seedreamConfig,
       onChange,
     ]
   )
@@ -653,6 +734,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     label: 'Expression',
                     value: 'tiered_expr',
                     count: modeCounts.tiered_expr,
+                  },
+                  {
+                    label: 'Seedance',
+                    value: 'seedance',
+                    count: modeCounts.seedance,
+                  },
+                  {
+                    label: 'Seedream',
+                    value: 'seedream',
+                    count: modeCounts.seedream,
                   },
                 ],
               },
@@ -790,6 +881,8 @@ export const ModelRatioVisualEditor = memo(
       prevProps.audioCompletionRatio === nextProps.audioCompletionRatio &&
       prevProps.billingMode === nextProps.billingMode &&
       prevProps.billingExpr === nextProps.billingExpr &&
+      prevProps.seedanceConfig === nextProps.seedanceConfig &&
+      prevProps.seedreamConfig === nextProps.seedreamConfig &&
       prevProps.onChange === nextProps.onChange &&
       prevProps.onSave === nextProps.onSave &&
       prevProps.isSaving === nextProps.isSaving

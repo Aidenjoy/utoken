@@ -208,7 +208,8 @@ func TestUnifiedProtocolConvertedToNative(t *testing.T) {
 	assert.Equal(t, "mapped-model", parsed["model"])
 	// 火山 resolution 枚举为小写，转换时归一
 	assert.Equal(t, "720p", parsed["resolution"])
-	assert.Equal(t, "9:16", parsed["ratio"])
+	// 首尾帧生视频不接受固定画幅，转换时强制 adaptive（与 doubao 转换规则一致）
+	assert.Equal(t, "adaptive", parsed["ratio"])
 	assert.Equal(t, float64(5), parsed["duration"])
 	assert.Equal(t, true, parsed["generate_audio"])
 	assert.Equal(t, false, parsed["watermark"])

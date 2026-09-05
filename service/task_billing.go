@@ -273,8 +273,28 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 // 当任务成功且返回了 totalTokens 时，根据模型倍率和分组倍率重新计算实际扣费额度，
 // 与预扣费的差额进行补扣或退还。支持钱包和订阅计费来源。
 func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTokens int) {
-	if totalTokens <= 0 {
+	actualQuota, clamp, reason, ok := computeTaskQuotaByTokens(task, totalTokens)
+	if !ok {
 		return
+	}
+	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+}
+
+// ComputeTaskQuotaByTokens 是 computeTaskQuotaByTokens 的导出版（纯计算，不结算），
+// 供 adaptor.AdjustBillingOnComplete 复用同一套分组倍率解析与饱和转换，避免重复实现计费公式。
+// 调用前若需按响应分辨率重算 seedance 倍率，应先更新 task 的 BillingContext.OtherRatios。
+// 返回 (quota, ok)：ok=false 表示模型未配置倍率或分组信息缺失，调用方应放弃重算。
+func ComputeTaskQuotaByTokens(task *model.Task, totalTokens int) (int, bool) {
+	quota, _, _, ok := computeTaskQuotaByTokens(task, totalTokens)
+	return quota, ok
+}
+
+// computeTaskQuotaByTokens 计算任务按 token 的最终额度（纯计算，不结算）。
+// 公式：totalTokens × modelRatio × finalGroupRatio × otherMultiplier（饱和转换，防止溢出成负数）。
+// 返回 (quota, clamp, reason, ok)：ok=false 表示无法重算（token<=0 / 模型未配倍率 / 分组缺失）。
+func computeTaskQuotaByTokens(task *model.Task, totalTokens int) (int, *common.QuotaClamp, string, bool) {
+	if totalTokens <= 0 {
+		return 0, nil, "", false
 	}
 
 	modelName := taskModelName(task)
@@ -283,7 +303,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
 	// 只有配置了倍率(非固定价格)时才按 token 重新计费
 	if !hasRatioSetting || modelRatio <= 0 {
-		return
+		return 0, nil, "", false
 	}
 
 	// 获取用户和组的倍率信息
@@ -295,7 +315,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		}
 	}
 	if group == "" {
-		return
+		return 0, nil, "", false
 	}
 
 	groupRatio := ratio_setting.GetGroupRatio(group)
@@ -318,5 +338,5 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
 
 	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+	return actualQuota, clamp, reason, true
 }
