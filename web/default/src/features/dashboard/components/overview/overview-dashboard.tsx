@@ -37,7 +37,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -46,10 +46,18 @@ import {
   CardStaggerItem,
 } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
+import { getModelCategory } from '@/lib/model-category'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -115,7 +123,7 @@ interface RequestExample {
 
 interface HeroSignal {
   label: string
-  value: string
+  value: ReactNode
   icon: LucideIcon
 }
 
@@ -174,7 +182,7 @@ function buildCurlCommand(args: {
     `curl ${args.endpoint} \\`,
     '  -H "Content-Type: application/json" \\',
     `  -H "Authorization: Bearer ${args.apiKey}" \\`,
-    `  -d '{"model":"${args.model}","messages":[{"role":"user","content":"Say hello in one sentence."}]}'`,
+    `  -d '{"model":"${args.model}","messages":[{"role":"user","content":"你是什么模型"}]}'`,
   ].join('\n')
 }
 
@@ -496,6 +504,17 @@ export function OverviewDashboard() {
     [apiKeysQuery.data]
   )
 
+  // 示例请求仅面向语言模型：图像/视频模型走不同接口，chat 示例不适用
+  const languageModels = useMemo(
+    () =>
+      (modelsQuery.data ?? []).filter((m) => getModelCategory(m) === 'text'),
+    [modelsQuery.data]
+  )
+  const [selectedModel, setSelectedModel] = useState('')
+  const currentModel = languageModels.includes(selectedModel)
+    ? selectedModel
+    : (languageModels[0] ?? 'gpt-4o-mini')
+
   const startSteps = useMemo<StartStep[]>(
     () => [
       {
@@ -573,16 +592,41 @@ export function OverviewDashboard() {
       },
       {
         label: t('Model selected'),
-        value: modelsQuery.data?.[0] ?? t('Loading'),
+        value:
+          languageModels.length > 0 ? (
+            <Select
+              items={languageModels.map((m) => ({ value: m, label: m }))}
+              value={currentModel}
+              onValueChange={(v) => {
+                if (v !== null) setSelectedModel(v)
+              }}
+            >
+              <SelectTrigger
+                className='h-7 w-auto max-w-44 gap-1 border-none bg-transparent px-1.5 text-xs shadow-none'
+                aria-label={t('Model selected')}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                {languageModels.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            t('Loading')
+          ),
         icon: Timer,
       },
     ],
-    [apiInfoItems.length, modelsQuery.data, preferredKey, t]
+    [apiInfoItems.length, currentModel, languageModels, preferredKey, t]
   )
 
   const requestExample = useMemo<RequestExample>(() => {
     const endpoint = normalizeEndpoint(apiInfoItems[0]?.url)
-    const model = modelsQuery.data?.[0] ?? 'gpt-4o-mini'
+    const model = currentModel
     const keyName = preferredKey?.name ?? t('No API key yet')
     const ready = Boolean(preferredKey?.id && model)
 
@@ -596,7 +640,7 @@ export function OverviewDashboard() {
         : 'sk-...',
       ready,
     }
-  }, [apiInfoItems, modelsQuery.data, preferredKey, t])
+  }, [apiInfoItems, currentModel, preferredKey, t])
 
   const completedStepCount = startSteps.filter((step) => step.completed).length
   const setupComplete = completedStepCount === startSteps.length
