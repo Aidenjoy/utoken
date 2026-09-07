@@ -331,3 +331,48 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.ElementsMatch(t, []string{"upstream_sleepy_1", "upstream_fast_1", "upstream_fast_2"}, adaptor.fetchedTaskIDs())
 }
+
+// TestSplitTaskUsageTokens 锁定结算日志 token 拆分语义：方舟视频 completion=total
+// 全记 completion；有独立 completion 时 prompt=total-completion；异常输入归零。
+func TestSplitTaskUsageTokens(t *testing.T) {
+	cases := []struct {
+		name           string
+		result         *relaycommon.TaskInfo
+		wantPrompt     int
+		wantCompletion int
+	}{
+		{name: "nil", result: nil, wantPrompt: 0, wantCompletion: 0},
+		{name: "零用量", result: &relaycommon.TaskInfo{}, wantPrompt: 0, wantCompletion: 0},
+		{
+			name:           "方舟视频 completion 等于 total",
+			result:         &relaycommon.TaskInfo{TotalTokens: 196425, CompletionTokens: 196425},
+			wantPrompt:     0,
+			wantCompletion: 196425,
+		},
+		{
+			name:           "仅 total 时全部记 completion",
+			result:         &relaycommon.TaskInfo{TotalTokens: 1000},
+			wantPrompt:     0,
+			wantCompletion: 1000,
+		},
+		{
+			name:           "prompt 与 completion 拆分",
+			result:         &relaycommon.TaskInfo{TotalTokens: 1000, CompletionTokens: 400},
+			wantPrompt:     600,
+			wantCompletion: 400,
+		},
+		{
+			name:           "completion 超过 total 按仅 total 处理",
+			result:         &relaycommon.TaskInfo{TotalTokens: 100, CompletionTokens: 200},
+			wantPrompt:     0,
+			wantCompletion: 100,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prompt, completion := splitTaskUsageTokens(tc.result)
+			assert.Equal(t, tc.wantPrompt, prompt)
+			assert.Equal(t, tc.wantCompletion, completion)
+		})
+	}
+}

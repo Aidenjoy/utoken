@@ -625,6 +625,20 @@ func truncateBase64(s string) string {
 	return s[:maxKeep] + "..."
 }
 
+// splitTaskUsageTokens 把上游任务用量拆成 prompt/completion 用于日志展示：
+// 上游只给 total（如方舟视频 completion=total）时全部按 completion 记录；
+// 给了 completion 时 prompt = total - completion（负值兜底为 0）。
+func splitTaskUsageTokens(taskResult *relaycommon.TaskInfo) (promptTokens, completionTokens int) {
+	if taskResult == nil || taskResult.TotalTokens <= 0 {
+		return 0, 0
+	}
+	completionTokens = taskResult.CompletionTokens
+	if completionTokens <= 0 || completionTokens > taskResult.TotalTokens {
+		return 0, taskResult.TotalTokens
+	}
+	return taskResult.TotalTokens - completionTokens, completionTokens
+}
+
 // settleTaskBillingOnComplete 任务完成时的统一计费调整。
 // 优先级：1. adaptor.AdjustBillingOnComplete 返回正数 → 使用 adaptor 计算的额度
 //
@@ -638,7 +652,8 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 	}
 	// 1. 优先让 adaptor 决定最终额度
 	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
-		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整")
+		promptTokens, completionTokens := splitTaskUsageTokens(taskResult)
+		RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", promptTokens, completionTokens)
 		return
 	}
 	// 2. 回退到 token 重算
