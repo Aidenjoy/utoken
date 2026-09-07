@@ -338,9 +338,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       </div>
 
       {/* Description */}
-      <p className='text-muted-foreground mt-2 line-clamp-1 flex-1 text-[13px] leading-relaxed sm:mt-4 sm:line-clamp-2 sm:min-h-[2.5rem]'>
-        {props.model.description || t('No description available.')}
-      </p>
+      {props.model.description && (
+        <p className='text-muted-foreground mt-2 line-clamp-1 flex-1 text-[13px] leading-relaxed sm:mt-4 sm:line-clamp-2 sm:min-h-[2.5rem]'>
+          {props.model.description}
+        </p>
+      )}
 
       {/* Footer: left metadata and right performance summary share row alignment */}
       <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 sm:mt-4'>
