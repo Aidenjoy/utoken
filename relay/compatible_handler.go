@@ -101,7 +101,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 		if common.DebugEnabled {
 			if debugBytes, bErr := storage.Bytes(); bErr == nil {
-				logger.LogDebug(c, "requestBody: %s", debugBytes)
+				logger.LogDebugJSON(c, "requestBody: %s", debugBytes)
 			}
 		}
 		requestBody = common.ReaderOnly(storage)
@@ -173,7 +173,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			}
 		}
 
-		logger.LogDebug(c, "text request body: %s", jsonData)
+		logger.LogDebugJSON(c, "text request body: %s", jsonData)
 
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {

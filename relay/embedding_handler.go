@@ -57,7 +57,7 @@ func EmbeddingHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		}
 	}
 
-	logger.LogDebug(c, "converted embedding request body: %s", jsonData)
+	logger.LogDebugJSON(c, "converted embedding request body: %s", jsonData)
 	body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())

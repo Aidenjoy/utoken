@@ -462,7 +462,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
-	logger.LogDebug(ctx, "updateVideoSingleTask response: %s", responseBody)
+	logger.LogDebugJSON(ctx, "updateVideoSingleTask response: %s", responseBody)
 
 	snap := task.Snapshot()
 
