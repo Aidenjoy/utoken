@@ -35,7 +35,11 @@ type Pricing struct {
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
 	BillingMode            string                  `json:"billing_mode,omitempty"`
 	BillingExpr            string                  `json:"billing_expr,omitempty"`
-	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	// SeedanceConfig / SeedreamConfig 为按模型单价配置的原始 JSON 字符串（见 billing_setting），
+	// 仅当对应计费模式生效时填充，供模型广场展示按分辨率/按张单价
+	SeedanceConfig string `json:"seedance_config,omitempty"`
+	SeedreamConfig string `json:"seedream_config,omitempty"`
+	PricingVersion string `json:"pricing_version,omitempty"`
 }
 
 type PricingVendor struct {
@@ -286,6 +290,8 @@ func updatePricing() {
 	}
 
 	pricingMap = make([]Pricing, 0)
+	seedanceConfigs := billing_setting.GetSeedanceConfigCopy()
+	seedreamConfigs := billing_setting.GetSeedreamConfigCopy()
 	for model, groups := range modelGroupsMap {
 		pricing := Pricing{
 			ModelName:              model,
@@ -331,10 +337,22 @@ func updatePricing() {
 			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(model)
 			pricing.AudioCompletionRatio = &audioCompletionRatio
 		}
-		if billingMode := billing_setting.GetBillingMode(model); billingMode == "tiered_expr" {
+		switch billing_setting.GetBillingMode(model) {
+		case billing_setting.BillingModeTieredExpr:
 			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
-				pricing.BillingMode = billingMode
+				pricing.BillingMode = billing_setting.BillingModeTieredExpr
 				pricing.BillingExpr = expr
+			}
+		case billing_setting.BillingModeSeedance:
+			// 缺单价配置时保持回退语义（relay 侧回退硬编码单价表），广场按常规倍率展示
+			if cfg, ok := seedanceConfigs[model]; ok && strings.TrimSpace(cfg) != "" {
+				pricing.BillingMode = billing_setting.BillingModeSeedance
+				pricing.SeedanceConfig = cfg
+			}
+		case billing_setting.BillingModeSeedream:
+			if cfg, ok := seedreamConfigs[model]; ok && strings.TrimSpace(cfg) != "" {
+				pricing.BillingMode = billing_setting.BillingModeSeedream
+				pricing.SeedreamConfig = cfg
 			}
 		}
 		pricingMap = append(pricingMap, pricing)

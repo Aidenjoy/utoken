@@ -38,8 +38,15 @@ import { isTokenBasedModel } from '../lib/model-helpers'
 import {
   formatPrice,
   formatRequestPrice,
+  formatUnitPrice,
   stripTrailingZeros,
 } from '../lib/price'
+import {
+  getSeedanceTiers,
+  getSeedreamPrices,
+  isSeedanceBillingModel,
+  isSeedreamBillingModel,
+} from '../lib/seed-price'
 import type { PricingModel, TokenUnit } from '../types'
 
 // ----------------------------------------------------------------------------
@@ -99,10 +106,15 @@ export function usePricingColumns(
       header: t('Type'),
       cell: ({ row }) => {
         const isTokenBased = row.original.quota_type === QUOTA_TYPE_VALUES.TOKEN
+        const seedMode = isSeedreamBillingModel(row.original)
+          ? t('Seedream')
+          : isSeedanceBillingModel(row.original)
+            ? t('Seedance')
+            : null
         return (
           <StatusBadge
-            label={isTokenBased ? t('Token') : t('Request')}
-            variant={isTokenBased ? 'info' : 'neutral'}
+            label={seedMode || (isTokenBased ? t('Token') : t('Request'))}
+            variant={isTokenBased || seedMode ? 'info' : 'neutral'}
             copyable={false}
             className='-ml-1.5'
           />
@@ -182,6 +194,43 @@ export function usePricingColumns(
         }
 
         const isTokenBased = isTokenBasedModel(model)
+        const seedreamPrices = getSeedreamPrices(model)
+
+        if (seedreamPrices) {
+          const inputImage = stripTrailingZeros(
+            formatUnitPrice(
+              model,
+              seedreamPrices.inputImage,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              selectedGroup
+            )
+          )
+          const outputImage = stripTrailingZeros(
+            formatUnitPrice(
+              model,
+              seedreamPrices.outputImage,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              selectedGroup
+            )
+          )
+
+          return (
+            <div className='max-w-full min-w-0'>
+              <span className='font-mono text-sm tabular-nums'>
+                {inputImage}
+                <span className='text-muted-foreground/40 mx-1'>/</span>
+                {outputImage}
+              </span>
+              <div className='text-muted-foreground/50 text-[10px]'>
+                / {t('Image')}
+              </div>
+            </div>
+          )
+        }
 
         if (isTokenBased) {
           const inputPrice = stripTrailingZeros(
@@ -206,6 +255,7 @@ export function usePricingColumns(
               selectedGroup
             )
           )
+          const tierCount = getSeedanceTiers(model)?.length ?? 0
 
           return (
             <div className='max-w-full min-w-0'>
@@ -216,6 +266,8 @@ export function usePricingColumns(
               </span>
               <div className='text-muted-foreground/50 text-[10px]'>
                 / {tokenUnitLabel} tokens
+                {tierCount > 0 &&
+                  ` · ${t('{{count}} tiers', { count: tierCount })}`}
               </div>
             </div>
           )
@@ -291,7 +343,11 @@ export function usePricingColumns(
 
         const isTokenBased = isTokenBasedModel(model)
 
-        if (!isTokenBased || model.cache_ratio == null) {
+        if (
+          !isTokenBased ||
+          model.cache_ratio == null ||
+          isSeedreamBillingModel(model)
+        ) {
           return <span className='text-muted-foreground/30 text-xs'>—</span>
         }
 

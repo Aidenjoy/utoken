@@ -27,12 +27,19 @@ import { cn } from '@/lib/utils'
 
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
+  formatDynamicUnitPrice,
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
-import { formatPrice, formatRequestPrice } from '../lib/price'
+import { getDisplayGroupRatio, isTokenBasedModel } from '../lib/model-helpers'
+import { formatPrice, formatRequestPrice, formatUnitPrice } from '../lib/price'
+import {
+  getSeedanceBasePrice,
+  getSeedanceTiers,
+  getSeedreamPrices,
+  seedanceTierUnitPricePer1M,
+} from '../lib/seed-price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
 
@@ -66,6 +73,34 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     props.model.billing_mode === 'tiered_expr' &&
     Boolean(props.model.billing_expr)
   const hasCachedPrice = isTokenBased && props.model.cache_ratio != null
+  const seedreamPrices = getSeedreamPrices(props.model)
+  const seedanceTiers = getSeedanceTiers(props.model)
+  const seedanceBase = seedanceTiers ? getSeedanceBasePrice(seedanceTiers) : 0
+  const seedanceEntries = seedanceTiers
+    ? seedanceTiers
+        .map((tier) => ({
+          tier,
+          unit: seedanceTierUnitPricePer1M(
+            props.model,
+            seedanceBase,
+            tier,
+            'withoutVideo'
+          ),
+        }))
+        .filter(
+          (
+            entry
+          ): entry is {
+            tier: (typeof seedanceTiers)[number]
+            unit: number
+          } => entry.unit !== null
+        )
+    : []
+  const seedModeLabel = seedreamPrices
+    ? t('Seedream')
+    : seedanceTiers
+      ? t('Seedance')
+      : null
   const dynamicSummary = isDynamicPricing
     ? getDynamicPricingSummary(props.model, {
         tokenUnit,
@@ -128,6 +163,65 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </span>
       )
     }
+  } else if (seedreamPrices) {
+    priceSummary = (
+      <>
+        <span className='text-muted-foreground whitespace-nowrap'>
+          {t('Input image price')}{' '}
+          <span className='text-foreground font-mono font-semibold'>
+            {formatUnitPrice(
+              props.model,
+              seedreamPrices.inputImage,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              props.selectedGroup
+            )}
+          </span>
+          / {t('Image')}
+        </span>
+        <span className='text-muted-foreground whitespace-nowrap'>
+          {t('Output image price')}{' '}
+          <span className='text-foreground font-mono font-semibold'>
+            {formatUnitPrice(
+              props.model,
+              seedreamPrices.outputImage,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              props.selectedGroup
+            )}
+          </span>
+          / {t('Image')}
+        </span>
+      </>
+    )
+  } else if (seedanceEntries.length > 0) {
+    priceSummary = (
+      <>
+        {seedanceEntries.map(({ tier, unit }) => (
+          <span
+            key={tier.resolution}
+            className='text-muted-foreground whitespace-nowrap'
+          >
+            {tier.resolution}{' '}
+            <span className='text-foreground font-mono font-semibold'>
+              {formatDynamicUnitPrice(unit, {
+                tokenUnit,
+                showRechargePrice,
+                priceRate,
+                usdExchangeRate,
+                groupRatioMultiplier: getDisplayGroupRatio(
+                  props.model,
+                  props.selectedGroup
+                ),
+              })}
+            </span>
+            /{tokenUnitLabel}
+          </span>
+        ))}
+      </>
+    )
   } else if (isTokenBased) {
     priceSummary = (
       <>
@@ -257,8 +351,20 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             </span>
           )}
           <span className='text-muted-foreground text-xs font-medium'>
-            {isTokenBased ? t('Token-based') : t('Per Request')}
+            {seedreamPrices
+              ? t('Per-image pricing')
+              : isTokenBased
+                ? t('Token-based')
+                : t('Per Request')}
           </span>
+          {seedModeLabel && (
+            <StatusBadge
+              label={seedModeLabel}
+              variant='info'
+              copyable={false}
+              size='sm'
+            />
+          )}
           {isDynamicPricing && (
             <StatusBadge
               label={t('Dynamic Pricing')}
@@ -276,9 +382,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               {item}
             </span>
           ))}
-          <span className='text-muted-foreground/50 text-xs'>
-            {tokenUnitLabel}
-          </span>
+          {!seedreamPrices && (
+            <span className='text-muted-foreground/50 text-xs'>
+              {tokenUnitLabel}
+            </span>
+          )}
           {hiddenCount > 0 && (
             <span className='text-muted-foreground/40 text-xs'>
               +{hiddenCount}

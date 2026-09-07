@@ -61,6 +61,7 @@ import { cn } from '@/lib/utils'
 import { DEFAULT_TOKEN_UNIT, QUOTA_TYPE_VALUES } from '../constants'
 import { usePricingData } from '../hooks/use-pricing-data'
 import {
+  formatDynamicUnitPrice,
   getDynamicPriceEntries,
   getDynamicPricingSummary,
   getDynamicPricingTiers,
@@ -68,7 +69,21 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
-import { formatFixedPrice, formatGroupPrice } from '../lib/price'
+import {
+  formatFixedPrice,
+  formatGroupPrice,
+  formatUnitPriceWithRatio,
+} from '../lib/price'
+import {
+  getSeedanceBasePrice,
+  getSeedanceTiers,
+  getSeedreamPrices,
+  isSeedanceBillingModel,
+  isSeedreamBillingModel,
+  seedanceTierUnitPricePer1M,
+  type SeedanceTierPrice,
+  type SeedanceTierVariant,
+} from '../lib/seed-price'
 import type {
   ModelCapability,
   PriceType,
@@ -558,10 +573,20 @@ function ModelHeader(props: { model: PricingModel }) {
         )}
         <span className='text-muted-foreground/30'>·</span>
         <span className='text-muted-foreground/70'>
-          {model.quota_type === QUOTA_TYPE_VALUES.TOKEN
-            ? t('Token-based')
-            : t('Per Request')}
+          {isSeedreamBillingModel(model)
+            ? t('Per-image pricing')
+            : model.quota_type === QUOTA_TYPE_VALUES.TOKEN
+              ? t('Token-based')
+              : t('Per Request')}
         </span>
+        {(isSeedreamBillingModel(model) || isSeedanceBillingModel(model)) && (
+          <>
+            <span className='text-muted-foreground/30'>·</span>
+            <span className='rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-500/20 dark:text-sky-300'>
+              {isSeedreamBillingModel(model) ? t('Seedream') : t('Seedance')}
+            </span>
+          </>
+        )}
         {model.billing_mode === 'tiered_expr' && model.billing_expr && (
           <>
             <span className='text-muted-foreground/30'>·</span>
@@ -598,6 +623,29 @@ function PriceSection(props: {
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
   const baseGroupKey = '_base'
   const baseGroupRatioMap = { [baseGroupKey]: 1 }
+  const seedreamPrices = getSeedreamPrices(props.model)
+  const seedanceTiers = getSeedanceTiers(props.model)
+  const seedanceBase = seedanceTiers ? getSeedanceBasePrice(seedanceTiers) : 0
+  const formatSeedanceTier = (
+    tier: SeedanceTierPrice,
+    variant: SeedanceTierVariant,
+    groupRatioMultiplier = 1
+  ) => {
+    const unit = seedanceTierUnitPricePer1M(
+      props.model,
+      seedanceBase,
+      tier,
+      variant
+    )
+    if (unit === null) return '-'
+    return formatDynamicUnitPrice(unit, {
+      tokenUnit: props.tokenUnit,
+      showRechargePrice: props.showRechargePrice,
+      priceRate: props.priceRate,
+      usdExchangeRate: props.usdExchangeRate,
+      groupRatioMultiplier,
+    })
+  }
   const dynamicSummary = getDynamicPricingSummary(props.model, {
     tokenUnit: props.tokenUnit,
     showRechargePrice: props.showRechargePrice,
@@ -722,6 +770,39 @@ function PriceSection(props: {
     )
   }
 
+  if (seedreamPrices) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <div className='grid grid-cols-2 gap-2'>
+          {[
+            { label: t('Input image price'), price: seedreamPrices.inputImage },
+            {
+              label: t('Output image price'),
+              price: seedreamPrices.outputImage,
+            },
+          ].map((item) => (
+            <div key={item.label} className='bg-muted/20 rounded-lg border p-3'>
+              <div className='text-muted-foreground text-xs'>{item.label}</div>
+              <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
+                {formatUnitPriceWithRatio(
+                  item.price,
+                  1,
+                  props.showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate
+                )}
+                <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                  / {t('Image')}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
   if (!isTokenBased) {
     return (
       <section>
@@ -790,6 +871,32 @@ function PriceSection(props: {
                 </span>
                 <span className='text-muted-foreground font-mono text-sm tabular-nums'>
                   {renderPrice(item.type)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {seedanceTiers && seedanceTiers.length > 0 && (
+        <div className='bg-muted/20 mt-3 rounded-lg border px-3 py-2.5'>
+          <div className='space-y-1.5'>
+            {seedanceTiers.map((tier) => (
+              <div
+                key={tier.resolution}
+                className='flex items-baseline justify-between gap-4'
+              >
+                <span className='text-muted-foreground/70 text-sm'>
+                  {tier.resolution}
+                </span>
+                <span className='text-muted-foreground font-mono text-sm tabular-nums'>
+                  {t('Without video input')}{' '}
+                  {formatSeedanceTier(tier, 'withoutVideo')}
+                  <span className='text-muted-foreground/40 mx-1.5'>·</span>
+                  {t('With video input')}{' '}
+                  {formatSeedanceTier(tier, 'withVideo')}
+                  <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                    / {tokenUnitLabel}
+                  </span>
                 </span>
               </div>
             ))}
@@ -889,6 +996,9 @@ function GroupPricingSection(props: {
 
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
+  const seedreamPrices = getSeedreamPrices(props.model)
+  const seedanceTiers = getSeedanceTiers(props.model)
+  const seedanceBase = seedanceTiers ? getSeedanceBasePrice(seedanceTiers) : 0
 
   const extraPriceTypes = useMemo(() => {
     const types: { label: string; type: PriceType }[] = []
@@ -1023,6 +1133,146 @@ function GroupPricingSection(props: {
                           .get(tier)
                           ?.get(fieldEntry.field) ?? '-',
                     })),
+                  ]}
+                />
+              </div>
+            )
+          })}
+          <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
+            {t('Prices shown per')} {tokenUnitLabel} tokens
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  if (seedreamPrices) {
+    return (
+      <section>
+        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
+        <StaticDataTable
+          className='-mx-4 rounded-none border-0 sm:mx-0'
+          tableClassName='text-sm'
+          headerRowClassName='hover:bg-transparent'
+          data={availableGroups}
+          getRowKey={(group) => group}
+          columns={[
+            {
+              id: 'group',
+              header: t('Group'),
+              className: thClass,
+              cellClassName: 'py-2.5',
+              cell: (group) => <GroupBadge group={group} size='sm' />,
+            },
+            {
+              id: 'ratio',
+              header: t('Ratio'),
+              className: thClass,
+              cellClassName: 'text-muted-foreground py-2.5 font-mono',
+              cell: (group) => `${props.groupRatio[group] || 1}x`,
+            },
+            {
+              id: 'input_image',
+              header: t('Input image price'),
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: (group: string) =>
+                formatUnitPriceWithRatio(
+                  seedreamPrices.inputImage,
+                  props.groupRatio[group] || 1,
+                  showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate
+                ),
+            },
+            {
+              id: 'output_image',
+              header: t('Output image price'),
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: (group: string) =>
+                formatUnitPriceWithRatio(
+                  seedreamPrices.outputImage,
+                  props.groupRatio[group] || 1,
+                  showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate
+                ),
+            },
+          ]}
+        />
+      </section>
+    )
+  }
+
+  if (seedanceTiers && seedanceTiers.length > 0 && seedanceBase > 0) {
+    const formatTier = (
+      tier: SeedanceTierPrice,
+      variant: SeedanceTierVariant,
+      groupRatio: number
+    ) => {
+      const unit = seedanceTierUnitPricePer1M(
+        props.model,
+        seedanceBase,
+        tier,
+        variant
+      )
+      if (unit === null) return '-'
+      return formatDynamicUnitPrice(unit, {
+        tokenUnit: props.tokenUnit,
+        showRechargePrice,
+        priceRate: props.priceRate,
+        usdExchangeRate: props.usdExchangeRate,
+        groupRatioMultiplier: groupRatio,
+      })
+    }
+
+    return (
+      <section>
+        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
+        <div className='space-y-3'>
+          {availableGroups.map((group) => {
+            const ratio = props.groupRatio[group] || 1
+            return (
+              <div key={group} className='overflow-hidden rounded-lg border'>
+                <div className='bg-muted/20 flex items-center justify-between gap-3 border-b px-3 py-2'>
+                  <GroupBadge group={group} size='sm' />
+                  <span className='text-muted-foreground font-mono text-xs'>
+                    {ratio}x
+                  </span>
+                </div>
+                <StaticDataTable
+                  className='rounded-none border-0'
+                  tableClassName='text-sm'
+                  headerRowClassName='hover:bg-transparent'
+                  data={seedanceTiers}
+                  getRowKey={(tier) => `${group}-${tier.resolution}`}
+                  columns={[
+                    {
+                      id: 'resolution',
+                      header: t('Resolution'),
+                      className: thClass,
+                      cellClassName: 'text-muted-foreground py-2.5',
+                      cell: (tier) => tier.resolution,
+                    },
+                    {
+                      id: 'without_video',
+                      header: t('Without video input'),
+                      className: `${thClass} text-right`,
+                      cellClassName: 'py-2.5 text-right font-mono',
+                      cell: (tier: SeedanceTierPrice) =>
+                        formatTier(tier, 'withoutVideo', ratio),
+                    },
+                    {
+                      id: 'with_video',
+                      header: t('With video input'),
+                      className: `${thClass} text-right`,
+                      cellClassName: 'py-2.5 text-right font-mono',
+                      cell: (tier: SeedanceTierPrice) =>
+                        formatTier(tier, 'withVideo', ratio),
+                    },
                   ]}
                 />
               </div>

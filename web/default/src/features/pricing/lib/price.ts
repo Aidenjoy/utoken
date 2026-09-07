@@ -252,21 +252,58 @@ export function formatRequestPrice(
   if (model.quota_type !== QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
   }
+  return formatUnitPrice(
+    model,
+    model.model_price || 0,
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate,
+    selectedGroup
+  )
+}
 
-  const displayGroupRatio = getDisplayGroupRatio(model, selectedGroup)
-
-  let priceInUSD = (model.model_price || 0) * displayGroupRatio
-
+/**
+ * Format a fixed per-unit price (same dimension as model_price, e.g. seedream
+ * per-image prices) with an explicit group ratio.
+ */
+export function formatUnitPriceWithRatio(
+  unitPriceInUSD: number,
+  groupRatio: number,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1
+): string {
+  let priceInUSD = unitPriceInUSD * groupRatio
   priceInUSD = applyRechargeRate(
     priceInUSD,
     showWithRecharge,
     priceRate,
     usdExchangeRate
   )
-
   return formatCurrencyFromUSD(priceInUSD, {
     digitsLarge: 4,
     digitsSmall: 4,
     abbreviate: false,
   })
+}
+
+/**
+ * Format a fixed per-unit price using the display group ratio (selected group
+ * or the best available group), mirroring formatRequestPrice semantics.
+ */
+export function formatUnitPrice(
+  model: PricingModel,
+  unitPriceInUSD: number,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  selectedGroup?: string
+): string {
+  return formatUnitPriceWithRatio(
+    unitPriceInUSD,
+    getDisplayGroupRatio(model, selectedGroup),
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate
+  )
 }

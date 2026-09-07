@@ -54,6 +54,10 @@ export type PricingModel = {
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */
   billing_expr?: string
+  /** Raw seedance per-resolution price config JSON (billing_mode === 'seedance') */
+  seedance_config?: string
+  /** Raw seedream per-image price config JSON (billing_mode === 'seedream') */
+  seedream_config?: string
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
   /**
