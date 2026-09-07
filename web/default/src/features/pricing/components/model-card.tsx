@@ -35,10 +35,9 @@ import { parseTags } from '../lib/filters'
 import { getDisplayGroupRatio, isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice, formatUnitPrice } from '../lib/price'
 import {
-  getSeedanceBasePrice,
   getSeedanceTiers,
   getSeedreamPrices,
-  seedanceTierUnitPricePer1M,
+  seedanceTierEnteredPricePer1M,
 } from '../lib/seed-price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
@@ -75,17 +74,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const hasCachedPrice = isTokenBased && props.model.cache_ratio != null
   const seedreamPrices = getSeedreamPrices(props.model)
   const seedanceTiers = getSeedanceTiers(props.model)
-  const seedanceBase = seedanceTiers ? getSeedanceBasePrice(seedanceTiers) : 0
   const seedanceEntries = seedanceTiers
     ? seedanceTiers
         .map((tier) => ({
           tier,
-          unit: seedanceTierUnitPricePer1M(
-            props.model,
-            seedanceBase,
-            tier,
-            'withoutVideo'
-          ),
+          unit: seedanceTierEnteredPricePer1M(tier, 'withoutVideo'),
         }))
         .filter(
           (

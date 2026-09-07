@@ -75,12 +75,11 @@ import {
   formatUnitPriceWithRatio,
 } from '../lib/price'
 import {
-  getSeedanceBasePrice,
   getSeedanceTiers,
   getSeedreamPrices,
   isSeedanceBillingModel,
   isSeedreamBillingModel,
-  seedanceTierUnitPricePer1M,
+  seedanceTierEnteredPricePer1M,
   type SeedanceTierPrice,
   type SeedanceTierVariant,
 } from '../lib/seed-price'
@@ -625,18 +624,12 @@ function PriceSection(props: {
   const baseGroupRatioMap = { [baseGroupKey]: 1 }
   const seedreamPrices = getSeedreamPrices(props.model)
   const seedanceTiers = getSeedanceTiers(props.model)
-  const seedanceBase = seedanceTiers ? getSeedanceBasePrice(seedanceTiers) : 0
   const formatSeedanceTier = (
     tier: SeedanceTierPrice,
     variant: SeedanceTierVariant,
     groupRatioMultiplier = 1
   ) => {
-    const unit = seedanceTierUnitPricePer1M(
-      props.model,
-      seedanceBase,
-      tier,
-      variant
-    )
+    const unit = seedanceTierEnteredPricePer1M(tier, variant)
     if (unit === null) return '-'
     return formatDynamicUnitPrice(unit, {
       tokenUnit: props.tokenUnit,
@@ -998,7 +991,6 @@ function GroupPricingSection(props: {
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
   const seedreamPrices = getSeedreamPrices(props.model)
   const seedanceTiers = getSeedanceTiers(props.model)
-  const seedanceBase = seedanceTiers ? getSeedanceBasePrice(seedanceTiers) : 0
 
   const extraPriceTypes = useMemo(() => {
     const types: { label: string; type: PriceType }[] = []
@@ -1206,18 +1198,13 @@ function GroupPricingSection(props: {
     )
   }
 
-  if (seedanceTiers && seedanceTiers.length > 0 && seedanceBase > 0) {
+  if (seedanceTiers && seedanceTiers.length > 0) {
     const formatTier = (
       tier: SeedanceTierPrice,
       variant: SeedanceTierVariant,
       groupRatio: number
     ) => {
-      const unit = seedanceTierUnitPricePer1M(
-        props.model,
-        seedanceBase,
-        tier,
-        variant
-      )
+      const unit = seedanceTierEnteredPricePer1M(tier, variant)
       if (unit === null) return '-'
       return formatDynamicUnitPrice(unit, {
         tokenUnit: props.tokenUnit,

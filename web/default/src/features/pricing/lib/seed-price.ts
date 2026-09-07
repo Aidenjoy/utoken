@@ -23,14 +23,13 @@ import type { PricingModel } from '../types'
 //
 // 后端 billing_setting 为这两种计费模式按模型存储单价 JSON（原始字符串经
 // /api/pricing 的 seedance_config / seedream_config 下发），这里负责解析与
-// 换算展示价格：seedream 按张单价与 model_price 同量纲；seedance 配置值仅
-// 用于推导档间倍率（基准档 = 480p 不含视频输入，对应 model_ratio 基准价），
-// 与 relay 侧 GetVideoInputRatio 的语义保持一致。
+// 展示：seedream 为按张单价（与 model_price 同量纲）；seedance 各档配置值即
+// 每百万 token 的绝对单价（与编辑器录入的 $/1M 同量纲），展示时按录入值直接
+// 呈现，不再经 model_ratio 换算，未配置的档（<=0）不展示。
 // ----------------------------------------------------------------------------
 
 // 分辨率档固定顺序（与系统设置编辑器一致）；其余自定义档按名称附后
 export const SEEDANCE_RESOLUTION_ORDER = ['480p', '720p', '1080p', '4k'] as const
-export const SEEDANCE_BASE_RESOLUTION = '480p'
 
 export type SeedreamPrices = {
   inputImage: number
@@ -120,30 +119,14 @@ export function getSeedanceTiers(model: PricingModel): SeedanceTierPrice[] | nul
 }
 
 /**
- * Seedance base price (480p without video input); relay uses it as the
- * denominator when deriving per-tier ratios.
+ * Seedance tier display price (USD per 1M tokens, group ratio excluded):
+ * the value entered for that tier in system settings. Returns null when the
+ * tier variant is not configured (<= 0) so callers can hide or show '-'.
  */
-export function getSeedanceBasePrice(tiers: SeedanceTierPrice[]): number {
-  return (
-    tiers.find((tier) => tier.resolution === SEEDANCE_BASE_RESOLUTION)
-      ?.withoutVideo ?? 0
-  )
-}
-
-/**
- * Effective token unit price (USD per 1M input tokens, group ratio excluded)
- * for a seedance tier: base input price (model_ratio) × tier ratio, mirroring
- * the billing formula where the tier ratio multiplies the whole quota as an
- * OtherRatio. Returns null when base or tier price is missing.
- */
-export function seedanceTierUnitPricePer1M(
-  model: PricingModel,
-  basePrice: number,
+export function seedanceTierEnteredPricePer1M(
   tier: SeedanceTierPrice,
   variant: SeedanceTierVariant
 ): number | null {
-  if (!(basePrice > 0)) return null
   const price = tier[variant]
-  if (!(price > 0)) return null
-  return model.model_ratio * 2 * (price / basePrice)
+  return price > 0 ? price : null
 }
