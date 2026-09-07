@@ -4613,6 +4613,7 @@
     "Slug must be less than 100 characters": "スラッグは100文字以内にしてください",
     "Smallest USD amount users can recharge (Epay)": "ユーザーがチャージできる最小USD金額 (Epay)",
     "Smart": "スマート",
+    "Smart Duration": "スマート時間",
     "Smart Ratio": "スマート比率",
     "Smart Routing": "スマートルーティング",
     "SMTP Email": "SMTPメール",

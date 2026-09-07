@@ -122,6 +122,14 @@ function buildSubmitPayload(
   }
   // text_to_video: no media content needed
 
+  // Ark 视频编辑任务（含参考视频）输出比例跟随输入视频，显式 ratio 不能发送；
+  // duration 由用户在时长选择器中决定：「智能时长」(-1) 表示跟随输入视频。
+  const hasReferenceVideo =
+    config.mode === 'reference' &&
+    config.mediaItems.some(
+      (item) => item.type === 'video' && Boolean(item.remoteUrl || item.url)
+    )
+
   const payload: VideoSubmitRequest = {
     model: config.model,
     content,
@@ -134,7 +142,7 @@ function buildSubmitPayload(
     watermark: false,
     group: config.group,
   }
-  if (config.ratio !== 'smart') {
+  if (config.ratio !== 'smart' && !hasReferenceVideo) {
     payload.ratio = config.ratio
   }
 

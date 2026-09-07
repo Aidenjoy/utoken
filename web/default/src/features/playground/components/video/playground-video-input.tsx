@@ -30,12 +30,14 @@ import { cn } from '@/lib/utils'
 import { listAssets } from '../../api'
 import {
   ASPECT_RATIOS,
+  DEFAULT_VIDEO_CONFIG,
   DURATION_OPTIONS,
   IMAGE_ASPECT_RATIO_RANGE,
   MAX_AUDIOS,
   MAX_REFERENCE_IMAGES,
   MAX_VIDEOS,
   RESOLUTIONS,
+  SMART_VIDEO_DURATION,
   VIDEO_COUNT_RANGE,
   VIDEO_MODES,
 } from '../../constants'
@@ -309,6 +311,19 @@ export function PlaygroundVideoInput({
   const audioMediaItems = config.mediaItems.filter(
     (item) => item.type === 'audio'
   )
+
+  // Ark 视频编辑（含参考视频）输出时长跟随输入视频：存在参考视频时自动切到
+  // 「智能时长」(-1)，视频全部移除后回落默认时长。用户在含视频时仍可手动改回
+  // 固定秒数（上游会按视频编辑约束校验），此处不强制锁定。
+  const hasReferenceVideo = videoMediaItems.length > 0
+  useEffect(() => {
+    if (hasReferenceVideo && config.duration !== SMART_VIDEO_DURATION) {
+      updateField('duration', SMART_VIDEO_DURATION)
+    } else if (!hasReferenceVideo && config.duration === SMART_VIDEO_DURATION) {
+      updateField('duration', DEFAULT_VIDEO_CONFIG.duration)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasReferenceVideo])
 
   const handleReferenceImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -1410,6 +1425,7 @@ function ConfigDurationGrid({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const isSmart = value === SMART_VIDEO_DURATION
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -1420,13 +1436,32 @@ function ConfigDurationGrid({
             title={t('Video duration')}
             aria-label={t('Video duration')}
           >
-            <span className='font-mono tabular-nums'>{value}s</span>
+            {isSmart ? (
+              <span>{t('Smart Duration')}</span>
+            ) : (
+              <span className='font-mono tabular-nums'>{value}s</span>
+            )}
             <span className='text-muted-foreground'>▾</span>
           </button>
         }
       />
       <PopoverContent side='top' align='start' className='w-auto p-2'>
         <div className='grid grid-cols-6 gap-1'>
+          {/* 智能时长：duration=-1，输出时长跟随输入视频（Ark 视频编辑任务） */}
+          <button
+            className={cn(
+              'col-span-6 h-7 rounded-md text-xs font-medium transition-colors',
+              isSmart
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted hover:bg-muted/70 text-foreground'
+            )}
+            onClick={() => {
+              onChange(SMART_VIDEO_DURATION)
+              setOpen(false)
+            }}
+          >
+            {t('Smart Duration')}
+          </button>
           {options.map((d) => (
             <button
               key={d}

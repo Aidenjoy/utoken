@@ -4613,6 +4613,7 @@
     "Slug must be less than 100 characters": "Le slug doit contenir moins de 100 caractères",
     "Smallest USD amount users can recharge (Epay)": "Montant minimum en USD que les utilisateurs peuvent recharger (Epay)",
     "Smart": "Intelligent",
+    "Smart Duration": "Durée intelligente",
     "Smart Ratio": "Format intelligent",
     "Smart Routing": "Smart Routing",
     "SMTP Email": "E-mail SMTP",

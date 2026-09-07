@@ -93,8 +93,16 @@ func TestValidateRequestAndSetAction(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "negative duration rejected",
-			body:    `{"model": "m", "duration": -1}`,
+			name: "duration -1 accepted (video editing follows input video)",
+			body: `{"model": "m", "duration": -1, "resolution": "1080p", "content": [
+				{"type": "text", "text": "x"},
+				{"type": "video_url", "video_url": {"url": "https://example.com/ref.mp4"}, "role": "reference_video"}
+			]}`,
+			wantErr: false,
+		},
+		{
+			name:    "negative duration below -1 rejected",
+			body:    `{"model": "m", "duration": -2}`,
 			wantErr: true,
 		},
 		{
@@ -237,8 +245,13 @@ func TestValidateUnifiedDurationBounds(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "negative metadata duration rejected",
+			name:    "metadata duration -1 accepted (video editing follows input video)",
 			body:    `{"model":"m","prompt":"p","metadata":{"duration":-1}}`,
+			wantErr: false,
+		},
+		{
+			name:    "negative metadata duration below -1 rejected",
+			body:    `{"model":"m","prompt":"p","metadata":{"duration":-2}}`,
 			wantErr: true,
 		},
 		{

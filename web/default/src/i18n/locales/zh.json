@@ -4613,6 +4613,7 @@
     "Slug must be less than 100 characters": "Slug 不能超过 100 个字符",
     "Smallest USD amount users can recharge (Epay)": "用户可以充值的最小美元金额 (Epay)",
     "Smart": "智能",
+    "Smart Duration": "智能时长",
     "Smart Ratio": "智能比例",
     "Smart Routing": "智能路由",
     "SMTP Email": "SMTP 邮箱",

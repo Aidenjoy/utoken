@@ -4613,6 +4613,7 @@
     "Slug must be less than 100 characters": "Slug phải ít hơn 100 ký tự",
     "Smallest USD amount users can recharge (Epay)": "Số tiền USD tối thiểu người dùng có thể nạp (Epay)",
     "Smart": "Thông minh",
+    "Smart Duration": "Thời lượng thông minh",
     "Smart Ratio": "Tỷ lệ thông minh",
     "Smart Routing": "Smart Routing",
     "SMTP Email": "Email SMTP",

@@ -4613,6 +4613,7 @@
     "Slug must be less than 100 characters": "Slug должен содержать менее 100 символов",
     "Smallest USD amount users can recharge (Epay)": "Минимальная сумма в USD, которую пользователи могут пополнить (Epay)",
     "Smart": "Умный",
+    "Smart Duration": "Умная длительность",
     "Smart Ratio": "Умное соотношение",
     "Smart Routing": "Умная маршрутизация",
     "SMTP Email": "Электронная почта SMTP",

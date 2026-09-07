@@ -4613,6 +4613,7 @@
     "Slug must be less than 100 characters": "Slug must be less than 100 characters",
     "Smallest USD amount users can recharge (Epay)": "Smallest USD amount users can recharge (Epay)",
     "Smart": "Smart",
+    "Smart Duration": "Smart Duration",
     "Smart Ratio": "Smart Ratio",
     "Smart Routing": "Smart Routing",
     "SMTP Email": "SMTP Email",

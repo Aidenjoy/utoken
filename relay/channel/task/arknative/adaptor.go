@@ -101,9 +101,11 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 	if req.Duration != nil {
 		duration := int(*req.Duration)
-		if duration < 0 || duration > relaycommon.MaxTaskDurationSeconds {
+		// -1 是 Ark 视频编辑（含参考视频）任务的合法值：输出时长跟随输入视频；
+		// 其余负值与超大值作为用户可控计费乘数必须拒绝（计费安全不变量）。
+		if duration < -1 || duration > relaycommon.MaxTaskDurationSeconds {
 			return service.TaskErrorWrapperLocal(
-				fmt.Errorf("duration must be between 0 and %d, got %d", relaycommon.MaxTaskDurationSeconds, duration),
+				fmt.Errorf("duration must be -1 (follow input video) or between 0 and %d, got %d", relaycommon.MaxTaskDurationSeconds, duration),
 				"invalid_request", http.StatusBadRequest)
 		}
 	}
@@ -172,9 +174,10 @@ func (a *TaskAdaptor) validateUnifiedSubmit(req *submitProbe) *dto.TaskError {
 			var dv dto.IntValue
 			if common.Unmarshal(b, &dv) == nil {
 				duration := int(dv)
-				if duration < 0 || duration > relaycommon.MaxTaskDurationSeconds {
+				// 与顶层校验同标：-1 合法（视频编辑跟随输入视频），其余负值拒绝
+				if duration < -1 || duration > relaycommon.MaxTaskDurationSeconds {
 					return service.TaskErrorWrapperLocal(
-						fmt.Errorf("duration must be between 0 and %d, got %d", relaycommon.MaxTaskDurationSeconds, duration),
+						fmt.Errorf("duration must be -1 (follow input video) or between 0 and %d, got %d", relaycommon.MaxTaskDurationSeconds, duration),
 						"invalid_request", http.StatusBadRequest)
 				}
 			}
