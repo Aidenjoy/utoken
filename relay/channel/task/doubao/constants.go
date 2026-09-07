@@ -43,63 +43,29 @@ var videoPriceTable = map[string]map[videoPriceKey]float64{
 	},
 }
 
-// seedanceBaseResolution 是档间倍率的基准档：480p 不含视频输入，
-// 对应管理员为该模型配置的 ModelRatio；其余档单价均相对此档换算倍率。
-const seedanceBaseResolution = "480p"
-
 // VideoRatioStatus 描述 GetVideoInputRatio 的计费倍率解析结果，区分
-// 「命中配置」「模型未配置」「已配置但不支持该分辨率」三种语义。
+// 「模型未配置」「命中配置」两种语义。
 type VideoRatioStatus int
 
 const (
-	// VideoRatioNotConfigured 模型既无 billing_setting.seedance_config 配置，
-	// 也无硬编码 videoPriceTable 条目：无法计算档间倍率，调用方按基准价计费。
+	// VideoRatioNotConfigured 模型无硬编码 videoPriceTable 条目：
+	// 无法计算档间倍率，调用方按基准价计费。
 	VideoRatioNotConfigured VideoRatioStatus = iota
 	// VideoRatioOK 命中单价配置，返回的倍率相对基准价有效（基准档为 1.0）。
 	VideoRatioOK
-	// VideoRatioUnsupportedResolution 模型已配置单价，但不支持所请求的分辨率：
-	// 调用方必须拒绝请求（400 此模型暂不支持该参数），不得回退基准价。
-	VideoRatioUnsupportedResolution
 )
 
 // GetVideoInputRatio 返回指定模型在给定输出分辨率/是否含视频输入下，相对基准价的计费倍率。
-// 优先读管理员配置 billing_setting.seedance_config（480p/720p/1080p/4k 四档独立），
-// 未配置该模型时回退硬编码 videoPriceTable（三档，480p/720p 共享基准）保持向后兼容。
-// 基准价 base 固定为「480p 不含视频」档，对应管理员为该模型配置的 ModelRatio。
+// 仅服务于未配置管理员单价（billing_setting.seedance_config）的 legacy 模型：查硬编码
+// videoPriceTable（三档，480p/720p 共享基准），基准价对应管理员为该模型配置的 ModelRatio。
+// 管理员已配置 seedance_config 的模型走绝对单价模式（见 billing_setting.GetSeedanceTierPrice），
+// 不使用本函数。
 // 返回状态：
 //   - VideoRatioOK: ratio = 实际单价/基准价（基准档为 1.0），可作 video_input OtherRatio；
-//   - VideoRatioUnsupportedResolution: 模型已配置单价但所请求分辨率不在配置内（或该档/
-//     基准档单价无效），调用方必须拒绝请求（400 此模型暂不支持该参数）；
-//   - VideoRatioNotConfigured: 模型无任何单价配置，调用方按基准价计费（不追加 OtherRatio）。
+//   - VideoRatioNotConfigured: 模型不在内置表，调用方按基准价计费（不追加 OtherRatio）。
 func GetVideoInputRatio(modelName, resolution string, hasVideo bool) (float64, VideoRatioStatus) {
 	res := strings.ToLower(strings.TrimSpace(resolution))
 
-	// 1. 优先读管理员配置（4 档分辨率独立）；只要该模型存在管理员配置，就以配置为准：
-	//    所请求分辨率不在配置内视为不支持，不再回退硬编码表，避免漏报后走到误导性的
-	//    「价格未配置」报错。
-	if cfg, ok := billing_setting.GetSeedanceConfig(modelName); ok {
-		// 用户未指定分辨率时按基准档（480p）预估，结算时用响应分辨率重算
-		lookup := res
-		if lookup == "" {
-			lookup = seedanceBaseResolution
-		}
-		tier, found := cfg[lookup]
-		if !found {
-			return 0, VideoRatioUnsupportedResolution
-		}
-		price := tier.WithoutVideo
-		if hasVideo {
-			price = tier.WithVideo
-		}
-		basePrice := cfg[seedanceBaseResolution].WithoutVideo
-		if price <= 0 || basePrice <= 0 {
-			// 该分辨率对应「含/不含视频」档或基准档未配置有效单价，无法换算，视为不支持
-			return 0, VideoRatioUnsupportedResolution
-		}
-		return price / basePrice, VideoRatioOK
-	}
-
-	// 2. 回退硬编码单价表（向后兼容，保持原有三档语义）
 	prices, ok := videoPriceTable[modelName]
 	base := prices[videoPriceKey{}] // 零值键 = {480p/720p, 不含视频} 基准价
 	if !ok || base <= 0 {
@@ -114,14 +80,18 @@ func GetVideoInputRatio(modelName, resolution string, hasVideo bool) (float64, V
 }
 
 // ValidateResolutionSupported 校验模型是否支持用户请求的分辨率。
-// resolution 为空（用户未指定，走上游默认）时不拦截；模型已配置单价但不支持
-// 该分辨率时返回 error，供上层转 400「此模型暂不支持该参数」。
+// resolution 为空（用户未指定，走上游默认）时不拦截。管理员已配置 seedance_config 的
+// 模型以配置为准：所请求分辨率档（含/不含视频输入）无有效单价即视为不支持，返回 error
+// 供上层转 400「此模型暂不支持该参数」；未配置管理员单价的 legacy 模型不拦截（内置表
+// 未覆盖的组合由上游自行报错）。
 func ValidateResolutionSupported(modelName, resolution string, hasVideo bool) error {
 	if strings.TrimSpace(resolution) == "" {
 		return nil
 	}
-	if _, status := GetVideoInputRatio(modelName, resolution, hasVideo); status == VideoRatioUnsupportedResolution {
-		return fmt.Errorf("此模型暂不支持该参数: %s", resolution)
+	if _, hasCfg := billing_setting.GetSeedanceConfig(modelName); hasCfg {
+		if _, ok := billing_setting.GetSeedanceTierPrice(modelName, resolution, hasVideo); !ok {
+			return fmt.Errorf("此模型暂不支持该参数: %s", resolution)
+		}
 	}
 	return nil
 }

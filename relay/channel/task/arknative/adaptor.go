@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -128,11 +129,14 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // validateSeedanceResolution 校验模型是否支持用户请求的分辨率：显式指定了未配置
 // 单价的分辨率时返回 400「此模型暂不支持该参数」，避免提交上游后才失败与错误预扣费。
+// 同时把分辨率/视频输入落入 info，供预扣费按档绝对单价合成模型倍率。
 func (a *TaskAdaptor) validateSeedanceResolution(info *relaycommon.RelayInfo, reqModel string) *dto.TaskError {
 	modelName := info.OriginModelName
 	if modelName == "" {
 		modelName = reqModel
 	}
+	info.SeedanceResolution = a.resolution
+	info.HasVideoInput = a.hasVideo
 	if err := doubao.ValidateResolutionSupported(modelName, a.resolution, a.hasVideo); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
@@ -207,6 +211,11 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	// 记录是否含视频输入，提交后存入 BillingContext.HasVideo，供结算阶段按响应分辨率重算
 	info.HasVideoInput = a.hasVideo
+	// 绝对单价模式（管理员已配置 seedance_config）：档价已在 ModelPriceHelperPerCall 中
+	// 按档价/2 合成进 PriceData.ModelRatio，不再追加 video_input 相对倍率。
+	if _, hasCfg := billing_setting.GetSeedanceConfig(info.OriginModelName); hasCfg {
+		return nil
+	}
 	ratio, status := doubao.GetVideoInputRatio(info.OriginModelName, a.resolution, a.hasVideo)
 	if status != doubao.VideoRatioOK || ratio == 1.0 {
 		return nil

@@ -179,6 +179,33 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
 
+	// seedance 绝对单价模式：管理员配置了分辨率档单价（seedance_config）时，档价即每
+	// 百万 token 实际单价，按档价/2 合成模型倍率后沿用既有按量计费公式，无需再配置
+	// ModelRatio。分辨率未指定时取该「含/不含视频」变体最高档价作预扣兜底，结算时按
+	// 响应分辨率重算。未配置档价的 legacy 模型落入下方常规 ModelPrice/ModelRatio 逻辑。
+	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeSeedance {
+		if tierPrice, ok := billing_setting.GetSeedanceTierPrice(info.OriginModelName, info.SeedanceResolution, info.HasVideoInput); ok {
+			modelRatio := tierPrice / 2
+			// 按量计费：以模型倍率的一半作为预扣额度
+			quota := common.QuotaFromFloat(modelRatio / 2 * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+			freeModel := false
+			if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+				if groupRatioInfo.GroupRatio == 0 {
+					quota = 0
+					freeModel = true
+				}
+			}
+			return types.PriceData{
+				FreeModel:      freeModel,
+				ModelPrice:     -1,
+				ModelRatio:     modelRatio,
+				UsePrice:       false,
+				Quota:          quota,
+				GroupRatioInfo: groupRatioInfo,
+			}, nil
+		}
+	}
+
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
 	usePrice := success
 	var modelRatio float64
@@ -241,6 +268,13 @@ func HasModelBillingConfig(modelName string) bool {
 		return true
 	}
 	if _, ok, _ := ratio_setting.GetModelRatio(modelName); ok {
+		return true
+	}
+	// seedance/seedream 绝对单价配置同样是有效计费配置（无需 ModelRatio/ModelPrice）
+	if _, ok := billing_setting.GetSeedanceConfig(modelName); ok {
+		return true
+	}
+	if _, ok := billing_setting.GetSeedreamConfig(modelName); ok {
 		return true
 	}
 	if billing_setting.GetBillingMode(modelName) != billing_setting.BillingModeTieredExpr {

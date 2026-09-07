@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -301,6 +302,16 @@ func computeTaskQuotaByTokens(task *model.Task, totalTokens int) (int, *common.Q
 
 	// 获取模型价格和倍率
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
+	// seedance 绝对单价模式（管理员已配置 seedance_config）：倍率以提交/结算快照中按
+	// 档价（每百万 token 实际单价/2）合成的值为准（AdjustSeedanceBillingOnComplete 已按
+	// 响应分辨率覆盖快照），不再使用 ModelRatio×video_input 相对公式，也不要求配置 ModelRatio。
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.ModelRatio > 0 &&
+		billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeSeedance {
+		if _, ok := billing_setting.GetSeedanceConfig(modelName); ok {
+			modelRatio = bc.ModelRatio
+			hasRatioSetting = true
+		}
+	}
 	// 只有配置了倍率(非固定价格)时才按 token 重新计费
 	if !hasRatioSetting || modelRatio <= 0 {
 		return 0, nil, "", false

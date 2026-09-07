@@ -102,6 +102,46 @@ func GetSeedanceConfig(model string) (map[string]SeedanceResolutionPrice, bool) 
 	return normalized, true
 }
 
+// GetSeedanceTierPrice 返回模型指定分辨率档（含/不含视频输入）的每百万 token 绝对单价，
+// 单位与硬编码 videoPriceTable 同量纲。档价即最终计费单价（合成 modelRatio = 档价/2 后
+// 走既有 token 计费公式），不再依赖基准档与 ModelRatio。
+// resolution 为空（用户未指定，走上游默认档）时返回该「含/不含视频」变体下已配置的最高
+// 档单价作为预扣兜底，结算时按响应分辨率重算。未配置该模型、所请求分辨率不在配置内或
+// 对应档单价无效（<=0）时返回 ok=false。
+func GetSeedanceTierPrice(model, resolution string, hasVideo bool) (float64, bool) {
+	cfg, ok := GetSeedanceConfig(model)
+	if !ok {
+		return 0, false
+	}
+	pick := func(tier SeedanceResolutionPrice) float64 {
+		if hasVideo {
+			return tier.WithVideo
+		}
+		return tier.WithoutVideo
+	}
+	res := strings.ToLower(strings.TrimSpace(resolution))
+	if res != "" {
+		tier, found := cfg[res]
+		if !found {
+			return 0, false
+		}
+		if price := pick(tier); price > 0 {
+			return price, true
+		}
+		return 0, false
+	}
+	maxPrice := 0.0
+	for _, tier := range cfg {
+		if price := pick(tier); price > maxPrice {
+			maxPrice = price
+		}
+	}
+	if maxPrice <= 0 {
+		return 0, false
+	}
+	return maxPrice, true
+}
+
 // GetSeedreamConfig 返回模型 seedream 按张单价配置；未配置该模型或解析失败时返回 ok=false。
 func GetSeedreamConfig(model string) (SeedreamConfig, bool) {
 	raw, ok := billingSetting.SeedreamConfig[model]

@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
@@ -193,6 +194,51 @@ func TestPriceDataReplaceAndApplyOtherRatios(t *testing.T) {
 	require.False(t, replaced)
 	assert.Nil(t, priceData.OtherRatios())
 	assert.Equal(t, 1.0, priceData.OtherRatioMultiplier())
+}
+
+// TestComputeTaskQuotaByTokensSeedanceSnapshotRatio 锁定 seedance 绝对单价模式的结算边界：
+// 模型未配置 ModelRatio 时，按提交/结算快照中由档价/2 合成的倍率计费
+// （1M tokens × 27.72 = 27_720_000 quota = $55.44，即 1080p 档绝对价）；
+// 快照倍率缺失时放弃重算（保持预扣）。
+func TestComputeTaskQuotaByTokensSeedanceSnapshotRatio(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"seedance-settle-model":"seedance"}`,
+		"billing_setting.seedance_config": `{"seedance-settle-model":"{\"1080p\":{\"with_video\":33.12,\"without_video\":55.44}}"}`,
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+	}))
+
+	t.Run("快照合成倍率计费", func(t *testing.T) {
+		task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+		task.Properties.OriginModelName = "seedance-settle-model"
+		bc := task.PrivateData.BillingContext
+		bc.OriginModelName = "seedance-settle-model"
+		bc.ModelRatio = 27.72 // 1080p 档价 55.44 / 2
+
+		quota, clamp, reason, ok := computeTaskQuotaByTokens(task, 1_000_000)
+		require.True(t, ok)
+		assert.Nil(t, clamp)
+		assert.Equal(t, 27_720_000, quota)
+		assert.Contains(t, reason, "modelRatio=27.72")
+	})
+
+	t.Run("快照倍率缺失放弃重算", func(t *testing.T) {
+		task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+		task.Properties.OriginModelName = "seedance-settle-model"
+		bc := task.PrivateData.BillingContext
+		bc.OriginModelName = "seedance-settle-model"
+		bc.ModelRatio = 0
+
+		_, _, _, ok := computeTaskQuotaByTokens(task, 1_000_000)
+		assert.False(t, ok)
+	})
 }
 
 func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {

@@ -686,6 +686,10 @@ type TaskRelayInfo struct {
 	// 供轮询结算阶段按响应分辨率重算 video_input 倍率时复用。
 	HasVideoInput bool
 
+	// SeedanceResolution 是 seedance 请求的分辨率参数（480p/720p/1080p/4k，可为空）。
+	// 由 seedance 适配器在校验阶段写入，供预扣费按档绝对单价合成模型倍率。
+	SeedanceResolution string
+
 	// LockedChannel holds the full channel object when the request is bound to
 	// a specific channel (e.g., remix on origin task's channel). Stored as any
 	// to avoid an import cycle with model; callers type-assert to *model.Channel.

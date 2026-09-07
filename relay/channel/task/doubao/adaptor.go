@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -97,13 +98,17 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	}
 	// seedance：用户显式指定了模型未配置单价的分辨率时提前拦截
 	// （400 此模型暂不支持该参数），避免提交上游后才失败，也避免按错误分辨率预扣费。
+	// 同时把分辨率/视频输入落入 info，供预扣费按档绝对单价合成模型倍率。
 	if req, err := relaycommon.GetTaskRequest(c); err == nil {
 		modelName := info.OriginModelName
 		if modelName == "" {
 			modelName = req.Model
 		}
 		resolution, _ := req.Metadata["resolution"].(string)
-		if verr := ValidateResolutionSupported(modelName, resolution, hasVideoInMetadata(req.Metadata)); verr != nil {
+		hasVideo := hasVideoInMetadata(req.Metadata)
+		info.SeedanceResolution = resolution
+		info.HasVideoInput = hasVideo
+		if verr := ValidateResolutionSupported(modelName, resolution, hasVideo); verr != nil {
 			return service.TaskErrorWrapperLocal(verr, "invalid_request", http.StatusBadRequest)
 		}
 	}
@@ -132,6 +137,11 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	hasVideo := hasVideoInMetadata(req.Metadata)
 	// 记录是否含视频输入，提交后存入 BillingContext.HasVideo，供结算阶段按响应分辨率重算
 	info.HasVideoInput = hasVideo
+	// 绝对单价模式（管理员已配置 seedance_config）：档价已在 ModelPriceHelperPerCall 中
+	// 按档价/2 合成进 PriceData.ModelRatio，不再追加 video_input 相对倍率。
+	if _, hasCfg := billing_setting.GetSeedanceConfig(info.OriginModelName); hasCfg {
+		return nil
+	}
 	resolution, _ := req.Metadata["resolution"].(string)
 	ratio, status := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
 	if status != VideoRatioOK || ratio == 1.0 {
@@ -166,6 +176,24 @@ func AdjustSeedanceBillingOnComplete(task *model.Task, taskResult *relaycommon.T
 	modelName := bc.OriginModelName
 	if modelName == "" {
 		modelName = task.Properties.OriginModelName
+	}
+	// 绝对单价模式（管理员已配置 seedance_config）：按响应分辨率档价/2 合成模型倍率
+	// 覆盖提交估算快照后重算；档价即每百万 token 实际单价，不使用 video_input 相对倍率。
+	if _, hasCfg := billing_setting.GetSeedanceConfig(modelName); hasCfg {
+		tierPrice, ok := billing_setting.GetSeedanceTierPrice(modelName, resolution, bc.HasVideo)
+		if !ok {
+			// 响应分辨率档无有效单价：保持提交估算，交由默认 token 重算
+			return 0
+		}
+		bc.ModelRatio = tierPrice / 2
+		if bc.OtherRatios != nil {
+			delete(bc.OtherRatios, "video_input")
+		}
+		quota, ok := service.ComputeTaskQuotaByTokens(task, taskResult.TotalTokens)
+		if !ok || quota <= 0 {
+			return 0
+		}
+		return quota
 	}
 	ratio, status := GetVideoInputRatio(modelName, resolution, bc.HasVideo)
 	if status != VideoRatioOK {
