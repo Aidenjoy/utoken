@@ -78,17 +78,24 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     ? seedanceTiers
         .map((tier) => ({
           tier,
-          unit: seedanceTierEnteredPricePer1M(tier, 'withoutVideo'),
+          withoutVideo: seedanceTierEnteredPricePer1M(tier, 'withoutVideo'),
+          withVideo: seedanceTierEnteredPricePer1M(tier, 'withVideo'),
         }))
         .filter(
-          (
-            entry
-          ): entry is {
-            tier: (typeof seedanceTiers)[number]
-            unit: number
-          } => entry.unit !== null
+          (entry) => entry.withoutVideo !== null || entry.withVideo !== null
         )
     : []
+  const formatSeedanceUnit = (unit: number) =>
+    formatDynamicUnitPrice(unit, {
+      tokenUnit,
+      showRechargePrice,
+      priceRate,
+      usdExchangeRate,
+      groupRatioMultiplier: getDisplayGroupRatio(
+        props.model,
+        props.selectedGroup
+      ),
+    })
   const seedModeLabel = seedreamPrices
     ? t('Seedream')
     : seedanceTiers
@@ -192,24 +199,31 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   } else if (seedanceEntries.length > 0) {
     priceSummary = (
       <>
-        {seedanceEntries.map(({ tier, unit }) => (
+        {seedanceEntries.map(({ tier, withoutVideo, withVideo }) => (
           <span
             key={tier.resolution}
             className='text-muted-foreground whitespace-nowrap'
           >
             {tier.resolution}{' '}
-            <span className='text-foreground font-mono font-semibold'>
-              {formatDynamicUnitPrice(unit, {
-                tokenUnit,
-                showRechargePrice,
-                priceRate,
-                usdExchangeRate,
-                groupRatioMultiplier: getDisplayGroupRatio(
-                  props.model,
-                  props.selectedGroup
-                ),
-              })}
-            </span>
+            {withoutVideo !== null && (
+              <>
+                {t('Without video input')}{' '}
+                <span className='text-foreground font-mono font-semibold'>
+                  {formatSeedanceUnit(withoutVideo)}
+                </span>
+              </>
+            )}
+            {withoutVideo !== null && withVideo !== null && (
+              <span className='text-muted-foreground/40 mx-1'>·</span>
+            )}
+            {withVideo !== null && (
+              <>
+                {t('With video input')}{' '}
+                <span className='text-foreground font-mono font-semibold'>
+                  {formatSeedanceUnit(withVideo)}
+                </span>
+              </>
+            )}
             /{tokenUnitLabel}
           </span>
         ))}
