@@ -95,8 +95,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); taskErr != nil {
 		return taskErr
 	}
-	// seedance：用户显式指定了模型不支持的分辨率时提前拦截（400），
-	// 避免提交上游后才失败，也避免按错误分辨率预扣费。
+	// seedance：用户显式指定了模型未配置单价的分辨率时提前拦截
+	// （400 此模型暂不支持该参数），避免提交上游后才失败，也避免按错误分辨率预扣费。
 	if req, err := relaycommon.GetTaskRequest(c); err == nil {
 		modelName := info.OriginModelName
 		if modelName == "" {

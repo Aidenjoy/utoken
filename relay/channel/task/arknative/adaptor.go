@@ -126,8 +126,8 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	return a.validateSeedanceResolution(info, req.Model)
 }
 
-// validateSeedanceResolution 校验模型是否支持用户请求的分辨率：显式指定了不支持的
-// 分辨率时返回 400「该模型不支持此分辨率」，避免提交上游后才失败与错误预扣费。
+// validateSeedanceResolution 校验模型是否支持用户请求的分辨率：显式指定了未配置
+// 单价的分辨率时返回 400「此模型暂不支持该参数」，避免提交上游后才失败与错误预扣费。
 func (a *TaskAdaptor) validateSeedanceResolution(info *relaycommon.RelayInfo, reqModel string) *dto.TaskError {
 	modelName := info.OriginModelName
 	if modelName == "" {
