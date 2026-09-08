@@ -37,7 +37,7 @@ import {
   getEndpointTypeLabels,
   getQuotaTypeLabels,
 } from '../constants'
-import { parseTags } from '../lib/filters'
+import { parseTags, matchesEndpointType } from '../lib/filters'
 import type { PricingModel, PricingVendor } from '../types'
 
 type FilterOption = {
@@ -238,9 +238,8 @@ export function PricingSidebar(props: PricingSidebarProps) {
       .map(([value, label]) => ({
         value,
         label,
-        count: countBy(
-          props.models,
-          (model) => model.supported_endpoint_types?.includes(value) ?? false
+        count: countBy(props.models, (model) =>
+          matchesEndpointType(model, value)
         ),
       })),
   ]
@@ -299,7 +298,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
           onChange={props.onQuotaTypeChange}
         />
         <FilterSection
-          title={t('Endpoint Type')}
+          title={t('Model Type')}
           value={props.endpointTypeFilter}
           options={endpointOptions}
           onChange={props.onEndpointTypeChange}

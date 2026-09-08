@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { getModelCategory, type ModelCategory } from '@/lib/model-category'
+
 import {
   SORT_OPTIONS,
   FILTER_ALL,
@@ -86,6 +88,29 @@ export function filterByQuotaType(
 }
 
 /**
+ * Endpoint types that describe a modality rather than a wire protocol. Model
+ * metadata frequently omits them, so these fall back to name-based detection.
+ */
+const MODALITY_ENDPOINT_CATEGORIES: Partial<Record<string, ModelCategory>> = {
+  [ENDPOINT_TYPES.IMAGE_GENERATION]: 'image',
+  [ENDPOINT_TYPES.OPENAI_VIDEO]: 'video',
+}
+
+/**
+ * Whether a model matches an endpoint type filter. Protocol types rely on the
+ * model's declared endpoints; modality types additionally fall back to the
+ * name-based category so image/video models are never reported as unsupported.
+ */
+export function matchesEndpointType(
+  model: PricingModel,
+  endpointType: string
+): boolean {
+  if (model.supported_endpoint_types?.includes(endpointType)) return true
+  const category = MODALITY_ENDPOINT_CATEGORIES[endpointType]
+  return category != null && getModelCategory(model.model_name) === category
+}
+
+/**
  * Filter models by endpoint type
  */
 export function filterByEndpointType(
@@ -93,9 +118,7 @@ export function filterByEndpointType(
   endpointType: string
 ): PricingModel[] {
   if (endpointType === ENDPOINT_TYPES.ALL) return models
-  return models.filter((m) =>
-    m.supported_endpoint_types?.includes(endpointType)
-  )
+  return models.filter((m) => matchesEndpointType(m, endpointType))
 }
 
 /**

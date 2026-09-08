@@ -86,7 +86,7 @@ export function getEndpointTypeLabels(
 ): Record<EndpointTypeOption, string> {
   return {
     [ENDPOINT_TYPES.ALL]: t('All Types'),
-    [ENDPOINT_TYPES.OPENAI]: 'Chat',
+    [ENDPOINT_TYPES.OPENAI]: t('Language Model'),
     [ENDPOINT_TYPES.OPENAI_RESPONSE]: 'Response',
     [ENDPOINT_TYPES.ANTHROPIC]: 'Anthropic',
     [ENDPOINT_TYPES.GEMINI]: 'Gemini',
