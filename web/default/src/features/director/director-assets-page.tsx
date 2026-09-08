@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { OwnerFilter } from '@/components/owner-filter'
 import {
   Empty,
   EmptyDescription,
@@ -58,6 +59,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { handleServerError } from '@/lib/handle-server-error'
+import { type OwnerSelection, ownerUserIdParam } from '@/lib/owner'
 import { cn } from '@/lib/utils'
 
 import {
@@ -70,8 +72,6 @@ import {
 } from './api'
 import { AssetCard } from './components/asset-card'
 import { AssetCategoryDialog } from './components/asset-category-dialog'
-import { OwnerFilter } from './components/owner-filter'
-import { type OwnerSelection, ownerUserIdParam } from './lib/owner'
 import { ASSET_TYPE_OPTIONS, BUILTIN_ASSET_CATEGORIES } from './constants'
 import type { DirectorAsset } from './types'
 

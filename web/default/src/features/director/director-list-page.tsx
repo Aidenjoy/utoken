@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
+import { OwnerFilter } from '@/components/owner-filter'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,11 +54,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useDebounce } from '@/hooks'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { handleServerError } from '@/lib/handle-server-error'
+import { type OwnerSelection, ownerUserIdParam } from '@/lib/owner'
 import { cn } from '@/lib/utils'
 
 import { deleteDirectorProject, getDirectorProjects } from './api'
-import { OwnerFilter } from './components/owner-filter'
-import { type OwnerSelection, ownerUserIdParam } from './lib/owner'
 import { ProjectCard } from './components/project-card'
 import { ProjectDialog } from './components/project-dialog'
 import { DIRECTOR_CATEGORY_CONFIG } from './constants'

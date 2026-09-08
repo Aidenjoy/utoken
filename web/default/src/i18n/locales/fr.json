@@ -3493,6 +3493,7 @@
     "Overrode user quota from {{from}} to {{to}}": "Quota de l'utilisateur remplacé de {{from}} à {{to}}",
     "Overview": "Vue d'ensemble",
     "Overwritten": "Écrasé",
+    "Owner": "Propriétaire",
     "Page": "Page",
     "Page {{current}} of {{total}}": "Page {{current}} sur {{total}}",
     "Pain Points": "用户痛点",

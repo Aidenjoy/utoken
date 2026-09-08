@@ -19,19 +19,23 @@ For commercial licensing, please contact support@quantumnous.com
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { OwnerFilter } from '@/components/owner-filter'
 import { Button } from '@/components/ui/button'
 
 import { useApiKeys } from './api-keys-provider'
 
 export function ApiKeysPrimaryButtons() {
   const { t } = useTranslation()
-  const { setOpen } = useApiKeys()
+  const { setOpen, owner, setOwner, isAdmin, viewingSelf } = useApiKeys()
   return (
     <div className='flex gap-2'>
-      <Button size='sm' onClick={() => setOpen('create')}>
-        <Plus className='h-4 w-4' />
-        {t('Create API Key')}
-      </Button>
+      {isAdmin && <OwnerFilter value={owner} onChange={setOwner} />}
+      {viewingSelf && (
+        <Button size='sm' onClick={() => setOpen('create')}>
+          <Plus className='h-4 w-4' />
+          {t('Create API Key')}
+        </Button>
+      )}
     </div>
   )
 }

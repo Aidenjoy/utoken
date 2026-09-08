@@ -45,6 +45,9 @@ export const apiKeySchema = z.object({
   model_limits_enabled: z.boolean(),
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
+  // 归属用户：列表恒返回 user_id；username 仅管理员跨用户查看时附加
+  user_id: z.number().optional(),
+  username: z.string().optional(),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>
@@ -62,6 +65,8 @@ export interface ApiResponse<T = unknown> {
 export interface GetApiKeysParams {
   p?: number
   size?: number
+  // 管理员归属过滤：缺省=自己，0=全部用户，N=指定用户；非管理员后端忽略
+  userId?: number
 }
 
 export interface GetApiKeysResponse {
@@ -80,6 +85,7 @@ export interface SearchApiKeysParams {
   token?: string
   p?: number
   size?: number
+  userId?: number
 }
 
 export interface ApiKeyFormData {

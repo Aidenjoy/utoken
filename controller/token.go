@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -12,7 +13,19 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+// tokenApiError 统一“按 ID+归属查令牌”未命中的响应：转为友好提示，
+// 避免把 gorm 的 record not found 原样暴露给前端，
+// 也避免通过错误差异探测他人令牌 ID。
+func tokenApiError(c *gin.Context, err error) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		common.ApiErrorI18n(c, i18n.MsgTokenNotFoundOrForbidden)
+		return
+	}
+	common.ApiError(c, err)
+}
 
 func buildMaskedTokenResponse(token *model.Token) *model.Token {
 	if token == nil {
@@ -31,47 +44,111 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 	return maskedTokens
 }
 
+// tokenOwnerResponse 在脱敏令牌基础上附加归属用户名，仅管理员跨用户查看时填充。
+type tokenOwnerResponse struct {
+	*model.Token
+	Username string `json:"username,omitempty"`
+}
+
+// tokenOwnerScope 解析令牌列表的归属用户：仅管理员生效，缺省只看自己；
+// 显式传 userId=0 查看全部用户，userId=N 查看指定用户。
+// 非管理员恒返回会话用户 ID，忽略任何越权参数。
+func tokenOwnerScope(c *gin.Context) int {
+	sessionID := c.GetInt("id")
+	if !model.IsAdmin(sessionID) {
+		return sessionID
+	}
+	raw := c.Query("userId")
+	if raw == "" {
+		return sessionID
+	}
+	scope, err := strconv.Atoi(raw)
+	if err != nil || scope < 0 {
+		return sessionID
+	}
+	return scope
+}
+
+// buildMaskedTokenResponsesWithOwner 脱敏并按需附加归属用户名：
+// 仅当管理员查看非本人范围（全部/指定用户）时批量补用户名，自己视角不额外查询。
+func buildMaskedTokenResponsesWithOwner(c *gin.Context, tokens []*model.Token, scopeUserID int) any {
+	if scopeUserID == c.GetInt("id") {
+		return buildMaskedTokenResponses(tokens)
+	}
+	ids := make([]int, 0, len(tokens))
+	seen := make(map[int]bool, len(tokens))
+	for _, token := range tokens {
+		if !seen[token.UserId] {
+			seen[token.UserId] = true
+			ids = append(ids, token.UserId)
+		}
+	}
+	names := map[int]string{}
+	if fetched, err := model.GetUserNamesByIds(ids); err != nil {
+		common.SysLog("failed to load token owner names: " + err.Error())
+	} else {
+		names = fetched
+	}
+	items := make([]*tokenOwnerResponse, 0, len(tokens))
+	for _, token := range tokens {
+		items = append(items, &tokenOwnerResponse{
+			Token:    buildMaskedTokenResponse(token),
+			Username: names[token.UserId],
+		})
+	}
+	return items
+}
+
 func GetAllTokens(c *gin.Context) {
-	userId := c.GetInt("id")
+	scopeUserID := tokenOwnerScope(c)
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, err := model.GetAllUserTokens(scopeUserID, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := model.CountUserTokens(scopeUserID)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	pageInfo.SetItems(buildMaskedTokenResponsesWithOwner(c, tokens, scopeUserID))
 	common.ApiSuccess(c, pageInfo)
 }
 
 func SearchTokens(c *gin.Context) {
-	userId := c.GetInt("id")
+	scopeUserID := tokenOwnerScope(c)
 	keyword := c.Query("keyword")
 	token := c.Query("token")
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, total, err := model.SearchUserTokens(scopeUserID, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	pageInfo.SetItems(buildMaskedTokenResponsesWithOwner(c, tokens, scopeUserID))
 	common.ApiSuccess(c, pageInfo)
+}
+
+// readableToken 读取用于展示的令牌：管理员可读取任意用户的令牌（跨用户查看与复制密钥），
+// 普通用户仅能读取自己的。写入类接口不使用该放宽，仍严格按归属校验。
+func readableToken(c *gin.Context, id int) (*model.Token, error) {
+	userId := c.GetInt("id")
+	if model.IsAdmin(userId) {
+		return model.GetTokenById(id)
+	}
+	return model.GetTokenByIds(id, userId)
 }
 
 func GetToken(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-	userId := c.GetInt("id")
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := readableToken(c, id)
 	if err != nil {
-		common.ApiError(c, err)
+		tokenApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, buildMaskedTokenResponse(token))
@@ -79,14 +156,13 @@ func GetToken(c *gin.Context) {
 
 func GetTokenKey(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
-	userId := c.GetInt("id")
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	token, err := readableToken(c, id)
 	if err != nil {
-		common.ApiError(c, err)
+		tokenApiError(c, err)
 		return
 	}
 	common.ApiSuccess(c, gin.H{
@@ -273,7 +349,7 @@ func UpdateToken(c *gin.Context) {
 	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		tokenApiError(c, err)
 		return
 	}
 	if token.Status == common.TokenStatusEnabled {
@@ -346,9 +422,13 @@ func GetTokenKeysBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
+	if model.IsAdmin(userId) {
+		// 管理员批量复制他人密钥时不限归属
+		userId = 0
+	}
 	tokens, err := model.GetTokenKeysByIds(tokenBatch.Ids, userId)
 	if err != nil {
-		common.ApiError(c, err)
+		tokenApiError(c, err)
 		return
 	}
 	keysMap := make(map[int]string)

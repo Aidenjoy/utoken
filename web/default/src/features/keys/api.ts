@@ -35,8 +35,12 @@ import type {
 export async function getApiKeys(
   params: GetApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
-  const { p = 1, size = 10 } = params
-  const res = await api.get(`/api/token/?p=${p}&size=${size}`)
+  const { p = 1, size = 10, userId } = params
+  const queryParams = new URLSearchParams()
+  queryParams.set('p', String(p))
+  queryParams.set('size', String(size))
+  if (userId != null) queryParams.set('userId', String(userId))
+  const res = await api.get(`/api/token/?${queryParams.toString()}`)
   return res.data
 }
 
@@ -44,12 +48,13 @@ export async function getApiKeys(
 export async function searchApiKeys(
   params: SearchApiKeysParams
 ): Promise<GetApiKeysResponse> {
-  const { keyword = '', token = '', p, size } = params
+  const { keyword = '', token = '', p, size, userId } = params
   const queryParams = new URLSearchParams()
   if (keyword) queryParams.set('keyword', keyword)
   if (token) queryParams.set('token', token)
   if (p != null) queryParams.set('p', String(p))
   if (size != null) queryParams.set('size', String(size))
+  if (userId != null) queryParams.set('userId', String(userId))
   const res = await api.get(`/api/token/search?${queryParams.toString()}`)
   return res.data
 }

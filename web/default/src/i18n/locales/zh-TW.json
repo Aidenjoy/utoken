@@ -3493,6 +3493,7 @@
     "Overrode user quota from {{from}} to {{to}}": "覆蓋用戶額度，從 {{from}} 改為 {{to}}",
     "Overview": "概覽",
     "Overwritten": "已覆蓋",
+    "Owner": "歸屬",
     "Page": "頁面",
     "Page {{current}} of {{total}}": "第 {{current}} 頁，共 {{total}} 頁",
     "Pain Points": "用户痛点",

@@ -20,7 +20,9 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { useIsAdmin } from '@/hooks/use-admin'
 import useDialogState from '@/hooks/use-dialog'
+import { type OwnerSelection, ownerUserIdParam } from '@/lib/owner'
 
 import { fetchTokenKey, fetchTokenKeysBatch } from '../api'
 import { ERROR_MESSAGES } from '../constants'
@@ -31,6 +33,13 @@ type ApiKeysContextType = {
   setOpen: (str: ApiKeysDialogType | null) => void
   currentRow: ApiKey | null
   setCurrentRow: React.Dispatch<React.SetStateAction<ApiKey | null>>
+  // 管理员归属筛选：非管理员恒为 self；viewingSelf=false 时列表只读
+  owner: OwnerSelection
+  setOwner: React.Dispatch<React.SetStateAction<OwnerSelection>>
+  isAdmin: boolean
+  viewingSelf: boolean
+  showOwner: boolean
+  ownerUserId: number | undefined
   refreshTrigger: number
   triggerRefresh: () => void
   resolvedKey: string
@@ -49,6 +58,11 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
   const [open, setOpen] = useDialogState<ApiKeysDialogType>(null)
   const [currentRow, setCurrentRow] = useState<ApiKey | null>(null)
+  const [owner, setOwner] = useState<OwnerSelection>({ kind: 'self' })
+  const isAdmin = useIsAdmin()
+  const viewingSelf = !isAdmin || owner.kind === 'self'
+  const showOwner = isAdmin && owner.kind !== 'self'
+  const ownerUserId = ownerUserIdParam(owner, isAdmin)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [resolvedKey, setResolvedKey] = useState('')
 
@@ -161,6 +175,12 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
         setOpen,
         currentRow,
         setCurrentRow,
+        owner,
+        setOwner,
+        isAdmin,
+        viewingSelf,
+        showOwner,
+        ownerUserId,
         refreshTrigger,
         triggerRefresh,
         resolvedKey,

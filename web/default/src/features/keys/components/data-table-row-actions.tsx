@@ -88,6 +88,7 @@ export function DataTableRowActions<TData>({
     resolveRealKey,
     resolvedKeys,
     loadingKeys,
+    viewingSelf,
   } = useApiKeys()
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
   const { chatPresets, serverAddress } = useChatPresets()
@@ -188,6 +189,9 @@ export function DataTableRowActions<TData>({
   } else if (isEnabled) {
     statusIcon = <PowerOff className='size-4' />
   }
+
+  // 管理员查看他人密钥时列表只读：不展示任何改状态/复制/删除操作
+  if (!viewingSelf) return null
 
   return (
     <div className='-ml-1.5 flex items-center gap-1'>

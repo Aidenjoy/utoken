@@ -78,10 +78,24 @@ func (token *Token) GetIpLimits() []string {
 	return ipLimits
 }
 
+// tokenScopeQuery 构造令牌列表查询基底：userId>0 限定该用户；
+// userId<=0（仅管理员全部用户视角）不限归属，但排除归属用户已注销的令牌：
+// 用户软删或硬删后，relay 鉴权取不到用户缓存会直接拒绝，这些密钥已不可用。
+// 子查询依赖 User 的软删默认作用域，同时覆盖已硬删的用户。
+func tokenScopeQuery(userId int) *gorm.DB {
+	query := DB.Model(&Token{})
+	if userId > 0 {
+		return query.Where("user_id = ?", userId)
+	}
+	return query.Where("user_id IN (?)", DB.Model(&User{}).Select("id"))
+}
+
+// GetAllUserTokens 分页查询令牌；userId>0 限定该用户，userId<=0 表示不限用户。
+// 不限用户仅服务于管理员归属过滤，调用方必须先行完成管理员鉴权。
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
-	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	query := tokenScopeQuery(userId)
+	err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -131,6 +145,10 @@ func validateLikePattern(input string) error {
 
 const searchHardLimit = 100
 
+// searchAllUsersHardCap 管理员跨用户模糊搜索的 COUNT 截断上限，
+// 避免对全表 LIKE 做无界 COUNT。
+const searchAllUsersHardCap = 5000
+
 func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
@@ -144,10 +162,12 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		token = strings.TrimPrefix(token, "sk-")
 	}
 
-	// 超量用户（令牌数超过上限）只允许精确搜索，禁止模糊搜索
+	// 超量用户（令牌数超过上限）只允许精确搜索，禁止模糊搜索；
+	// userId<=0 为管理员跨用户搜索，不受单用户令牌数限制，改用全局上限截断 COUNT
 	maxTokens := operation_setting.GetMaxUserTokens()
+	countCap := maxTokens
 	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
-	if hasFuzzy {
+	if userId > 0 && hasFuzzy {
 		count, err := CountUserTokens(userId)
 		if err != nil {
 			common.SysLog("failed to count user tokens: " + err.Error())
@@ -156,9 +176,11 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		if int(count) > maxTokens {
 			return nil, 0, errors.New("令牌数量超过上限，仅允许精确搜索，请勿使用 % 通配符")
 		}
+	} else if userId <= 0 {
+		countCap = searchAllUsersHardCap
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := tokenScopeQuery(userId)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -176,8 +198,8 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
 	}
 
-	// 先查匹配总数（用于分页，受 maxTokens 上限保护，避免全表 COUNT）
-	err = baseQuery.Limit(maxTokens).Count(&total).Error
+	// 先查匹配总数（用于分页，受上限保护，避免全表 COUNT）
+	err = baseQuery.Limit(countCap).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count search tokens: " + err.Error())
 		return nil, 0, errors.New("搜索令牌失败")
@@ -439,10 +461,12 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 	return err
 }
 
-// CountUserTokens returns total number of tokens for the given user, used for pagination
+// CountUserTokens 统计令牌数；userId>0 限定该用户，userId<=0 表示全部用户
+// （仅管理员归属过滤路径可传 0），用于分页。
 func CountUserTokens(userId int) (int64, error) {
 	var total int64
-	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	query := tokenScopeQuery(userId)
+	err := query.Count(&total).Error
 	return total, err
 }
 
@@ -480,11 +504,15 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	return len(tokens), nil
 }
 
+// GetTokenKeysByIds 批量取密钥明文：userId > 0 时限定归属用户，
+// userId <= 0 表示不限归属（仅管理员批量查看/复制他人密钥使用）
 func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 	var tokens []Token
-	err := DB.Select("id", commonKeyCol).
-		Where("user_id = ? AND id IN (?)", userId, ids).
-		Find(&tokens).Error
+	query := DB.Select("id", commonKeyCol).Where("id IN (?)", ids)
+	if userId > 0 {
+		query = query.Where("user_id = ?", userId)
+	}
+	err := query.Find(&tokens).Error
 	return tokens, err
 }
 

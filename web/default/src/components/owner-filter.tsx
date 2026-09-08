@@ -30,22 +30,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { api } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
+import type { OwnerSelection } from '@/lib/owner'
 
-import { type DirectorOwnerOption, searchDirectorOwners } from '../api'
-import type { OwnerSelection } from '../lib/owner'
+export interface OwnerOption {
+  id: number
+  username: string
+}
 
 interface OwnerFilterProps {
   value: OwnerSelection
   onChange: (value: OwnerSelection) => void
 }
 
+// 管理员归属筛选：自己 / 全部用户 / 按用户名搜索后选中的指定用户。
+// 仅管理员界面渲染本组件；后端对非管理员会忽略 userId 参数。
 export function OwnerFilter(props: OwnerFilterProps) {
   const { t } = useTranslation()
   const [keyword, setKeyword] = React.useState('')
   const [searching, setSearching] = React.useState(false)
   // 已搜到的用户选项（去重累积，保证已选中项始终可显示）
-  const [options, setOptions] = React.useState<DirectorOwnerOption[]>([])
+  const [options, setOptions] = React.useState<OwnerOption[]>([])
 
   const selectValue =
     props.value.kind === 'user' ? `user:${props.value.id}` : props.value.kind
@@ -55,8 +61,10 @@ export function OwnerFilter(props: OwnerFilterProps) {
     if (!kw) return
     setSearching(true)
     try {
-      const res = await searchDirectorOwners(kw)
-      const items = res.data?.items ?? []
+      const res = await api.get('/api/user/search', {
+        params: { keyword: kw, p: 1, page_size: 20 },
+      })
+      const items: OwnerOption[] = res.data?.data?.items ?? []
       if (items.length === 0) {
         toast.info(t('No matching users'))
         return

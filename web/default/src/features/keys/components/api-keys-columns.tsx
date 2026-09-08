@@ -41,6 +41,7 @@ import {
   ModelLimitsCell,
   IpRestrictionsCell,
 } from './api-keys-cells'
+import { useApiKeys } from './api-keys-provider'
 import { DataTableRowActions } from './data-table-row-actions'
 
 function getQuotaProgressColor(percentage: number): string {
@@ -72,6 +73,7 @@ function useGroupRatios(): Record<string, number> {
 export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
   const { t } = useTranslation()
   const groupRatios = useGroupRatios()
+  const { showOwner } = useApiKeys()
   return [
     {
       id: 'select',
@@ -105,6 +107,28 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       size: 180,
       meta: { mobileTitle: true },
     },
+    ...(showOwner
+      ? [
+          {
+            id: 'owner',
+            header: t('Owner'),
+            cell: ({ row }: { row: { original: ApiKey } }) => {
+              const apiKey = row.original
+              const label = apiKey.username
+                ? `#${apiKey.user_id ?? '-'} ${apiKey.username}`
+                : `#${apiKey.user_id ?? '-'}`
+              return (
+                <span className='text-muted-foreground block truncate font-mono text-xs'>
+                  {label}
+                </span>
+              )
+            },
+            enableSorting: false,
+            size: 140,
+            meta: { mobileHidden: true },
+          },
+        ]
+      : []),
     {
       accessorKey: 'status',
       header: t('Status'),

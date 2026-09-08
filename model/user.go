@@ -388,6 +388,27 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	return users, total, nil
 }
 
+// GetUserNamesByIds 批量查询 用户 ID → 用户名，供管理员跨用户列表展示归属。
+// 缺失的 ID 不会出现在返回 map 中，由调用方决定回落展示。
+func GetUserNamesByIds(ids []int) (map[int]string, error) {
+	names := make(map[int]string, len(ids))
+	if len(ids) == 0 {
+		return names, nil
+	}
+	var rows []struct {
+		Id       int
+		Username string
+	}
+	err := DB.Model(&User{}).Select("id, username").Where("id IN ?", ids).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		names[row.Id] = row.Username
+	}
+	return names, nil
+}
+
 func GetUserById(id int, selectAll bool) (*User, error) {
 	if id == 0 {
 		return nil, errors.New("id 为空！")

@@ -3493,6 +3493,7 @@
     "Overrode user quota from {{from}} to {{to}}": "Overrode user quota from {{from}} to {{to}}",
     "Overview": "Overview",
     "Overwritten": "Overwritten",
+    "Owner": "Owner",
     "Page": "Page",
     "Page {{current}} of {{total}}": "Page {{current}} of {{total}}",
     "Pain Points": "用户痛点",

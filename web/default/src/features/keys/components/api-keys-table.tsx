@@ -91,9 +91,13 @@ function ApiKeysMobileSkeleton() {
 function ApiKeysMobileList({
   table,
   isLoading,
+  showOwner,
+  viewingSelf,
 }: {
   table: TanstackTable<ApiKey>
   isLoading: boolean
+  showOwner: boolean
+  viewingSelf: boolean
 }) {
   const { t } = useTranslation()
   const rows = table.getRowModel().rows
@@ -140,6 +144,13 @@ function ApiKeysMobileList({
                 <div className='truncate text-sm font-semibold'>
                   {apiKey.name}
                 </div>
+                {showOwner && (
+                  <div className='text-muted-foreground truncate font-mono text-[11px]'>
+                    {apiKey.username
+                      ? `#${apiKey.user_id ?? '-'} ${apiKey.username}`
+                      : `#${apiKey.user_id ?? '-'}`}
+                  </div>
+                )}
                 <div className='text-muted-foreground text-[11px]'>
                   {t('API Key')}
                 </div>
@@ -157,7 +168,7 @@ function ApiKeysMobileList({
               <div className='min-w-0 flex-1 [&_button:first-child]:max-w-full [&_button:first-child]:truncate [&_button:first-child]:px-0'>
                 <ApiKeyCell apiKey={apiKey} />
               </div>
-              <DataTableRowActions row={row} />
+              {viewingSelf && <DataTableRowActions row={row} />}
             </div>
 
             <div className='flex items-center justify-between gap-2 text-xs'>
@@ -183,7 +194,7 @@ function ApiKeysMobileList({
 
 export function ApiKeysTable() {
   const { t } = useTranslation()
-  const { refreshTrigger } = useApiKeys()
+  const { refreshTrigger, ownerUserId, viewingSelf, showOwner } = useApiKeys()
   const columns = useApiKeysColumns()
 
   const {
@@ -225,6 +236,7 @@ export function ApiKeysTable() {
       pagination.pageSize,
       globalFilter,
       tokenFilter,
+      ownerUserId,
       refreshTrigger,
     ],
     queryFn: async () => {
@@ -234,10 +246,12 @@ export function ApiKeysTable() {
             token: tokenFilter,
             p: pagination.pageIndex + 1,
             size: pagination.pageSize,
+            userId: ownerUserId,
           })
         : await getApiKeys({
             p: pagination.pageIndex + 1,
             size: pagination.pageSize,
+            userId: ownerUserId,
           })
 
       if (!result.success) {
@@ -265,7 +279,7 @@ export function ApiKeysTable() {
   const { table } = useDataTable({
     data: apiKeys,
     columns,
-    enableRowSelection: true,
+    enableRowSelection: viewingSelf,
     columnFilters,
     columnVisibilityStorageKey: API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY,
     globalFilter,
@@ -311,11 +325,20 @@ export function ApiKeysTable() {
           },
         ],
       }}
-      mobile={<ApiKeysMobileList table={table} isLoading={isLoading} />}
+      mobile={
+        <ApiKeysMobileList
+          table={table}
+          isLoading={isLoading}
+          showOwner={showOwner}
+          viewingSelf={viewingSelf}
+        />
+      }
       getRowClassName={(row) =>
         isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
       }
-      bulkActions={<DataTableBulkActions table={table} />}
+      bulkActions={
+        viewingSelf ? <DataTableBulkActions table={table} /> : undefined
+      }
     />
   )
 }
