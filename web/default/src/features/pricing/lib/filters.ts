@@ -88,26 +88,31 @@ export function filterByQuotaType(
 }
 
 /**
- * Endpoint types that describe a modality rather than a wire protocol. Model
- * metadata frequently omits them, so these fall back to name-based detection.
+ * Endpoint options that actually denote a model modality rather than a wire
+ * protocol. Their membership is decided by name-based categorization (the same
+ * source the chat page uses) so counts agree across pages; protocol options
+ * keep relying on the model's declared endpoints.
  */
 const MODALITY_ENDPOINT_CATEGORIES: Partial<Record<string, ModelCategory>> = {
+  [ENDPOINT_TYPES.OPENAI]: 'text',
   [ENDPOINT_TYPES.IMAGE_GENERATION]: 'image',
   [ENDPOINT_TYPES.OPENAI_VIDEO]: 'video',
 }
 
 /**
- * Whether a model matches an endpoint type filter. Protocol types rely on the
- * model's declared endpoints; modality types additionally fall back to the
- * name-based category so image/video models are never reported as unsupported.
+ * Whether a model matches an endpoint type filter. Modality types (language /
+ * image / video) use the name-based category; protocol types use the model's
+ * declared endpoints.
  */
 export function matchesEndpointType(
   model: PricingModel,
   endpointType: string
 ): boolean {
-  if (model.supported_endpoint_types?.includes(endpointType)) return true
   const category = MODALITY_ENDPOINT_CATEGORIES[endpointType]
-  return category != null && getModelCategory(model.model_name) === category
+  if (category != null) {
+    return getModelCategory(model.model_name) === category
+  }
+  return model.supported_endpoint_types?.includes(endpointType) ?? false
 }
 
 /**

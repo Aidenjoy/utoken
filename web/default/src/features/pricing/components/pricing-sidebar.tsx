@@ -241,7 +241,8 @@ export function PricingSidebar(props: PricingSidebarProps) {
         count: countBy(props.models, (model) =>
           matchesEndpointType(model, value)
         ),
-      })),
+      }))
+      .filter((option) => option.count > 0),
   ]
 
   return (
