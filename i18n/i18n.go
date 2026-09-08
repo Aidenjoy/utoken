@@ -19,7 +19,10 @@ const (
 	LangZhCN    = "zh-CN"
 	LangZhTW    = "zh-TW"
 	LangEn      = "en"
-	DefaultLang = LangEn // Fallback to English if language not supported
+	// DefaultLang 是拿不到任何语言信号（用户设置 / 中间件 / Accept-Language）时的回落语言。
+	// 服务端回环调用（如云导演以用户令牌请求自身 /v1/*）既无浏览器头也无会话，必然落到这里；
+	// 本产品面向中文用户，故默认中文。显式设置语言或携带 Accept-Language 的客户端不受影响。
+	DefaultLang = LangZhCN
 )
 
 //go:embed locales/*.yaml
