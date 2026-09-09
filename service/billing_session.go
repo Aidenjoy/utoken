@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -141,6 +142,11 @@ func (s *BillingSession) needsRefundLocked() bool {
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
 		return true
 	}
+	// 企业额度池同理：信任旁路关闭后 consumed 与 tokenConsumed 同步，
+	// 但异步任务（ForcePreConsume）等场景下仍应独立判定。
+	if org, ok := s.funding.(*OrganizationFunding); ok && org.consumed > 0 {
+		return true
+	}
 	return false
 }
 
@@ -215,6 +221,12 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
+		// 企业额度池不足 / 成员子额度超限 / 企业或成员已停用：与钱包额度不足同义，
+		// 按 403 返回且不重试、不记错误日志（属于正常业务拒绝而非系统故障）。
+		if errors.Is(err, model.ErrOrgQuotaInsufficient) || errors.Is(err, model.ErrOrgMemberQuotaExceeded) ||
+			errors.Is(err, model.ErrOrgDisabled) || errors.Is(err, model.ErrOrgMemberDisabled) {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
 		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
 			return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
@@ -248,6 +260,17 @@ func (s *BillingSession) reserveFunding(delta int) error {
 			)
 		}
 		return nil
+	case *OrganizationFunding:
+		// 补扣同样走 ConsumeOrgQuota：企业池余额与成员子额度在单个事务内一起校验，
+		// 避免流式请求追加预扣时绕过子额度上限。
+		if err := model.ConsumeOrgQuota(funding.orgId, funding.userId, delta); err != nil {
+			if errors.Is(err, model.ErrOrgQuotaInsufficient) || errors.Is(err, model.ErrOrgMemberQuotaExceeded) {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+			}
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		funding.consumed += delta
+		return nil
 	default:
 		return types.NewError(fmt.Errorf("unsupported funding source: %s", s.funding.Source()), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
@@ -264,6 +287,12 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 	case *SubscriptionFunding:
 		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
+		}
+	case *OrganizationFunding:
+		if err := model.RefundOrgQuota(funding.orgId, funding.userId, delta); err != nil {
+			common.SysLog("error rolling back organization funding reserve: " + err.Error())
+		} else {
+			funding.consumed -= delta
 		}
 	}
 }
@@ -309,6 +338,10 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 		// 2. SubscriptionFunding.PreConsume 忽略参数，始终用 s.amount 预扣
 		// 3. 若信任旁路将 effectiveQuota 设为 0，会导致 preConsumedQuota 与实际订阅预扣不一致
 		return false
+	case BillingSourceOrganization:
+		// 企业计费必须关闭信任旁路：旁路会把 effectiveQuota 置 0，从而跳过
+		// ConsumeOrgQuota 里的成员子额度校验，成员就能超额消费企业池。
+		return false
 	default:
 		return false
 	}
@@ -332,6 +365,12 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
 	}
+
+	// 企业维度归属：供消费日志 other 与 quota_data 使用。
+	if org, ok := s.funding.(*OrganizationFunding); ok {
+		info.OrgId = org.OrgId()
+		info.OrgName = org.OrgName()
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +384,15 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
+
+	// 企业额度池优先：成员的消费一律先扣企业池，与个人计费偏好无关
+	// （偏好描述的是"钱包 vs 订阅"，企业池是第三方资金源）。
+	// 池不足或成员子额度超限时直接报额度不足，仅当企业开启 AllowWalletFallback
+	// 才回落到下面的钱包/订阅偏好逻辑（语义对齐订阅的 AllowWalletOverflow）。
+	// 非企业成员路径完全不受影响。
+	if orgSession, orgErr, handled := tryOrganizationBilling(c, relayInfo, preConsumedQuota); handled {
+		return orgSession, orgErr
+	}
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
@@ -439,4 +487,88 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 		return session, nil
 	}
+}
+
+// tryOrganizationBilling 尝试用企业额度池为本次请求预扣费。
+//
+// 返回值 handled 表示"结果已定"：true 时调用方必须直接返回 (session, apiErr)；
+// false 表示该用户不走企业计费（非成员 / 企业停用）或企业允许回落，
+// 调用方应继续走个人计费偏好。
+func tryOrganizationBilling(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError, bool) {
+	org, member, err := model.GetActiveOrganizationForUser(relayInfo.UserId)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry()), true
+	}
+	if org == nil || member == nil {
+		return nil, nil, false
+	}
+
+	// 日志与报表归属：无论最终由谁付费，本次请求都属于该企业。
+	relayInfo.OrgId = org.Id
+	relayInfo.OrgName = org.DisplayName
+	if relayInfo.OrgName == "" {
+		relayInfo.OrgName = org.Name
+	}
+
+	// 预检查只为尽早判定能否回落；真正的原子校验在 ConsumeOrgQuota 的事务内完成。
+	insufficient := org.Quota < preConsumedQuota ||
+		(member.QuotaLimit > 0 && member.QuotaUsed+preConsumedQuota > member.QuotaLimit)
+	if insufficient {
+		if !org.AllowWalletFallback {
+			return nil, orgInsufficientError(org, member, preConsumedQuota), true
+		}
+		return nil, nil, false
+	}
+
+	session := &BillingSession{
+		relayInfo: relayInfo,
+		funding: &OrganizationFunding{
+			orgId:   org.Id,
+			userId:  relayInfo.UserId,
+			orgName: relayInfo.OrgName,
+		},
+	}
+	if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
+		// preConsume 已回滚令牌预扣。并发下企业池可能刚好被其他请求扣空，
+		// 此时按企业配置决定是否回落个人资金；其他错误（如数据库故障）不回落。
+		if org.AllowWalletFallback && isOrgQuotaShortage(apiErr) {
+			return nil, nil, false
+		}
+		return nil, apiErr, true
+	}
+	return session, nil, true
+}
+
+// isOrgQuotaShortage 判定预扣失败是否属于"企业额度不够"（池不足 / 子额度超限），
+// 以便与数据库故障等系统错误区分：只有前者才允许回落个人资金。
+func isOrgQuotaShortage(apiErr *types.NewAPIError) bool {
+	if apiErr == nil {
+		return false
+	}
+	return errors.Is(apiErr, model.ErrOrgQuotaInsufficient) ||
+		errors.Is(apiErr, model.ErrOrgMemberQuotaExceeded) ||
+		errors.Is(apiErr, model.ErrOrgDisabled) ||
+		errors.Is(apiErr, model.ErrOrgMemberDisabled)
+}
+
+// orgInsufficientError 构造企业额度不足的对外错误。
+// 区分"企业池没钱"与"你自己的子额度用完"两种语义，便于成员自助排查；
+// 不回落钱包时这是终态错误，因此跳过重试且不记错误日志。
+func orgInsufficientError(org *model.Organization, member *model.OrgMember, preConsumedQuota int) *types.NewAPIError {
+	var err error
+	if member.QuotaLimit > 0 && member.QuotaUsed+preConsumedQuota > member.QuotaLimit {
+		err = fmt.Errorf("%s: 子额度上限 %s，已用 %s，本次需预扣 %s",
+			model.ErrOrgMemberQuotaExceeded.Error(),
+			logger.FormatQuota(member.QuotaLimit),
+			logger.FormatQuota(member.QuotaUsed),
+			logger.FormatQuota(preConsumedQuota))
+	} else {
+		err = fmt.Errorf("%s: 企业 %s 剩余额度 %s，本次需预扣 %s",
+			model.ErrOrgQuotaInsufficient.Error(),
+			org.Name,
+			logger.FormatQuota(org.Quota),
+			logger.FormatQuota(preConsumedQuota))
+	}
+	return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+		types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 }

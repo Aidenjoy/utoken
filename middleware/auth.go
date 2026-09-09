@@ -154,6 +154,12 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
 
+	// 企业（组织）上下文：供 OrgMemberAuth/OrgAdminAuth 与企业维度接口使用。
+	// 取不到时按无企业处理，不影响非企业路径。
+	if userId, ok := id.(int); ok {
+		setOrgContext(c, userId)
+	}
+
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
 	// 的写接口都会自动留痕（无需在路由上单独挂审计中间件，避免漏挂）。
 	// handler 内手动埋点者会设置 ContextKeyAuditLogged，finishAdminAudit 据此跳过。
@@ -187,12 +193,6 @@ func UserAuth() func(c *gin.Context) {
 func AdminAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, common.RoleAdminUser)
-	}
-}
-
-func AgentAuth() func(c *gin.Context) {
-	return func(c *gin.Context) {
-		authHelper(c, common.RoleAgentUser)
 	}
 }
 

@@ -52,6 +52,11 @@ const (
 	ContextKeyUsingGroup  ContextKey = "group"
 	ContextKeyUserName    ContextKey = "username"
 
+	// 企业（组织）上下文：OrgId=0 表示无企业，OrgRole 取 model.OrgRoleAdmin / OrgRoleMember。
+	// 企业管理员不是系统角色，权限仅在本企业内生效。
+	ContextKeyUserOrgId   ContextKey = "org_id"
+	ContextKeyUserOrgRole ContextKey = "org_role"
+
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 
 	ContextKeySystemPromptOverride ContextKey = "system_prompt_override"

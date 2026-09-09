@@ -33,10 +33,6 @@ func GetAllQuotaDates(c *gin.Context) {
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	username := c.Query("username")
 	group := c.Query("group")
-	// Agents can only see data in their own group
-	if c.GetInt("role") == common.RoleAgentUser {
-		group = c.GetString("group")
-	}
 	dates, err := model.GetAllQuotaDates(startTimestamp, endTimestamp, username, group)
 	if err != nil {
 		common.ApiError(c, err)
@@ -53,12 +49,8 @@ func GetAllQuotaDates(c *gin.Context) {
 func GetQuotaDatesByUser(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	group := ""
-	// Agents can only see data in their own group
-	if c.GetInt("role") == common.RoleAgentUser {
-		group = c.GetString("group")
-	}
-	dates, err := model.GetQuotaDataGroupByUser(startTimestamp, endTimestamp, group)
+	orgId, _ := strconv.Atoi(c.Query("org_id"))
+	dates, err := model.GetQuotaDataGroupByUser(startTimestamp, endTimestamp, orgId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -101,12 +93,7 @@ func GetAllFlowQuotaDates(c *gin.Context) {
 		return
 	}
 	username := c.Query("username")
-	group := ""
-	// Agents can only see data in their own group
-	if c.GetInt("role") == common.RoleAgentUser {
-		group = c.GetString("group")
-	}
-	dates, err := model.GetFlowQuotaDataWithGroup(startTimestamp, endTimestamp, username, 0, c.GetInt("role"), group)
+	dates, err := model.GetFlowQuotaDataWithGroup(startTimestamp, endTimestamp, username, 0, c.GetInt("role"), "")
 	if err != nil {
 		common.ApiError(c, err)
 		return

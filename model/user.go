@@ -45,6 +45,7 @@ type User struct {
 	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
 	AffHistoryQuota  int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
 	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	OrgId            int                        `json:"org_id" gorm:"type:int;column:org_id;index;default:0"` // 所属企业（组织），0=无企业
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
@@ -64,6 +65,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Username: user.Username,
 		Setting:  user.Setting,
 		Email:    user.Email,
+		OrgId:    user.OrgId,
 	}
 	return cache
 }
@@ -123,6 +125,7 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 		"enabled":    true,
 		"playground": true,
 		"chat":       true,
+		"prompt":     true,
 	}
 
 	// 控制台区域 - 所有用户都可以访问
@@ -137,31 +140,34 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 
 	// 个人中心区域 - 所有用户都可以访问
 	defaultConfig["personal"] = map[string]interface{}{
-		"enabled":  true,
-		"topup":    true,
-		"personal": true,
+		"enabled":      true,
+		"topup":        true,
+		"personal":     true,
+		"organization": true,
 	}
 
 	// 管理员区域 - 根据角色决定
 	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"redemption":   true,
+			"user":         true,
+			"organization": true,
+			"setting":      false, // 管理员不能访问系统设置
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"redemption":   true,
+			"user":         true,
+			"organization": true,
+			"setting":      true,
 		}
 	}
 	// 普通用户不包含admin区域
@@ -407,6 +413,21 @@ func GetUserNamesByIds(ids []int) (map[int]string, error) {
 		names[row.Id] = row.Username
 	}
 	return names, nil
+}
+
+// GetUserByUsername 按用户名精确读取账号（企业邀请既有用户时使用）。
+// 不回密码与 access_token；软删除的账号不可被邀请，因此不加 Unscoped。
+// 未找到返回 gorm.ErrRecordNotFound。
+func GetUserByUsername(username string) (*User, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var user User
+	if err := DB.Omit("password", "access_token").Where("username = ?", username).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {

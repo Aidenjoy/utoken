@@ -112,6 +112,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendRequestConversionChain(relayInfo, other)
 	appendFinalRequestFormat(relayInfo, other)
 	appendBillingInfo(relayInfo, other)
+	appendOrgInfo(relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
 	return other
@@ -202,6 +203,19 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		}
 		// Wallet quota is not deducted when billed from subscription.
 		other["wallet_quota_deducted"] = 0
+	}
+}
+
+// appendOrgInfo 写入企业（组织）归属，供消费日志展示与企业报表筛选。
+// billing_source 已由 appendBillingInfo 写入，因此日志里能同时看到
+// "属于哪个企业"与"本次由谁付费"（企业池不足时可能回落个人钱包）。
+func appendOrgInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if relayInfo == nil || other == nil || relayInfo.OrgId <= 0 {
+		return
+	}
+	other["org_id"] = relayInfo.OrgId
+	if relayInfo.OrgName != "" {
+		other["org_name"] = relayInfo.OrgName
 	}
 }
 
