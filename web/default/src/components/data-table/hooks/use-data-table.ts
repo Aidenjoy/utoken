@@ -364,6 +364,15 @@ export function useDataTable<TData>(options: UseDataTableOptions<TData>) {
     initialPagination,
     options.onPaginationChange
   )
+  // columnFilters must always resolve to a concrete array: TanStack Table
+  // returns the controlled `state` object from getState() verbatim (no merge
+  // with initialState), so an absent value surfaces as `undefined` and crashes
+  // consumers such as DataTableToolbar reading `columnFilters.length`.
+  const [columnFilters, onColumnFiltersChange] = useControllableTableState(
+    options.columnFilters,
+    [],
+    options.onColumnFiltersChange
+  )
 
   const resolvedPageCount =
     explicitPageCount ??
@@ -382,7 +391,7 @@ export function useDataTable<TData>(options: UseDataTableOptions<TData>) {
       columnSizing,
       rowSelection,
       expanded,
-      columnFilters: options.columnFilters,
+      columnFilters,
       globalFilter: options.globalFilter,
       pagination,
     },
@@ -401,7 +410,7 @@ export function useDataTable<TData>(options: UseDataTableOptions<TData>) {
     onColumnSizingChange,
     onRowSelectionChange,
     onExpandedChange,
-    onColumnFiltersChange: options.onColumnFiltersChange,
+    onColumnFiltersChange,
     onGlobalFilterChange: options.onGlobalFilterChange,
     onPaginationChange,
     getCoreRowModel: getCoreRowModel(),
