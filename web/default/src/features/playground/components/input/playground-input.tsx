@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -45,6 +45,11 @@ interface PlaygroundInputProps {
   onGroupChange: (value: string) => void
   hasMessages?: boolean
   onClearMessages?: () => void
+  /**
+   * Text pre-filled into the composer, e.g. a template picked from the Prompt
+   * Library. It only seeds the draft — nothing is sent until the user submits.
+   */
+  initialText?: string
 }
 
 export function PlaygroundInput({
@@ -61,9 +66,17 @@ export function PlaygroundInput({
   onGroupChange,
   hasMessages = false,
   onClearMessages,
+  initialText,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
-  const [text, setText] = useState('')
+  const [text, setText] = useState(initialText ?? '')
+
+  // Re-seed when the user picks another template while the playground is
+  // already mounted. An empty value is ignored so clearing the composer by hand
+  // is not immediately undone by a re-render.
+  useEffect(() => {
+    if (initialText) setText(initialText)
+  }, [initialText])
 
   const handleSubmit = (message: PromptInputMessage) => {
     const submittableText = getSubmittableInputText(message, disabled)

@@ -155,7 +155,6 @@ export function UsersMutateDrawer({
   const selectedRole = form.watch('role')
   const canEditAdminPermissions = currentUser?.role === ROLE.SUPER_ADMIN
   const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
-  const isAgent = currentUser?.role === ROLE.AGENT
 
   const onSubmit = async (data: UserFormValues) => {
     if (!isUpdate) {
@@ -266,47 +265,43 @@ export function UsersMutateDrawer({
                   )}
                 />
 
-                {!isAgent && (
-                  <FormField
-                    control={form.control}
-                    name='role'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Role')}</FormLabel>
-                        <Select
-                          items={[
-                            { value: '1', label: t('Common User') },
-                            { value: '5', label: t('Agent') },
-                            { value: '10', label: t('Admin') },
-                          ]}
-                          onValueChange={(value) =>
-                            value !== null && field.onChange(parseInt(value))
-                          }
-                          value={String(field.value)}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={t('Select a role')} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              <SelectItem value='1'>
-                                {t('Common User')}
-                              </SelectItem>
-                              <SelectItem value='5'>{t('Agent')}</SelectItem>
-                              <SelectItem value='10'>{t('Admin')}</SelectItem>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          {t("Set the user's role (cannot be Root)")}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
+                <FormField
+                  control={form.control}
+                  name='role'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Role')}</FormLabel>
+                      <Select
+                        items={[
+                          { value: '1', label: t('Common User') },
+                          { value: '10', label: t('Admin') },
+                        ]}
+                        onValueChange={(value) =>
+                          value !== null && field.onChange(parseInt(value))
+                        }
+                        value={String(field.value)}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={t('Select a role')} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectGroup>
+                            <SelectItem value='1'>
+                              {t('Common User')}
+                            </SelectItem>
+                            <SelectItem value='10'>{t('Admin')}</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        {t("Set the user's role (cannot be Root)")}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
@@ -356,7 +351,6 @@ export function UsersMutateDrawer({
                 <SideDrawerSection>
                   <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
 
-                  {!isAgent && (
                   <FormField
                     control={form.control}
                     name='group'
@@ -392,7 +386,6 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
-                  )}
 
                   <FormField
                     control={form.control}
@@ -416,7 +409,6 @@ export function UsersMutateDrawer({
                               className='flex-1'
                             />
                           </FormControl>
-                          {!isAgent && (
                           <Button
                             type='button'
                             variant='outline'
@@ -425,7 +417,6 @@ export function UsersMutateDrawer({
                             <Pencil className='mr-1 h-4 w-4' />
                             {t('Adjust Quota')}
                           </Button>
-                          )}
                         </div>
                         <FormDescription>
                           {formatQuota(parseQuotaFromDollars(field.value || 0))}
@@ -592,7 +583,7 @@ export function UsersMutateDrawer({
       </Sheet>
 
       {/* Adjust Quota Dialog */}
-      {currentRow && !isAgent && (
+      {currentRow && (
         <UserQuotaDialog
           open={quotaDialogOpen}
           onOpenChange={setQuotaDialogOpen}

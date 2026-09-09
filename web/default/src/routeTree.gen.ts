@@ -46,8 +46,11 @@ import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedStatisticsIndexRouteImport } from './routes/_authenticated/statistics/index'
 import { Route as AuthenticatedStatisticsLogsIndexRouteImport } from './routes/_authenticated/statistics-logs/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
+import { Route as AuthenticatedPromptsIndexRouteImport } from './routes/_authenticated/prompts/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
+import { Route as AuthenticatedOrganizationsIndexRouteImport } from './routes/_authenticated/organizations/index'
+import { Route as AuthenticatedOrganizationIndexRouteImport } from './routes/_authenticated/organization/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedDirectorIndexRouteImport } from './routes/_authenticated/director/index'
@@ -55,6 +58,7 @@ import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
+import { Route as AuthenticatedOrganizationSectionRouteImport } from './routes/_authenticated/organization/$section'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedDirectorSettingsRouteImport } from './routes/_authenticated/director/settings'
@@ -274,6 +278,12 @@ const AuthenticatedRedemptionCodesIndexRoute =
     path: '/redemption-codes/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPromptsIndexRoute =
+  AuthenticatedPromptsIndexRouteImport.update({
+    id: '/prompts/',
+    path: '/prompts/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedProfileIndexRoute =
   AuthenticatedProfileIndexRouteImport.update({
     id: '/profile/',
@@ -284,6 +294,18 @@ const AuthenticatedPlaygroundIndexRoute =
   AuthenticatedPlaygroundIndexRouteImport.update({
     id: '/playground/',
     path: '/playground/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedOrganizationsIndexRoute =
+  AuthenticatedOrganizationsIndexRouteImport.update({
+    id: '/organizations/',
+    path: '/organizations/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedOrganizationIndexRoute =
+  AuthenticatedOrganizationIndexRouteImport.update({
+    id: '/organization/',
+    path: '/organization/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedModelsIndexRoute =
@@ -325,6 +347,12 @@ const AuthenticatedUsageLogsSectionRoute =
   AuthenticatedUsageLogsSectionRouteImport.update({
     id: '/usage-logs/$section',
     path: '/usage-logs/$section',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedOrganizationSectionRoute =
+  AuthenticatedOrganizationSectionRouteImport.update({
+    id: '/organization/$section',
+    path: '/organization/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedModelsSectionRoute =
@@ -516,6 +544,7 @@ export interface FileRoutesByFullPath {
   '/director/settings': typeof AuthenticatedDirectorSettingsRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/organization/$section': typeof AuthenticatedOrganizationSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -523,8 +552,11 @@ export interface FileRoutesByFullPath {
   '/director/': typeof AuthenticatedDirectorIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
+  '/organization/': typeof AuthenticatedOrganizationIndexRoute
+  '/organizations/': typeof AuthenticatedOrganizationsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
+  '/prompts/': typeof AuthenticatedPromptsIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/statistics-logs/': typeof AuthenticatedStatisticsLogsIndexRoute
   '/statistics/': typeof AuthenticatedStatisticsIndexRoute
@@ -586,6 +618,7 @@ export interface FileRoutesByTo {
   '/director/settings': typeof AuthenticatedDirectorSettingsRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/organization/$section': typeof AuthenticatedOrganizationSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
@@ -593,8 +626,11 @@ export interface FileRoutesByTo {
   '/director': typeof AuthenticatedDirectorIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
+  '/organization': typeof AuthenticatedOrganizationIndexRoute
+  '/organizations': typeof AuthenticatedOrganizationsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
+  '/prompts': typeof AuthenticatedPromptsIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/statistics-logs': typeof AuthenticatedStatisticsLogsIndexRoute
   '/statistics': typeof AuthenticatedStatisticsIndexRoute
@@ -660,6 +696,7 @@ export interface FileRoutesById {
   '/_authenticated/director/settings': typeof AuthenticatedDirectorSettingsRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/_authenticated/organization/$section': typeof AuthenticatedOrganizationSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -667,8 +704,11 @@ export interface FileRoutesById {
   '/_authenticated/director/': typeof AuthenticatedDirectorIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
+  '/_authenticated/organization/': typeof AuthenticatedOrganizationIndexRoute
+  '/_authenticated/organizations/': typeof AuthenticatedOrganizationsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
+  '/_authenticated/prompts/': typeof AuthenticatedPromptsIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/statistics-logs/': typeof AuthenticatedStatisticsLogsIndexRoute
   '/_authenticated/statistics/': typeof AuthenticatedStatisticsIndexRoute
@@ -734,6 +774,7 @@ export interface FileRouteTypes {
     | '/director/settings'
     | '/errors/$error'
     | '/models/$section'
+    | '/organization/$section'
     | '/usage-logs/$section'
     | '/asset-library/'
     | '/channels/'
@@ -741,8 +782,11 @@ export interface FileRouteTypes {
     | '/director/'
     | '/keys/'
     | '/models/'
+    | '/organization/'
+    | '/organizations/'
     | '/playground/'
     | '/profile/'
+    | '/prompts/'
     | '/redemption-codes/'
     | '/statistics-logs/'
     | '/statistics/'
@@ -804,6 +848,7 @@ export interface FileRouteTypes {
     | '/director/settings'
     | '/errors/$error'
     | '/models/$section'
+    | '/organization/$section'
     | '/usage-logs/$section'
     | '/asset-library'
     | '/channels'
@@ -811,8 +856,11 @@ export interface FileRouteTypes {
     | '/director'
     | '/keys'
     | '/models'
+    | '/organization'
+    | '/organizations'
     | '/playground'
     | '/profile'
+    | '/prompts'
     | '/redemption-codes'
     | '/statistics-logs'
     | '/statistics'
@@ -877,6 +925,7 @@ export interface FileRouteTypes {
     | '/_authenticated/director/settings'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
+    | '/_authenticated/organization/$section'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/asset-library/'
     | '/_authenticated/channels/'
@@ -884,8 +933,11 @@ export interface FileRouteTypes {
     | '/_authenticated/director/'
     | '/_authenticated/keys/'
     | '/_authenticated/models/'
+    | '/_authenticated/organization/'
+    | '/_authenticated/organizations/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
+    | '/_authenticated/prompts/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/statistics-logs/'
     | '/_authenticated/statistics/'
@@ -1199,6 +1251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRedemptionCodesIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/prompts/': {
+      id: '/_authenticated/prompts/'
+      path: '/prompts'
+      fullPath: '/prompts/'
+      preLoaderRoute: typeof AuthenticatedPromptsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/profile/': {
       id: '/_authenticated/profile/'
       path: '/profile'
@@ -1211,6 +1270,20 @@ declare module '@tanstack/react-router' {
       path: '/playground'
       fullPath: '/playground/'
       preLoaderRoute: typeof AuthenticatedPlaygroundIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/organizations/': {
+      id: '/_authenticated/organizations/'
+      path: '/organizations'
+      fullPath: '/organizations/'
+      preLoaderRoute: typeof AuthenticatedOrganizationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/organization/': {
+      id: '/_authenticated/organization/'
+      path: '/organization'
+      fullPath: '/organization/'
+      preLoaderRoute: typeof AuthenticatedOrganizationIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/models/': {
@@ -1260,6 +1333,13 @@ declare module '@tanstack/react-router' {
       path: '/usage-logs/$section'
       fullPath: '/usage-logs/$section'
       preLoaderRoute: typeof AuthenticatedUsageLogsSectionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/organization/$section': {
+      id: '/_authenticated/organization/$section'
+      path: '/organization/$section'
+      fullPath: '/organization/$section'
+      preLoaderRoute: typeof AuthenticatedOrganizationSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/models/$section': {
@@ -1576,6 +1656,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDirectorSettingsRoute: typeof AuthenticatedDirectorSettingsRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
+  AuthenticatedOrganizationSectionRoute: typeof AuthenticatedOrganizationSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
@@ -1583,8 +1664,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDirectorIndexRoute: typeof AuthenticatedDirectorIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
+  AuthenticatedOrganizationIndexRoute: typeof AuthenticatedOrganizationIndexRoute
+  AuthenticatedOrganizationsIndexRoute: typeof AuthenticatedOrganizationsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
+  AuthenticatedPromptsIndexRoute: typeof AuthenticatedPromptsIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedStatisticsLogsIndexRoute: typeof AuthenticatedStatisticsLogsIndexRoute
   AuthenticatedStatisticsIndexRoute: typeof AuthenticatedStatisticsIndexRoute
@@ -1607,6 +1691,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDirectorSettingsRoute: AuthenticatedDirectorSettingsRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
+  AuthenticatedOrganizationSectionRoute: AuthenticatedOrganizationSectionRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
@@ -1614,8 +1699,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDirectorIndexRoute: AuthenticatedDirectorIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
+  AuthenticatedOrganizationIndexRoute: AuthenticatedOrganizationIndexRoute,
+  AuthenticatedOrganizationsIndexRoute: AuthenticatedOrganizationsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
+  AuthenticatedPromptsIndexRoute: AuthenticatedPromptsIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedStatisticsLogsIndexRoute: AuthenticatedStatisticsLogsIndexRoute,

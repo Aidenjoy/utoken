@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   Activity,
   BarChart3,
+  BookOpen,
   Box,
+  Building,
+  Building2,
   Camera,
   Clapperboard,
   CreditCard,
@@ -71,6 +74,11 @@ export function useSidebarData(): SidebarData {
             title: t('Virtual Human Asset Library'),
             url: '/asset-library',
             icon: Images,
+          },
+          {
+            title: t('Prompt Library'),
+            url: '/prompts',
+            icon: BookOpen,
           },
           {
             title: t('Chat'),
@@ -153,6 +161,19 @@ export function useSidebarData(): SidebarData {
         title: t('Personal'),
         items: [
           {
+            title: t('Organization'),
+            url: '/organization',
+            activeUrls: ['/organization/overview'],
+            configUrls: [
+              '/organization/overview',
+              '/organization/members',
+              '/organization/usage',
+              '/organization/billing',
+              '/organization/settings',
+            ],
+            icon: Building2,
+          },
+          {
             title: t('Wallet'),
             url: '/wallet',
             icon: Wallet,
@@ -184,19 +205,25 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
-            requiredRole: ROLE.AGENT,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Organizations'),
+            url: '/organizations',
+            icon: Building,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Statistics Data'),
             url: '/statistics',
             icon: BarChart3,
-            requiredRole: ROLE.AGENT,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Statistics Logs'),
             url: '/statistics-logs',
             icon: ScrollText,
-            requiredRole: ROLE.AGENT,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Redemption Codes'),

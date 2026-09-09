@@ -51,6 +51,15 @@ export interface AuthUser {
   stripe_customer?: string
   sidebar_modules?: string
   permissions?: UserPermissions
+  /**
+   * Organization (enterprise) context pushed by `/api/user/self`.
+   * `org_id` is 0 when the user does not belong to any organization, which is a
+   * normal state rather than an error. `org_role` is an organization-scoped role
+   * ('admin' | 'member') and is unrelated to the system `role` above.
+   */
+  org_id?: number
+  org_name?: string
+  org_role?: string
 }
 
 interface AuthState {

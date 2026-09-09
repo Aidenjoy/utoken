@@ -56,6 +56,9 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'response_cache_setting.enabled': false,
+  'response_cache_setting.ttl_seconds': 300,
+  'response_cache_setting.max_body_bytes': 1048576,
 }
 
 export function OperationsSettings() {
