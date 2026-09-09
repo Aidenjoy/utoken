@@ -25,18 +25,29 @@ import { GeneralError, getHttpStatus } from './general-error'
 // 刷新后仍然崩溃时回退到 GeneralError 手动处理。
 const RELOAD_GUARD_KEY = 'root_error_auto_reloaded'
 
+// StrictMode double-invokes useState initializers in dev. Reading and clearing
+// the guard inside the initializer would let the second invocation see an
+// already-consumed key, so every crash would look "not yet reloaded" and turn
+// the single recovery reload into an infinite reload loop. Memoize the consume
+// at module scope so repeated invocations agree; a fresh page load resets it.
+let reloadGuardConsumed: boolean | null = null
+
+function consumeReloadGuard(): boolean {
+  if (reloadGuardConsumed !== null) return reloadGuardConsumed
+  try {
+    reloadGuardConsumed =
+      window.sessionStorage.getItem(RELOAD_GUARD_KEY) === '1'
+    window.sessionStorage.removeItem(RELOAD_GUARD_KEY)
+  } catch {
+    reloadGuardConsumed = true // 存储不可用时视为已刷新过，避免刷新循环
+  }
+  return reloadGuardConsumed
+}
+
 export function RootError({ error }: { error?: unknown }) {
   // 渲染阶段消费并立即清除守卫：走到这里说明应用已重新构建成功，
   // 下一次崩溃允许再自动刷新一次（清除放 effect 里会因根组件已先挂载而失效）
-  const [guardConsumed] = React.useState(() => {
-    try {
-      const consumed = window.sessionStorage.getItem(RELOAD_GUARD_KEY) === '1'
-      window.sessionStorage.removeItem(RELOAD_GUARD_KEY)
-      return consumed
-    } catch {
-      return true // 存储不可用时视为已刷新过，直接展示错误页，避免刷新循环
-    }
-  })
+  const [guardConsumed] = React.useState(consumeReloadGuard)
 
   const isRuntimeCrash = getHttpStatus(error) === undefined
 
