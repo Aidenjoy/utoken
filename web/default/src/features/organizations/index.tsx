@@ -31,7 +31,7 @@ export function Organizations() {
   const { t } = useTranslation()
   return (
     <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>{t('Organizations')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Organization Management')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <OrganizationsTable />
       </SectionPageLayout.Content>

@@ -22,7 +22,6 @@ import {
   BookOpen,
   Box,
   Building,
-  Building2,
   Camera,
   Clapperboard,
   CreditCard,
@@ -48,7 +47,9 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import { ORG_ROLE } from '@/features/organization/types'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -58,6 +59,12 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+
+  // The organization workspace only exists for users inside an organization;
+  // everyone else keeps the sidebar free of a group they cannot open.
+  const hasOrganization = (user?.org_id ?? 0) > 0
+  const isOrgAdmin = hasOrganization && user?.org_role === ORG_ROLE.ADMIN
 
   return {
     navGroups: [
@@ -161,19 +168,6 @@ export function useSidebarData(): SidebarData {
         title: t('Personal'),
         items: [
           {
-            title: t('Organization'),
-            url: '/organization',
-            activeUrls: ['/organization/overview'],
-            configUrls: [
-              '/organization/overview',
-              '/organization/members',
-              '/organization/usage',
-              '/organization/billing',
-              '/organization/settings',
-            ],
-            icon: Building2,
-          },
-          {
             title: t('Wallet'),
             url: '/wallet',
             icon: Wallet,
@@ -185,6 +179,48 @@ export function useSidebarData(): SidebarData {
           },
         ],
       },
+      ...(hasOrganization
+        ? [
+            {
+              id: 'organization',
+              title: t('Organization'),
+              items: [
+                {
+                  title: t('Overview'),
+                  url: '/organization/overview',
+                  icon: Activity,
+                },
+                // Members only ever reach the overview (the route guard
+                // redirects the rest), so the remaining entries are
+                // admin-only — mirroring the sections they can open.
+                ...(isOrgAdmin
+                  ? [
+                      {
+                        title: t('Members'),
+                        url: '/organization/members',
+                        icon: Users,
+                      },
+                      {
+                        title: t('Usage Report'),
+                        url: '/organization/usage',
+                        icon: BarChart3,
+                      },
+                      {
+                        title: t('Billing Details'),
+                        url: '/organization/billing',
+                        icon: CreditCard,
+                      },
+                      {
+                        title: t('Organization Settings'),
+                        url: '/organization/settings',
+                        icon: Settings,
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ]
+        : []),
       {
         id: 'admin',
         title: t('Admin'),
@@ -208,7 +244,7 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.ADMIN,
           },
           {
-            title: t('Organizations'),
+            title: t('Organization Management'),
             url: '/organizations',
             icon: Building,
             requiredRole: ROLE.ADMIN,

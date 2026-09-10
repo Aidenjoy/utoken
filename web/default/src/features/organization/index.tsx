@@ -16,12 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { type ReactNode, useCallback } from 'react'
+import { getRouteApi } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { OrganizationBilling } from './components/organization-billing'
 import {
@@ -35,8 +34,8 @@ import { OrganizationSettings } from './components/organization-settings'
 import { OrganizationUsage } from './components/organization-usage'
 import {
   ORG_DEFAULT_SECTION,
-  ORG_SECTION_IDS,
   ORG_SECTION_TITLES,
+  isOrgSectionId,
   type OrgSectionId,
 } from './constants'
 
@@ -54,60 +53,39 @@ const SECTION_CONTENT: Record<OrgSectionId, ReactNode> = {
   settings: <OrganizationSettings />,
 }
 
+/**
+ * The sections double as sidebar entries (see `useSidebarData`), so the page
+ * itself only renders the active one; the route guard already keeps members
+ * and organization-less users on the overview.
+ */
 function OrganizationContent() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const { summary, isLoading, isOrgAdmin } = useOrganization()
+  const { summary, isLoading } = useOrganization()
   const params = route.useParams()
 
-  // Members only ever see the overview; the route guard already redirects other
-  // sections, this keeps the tab strip consistent with it.
-  const sections: readonly OrgSectionId[] = isOrgAdmin
-    ? ORG_SECTION_IDS
-    : ['overview']
-  const activeSection = sections.includes(params.section as OrgSectionId)
-    ? (params.section as OrgSectionId)
+  const activeSection = isOrgSectionId(params.section)
+    ? params.section
     : ORG_DEFAULT_SECTION
 
-  const handleSectionChange = useCallback(
-    (section: string) => {
-      void navigate({
-        to: '/organization/$section',
-        params: { section: section as OrgSectionId },
-      })
-    },
-    [navigate]
-  )
-
   const orgName = summary?.display_name || summary?.name
-  const title = orgName || t(ORG_SECTION_TITLES[activeSection])
-
   const hasOrganization = (summary?.org_id ?? 0) > 0
   const showEmptyState = !isLoading && !hasOrganization
   const showSections = !isLoading && hasOrganization
 
   return (
     <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>{title}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t(ORG_SECTION_TITLES[activeSection])}
+        {hasOrganization && orgName ? (
+          <span className='text-muted-foreground ml-2 text-sm font-normal'>
+            {orgName}
+          </span>
+        ) : null}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         {showEmptyState ? <OrganizationEmpty /> : null}
         {showSections ? (
-          <div className='flex h-full min-h-0 flex-col gap-4'>
-            {isOrgAdmin ? (
-              <Tabs value={activeSection} onValueChange={handleSectionChange}>
-                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-                  {sections.map((section) => (
-                    <TabsTrigger key={section} value={section}>
-                      {t(ORG_SECTION_TITLES[section])}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-            ) : null}
-            <div className='min-h-0 flex-1'>
-              {SECTION_CONTENT[activeSection]}
-            </div>
-          </div>
+          <div className='h-full min-h-0'>{SECTION_CONTENT[activeSection]}</div>
         ) : null}
       </SectionPageLayout.Content>
     </SectionPageLayout>
