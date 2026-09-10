@@ -384,6 +384,33 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'subscription.plan_create': 'Created a subscription plan',
   'subscription.plan_update': 'Updated a subscription plan',
   'subscription.bind': 'Bound a subscription',
+  // Organizations (enterprise)
+  'org.create':
+    'Created organization {{name}} (ID: {{id}}, group {{group}}, quota {{quota}}, owner {{owner}})',
+  'org.update':
+    'Updated organization {{name}} (ID: {{id}}, fields: {{fields}})',
+  'org.delete': 'Deleted organization {{name}} (ID: {{id}})',
+  'org.quota_adjust':
+    'Adjusted organization {{name}} quota by {{delta}} ({{before}} -> {{after}})',
+  'org.status_update': 'Set organization {{name}} status to {{status}}',
+  'org.cache_config':
+    'Updated organization {{name}} response cache (enabled={{enabled}}, ttl={{ttl}})',
+  'org.alert_config':
+    'Updated organization {{name}} alert settings (threshold={{threshold}}, daily={{daily}}, notify={{notify}})',
+  'org.member.create':
+    'Created organization member {{username}} in {{name}} (role {{role}}, sub-quota {{quota_limit}})',
+  'org.member.invite':
+    'Invited user {{username}} into organization {{name}} (role {{role}}, sub-quota {{quota_limit}})',
+  'org.member.update':
+    'Updated organization member {{username}} in {{name}} (role {{role}}, sub-quota {{quota_limit}}, status {{status}})',
+  'org.member.remove': 'Removed member {{username}} from organization {{name}}',
+  // Organization alerts
+  'alert.org_quota_low':
+    'Organization {{name}} quota dropped below warning threshold {{threshold}}',
+  'alert.org_daily_usage':
+    'Organization {{name}} daily usage exceeded {{threshold}}',
+  'alert.member_quota':
+    'Member {{username}} organization sub-quota usage exceeded {{threshold}}%',
   // Logs
   'log.clear': 'Cleared historical logs',
   // Generic middleware fallback

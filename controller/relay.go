@@ -158,6 +158,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 
+	// 响应缓存命中直返：必须放在预扣费之前，命中时本次请求既不打上游也不产生任何扣费。
+	// 仍走 PostTextConsumeQuota 记一条 quota=0 的日志，命中率与节省额度才有数据可算。
+	if service.PrepareResponseCache(relayInfo, request) {
+		if cached := service.GetResponseCache(relayInfo.ResponseCacheKey); cached != nil {
+			relayInfo.CacheHit = true
+			relayInfo.IsStream = cached.IsStream
+			service.ReplayResponseCache(c, cached)
+			service.PostTextConsumeQuota(c, relayInfo, cached.Usage, []string{"缓存命中"})
+			return
+		}
+	}
+
 	if priceData.FreeModel {
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
 	} else {
@@ -210,6 +222,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		// 旁路捕获本次响应，供未命中时回写缓存；每轮重试各自一份，失败轮次的残留不会污染。
+		capture := service.BeginResponseCaptureIfNeeded(c, relayInfo)
+		c.Set(service.ResponseCaptureContextKey, capture)
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -220,6 +236,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		default:
 			newAPIError = relayHandler(c, relayInfo)
 		}
+		capture.Restore(c)
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil

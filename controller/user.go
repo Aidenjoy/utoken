@@ -246,11 +246,16 @@ func Register(c *gin.Context) {
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
 	}
-	// If inviter is an agent, new user inherits the agent's group
+	// 邀请人在企业内时，新用户继承企业归属与分组并登记为普通成员。
+	// 邀请裂变是企业扩员的主要来源；成员登记失败只记日志，不阻断注册。
+	inviterOrgId := 0
 	if inviterId > 0 {
-		inviter, err := model.GetUserById(inviterId, false)
-		if err == nil && inviter.Role == common.RoleAgentUser {
-			cleanUser.Group = inviter.Group
+		if inviterOrg, inviterMember, orgErr := model.GetActiveOrganizationForUser(inviterId); orgErr != nil {
+			common.SysLog(fmt.Sprintf("failed to load inviter organization for user %d: %s", inviterId, orgErr.Error()))
+		} else if inviterOrg != nil && inviterMember != nil {
+			inviterOrgId = inviterOrg.Id
+			cleanUser.OrgId = inviterOrg.Id
+			cleanUser.Group = inviterOrg.Group
 		}
 	}
 	if common.EmailVerificationEnabled {
@@ -270,6 +275,16 @@ func Register(c *gin.Context) {
 	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
+	}
+	// 补登成员记录：User.OrgId 只是归属快照，鉴权与计费均以 org_members 为准
+	if inviterOrgId > 0 {
+		if err := model.AddOrgMember(&model.OrgMember{
+			OrgId:   inviterOrgId,
+			UserId:  insertedUser.Id,
+			OrgRole: model.OrgRoleMember,
+		}); err != nil {
+			common.SysLog(fmt.Sprintf("failed to attach new user %d to organization %d: %s", insertedUser.Id, inviterOrgId, err.Error()))
+		}
 	}
 	// 生成默认令牌
 	if constant.GenerateDefaultToken {
@@ -308,22 +323,6 @@ func Register(c *gin.Context) {
 }
 
 func GetAllUsers(c *gin.Context) {
-	myRole := c.GetInt("role")
-	if myRole == common.RoleAgentUser {
-		// Agents can only see users in their own group
-		myGroup := c.GetString("group")
-		pageInfo := common.GetPageQuery(c)
-		users, total, err := model.SearchUsers("", myGroup, nil, nil, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		pageInfo.SetTotal(int(total))
-		pageInfo.SetItems(users)
-		common.ApiSuccess(c, pageInfo)
-		return
-	}
-
 	pageInfo := common.GetPageQuery(c)
 	users, total, err := model.GetAllUsers(pageInfo)
 	if err != nil {
@@ -341,11 +340,6 @@ func GetAllUsers(c *gin.Context) {
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
-	myRole := c.GetInt("role")
-	if myRole == common.RoleAgentUser {
-		// Agents can only search within their own group
-		group = c.GetString("group")
-	}
 	var role *int
 	if roleStr := c.Query("role"); roleStr != "" {
 		if parsed, err := strconv.Atoi(roleStr); err == nil {
@@ -390,13 +384,6 @@ func GetUser(c *gin.Context) {
 	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
-	}
-	if myRole == common.RoleAgentUser {
-		myGroup := c.GetString("group")
-		if user.Group != myGroup {
-			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
-			return
-		}
 	}
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
@@ -513,6 +500,22 @@ func GetSelf(c *gin.Context) {
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
 
+	// 企业（组织）上下文：前端据此决定是否展示"组织"入口以及是否按企业管理员渲染。
+	// 无企业时下发 org_id=0，不是错误状态。
+	orgId := 0
+	orgName := ""
+	orgRole := ""
+	if org, member, orgErr := model.GetActiveOrganizationForUser(id); orgErr != nil {
+		common.SysLog(fmt.Sprintf("failed to load organization context for user %d: %s", id, orgErr.Error()))
+	} else if org != nil && member != nil {
+		orgId = org.Id
+		orgName = org.DisplayName
+		if orgName == "" {
+			orgName = org.Name
+		}
+		orgRole = member.OrgRole
+	}
+
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
 		"id":                user.Id,
@@ -540,6 +543,9 @@ func GetSelf(c *gin.Context) {
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
+		"org_id":            orgId,
+		"org_name":          orgName,
+		"org_role":          orgRole,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -559,19 +565,6 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 		// 超级管理员不需要边栏设置功能
 		permissions["sidebar_settings"] = false
 		permissions["sidebar_modules"] = map[string]interface{}{}
-	} else if userRole == common.RoleAgentUser {
-		// 代理可以设置边栏，但只能访问用户管理
-		permissions["sidebar_settings"] = true
-		permissions["sidebar_modules"] = map[string]interface{}{
-			"admin": map[string]interface{}{
-				"channel":      false,
-				"models":       false,
-				"redemption":   false,
-				"user":         true,
-				"setting":      false,
-				"subscription": false,
-			},
-		}
 	} else if userRole == common.RoleAdminUser {
 		// 管理员可以设置边栏，但不包含系统设置功能
 		permissions["sidebar_settings"] = true
@@ -600,6 +593,7 @@ func generateDefaultSidebarConfig(userRole int) string {
 		"enabled":    true,
 		"playground": true,
 		"chat":       true,
+		"prompt":     true,
 	}
 
 	// 控制台区域 - 所有用户都可以访问
@@ -614,41 +608,34 @@ func generateDefaultSidebarConfig(userRole int) string {
 
 	// 个人中心区域 - 所有用户都可以访问
 	defaultConfig["personal"] = map[string]interface{}{
-		"enabled":  true,
-		"topup":    true,
-		"personal": true,
+		"enabled":      true,
+		"topup":        true,
+		"personal":     true,
+		"organization": true,
 	}
 
 	// 管理员区域 - 根据角色决定
-	if userRole == common.RoleAgentUser {
-		// 代理只能访问用户管理
-		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    false,
-			"models":     false,
-			"redemption": false,
-			"user":       true,
-			"setting":    false,
-		}
-	} else if userRole == common.RoleAdminUser {
+	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"redemption":   true,
+			"user":         true,
+			"organization": true,
+			"setting":      false, // 管理员不能访问系统设置
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":      true,
+			"channel":      true,
+			"models":       true,
+			"redemption":   true,
+			"user":         true,
+			"organization": true,
+			"setting":      true,
 		}
 	}
 	// 普通用户不包含admin区域
@@ -746,13 +733,6 @@ func UpdateUser(c *gin.Context) {
 		}
 	} else {
 		updatedUser.Role = originUser.Role
-	}
-	if myRole == common.RoleAgentUser {
-		myGroup := c.GetString("group")
-		if originUser.Group != myGroup {
-			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
-			return
-		}
 	}
 	if !canManageTargetRole(myRole, originUser.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
@@ -984,13 +964,6 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
-	if myRole == common.RoleAgentUser {
-		myGroup := c.GetString("group")
-		if originUser.Group != myGroup {
-			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
-			return
-		}
-	}
 	if myRole <= originUser.Role {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
@@ -1058,10 +1031,6 @@ func CreateUser(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
-	}
-	if myRole == common.RoleAgentUser {
-		// Agents can only create users in their own group
-		cleanUser.Group = c.GetString("group")
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -1136,23 +1105,6 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
-	if myRole == common.RoleAgentUser {
-		myGroup := c.GetString("group")
-		if user.Group != myGroup {
-			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
-			return
-		}
-		// Agents cannot adjust user quota
-		if req.Action == "add_quota" {
-			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
-			return
-		}
-		// Agents cannot promote or demote users
-		if req.Action == "promote" || req.Action == "demote" {
-			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
-			return
-		}
-	}
 	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return

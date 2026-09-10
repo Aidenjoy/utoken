@@ -78,10 +78,16 @@ export default defineConfig(({ envMode }) => {
       distPath: {
         root: 'dist',
       },
-      // Always remove stale hashed chunks from previous builds before emitting.
+      // Remove stale hashed chunks from previous builds before emitting.
       // Leftover old chunks can be embedded/served alongside the new index.html and
       // crash old SPA sessions that lazy-load a mixed old/new module graph.
-      cleanDistPath: true,
+      //
+      // Production builds only: `dist/` is also the source of the backend's
+      // `//go:embed web/default/dist`. Dev serves from memory and never emits here,
+      // but cleaning it anyway empties the directory and breaks `go run main.go`
+      // ("cannot embed directory ... contains no embeddable files"), which leaves
+      // the dev proxy without a backend and every /api call failing with 5xx.
+      cleanDistPath: isProd,
       // Rely on Rsbuild default legalComments ("linked" → per-chunk *.LICENSE.txt) in all modes.
       // Do not set "none" in production: that strips minifier-preserved third-party notices and
       // extracted license files, which some distributions require for open-source compliance.

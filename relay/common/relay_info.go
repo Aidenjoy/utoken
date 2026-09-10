@@ -118,10 +118,22 @@ type RelayInfo struct {
 	UserSetting            dto.UserSetting
 	UserEmail              string
 	UserQuota              int
-	RelayFormat            types.RelayFormat
-	SendResponseCount      int
-	ReceivedResponseCount  int
-	FinalPreConsumedQuota  int // 最终预消耗的配额
+	// OrgId / OrgName 是本次请求归属的企业（组织），OrgId=0 表示非企业成员。
+	// 仅用于消费日志 other 与 quota_data 的企业维度统计；实际扣费由
+	// BillingSession 的 OrganizationFunding 决定，两者互不依赖。
+	OrgId                 int
+	OrgName               string
+	RelayFormat           types.RelayFormat
+	SendResponseCount     int
+	ReceivedResponseCount int
+	FinalPreConsumedQuota int // 最终预消耗的配额
+	// ResponseCacheKey 非空表示本次请求参与响应缓存：命中则直接回放缓存、不打上游，
+	// 未命中则在结算时把响应回写 Redis。由 service.PrepareResponseCache 在预扣费前填充。
+	ResponseCacheKey string
+	// ResponseCacheTTL 回写缓存的存活时间（秒）：企业成员取企业配置，否则取全局配置
+	ResponseCacheTTL int
+	// CacheHit 为 true 表示本次响应来自缓存回放，quota 记 0，日志 other 里带 cache_hit 标记
+	CacheHit bool
 	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，
 	// 强制预扣全额。用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行，
 	// 必须在提交前锁定全额。
@@ -475,6 +487,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
 		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
 		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		OrgId:      common.GetContextKeyInt(c, constant.ContextKeyUserOrgId),
 
 		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 

@@ -22,6 +22,7 @@ import { MonitoringSettingsSection } from '../integrations/monitoring-settings-s
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
+import { ResponseCacheSection } from '../maintenance/response-cache-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -123,6 +124,22 @@ const OPERATIONS_SECTIONS = [
             settings['performance_setting.monitor_memory_threshold'] ?? 90,
           'performance_setting.monitor_disk_threshold':
             settings['performance_setting.monitor_disk_threshold'] ?? 95,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'response-cache',
+    titleKey: 'Response Cache',
+    build: (settings: OperationsSettings) => (
+      <ResponseCacheSection
+        defaultValues={{
+          'response_cache_setting.enabled':
+            settings['response_cache_setting.enabled'] ?? false,
+          'response_cache_setting.ttl_seconds':
+            settings['response_cache_setting.ttl_seconds'] ?? 300,
+          'response_cache_setting.max_body_bytes':
+            settings['response_cache_setting.max_body_bytes'] ?? 1048576,
         }}
       />
     ),

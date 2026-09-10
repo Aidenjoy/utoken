@@ -98,7 +98,7 @@ export function transformFormDataToPayload(
   if (userId === undefined) {
     payload.role = role
   } else {
-    // For update: send role so super-admin can change it (e.g. set Agent)
+    // For update: send role so super-admin can change it (e.g. promote to Admin)
     if (role > 0) {
       payload.role = role
     }

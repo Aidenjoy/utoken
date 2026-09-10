@@ -17,10 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import z from 'zod'
 
 import { Main } from '@/components/layout'
 import { Playground } from '@/features/playground'
 import { isSidebarModuleEnabled } from '@/lib/nav-modules'
+
+// `prompt` carries a template picked from the Prompt Library so the playground
+// can pre-fill the composer with it. It is intentionally kept out of the
+// persisted conversation: nothing is sent until the user submits.
+const playgroundSearchSchema = z.object({
+  prompt: z.string().optional().catch(undefined),
+})
 
 export const Route = createFileRoute('/_authenticated/playground/')({
   beforeLoad: () => {
@@ -28,13 +36,16 @@ export const Route = createFileRoute('/_authenticated/playground/')({
       throw redirect({ to: '/dashboard' })
     }
   },
+  validateSearch: playgroundSearchSchema,
   component: PlaygroundPage,
 })
 
 function PlaygroundPage() {
+  const { prompt } = Route.useSearch()
+
   return (
     <Main className='p-0'>
-      <Playground />
+      <Playground initialPrompt={prompt} />
     </Main>
   )
 }

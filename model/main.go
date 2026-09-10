@@ -314,6 +314,9 @@ func migrateDB() error {
 		&DirectorModelSettings{},
 		&DirectorUserToken{},
 		&DirectorEntityAsset{},
+		&Organization{},
+		&OrgMember{},
+		&PromptTemplate{},
 	)
 	if err != nil {
 		return err

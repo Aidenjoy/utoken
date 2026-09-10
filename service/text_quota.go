@@ -388,12 +388,24 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 花费 %s", decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 
+	// 缓存命中：本次没有请求上游，因此不扣费。把「本应扣多少」留到 other.cache_saved_quota，
+	// 企业报表据此统计命中率与节省额度；quota 归零后 SettleBilling 不会产生任何资金变动
+	// （命中路径在预扣费之前就已返回，relayInfo.Billing 为 nil）。
+	savedQuota := 0
+	if relayInfo.CacheHit {
+		savedQuota = summary.Quota
+		summary.Quota = 0
+	}
+
 	if summary.TotalTokens == 0 {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
+		// 缓存命中不经过渠道选择，ChannelId 为 0，跳过渠道用量累加避免打到不存在的渠道
+		if relayInfo.ChannelId > 0 {
+			model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
+		}
 	}
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
@@ -491,6 +503,15 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	attachQuotaSaturation(ctx, relayInfo, other)
 
+	if relayInfo.CacheHit {
+		other["cache_hit"] = true
+		if savedQuota > 0 {
+			other["cache_saved_quota"] = savedQuota
+		}
+	}
+	// 未命中则把本次响应回写缓存，供后续相同请求直返
+	storeResponseCacheFromContext(ctx, relayInfo, usage)
+
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
@@ -503,6 +524,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		UseTimeSeconds:   int(summary.UseTimeSeconds),
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
+		CacheHit:         relayInfo.CacheHit,
+		CacheSavedQuota:  savedQuota,
 		Other:            other,
 	})
 	gopool.Go(func() {

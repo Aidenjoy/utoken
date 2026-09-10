@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -331,18 +332,26 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 }
 
 type RecordConsumeLogParams struct {
-	ChannelId        int                    `json:"channel_id"`
-	PromptTokens     int                    `json:"prompt_tokens"`
-	CompletionTokens int                    `json:"completion_tokens"`
-	ModelName        string                 `json:"model_name"`
-	TokenName        string                 `json:"token_name"`
-	Quota            int                    `json:"quota"`
-	Content          string                 `json:"content"`
-	TokenId          int                    `json:"token_id"`
-	UseTimeSeconds   int                    `json:"use_time_seconds"`
-	IsStream         bool                   `json:"is_stream"`
-	Group            string                 `json:"group"`
-	Other            map[string]interface{} `json:"other"`
+	ChannelId        int    `json:"channel_id"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	ModelName        string `json:"model_name"`
+	TokenName        string `json:"token_name"`
+	Quota            int    `json:"quota"`
+	Content          string `json:"content"`
+	TokenId          int    `json:"token_id"`
+	UseTimeSeconds   int    `json:"use_time_seconds"`
+	IsStream         bool   `json:"is_stream"`
+	Group            string `json:"group"`
+	// OrgId 是消费归属的企业（组织），0 表示非企业成员。
+	// 留空时由 RecordConsumeLog 从请求上下文回落，因此既有调用点无需逐个改动
+	// 即可获得企业维度的用量统计。
+	OrgId int `json:"org_id"`
+	// CacheHit 为 true 表示本次响应来自响应缓存回放，Quota 必为 0；
+	// CacheSavedQuota 记录“如果打上游本应扣多少”，仅用于报表统计节省额度。
+	CacheHit        bool                   `json:"cache_hit,omitempty"`
+	CacheSavedQuota int                    `json:"cache_saved_quota,omitempty"`
+	Other           map[string]interface{} `json:"other"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -354,6 +363,13 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
+	// 企业归属：显式传参优先，否则取令牌鉴权写入上下文的企业标识。
+	// 这里按"成员归属"而非"谁付费"记账，因此企业池不足回落个人钱包时
+	// 用量仍计入企业报表，实际付款方由 other.billing_source 区分。
+	orgId := params.OrgId
+	if orgId == 0 {
+		orgId = common.GetContextKeyInt(c, constant.ContextKeyUserOrgId)
+	}
 	otherStr := common.MapToJsonStr(params.Other)
 	// 判断是否需要记录 IP
 	needRecordIp := false
@@ -394,29 +410,35 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	}
 	if common.DataExportEnabled {
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    userId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			TokenUsed: params.PromptTokens + params.CompletionTokens,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  common.NodeName,
+			UserID:          userId,
+			OrgId:           orgId,
+			Username:        username,
+			ModelName:       params.ModelName,
+			Quota:           params.Quota,
+			CreatedAt:       createdAt,
+			TokenUsed:       params.PromptTokens + params.CompletionTokens,
+			UseGroup:        params.Group,
+			TokenID:         params.TokenId,
+			ChannelID:       params.ChannelId,
+			NodeName:        common.NodeName,
+			CacheHit:        params.CacheHit,
+			CacheSavedQuota: params.CacheSavedQuota,
 		})
 	}
 }
 
 type RecordTaskBillingLogParams struct {
-	UserId           int
-	LogType          int
-	Content          string
-	ChannelId        int
-	ModelName        string
-	Quota            int
-	TokenId          int
-	Group            string
+	UserId    int
+	LogType   int
+	Content   string
+	ChannelId int
+	ModelName string
+	Quota     int
+	TokenId   int
+	Group     string
+	// OrgId 是任务消费归属的企业（组织）。0 时按任务发起人回查企业上下文，
+	// 因为异步任务结算时已经没有请求上下文可用。
+	OrgId            int
 	PromptTokens     int // 结算时上游返回的实际 prompt token 数（无则为 0）
 	CompletionTokens int // 结算时上游返回的实际 completion/total token 数（无则为 0）
 	Other            map[string]interface{}
@@ -435,6 +457,13 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		}
 	}
 	createdAt := common.GetTimestamp()
+	orgId := params.OrgId
+	if orgId == 0 {
+		// 异步任务结算是低频路径，回查一次企业归属的开销可忽略。
+		if resolvedOrgId, _, err := GetUserOrgContext(params.UserId); err == nil {
+			orgId = resolvedOrgId
+		}
+	}
 	log := &Log{
 		UserId:           params.UserId,
 		Username:         username,
@@ -462,6 +491,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		}
 		LogQuotaData(QuotaDataLogParams{
 			UserID:    params.UserId,
+			OrgId:     orgId,
 			Username:  username,
 			ModelName: params.ModelName,
 			Quota:     params.Quota,
@@ -526,47 +556,52 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		assignDisplayLogIds(logs, startIdx)
 	}
 
+	if err := attachLogChannelNames(logs); err != nil {
+		return logs, total, err
+	}
+
+	return logs, total, err
+}
+
+// attachLogChannelNames 批量回填日志的渠道名称（channels.name 不在 logs 表内）。
+// 内存缓存开启时走 CacheGetChannel，否则一次性批量查库，避免逐条 N+1。
+func attachLogChannelNames(logs []*Log) error {
 	channelIds := types.NewSet[int]()
 	for _, log := range logs {
 		if log.ChannelId != 0 {
 			channelIds.Add(log.ChannelId)
 		}
 	}
-
-	if channelIds.Len() > 0 {
-		var channels []struct {
-			Id   int    `gorm:"column:id"`
-			Name string `gorm:"column:name"`
-		}
-		if common.MemoryCacheEnabled {
-			// Cache get channel
-			for _, channelId := range channelIds.Items() {
-				if cacheChannel, err := CacheGetChannel(channelId); err == nil {
-					channels = append(channels, struct {
-						Id   int    `gorm:"column:id"`
-						Name string `gorm:"column:name"`
-					}{
-						Id:   channelId,
-						Name: cacheChannel.Name,
-					})
-				}
-			}
-		} else {
-			// Bulk query channels from DB
-			if err = DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
-				return logs, total, err
-			}
-		}
-		channelMap := make(map[int]string, len(channels))
-		for _, channel := range channels {
-			channelMap[channel.Id] = channel.Name
-		}
-		for i := range logs {
-			logs[i].ChannelName = channelMap[logs[i].ChannelId]
-		}
+	if channelIds.Len() == 0 {
+		return nil
 	}
 
-	return logs, total, err
+	type channelNameRow struct {
+		Id   int    `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	var channels []channelNameRow
+	if common.MemoryCacheEnabled {
+		// Cache get channel
+		for _, channelId := range channelIds.Items() {
+			if cacheChannel, err := CacheGetChannel(channelId); err == nil {
+				channels = append(channels, channelNameRow{Id: channelId, Name: cacheChannel.Name})
+			}
+		}
+	} else {
+		// Bulk query channels from DB
+		if err := DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
+			return err
+		}
+	}
+	channelMap := make(map[int]string, len(channels))
+	for _, channel := range channels {
+		channelMap[channel.Id] = channel.Name
+	}
+	for i := range logs {
+		logs[i].ChannelName = channelMap[logs[i].ChannelId]
+	}
+	return nil
 }
 
 const logSearchCountLimit = 10000

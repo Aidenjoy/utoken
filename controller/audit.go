@@ -47,6 +47,22 @@ var auditContentTemplates = map[string]string{
 
 	"redemption.create": "Created ${count} redemption codes named ${name} (${quota} each)",
 
+	"org.create":        "Created organization ${name} (ID: ${id}, group ${group}, quota ${quota}, owner ${owner})",
+	"org.update":        "Updated organization ${name} (ID: ${id}, fields: ${fields})",
+	"org.delete":        "Deleted organization ${name} (ID: ${id})",
+	"org.quota_adjust":  "Adjusted organization ${name} quota by ${delta} (${before} -> ${after})",
+	"org.status_update": "Set organization ${name} status to ${status}",
+	"org.cache_config":  "Updated organization ${name} response cache (enabled=${enabled}, ttl=${ttl})",
+	"org.alert_config":  "Updated organization ${name} alert settings (threshold=${threshold}, daily=${daily}, notify=${notify})",
+	"org.member.create": "Created organization member ${username} in ${name} (role ${role}, sub-quota ${quota_limit})",
+	"org.member.invite": "Invited user ${username} into organization ${name} (role ${role}, sub-quota ${quota_limit})",
+	"org.member.update": "Updated organization member ${username} in ${name} (role ${role}, sub-quota ${quota_limit}, status ${status})",
+	"org.member.remove": "Removed member ${username} from organization ${name}",
+
+	"alert.org_quota_low":   "Organization ${name} quota dropped below warning threshold ${threshold}",
+	"alert.org_daily_usage": "Organization ${name} daily usage exceeded ${threshold}",
+	"alert.member_quota":    "Member ${username} organization sub-quota usage exceeded ${threshold}%",
+
 	"subscription.plan_reset":      "Reset active subscriptions for plan ${plan_id}",
 	"subscription.user_plan_reset": "Reset active plan ${plan_id} subscriptions for user ${target_user_id}",
 }

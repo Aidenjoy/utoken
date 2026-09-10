@@ -31,7 +31,49 @@ import * as React from 'react'
 import { useMediaQuery } from '@/hooks'
 import { cn } from '@/lib/utils'
 
-const Select = SelectPrimitive.Root
+/**
+ * Base UI resolves the closed trigger label only from the Root `items` map —
+ * mounted SelectItems never register their text, so without it the trigger
+ * falls back to the raw value (e.g. `increase` instead of the translated
+ * label). Collect value→label pairs from the child tree so every Select
+ * shows its item labels while closed, without each call site repeating an
+ * `items` map.
+ */
+function collectItemLabels(
+  children: React.ReactNode,
+  acc: Record<string, React.ReactNode>
+) {
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    const { value, children: childChildren } = child.props as {
+      value?: unknown
+      children?: React.ReactNode
+    }
+    if (child.type === SelectItem && typeof value === 'string') {
+      acc[value] = childChildren
+    }
+    if (childChildren != null) collectItemLabels(childChildren, acc)
+  })
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>({
+  children,
+  items,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  const resolvedItems = React.useMemo(() => {
+    if (items) return items
+    const acc: Record<string, React.ReactNode> = {}
+    collectItemLabels(children, acc)
+    return Object.keys(acc).length > 0 ? acc : undefined
+  }, [children, items])
+
+  return (
+    <SelectPrimitive.Root {...props} items={resolvedItems}>
+      {children}
+    </SelectPrimitive.Root>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (

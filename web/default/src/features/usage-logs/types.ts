@@ -191,6 +191,13 @@ export interface LogOtherData {
   po?: string[]
   billing_source?: string
   group?: string
+  // Organization pool billing (see model/log.go RecordConsumeLogParams)
+  org_id?: number
+  org_name?: string
+  // Response cache replay: quota is 0 and cache_saved_quota is what the
+  // upstream call would have cost.
+  cache_hit?: boolean
+  cache_saved_quota?: number
   stream_status?: {
     status?: string
     end_reason?: string

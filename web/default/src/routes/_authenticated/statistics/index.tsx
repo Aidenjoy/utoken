@@ -32,7 +32,7 @@ export const Route = createFileRoute('/_authenticated/statistics/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
-    if (!auth.user || auth.user.role < ROLE.AGENT) {
+    if (!auth.user || auth.user.role < ROLE.ADMIN) {
       throw redirect({
         to: '/403',
       })

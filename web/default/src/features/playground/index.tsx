@@ -28,7 +28,7 @@ import {
 } from './hooks'
 import { getModelType } from './lib'
 
-export function Playground() {
+export function Playground({ initialPrompt }: { initialPrompt?: string }) {
   const {
     config,
     parameterEnabled,
@@ -130,6 +130,7 @@ export function Playground() {
           disabled={isGenerating}
           groups={groups}
           groupValue={config.group}
+          initialText={initialPrompt}
           isGenerating={isGenerating}
           isModelLoading={isLoadingModels}
           modelValue={config.model}

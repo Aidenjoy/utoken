@@ -12,6 +12,9 @@ import (
 const (
 	BillingSourceWallet       = "wallet"
 	BillingSourceSubscription = "subscription"
+	// BillingSourceOrganization 表示本次消费扣的是企业（组织）额度池，
+	// 而非成员个人钱包或订阅。
+	BillingSourceOrganization = "organization"
 )
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
@@ -60,9 +63,14 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）
 		if actualQuota != 0 {
-			if relayInfo.BillingSource == BillingSourceSubscription {
+			switch relayInfo.BillingSource {
+			case BillingSourceSubscription:
 				checkAndSendSubscriptionQuotaNotify(relayInfo)
-			} else {
+			case BillingSourceOrganization:
+				// 企业计费不动成员个人钱包，因此跳过基于钱包余额的提醒；
+				// 企业池阈值/日用量预警由 checkAndSendOrgQuotaNotify 负责。
+				checkAndSendOrgQuotaNotify(relayInfo)
+			default:
 				checkAndSendQuotaNotify(relayInfo, actualQuota-preConsumed, preConsumed)
 			}
 		}

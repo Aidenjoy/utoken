@@ -22,6 +22,11 @@ type UserBase struct {
 	Status   int    `json:"status"`
 	Username string `json:"username"`
 	Setting  string `json:"setting"`
+	// OrgId / OrgRole 是企业（组织）上下文：OrgId=0 表示无企业，
+	// OrgRole 取 model.OrgRoleAdmin / OrgRoleMember，与系统角色无关。
+	// 两者随用户缓存一起失效（成员变更时调 invalidateUserCache）。
+	OrgId   int    `json:"org_id"`
+	OrgRole string `json:"org_role"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -31,6 +36,10 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	// 企业上下文：令牌鉴权（TokenAuth）走的是本方法而非 authHelper，
+	// 企业维度计费与日志归属依赖这两个 key，因此必须在这里一并写入。
+	common.SetContextKey(c, constant.ContextKeyUserOrgId, user.OrgId)
+	common.SetContextKey(c, constant.ContextKeyUserOrgRole, user.OrgRole)
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
@@ -63,14 +72,14 @@ func InvalidateUserCache(userId int) error {
 	return invalidateUserCache(userId)
 }
 
-func populateUserCache(user User) error {
+func populateUserCache(userCache *UserBase) error {
 	if !common.RedisEnabled {
 		return nil
 	}
 
 	return common.RedisHSetObj(
-		getUserCacheKey(user.Id),
-		user.ToBaseUser(),
+		getUserCacheKey(userCache.Id),
+		userCache,
 		time.Duration(common.RedisKeyCacheSeconds())*time.Second,
 	)
 }
@@ -103,9 +112,10 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	var fromDB bool
 	defer func() {
 		// Update Redis cache asynchronously on successful DB read
-		if shouldUpdateRedis(fromDB, err) && user != nil {
+		if shouldUpdateRedis(fromDB, err) && userCache != nil {
+			cacheToPopulate := *userCache
 			gopool.Go(func() {
-				if err := populateUserCache(*user); err != nil {
+				if err := populateUserCache(&cacheToPopulate); err != nil {
 					common.SysLog("failed to update user status cache: " + err.Error())
 				}
 			})
@@ -126,14 +136,12 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	}
 
 	// Create cache object from user data
-	userCache = &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+	userCache = user.ToBaseUser()
+	// 企业上下文：OrgRole 不在 users 表上，需回查成员记录（仅缓存 miss 时发生）
+	if user.OrgId > 0 {
+		if member, memberErr := GetOrgMember(user.OrgId, userId); memberErr == nil {
+			userCache.OrgRole = member.OrgRole
+		}
 	}
 
 	return userCache, nil
