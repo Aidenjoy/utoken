@@ -87,10 +87,31 @@ func taskIsSubscription(task *model.Task) bool {
 	return task.PrivateData.BillingSource == BillingSourceSubscription && task.PrivateData.SubscriptionId > 0
 }
 
-// taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
+// taskAdjustFunding 调整任务的资金来源（钱包、订阅或企业池），delta > 0 表示扣费，delta < 0 表示退还。
 func taskAdjustFunding(task *model.Task, delta int) error {
 	if taskIsSubscription(task) {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
+	}
+	if task.PrivateData.BillingSource == BillingSourceOrganization {
+		// 企业计费的差额/退款必须回到企业池并同步成员子额度用量，
+		// 不能落到成员个人钱包。旧任务未持久化 OrgId 时按当前成员关系回落。
+		orgId := task.PrivateData.OrgId
+		if orgId <= 0 {
+			org, _, err := model.GetActiveOrganizationForUser(task.UserId)
+			if err != nil {
+				return err
+			}
+			if org != nil {
+				orgId = org.Id
+			}
+		}
+		if orgId <= 0 {
+			return fmt.Errorf("task %s billed by organization but org id unresolved", task.TaskID)
+		}
+		if delta > 0 {
+			return model.ConsumeOrgQuota(orgId, task.UserId, delta)
+		}
+		return model.RefundOrgQuota(orgId, task.UserId, -delta)
 	}
 	if delta > 0 {
 		return model.DecreaseUserQuota(task.UserId, delta, false)

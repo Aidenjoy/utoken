@@ -410,6 +410,39 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
+func TestRefundTaskQuota_Organization(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	setupOrgServiceFixture(t)
+
+	const userID, channelID = 20, 20
+	const poolQuota, preConsumed = 10000, 3000
+
+	org := seedServiceOrg(t, 1, poolQuota, model.OrgStatusEnabled, false)
+	member := seedServiceMember(t, org, userID, model.OrgRoleMember, 0, model.OrgMemberStatusEnabled)
+	seedChannel(t, channelID)
+
+	// Simulate the pre-consume step: pool -3000, org/member used +3000
+	require.NoError(t, model.ConsumeOrgQuota(org.Id, userID, preConsumed))
+
+	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceOrganization, 0)
+	task.PrivateData.OrgId = org.Id
+
+	RefundTaskQuota(ctx, task, "org task failed")
+
+	// Refund must return to the org pool and roll back member sub-quota used
+	assertOrgPool(t, org.Id, poolQuota, 0)
+	assertMemberUsed(t, member.Id, 0)
+
+	// Member personal wallet must not receive the refund
+	assert.Equal(t, 0, getUserQuota(t, userID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, preConsumed, log.Quota)
+}
+
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
@@ -528,6 +561,66 @@ func TestRecalculate_NegativeDelta(t *testing.T) {
 	assert.Equal(t, preConsumed-actualQuota, log.Quota)
 	assert.Equal(t, 0, log.PromptTokens)
 	assert.Equal(t, 196425, log.CompletionTokens)
+}
+
+func TestRecalculate_OrganizationNegativeDelta(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	setupOrgServiceFixture(t)
+
+	const userID, channelID = 21, 21
+	const poolQuota, preConsumed = 10000, 5000
+	const actualQuota = 3000 // over-charged by 2000
+
+	org := seedServiceOrg(t, 1, poolQuota, model.OrgStatusEnabled, false)
+	member := seedServiceMember(t, org, userID, model.OrgRoleMember, poolQuota, model.OrgMemberStatusEnabled)
+	seedChannel(t, channelID)
+
+	require.NoError(t, model.ConsumeOrgQuota(org.Id, userID, preConsumed))
+
+	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceOrganization, 0)
+	task.PrivateData.OrgId = org.Id
+
+	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment", 0, 38800)
+
+	// Delta refund must land on the org pool: 10000-5000+2000, used 5000-2000
+	assertOrgPool(t, org.Id, poolQuota-preConsumed+(preConsumed-actualQuota), actualQuota)
+	assertMemberUsed(t, member.Id, actualQuota)
+
+	// Member personal wallet must not receive the refund
+	assert.Equal(t, 0, getUserQuota(t, userID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, preConsumed-actualQuota, log.Quota)
+}
+
+// TestRecalculate_OrganizationLegacyTaskResolvesOrgFromMembership 守护部署窗口内的
+// 旧任务回落：PrivateData 未持久化 OrgId 时按当前成员关系解析企业，差额仍回企业池。
+func TestRecalculate_OrganizationLegacyTaskResolvesOrgFromMembership(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	setupOrgServiceFixture(t)
+
+	const userID, channelID = 22, 22
+	const poolQuota, preConsumed = 10000, 4000
+	const actualQuota = 1000
+
+	org := seedServiceOrg(t, 1, poolQuota, model.OrgStatusEnabled, false)
+	member := seedServiceMember(t, org, userID, model.OrgRoleMember, 0, model.OrgMemberStatusEnabled)
+	seedChannel(t, channelID)
+
+	require.NoError(t, model.ConsumeOrgQuota(org.Id, userID, preConsumed))
+
+	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceOrganization, 0)
+	// 旧任务：OrgId 未落库
+
+	RecalculateTaskQuota(ctx, task, actualQuota, "adaptor adjustment", 0, 0)
+
+	assertOrgPool(t, org.Id, poolQuota-preConsumed+(preConsumed-actualQuota), actualQuota)
+	assertMemberUsed(t, member.Id, actualQuota)
+	assert.Equal(t, 0, getUserQuota(t, userID))
 }
 
 func TestRecalculate_ZeroDelta(t *testing.T) {
