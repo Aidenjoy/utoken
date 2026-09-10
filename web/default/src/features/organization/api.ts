@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { api, type ApiRequestConfig } from '@/lib/api'
 
 import type {
   ApiResponse,
@@ -32,6 +32,10 @@ import type {
   UpdateOrgMemberPayload,
   UpdateOrganizationPayload,
 } from './types'
+
+// 本模块所有调用方都会自行 toast 业务错误（result.success === false），
+// 关闭全局响应拦截器的重复提示，避免同一条错误弹出两次。
+const orgRequestConfig: ApiRequestConfig = { skipBusinessError: true }
 
 function buildQuery(params: Record<string, string | number | undefined>) {
   const query = new URLSearchParams()
@@ -52,7 +56,7 @@ function buildQuery(params: Record<string, string | number | undefined>) {
  * which is a normal state — the page renders an empty-state guide instead.
  */
 export async function getOrgSummary(): Promise<ApiResponse<OrgSummary>> {
-  const res = await api.get('/api/org/summary')
+  const res = await api.get('/api/org/summary', orgRequestConfig)
   return res.data
 }
 
@@ -63,14 +67,14 @@ export async function getOrgSummary(): Promise<ApiResponse<OrgSummary>> {
 export async function getOrganization(): Promise<
   ApiResponse<OrganizationDetail>
 > {
-  const res = await api.get('/api/org/')
+  const res = await api.get('/api/org/', orgRequestConfig)
   return res.data
 }
 
 export async function updateOrganization(
   data: UpdateOrganizationPayload
 ): Promise<ApiResponse<null>> {
-  const res = await api.put('/api/org/', data)
+  const res = await api.put('/api/org/', data, orgRequestConfig)
   return res.data
 }
 
@@ -88,37 +92,63 @@ export async function getOrgMembers(
       p: params.p ?? 1,
       page_size: params.page_size ?? 20,
       keyword: params.keyword,
-    })}`
+    })}`,
+    orgRequestConfig
   )
   return res.data
 }
 
+/**
+ * `orgId` 仅在系统管理员代管某企业时传入（后端 OrgScopeId 读 org_id 查询参数）；
+ * 企业管理员操作本企业时留空，由鉴权上下文自动定位。
+ */
 export async function createOrgMember(
-  data: CreateOrgMemberPayload
+  data: CreateOrgMemberPayload,
+  orgId?: number
 ): Promise<ApiResponse<{ id: number; user_id: number; username: string }>> {
-  const res = await api.post('/api/org/members/create', data)
+  const res = await api.post(
+    `/api/org/members/create${buildQuery({ org_id: orgId })}`,
+    data,
+    orgRequestConfig
+  )
   return res.data
 }
 
 /** Invite an existing user by username; users already in any org are rejected. */
 export async function inviteOrgMember(
-  data: InviteOrgMemberPayload
+  data: InviteOrgMemberPayload,
+  orgId?: number
 ): Promise<ApiResponse<{ id: number; user_id: number; username: string }>> {
-  const res = await api.post('/api/org/members/invite', data)
+  const res = await api.post(
+    `/api/org/members/invite${buildQuery({ org_id: orgId })}`,
+    data,
+    orgRequestConfig
+  )
   return res.data
 }
 
 export async function updateOrgMember(
   id: number,
-  data: UpdateOrgMemberPayload
+  data: UpdateOrgMemberPayload,
+  orgId?: number
 ): Promise<ApiResponse<null>> {
-  const res = await api.put(`/api/org/members/${id}`, data)
+  const res = await api.put(
+    `/api/org/members/${id}${buildQuery({ org_id: orgId })}`,
+    data,
+    orgRequestConfig
+  )
   return res.data
 }
 
 /** Unbind a member from the organization. The account itself is kept. */
-export async function removeOrgMember(id: number): Promise<ApiResponse<null>> {
-  const res = await api.delete(`/api/org/members/${id}`)
+export async function removeOrgMember(
+  id: number,
+  orgId?: number
+): Promise<ApiResponse<null>> {
+  const res = await api.delete(
+    `/api/org/members/${id}${buildQuery({ org_id: orgId })}`,
+    orgRequestConfig
+  )
   return res.data
 }
 
@@ -130,7 +160,10 @@ export type OrgTimeRangeParams = {
 export async function getOrgUsage(
   params: OrgTimeRangeParams = {}
 ): Promise<ApiResponse<OrgUsageResponse>> {
-  const res = await api.get(`/api/org/usage${buildQuery(params)}`)
+  const res = await api.get(
+    `/api/org/usage${buildQuery(params)}`,
+    orgRequestConfig
+  )
   return res.data
 }
 
@@ -154,7 +187,8 @@ export async function getOrgLogs(
       user_id: params.user_id,
       start_timestamp: params.start_timestamp,
       end_timestamp: params.end_timestamp,
-    })}`
+    })}`,
+    orgRequestConfig
   )
   return res.data
 }
@@ -175,7 +209,8 @@ export async function getOrgTokens(
       page_size: params.page_size ?? 20,
       keyword: params.keyword,
       user_id: params.user_id,
-    })}`
+    })}`,
+    orgRequestConfig
   )
   return res.data
 }

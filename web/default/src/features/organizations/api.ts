@@ -23,7 +23,11 @@ import type {
   OrgMemberDetail,
   PageInfo,
 } from '@/features/organization/types'
-import { api } from '@/lib/api'
+import { api, type ApiRequestConfig } from '@/lib/api'
+
+// 本模块所有调用方都会自行 toast 业务错误（result.success === false），
+// 关闭全局响应拦截器的重复提示，避免同一条错误弹出两次。
+const orgRequestConfig: ApiRequestConfig = { skipBusinessError: true }
 
 /**
  * System-administrator payloads for `/api/org/admin`.
@@ -31,13 +35,14 @@ import { api } from '@/lib/api'
  * `name` is the stable unique identifier and cannot be changed after creation,
  * so it only appears on create. `group` decides billing ratios and is therefore
  * admin-only — an organization admin must not be able to pick its own ratio.
+ * Admins are appointed after creation from the member list, because the future
+ * admin typically has no account yet at creation time.
  */
 export interface AdminCreateOrganizationPayload {
   name: string
   display_name?: string
   group: string
   quota: number
-  owner_username?: string
   warning_threshold: number
   notify_type: string
   notify_target?: string
@@ -73,7 +78,8 @@ export async function getAdminOrganizations(
   const res = await api.get(
     `/api/org/admin/?p=${params.p ?? 1}&page_size=${params.page_size ?? 20}${
       params.keyword ? `&keyword=${encodeURIComponent(params.keyword)}` : ''
-    }`
+    }`,
+    orgRequestConfig
   )
   return res.data
 }
@@ -81,14 +87,14 @@ export async function getAdminOrganizations(
 export async function getAdminOrganization(
   id: number
 ): Promise<ApiResponse<OrganizationDetail>> {
-  const res = await api.get(`/api/org/admin/${id}`)
+  const res = await api.get(`/api/org/admin/${id}`, orgRequestConfig)
   return res.data
 }
 
 export async function createAdminOrganization(
   data: AdminCreateOrganizationPayload
 ): Promise<ApiResponse<Organization>> {
-  const res = await api.post('/api/org/admin/', data)
+  const res = await api.post('/api/org/admin/', data, orgRequestConfig)
   return res.data
 }
 
@@ -96,7 +102,7 @@ export async function updateAdminOrganization(
   id: number,
   data: AdminUpdateOrganizationPayload
 ): Promise<ApiResponse<Organization>> {
-  const res = await api.put(`/api/org/admin/${id}`, data)
+  const res = await api.put(`/api/org/admin/${id}`, data, orgRequestConfig)
   return res.data
 }
 
@@ -108,7 +114,11 @@ export async function adjustAdminOrganizationQuota(
   id: number,
   quota: number
 ): Promise<ApiResponse<{ quota: number }>> {
-  const res = await api.post(`/api/org/admin/${id}/quota`, { quota })
+  const res = await api.post(
+    `/api/org/admin/${id}/quota`,
+    { quota },
+    orgRequestConfig
+  )
   return res.data
 }
 
@@ -116,7 +126,11 @@ export async function updateAdminOrganizationStatus(
   id: number,
   status: number
 ): Promise<ApiResponse<null>> {
-  const res = await api.patch(`/api/org/admin/${id}/status`, { status })
+  const res = await api.patch(
+    `/api/org/admin/${id}/status`,
+    { status },
+    orgRequestConfig
+  )
   return res.data
 }
 
@@ -124,7 +138,7 @@ export async function updateAdminOrganizationStatus(
 export async function deleteAdminOrganization(
   id: number
 ): Promise<ApiResponse<null>> {
-  const res = await api.delete(`/api/org/admin/${id}`)
+  const res = await api.delete(`/api/org/admin/${id}`, orgRequestConfig)
   return res.data
 }
 
@@ -135,7 +149,8 @@ export async function getAdminOrganizationMembers(
   const res = await api.get(
     `/api/org/admin/${id}/members?p=${params.p ?? 1}&page_size=${
       params.page_size ?? 100
-    }`
+    }`,
+    orgRequestConfig
   )
   return res.data
 }

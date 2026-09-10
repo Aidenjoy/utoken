@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { api, type ApiRequestConfig } from '@/lib/api'
 
 import type {
   ApiResponse,
@@ -25,6 +25,9 @@ import type {
   PromptTemplate,
   PromptTemplateFormData,
 } from './types'
+
+// 本模块调用方均自行 toast 业务错误，关闭全局拦截器的重复提示。
+const promptRequestConfig: ApiRequestConfig = { skipBusinessError: true }
 
 // ============================================================================
 // Prompt Template Library
@@ -41,27 +44,30 @@ export async function getPromptTemplates(
   if (tag) queryParams.set('tag', tag)
   if (visibility) queryParams.set('visibility', visibility)
   if (scope) queryParams.set('scope', scope)
-  const res = await api.get(`/api/prompt/?${queryParams.toString()}`)
+  const res = await api.get(
+    `/api/prompt/?${queryParams.toString()}`,
+    promptRequestConfig
+  )
   return res.data
 }
 
 /** Tags across all templates visible to the current user, for the filter menu. */
 export async function getPromptTemplateTags(): Promise<ApiResponse<string[]>> {
-  const res = await api.get('/api/prompt/tags')
+  const res = await api.get('/api/prompt/tags', promptRequestConfig)
   return res.data
 }
 
 export async function getPromptTemplate(
   id: number
 ): Promise<ApiResponse<PromptTemplate>> {
-  const res = await api.get(`/api/prompt/${id}`)
+  const res = await api.get(`/api/prompt/${id}`, promptRequestConfig)
   return res.data
 }
 
 export async function createPromptTemplate(
   data: PromptTemplateFormData
 ): Promise<ApiResponse<PromptTemplate>> {
-  const res = await api.post('/api/prompt/', data)
+  const res = await api.post('/api/prompt/', data, promptRequestConfig)
   return res.data
 }
 
@@ -69,14 +75,14 @@ export async function updatePromptTemplate(
   id: number,
   data: Partial<PromptTemplateFormData>
 ): Promise<ApiResponse<PromptTemplate>> {
-  const res = await api.put(`/api/prompt/${id}`, data)
+  const res = await api.put(`/api/prompt/${id}`, data, promptRequestConfig)
   return res.data
 }
 
 export async function deletePromptTemplate(
   id: number
 ): Promise<ApiResponse<null>> {
-  const res = await api.delete(`/api/prompt/${id}`)
+  const res = await api.delete(`/api/prompt/${id}`, promptRequestConfig)
   return res.data
 }
 
@@ -88,7 +94,7 @@ export async function copyPromptTemplate(
   id: number,
   data: { title?: string; visibility?: string } = {}
 ): Promise<ApiResponse<PromptTemplate>> {
-  const res = await api.post(`/api/prompt/${id}/copy`, data)
+  const res = await api.post(`/api/prompt/${id}/copy`, data, promptRequestConfig)
   return res.data
 }
 
@@ -102,6 +108,10 @@ export async function copyPromptTemplate(
 export async function recordPromptTemplateUse(
   id: number
 ): Promise<ApiResponse<{ id: number; use_count: number }>> {
-  const res = await api.post(`/api/prompt/${id}/use`)
+  const res = await api.post(`/api/prompt/${id}/use`, undefined, {
+    ...promptRequestConfig,
+    // 仅驱动热度排序，调用方忽略失败，HTTP 层也不应打扰用户
+    skipErrorHandler: true,
+  })
   return res.data
 }
