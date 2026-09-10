@@ -23,15 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -43,12 +35,12 @@ import {
 import { formatNumber, formatQuota, formatTimestampToDate } from '@/lib/format'
 
 import { getOrgUsage } from '../api'
+import { ORG_ERROR_MESSAGES, ORG_ROLES } from '../constants'
 import {
-  ORG_ERROR_MESSAGES,
-  ORG_ROLES,
-  ORG_USAGE_DEFAULT_RANGE_DAYS,
-  ORG_USAGE_RANGE_OPTIONS,
-} from '../constants'
+  defaultOrgDateRange,
+  OrgDateRangePicker,
+  type OrgDateRange,
+} from './org-date-range-picker'
 
 function TotalCard({
   icon: Icon,
@@ -99,20 +91,16 @@ function EmptyRow({ colSpan, label }: { colSpan: number; label: string }) {
  */
 export function OrganizationUsage() {
   const { t } = useTranslation()
-  const [days, setDays] = useState<number>(ORG_USAGE_DEFAULT_RANGE_DAYS)
-  const [appliedDays, setAppliedDays] = useState<number>(
-    ORG_USAGE_DEFAULT_RANGE_DAYS
-  )
+  const [range, setRange] = useState<OrgDateRange>(() => defaultOrgDateRange())
 
   const { startTimestamp, endTimestamp } = useMemo(() => {
-    const now = Math.floor(Date.now() / 1000)
     return {
-      startTimestamp: now - appliedDays * 86400,
-      endTimestamp: now,
+      startTimestamp: Math.floor(range.start.getTime() / 1000),
+      endTimestamp: Math.floor(range.end.getTime() / 1000),
     }
-  }, [appliedDays])
+  }, [range])
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['org-usage', startTimestamp, endTimestamp],
     queryFn: async () => {
       const result = await getOrgUsage({
@@ -138,29 +126,12 @@ export function OrganizationUsage() {
           <label className='text-muted-foreground text-xs'>
             {t('Time Range')}
           </label>
-          <Select
-            value={String(days)}
-            onValueChange={(value) => {
-              if (value) setDays(Number(value))
-            }}
-          >
-            <SelectTrigger className='w-40'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              {ORG_USAGE_RANGE_OPTIONS.map((option) => (
-                <SelectItem key={option} value={String(option)}>
-                  {option === 1
-                    ? t('24 Hours')
-                    : t('{{days}} Days', { days: option })}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <OrgDateRangePicker
+            value={range}
+            onChange={setRange}
+            className='w-full sm:w-[240px]'
+          />
         </div>
-        <Button onClick={() => setAppliedDays(days)} disabled={isLoading}>
-          {t('Search')}
-        </Button>
       </div>
 
       <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5'>

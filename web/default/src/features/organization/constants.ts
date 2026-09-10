@@ -151,17 +151,6 @@ export const ORG_VALIDATION = {
 } as const
 
 // ============================================================================
-// Usage report ranges
-// ============================================================================
-
-/** Days back from now; mirrors `orgUsageDefaultRangeDays` server default. */
-export const ORG_USAGE_RANGE_OPTIONS = [1, 7, 30, 90] as const
-
-export type OrgUsageRangeDays = (typeof ORG_USAGE_RANGE_OPTIONS)[number]
-
-export const ORG_USAGE_DEFAULT_RANGE_DAYS: OrgUsageRangeDays = 7
-
-// ============================================================================
 // Messages (i18n keys; wrap with t() when displaying)
 // ============================================================================
 

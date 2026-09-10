@@ -41,11 +41,15 @@ import {
 } from '@/lib/format'
 
 import { getOrgLogs, getOrgMembers } from '../api'
-import { ORG_ERROR_MESSAGES, ORG_USAGE_DEFAULT_RANGE_DAYS } from '../constants'
+import { ORG_ERROR_MESSAGES } from '../constants'
+import {
+  defaultOrgDateRange,
+  OrgDateRangePicker,
+  type OrgDateRange,
+} from './org-date-range-picker'
 import type { OrgLog, OrgMemberDetail } from '../types'
 
 const ALL_MEMBERS = '0'
-const RANGE_OPTIONS = [1, 7, 30, 90] as const
 
 /**
  * Organization billing detail: the consume logs of every member in the pool.
@@ -61,14 +65,15 @@ export function OrganizationBilling() {
   // Draft filters are committed by the Search button, matching the usage page.
   const [draftMember, setDraftMember] = useState(ALL_MEMBERS)
   const [draftModel, setDraftModel] = useState('')
-  const [draftDays, setDraftDays] = useState<number>(
-    ORG_USAGE_DEFAULT_RANGE_DAYS
+  const [draftRange, setDraftRange] = useState<OrgDateRange>(() =>
+    defaultOrgDateRange()
   )
-  const [applied, setApplied] = useState({
+  const [applied, setApplied] = useState(() => ({
     member: ALL_MEMBERS,
     model: '',
-    days: ORG_USAGE_DEFAULT_RANGE_DAYS as number,
-  })
+    range: draftRange,
+  }))
+  const defaultRange = useMemo(() => defaultOrgDateRange(), [])
 
   const membersQuery = useQuery({
     queryKey: ['org-members', 'all'],
@@ -79,12 +84,11 @@ export function OrganizationBilling() {
   })
 
   const timeRange = useMemo(() => {
-    const now = Math.floor(Date.now() / 1000)
     return {
-      start_timestamp: now - applied.days * 86400,
-      end_timestamp: now,
+      start_timestamp: Math.floor(applied.range.start.getTime() / 1000),
+      end_timestamp: Math.floor(applied.range.end.getTime() / 1000),
     }
-  }, [applied.days])
+  }, [applied.range])
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
@@ -118,19 +122,16 @@ export function OrganizationBilling() {
 
   const applyFilters = () => {
     setPageIndex(0)
-    setApplied({ member: draftMember, model: draftModel, days: draftDays })
+    setApplied({ member: draftMember, model: draftModel, range: draftRange })
   }
 
   const resetFilters = () => {
+    const range = defaultOrgDateRange()
     setDraftMember(ALL_MEMBERS)
     setDraftModel('')
-    setDraftDays(ORG_USAGE_DEFAULT_RANGE_DAYS)
+    setDraftRange(range)
     setPageIndex(0)
-    setApplied({
-      member: ALL_MEMBERS,
-      model: '',
-      days: ORG_USAGE_DEFAULT_RANGE_DAYS,
-    })
+    setApplied({ member: ALL_MEMBERS, model: '', range })
   }
 
   const columns = useMemo<ColumnDef<OrgLog>[]>(
@@ -250,7 +251,8 @@ export function OrganizationBilling() {
   const hasFilters =
     applied.member !== ALL_MEMBERS ||
     applied.model !== '' ||
-    applied.days !== ORG_USAGE_DEFAULT_RANGE_DAYS
+    applied.range.start.getTime() !== defaultRange.start.getTime() ||
+    applied.range.end.getTime() !== defaultRange.end.getTime()
 
   return (
     <DataTablePage
@@ -286,25 +288,11 @@ export function OrganizationBilling() {
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={String(draftDays)}
-              onValueChange={(value) => {
-                if (value) setDraftDays(Number(value))
-              }}
-            >
-              <SelectTrigger className='w-full sm:w-[130px]'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                {RANGE_OPTIONS.map((option) => (
-                  <SelectItem key={option} value={String(option)}>
-                    {option === 1
-                      ? t('24 Hours')
-                      : t('{{days}} Days', { days: option })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <OrgDateRangePicker
+              value={draftRange}
+              onChange={setDraftRange}
+              className='w-full sm:w-[240px]'
+            />
           </div>
         ),
         additionalSearch: (
