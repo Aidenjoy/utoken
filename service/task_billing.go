@@ -211,15 +211,17 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		UserId:    task.UserId,
-		LogType:   model.LogTypeRefund,
-		Content:   "",
-		ChannelId: task.ChannelId,
-		ModelName: taskModelName(task),
-		Quota:     quota,
-		TokenId:   task.PrivateData.TokenId,
-		Group:     task.Group,
-		Other:     other,
+		UserId:             task.UserId,
+		LogType:            model.LogTypeRefund,
+		Content:            "",
+		ChannelId:          task.ChannelId,
+		ModelName:          taskModelName(task),
+		Quota:              quota,
+		TokenId:            task.PrivateData.TokenId,
+		Group:              task.Group,
+		Other:              other,
+		NodeName:           task.PrivateData.NodeName,
+		QuotaDataCreatedAt: task.SubmitTime,
 	})
 }
 
@@ -284,18 +286,19 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		attachQuotaSaturationToOther(other, clamp)
 	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		UserId:           task.UserId,
-		LogType:          logType,
-		Content:          reason,
-		ChannelId:        task.ChannelId,
-		ModelName:        taskModelName(task),
-		Quota:            logQuota,
-		TokenId:          task.PrivateData.TokenId,
-		Group:            task.Group,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		Other:            other,
-		NodeName:         task.PrivateData.NodeName,
+		UserId:             task.UserId,
+		LogType:            logType,
+		Content:            reason,
+		ChannelId:          task.ChannelId,
+		ModelName:          taskModelName(task),
+		Quota:              logQuota,
+		TokenId:            task.PrivateData.TokenId,
+		Group:              task.Group,
+		PromptTokens:       promptTokens,
+		CompletionTokens:   completionTokens,
+		Other:              other,
+		NodeName:           task.PrivateData.NodeName,
+		QuotaDataCreatedAt: task.SubmitTime,
 	})
 }
 

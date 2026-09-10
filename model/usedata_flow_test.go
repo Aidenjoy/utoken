@@ -191,3 +191,56 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	require.Equal(t, "default", rows[1].UseGroup)
 	require.Equal(t, 25, rows[1].Quota)
 }
+
+// TestLogQuotaDataSettlementAdjustmentFoldsIntoSubmitBucket 守护任务报表口径：
+// 结算修正行（Adjustment）按提交时刻落回提交小时桶，只修正额度与 token，
+// 不计请求次数、不另起新桶，一次任务用量在报表里归并为一条净额记录。
+func TestLogQuotaDataSettlementAdjustmentFoldsIntoSubmitBucket(t *testing.T) {
+	truncateTables(t)
+	resetFlowQuotaDataCache()
+
+	// 提交预扣（3661 落入 3600 小时桶）
+	LogQuotaData(QuotaDataLogParams{
+		UserID:    1,
+		Username:  "alice",
+		ModelName: "video-model",
+		CreatedAt: 3661,
+		UseGroup:  "default",
+		TokenID:   11,
+		ChannelID: 1,
+		NodeName:  "node-a",
+		Quota:     6937500,
+	})
+	SaveQuotaDataCache()
+
+	// 结算退款：CreatedAt 传提交时刻（RecordTaskBillingLog 的 QuotaDataCreatedAt），
+	// 即使真实结算时间已跨桶也修正回 3600 桶
+	LogQuotaData(QuotaDataLogParams{
+		UserID:     1,
+		Username:   "alice",
+		ModelName:  "video-model",
+		CreatedAt:  3661,
+		UseGroup:   "default",
+		TokenID:    11,
+		ChannelID:  1,
+		NodeName:   "node-a",
+		Quota:      -5860800,
+		TokenUsed:  38800,
+		Adjustment: true,
+	})
+	SaveQuotaDataCache()
+
+	var rows []QuotaData
+	require.NoError(t, DB.Find(&rows).Error)
+	require.Len(t, rows, 1, "修正行不得另起新桶")
+	require.Equal(t, int64(3600), rows[0].CreatedAt)
+	require.Equal(t, 1, rows[0].Count, "退款不计请求次数")
+	require.Equal(t, 6937500-5860800, rows[0].Quota, "额度为净额")
+	require.Equal(t, 38800, rows[0].TokenUsed, "token 取结算值")
+}
+
+func resetFlowQuotaDataCache() {
+	CacheQuotaDataLock.Lock()
+	CacheQuotaData = make(map[string]*QuotaData)
+	CacheQuotaDataLock.Unlock()
+}

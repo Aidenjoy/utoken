@@ -46,6 +46,9 @@ type QuotaDataLogParams struct {
 	// CacheHit 为 true 时本次请求命中响应缓存，计入 CacheHits 与 CacheSavedQuota
 	CacheHit        bool
 	CacheSavedQuota int
+	// Adjustment 为 true 表示异步任务差额结算/退款的修正行：只修正提交时刻
+	// 小时桶上的额度与 token，不计请求次数（Count 为 0），Quota 可为负。
+	Adjustment bool
 }
 
 func UpdateQuotaData() {
@@ -97,6 +100,10 @@ func LogQuotaData(params QuotaDataLogParams) {
 	if params.CacheHit {
 		cacheHits = 1
 	}
+	count := 1
+	if params.Adjustment {
+		count = 0
+	}
 	quotaData := &QuotaData{
 		UserID:          params.UserID,
 		OrgId:           params.OrgId,
@@ -107,7 +114,7 @@ func LogQuotaData(params QuotaDataLogParams) {
 		TokenID:         params.TokenID,
 		ChannelID:       params.ChannelID,
 		NodeName:        params.NodeName,
-		Count:           1,
+		Count:           count,
 		Quota:           params.Quota,
 		TokenUsed:       params.TokenUsed,
 		CacheHits:       cacheHits,

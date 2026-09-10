@@ -443,6 +443,9 @@ type RecordTaskBillingLogParams struct {
 	CompletionTokens int // 结算时上游返回的实际 completion/total token 数（无则为 0）
 	Other            map[string]interface{}
 	NodeName         string // 任务发起节点；为空时回退当前节点
+	// QuotaDataCreatedAt 为任务提交时刻（task.SubmitTime）。结算修正落到提交
+	// 同一小时桶，避免差额/退款跨桶跨天漂移；为 0 时回退日志时间。
+	QuotaDataCreatedAt int64
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
@@ -484,23 +487,34 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
 	}
-	if params.LogType == LogTypeConsume && common.DataExportEnabled {
+	if common.DataExportEnabled {
 		nodeName := params.NodeName
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
+		// 差额结算/退款只修正提交时刻的小时桶：额度按日志类型带符号，不计请求
+		// 次数，使报表里一次任务用量始终归并为一条净额记录。
+		quotaDataCreatedAt := params.QuotaDataCreatedAt
+		if quotaDataCreatedAt == 0 {
+			quotaDataCreatedAt = createdAt
+		}
+		quota := params.Quota
+		if params.LogType == LogTypeRefund {
+			quota = -quota
+		}
 		LogQuotaData(QuotaDataLogParams{
-			UserID:    params.UserId,
-			OrgId:     orgId,
-			Username:  username,
-			ModelName: params.ModelName,
-			Quota:     params.Quota,
-			CreatedAt: createdAt,
-			TokenUsed: params.PromptTokens + params.CompletionTokens,
-			UseGroup:  params.Group,
-			TokenID:   params.TokenId,
-			ChannelID: params.ChannelId,
-			NodeName:  nodeName,
+			UserID:     params.UserId,
+			OrgId:      orgId,
+			Username:   username,
+			ModelName:  params.ModelName,
+			Quota:      quota,
+			CreatedAt:  quotaDataCreatedAt,
+			TokenUsed:  params.PromptTokens + params.CompletionTokens,
+			UseGroup:   params.Group,
+			TokenID:    params.TokenId,
+			ChannelID:  params.ChannelId,
+			NodeName:   nodeName,
+			Adjustment: true,
 		})
 	}
 }
