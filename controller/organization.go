@@ -884,6 +884,19 @@ func AdminCreateOrganization(c *gin.Context) {
 	// Redis 未启用时缓存能力整体关闭，强制落库为关闭避免设置与实际行为不一致
 	cacheEnabled := req.CacheEnabled && common.RedisEnabled
 
+	// 先解析企业管理员再落库：用户名不存在时必须零副作用返回，
+	// 否则企业已提交而管理员缺失，重试即报标识被占用并留下无主企业
+	ownerUserId := 0
+	ownerUsername := strings.TrimSpace(req.OwnerUsername)
+	if ownerUsername != "" {
+		owner, err := model.GetUserByUsername(ownerUsername)
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgOrgUserNotFound)
+			return
+		}
+		ownerUserId = owner.Id
+	}
+
 	org := &model.Organization{
 		Name:                name,
 		DisplayName:         strings.TrimSpace(req.DisplayName),
@@ -898,42 +911,19 @@ func AdminCreateOrganization(c *gin.Context) {
 		AllowWalletFallback: req.AllowWalletFallback,
 		HidePoolQuota:       req.HidePoolQuota,
 	}
-	if err := model.CreateOrganization(org); err != nil {
-		if errors.Is(err, model.ErrOrgNameTaken) {
+	// 建企业、初始额度池与首位管理员在同一事务内完成，任一步失败整体回滚
+	if err := model.CreateOrganizationWithSetup(org, req.Quota, ownerUserId); err != nil {
+		switch {
+		case errors.Is(err, model.ErrOrgNameTaken):
 			common.ApiErrorI18n(c, i18n.MsgOrgNameTaken)
-			return
-		}
-		common.ApiError(c, err)
-		return
-	}
-	if req.Quota != 0 {
-		if err := model.IncreaseOrgQuota(org.Id, req.Quota); err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		org.Quota = req.Quota
-	}
-
-	ownerUsername := strings.TrimSpace(req.OwnerUsername)
-	if ownerUsername != "" {
-		owner, err := model.GetUserByUsername(ownerUsername)
-		if err != nil {
+		case errors.Is(err, model.ErrOrgUserNotFound):
 			common.ApiErrorI18n(c, i18n.MsgOrgUserNotFound)
-			return
-		}
-		member := &model.OrgMember{OrgId: org.Id, UserId: owner.Id, OrgRole: model.OrgRoleAdmin}
-		if err := model.AddOrgMember(member); err != nil {
-			if errors.Is(err, model.ErrOrgUserAlreadyInOrg) {
-				common.ApiErrorI18n(c, i18n.MsgOrgUserAlreadyInOrg)
-				return
-			}
+		case errors.Is(err, model.ErrOrgUserAlreadyInOrg):
+			common.ApiErrorI18n(c, i18n.MsgOrgUserAlreadyInOrg)
+		default:
 			common.ApiError(c, err)
-			return
 		}
-		org.OwnerUserId = owner.Id
-		if err := model.UpdateOrganizationFields(org.Id, map[string]interface{}{"owner_user_id": owner.Id}); err != nil {
-			common.SysLog("failed to persist organization owner: " + err.Error())
-		}
+		return
 	}
 
 	recordManageAudit(c, "org.create", map[string]interface{}{

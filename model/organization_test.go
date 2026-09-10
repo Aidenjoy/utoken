@@ -352,3 +352,50 @@ func TestGetOrgUsageAggregatesByOrgDimension(t *testing.T) {
 	assert.Equal(t, 500, byMember[member.UserId].QuotaLimit, "member sub-quota limit surfaced for the ranking table")
 	assert.NotContains(t, byMember, 303, "other org member must not leak into this report")
 }
+
+// TestCreateOrganizationWithSetupAtomicity 锁定管理员建企业的原子性契约：
+// 管理员用户名不存在或已属于其他企业时不得留下已创建的企业（否则重试即报
+// 标识被占用、列表多出无主企业）；成功时企业、初始额度池与首位管理员一并落库。
+func TestCreateOrganizationWithSetupAtomicity(t *testing.T) {
+	setupOrgFixture(t)
+
+	t.Run("missing owner leaves no organization behind", func(t *testing.T) {
+		org := &Organization{Name: "atomic-missing", Group: "default", Status: OrgStatusEnabled}
+		err := CreateOrganizationWithSetup(org, 500, 999999)
+		require.ErrorIs(t, err, ErrOrgUserNotFound)
+		_, getErr := GetOrganizationByName("atomic-missing")
+		assert.ErrorIs(t, getErr, ErrOrgNotFound, "failed create must not commit the organization row")
+	})
+
+	t.Run("owner already in another org rolls back", func(t *testing.T) {
+		first := seedOrg(t, 9001, 0, OrgStatusEnabled)
+		seedOrgMember(t, first, 9001, OrgRoleAdmin, 0, OrgMemberStatusEnabled)
+		org := &Organization{Name: "atomic-taken-member", Group: "default", Status: OrgStatusEnabled}
+		err := CreateOrganizationWithSetup(org, 500, 9001)
+		require.ErrorIs(t, err, ErrOrgUserAlreadyInOrg)
+		_, getErr := GetOrganizationByName("atomic-taken-member")
+		assert.ErrorIs(t, getErr, ErrOrgNotFound, "failed create must not commit the organization row")
+	})
+
+	t.Run("success funds pool and appoints first admin", func(t *testing.T) {
+		user := &User{Id: 9101, Username: "atomic-owner", AffCode: "aff-9101", Status: common.UserStatusEnabled, Group: DefaultUserGroup}
+		require.NoError(t, DB.Create(user).Error)
+		org := &Organization{Name: "atomic-ok", Group: "vip", Status: OrgStatusEnabled}
+		require.NoError(t, CreateOrganizationWithSetup(org, 500, 9101))
+
+		created, err := GetOrganizationByName("atomic-ok")
+		require.NoError(t, err)
+		assert.Equal(t, 500, created.Quota, "initial pool quota persisted on create")
+		assert.Equal(t, 9101, created.OwnerUserId)
+
+		member, err := GetOrgMemberByUserId(9101)
+		require.NoError(t, err)
+		assert.Equal(t, created.Id, member.OrgId)
+		assert.Equal(t, OrgRoleAdmin, member.OrgRole)
+
+		var refreshed User
+		require.NoError(t, DB.Where("id = ?", 9101).First(&refreshed).Error)
+		assert.Equal(t, created.Id, refreshed.OrgId, "owner account linked to the new organization")
+		assert.Equal(t, "vip", refreshed.Group, "owner inherits the organization billing group")
+	})
+}

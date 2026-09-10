@@ -51,6 +51,7 @@ var (
 	ErrOrgMemberNotFound      = errors.New("organization member not found")
 	ErrOrgMemberDisabled      = errors.New("organization member is disabled")
 	ErrOrgUserAlreadyInOrg    = errors.New("user already belongs to an organization")
+	ErrOrgUserNotFound        = errors.New("organization owner user not found")
 	ErrOrgQuotaInsufficient   = errors.New("organization quota insufficient")
 	ErrOrgMemberQuotaExceeded = errors.New("organization member quota limit exceeded")
 	ErrOrgNotEmpty            = errors.New("organization still has members")
@@ -212,6 +213,78 @@ func CreateOrganization(org *Organization) error {
 		return ErrOrgNameTaken
 	}
 	return DB.Create(org).Error
+}
+
+// CreateOrganizationWithSetup 在单个事务里创建企业、写入初始额度池并（可选）
+// 任命首位企业管理员。任一步失败整体回滚，避免留下"企业已创建但管理员缺失或
+// 额度未到账"的半成品：调用方（管理员建企业）先前是先落库再校验管理员用户名，
+// 用户名不存在时企业已经提交，重试即报标识被占用且列表多出无主企业。
+// ownerUserId <= 0 表示暂不任命管理员；initialQuota < 0 视为非法参数。
+func CreateOrganizationWithSetup(org *Organization, initialQuota int, ownerUserId int) error {
+	if org == nil {
+		return errors.New("organization is nil")
+	}
+	normalizeOrganization(org)
+	if !IsValidOrgName(org.Name) {
+		return errors.New("invalid organization name")
+	}
+	if initialQuota < 0 {
+		return errors.New("invalid initial organization quota")
+	}
+	org.Quota = initialQuota
+	if ownerUserId > 0 {
+		org.OwnerUserId = ownerUserId
+	}
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&Organization{}).Where("name = ?", org.Name).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return ErrOrgNameTaken
+		}
+		if ownerUserId > 0 {
+			var userCount int64
+			if err := tx.Model(&User{}).Where("id = ?", ownerUserId).Count(&userCount).Error; err != nil {
+				return err
+			}
+			if userCount == 0 {
+				return ErrOrgUserNotFound
+			}
+			var memberCount int64
+			if err := tx.Model(&OrgMember{}).Where("user_id = ?", ownerUserId).Count(&memberCount).Error; err != nil {
+				return err
+			}
+			if memberCount > 0 {
+				return ErrOrgUserAlreadyInOrg
+			}
+		}
+		if err := tx.Create(org).Error; err != nil {
+			return err
+		}
+		if ownerUserId > 0 {
+			member := &OrgMember{
+				OrgId:    org.Id,
+				UserId:   ownerUserId,
+				OrgRole:  OrgRoleAdmin,
+				Status:   OrgMemberStatusEnabled,
+				JoinedAt: common.GetTimestamp(),
+			}
+			if err := tx.Create(member).Error; err != nil {
+				return err
+			}
+			return tx.Model(&User{}).Where("id = ?", ownerUserId).
+				Updates(map[string]interface{}{"org_id": org.Id, "group": org.Group}).Error
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if ownerUserId > 0 {
+		// 新管理员的 org_id/group 已变更，清理用户缓存使其立即以企业管理员身份生效
+		return invalidateOrgMembersUserCache(org.Id)
+	}
+	return nil
 }
 
 // GetOrganizationById 按 ID 读取企业，未找到返回 ErrOrgNotFound
