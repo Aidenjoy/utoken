@@ -78,13 +78,13 @@ export function PromptsTable() {
     pagination: { defaultPage: 1, defaultPageSize: isMobile ? 10 : 20 },
     globalFilter: { enabled: true, key: 'filter' },
     columnFilters: [
-      { columnId: 'tag', searchKey: 'tag', type: 'array' },
+      { columnId: 'tags', searchKey: 'tag', type: 'array' },
       { columnId: 'visibility', searchKey: 'visibility', type: 'array' },
       { columnId: 'scope', searchKey: 'scope', type: 'array' },
     ],
   })
 
-  const tagFilterValue = firstFilterValue(columnFilters, 'tag')
+  const tagFilterValue = firstFilterValue(columnFilters, 'tags')
   const visibilityFilterValue = firstFilterValue(columnFilters, 'visibility')
   const scopeFilterValue = firstFilterValue(columnFilters, 'scope')
 
@@ -140,6 +140,8 @@ export function PromptsTable() {
     data: prompts,
     columns,
     columnFilters,
+    // Scope binds the toolbar filter but has no visual cell.
+    columnVisibility: { scope: false },
     globalFilter,
     pagination,
     globalFilterFn: (row, _columnId, filterValue) => {

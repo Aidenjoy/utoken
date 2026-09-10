@@ -124,6 +124,16 @@ export function usePromptsColumns(): ColumnDef<PromptTemplate>[] {
       size: 90,
     },
     {
+      // Scope is a server-side ownership dimension (mine / org-managed /
+      // public) with no visual cell; the hidden column exists so the toolbar
+      // scope filter can bind to a real column id.
+      id: 'scope',
+      header: t('Scope'),
+      accessorFn: () => '',
+      enableSorting: false,
+      meta: { mobileHidden: true },
+    },
+    {
       id: 'actions',
       cell: ({ row }) => <DataTableRowActions row={row} />,
       enableSorting: false,
