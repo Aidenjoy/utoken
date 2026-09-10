@@ -2,6 +2,7 @@ package model
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -235,17 +236,20 @@ func GetOrgDailyQuota(orgId int, now int64) (int, error) {
 	return result.Quota, nil
 }
 
-// GetOrgLogs 分页读取企业成员的消费明细。
+// GetOrgLogs 分页读取企业成员的消费明细（计费视图）。
+// 只返回模型用量行：同步消耗日志与任务提交预扣日志（other.is_task），
+// 登录/管理等非计费日志不出现。任务的差额结算/退款日志（other 含 task_id
+// 但不含 is_task）不单独成行，而是折叠进提交行：额度取净额、token 取结算值、
+// 耗时取提交到结算的墙钟时间，使一次模型用量对应一条计费记录。
 // userId > 0 时收窄到单个成员（调用方需保证该成员属于本企业）。
-func GetOrgLogs(userIds []int, logType int, startTimestamp int64, endTimestamp int64, modelName string, userId int, startIdx int, num int) (logs []*Log, total int64, err error) {
+func GetOrgLogs(userIds []int, startTimestamp int64, endTimestamp int64, modelName string, userId int, startIdx int, num int) (logs []*Log, total int64, err error) {
 	if len(userIds) == 0 {
 		return nil, 0, nil
 	}
 	build := func() *gorm.DB {
-		tx := LOG_DB.Where("logs.user_id IN ?", userIds)
-		if logType != LogTypeUnknown {
-			tx = tx.Where("logs.type = ?", logType)
-		}
+		tx := LOG_DB.Where("logs.user_id IN ?", userIds).
+			Where("logs.type = ?", LogTypeConsume).
+			Where("(logs.other LIKE ? OR logs.other NOT LIKE ?)", "%\"is_task\"%", "%\"task_id\"%")
 		if userId > 0 {
 			tx = tx.Where("logs.user_id = ?", userId)
 		}
@@ -280,10 +284,98 @@ func GetOrgLogs(userIds []int, logType int, startTimestamp int64, endTimestamp i
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		assignDisplayLogIds(logs, startIdx)
 	}
+	if err = foldTaskSettlements(logs); err != nil {
+		return logs, total, err
+	}
 	if err = attachLogChannelNames(logs); err != nil {
 		return logs, total, err
 	}
 	return logs, total, nil
+}
+
+// logOtherTaskID 从日志 other JSON 中提取 task_id，缺失或解析失败返回空串。
+func logOtherTaskID(other string) string {
+	if other == "" {
+		return ""
+	}
+	var fields struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := common.UnmarshalJsonStr(other, &fields); err != nil {
+		return ""
+	}
+	return fields.TaskID
+}
+
+// foldTaskSettlements 把任务的差额结算/退款日志折叠进页内提交预扣行。
+// 结算行以 other.task_id 关联且不含 is_task，与提交行互斥。
+func foldTaskSettlements(logs []*Log) error {
+	rowsByTask := make(map[string][]*Log)
+	for _, log := range logs {
+		if taskID := logOtherTaskID(log.Other); taskID != "" {
+			rowsByTask[taskID] = append(rowsByTask[taskID], log)
+		}
+	}
+	if len(rowsByTask) == 0 {
+		return nil
+	}
+	conds := make([]string, 0, len(rowsByTask))
+	args := make([]interface{}, 0, len(rowsByTask))
+	for taskID := range rowsByTask {
+		conds = append(conds, "logs.other LIKE ?")
+		args = append(args, "%\"task_id\":\""+taskID+"\"%")
+	}
+	var settles []Log
+	if err := LOG_DB.Where("logs.type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("logs.other LIKE ?", "%\"task_id\"%").
+		Where("logs.other NOT LIKE ?", "%\"is_task\"%").
+		Where(strings.Join(conds, " OR "), args...).Find(&settles).Error; err != nil {
+		return err
+	}
+	settlesByTask := make(map[string][]*Log)
+	for i := range settles {
+		taskID := logOtherTaskID(settles[i].Other)
+		settlesByTask[taskID] = append(settlesByTask[taskID], &settles[i])
+	}
+	for taskID, rows := range rowsByTask {
+		for _, row := range rows {
+			foldSettlementsIntoRow(row, settlesByTask[taskID])
+		}
+	}
+	return nil
+}
+
+// foldSettlementsIntoRow 将单条提交行的额度/token/耗时按结算日志修正为最终值。
+func foldSettlementsIntoRow(row *Log, settles []*Log) {
+	if len(settles) == 0 {
+		return
+	}
+	delta := 0
+	var last *Log
+	for _, settle := range settles {
+		if settle.Type == LogTypeConsume {
+			delta += settle.Quota
+		} else {
+			delta -= settle.Quota
+		}
+		if last == nil || settle.CreatedAt > last.CreatedAt ||
+			(settle.CreatedAt == last.CreatedAt && settle.Id > last.Id) {
+			last = settle
+		}
+	}
+	// 全额退款时净额为 0；异常数据不允许出现负数计费
+	if net := row.Quota + delta; net >= 0 {
+		row.Quota = net
+	} else {
+		row.Quota = 0
+	}
+	if last.PromptTokens+last.CompletionTokens > 0 {
+		row.PromptTokens = last.PromptTokens
+		row.CompletionTokens = last.CompletionTokens
+	}
+	if duration := int(last.CreatedAt - row.CreatedAt); duration > row.UseTime {
+		row.UseTime = duration
+	}
 }
 
 // GetOrgTokens 分页读取企业成员的密钥（明文 key 由 controller 统一脱敏）。

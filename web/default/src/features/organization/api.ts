@@ -170,7 +170,6 @@ export async function getOrgUsage(
 export interface OrgLogsParams extends OrgTimeRangeParams {
   p?: number
   page_size?: number
-  type?: number
   model_name?: string
   user_id?: number
 }
@@ -182,7 +181,6 @@ export async function getOrgLogs(
     `/api/org/logs${buildQuery({
       p: params.p ?? 1,
       page_size: params.page_size ?? 20,
-      type: params.type,
       model_name: params.model_name,
       user_id: params.user_id,
       start_timestamp: params.start_timestamp,

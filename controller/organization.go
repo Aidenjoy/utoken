@@ -717,10 +717,9 @@ func GetOrgLogs(c *gin.Context) {
 	if scopeUserId > 0 && !intInList(scopeUserId, userIds) {
 		scopeUserId = -1
 	}
-	logType, _ := strconv.Atoi(c.Query("type"))
 	startTime, endTime := parseOrgTimeRange(c)
 	pageInfo := common.GetPageQuery(c)
-	logs, total, err := model.GetOrgLogs(userIds, logType, startTime, endTime,
+	logs, total, err := model.GetOrgLogs(userIds, startTime, endTime,
 		strings.TrimSpace(c.Query("model_name")), scopeUserId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)

@@ -18,7 +18,8 @@ import (
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
-func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
+// taskID 写入 other，供计费视图把后续差额结算/退款日志折叠回本行。
+func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskID string) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
 	// 支持任务仅按次计费
@@ -39,6 +40,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	}
 	other := make(map[string]interface{})
 	other["is_task"] = true
+	if taskID != "" {
+		other["task_id"] = taskID
+	}
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
 	if info.PriceData.ModelRatio > 0 {

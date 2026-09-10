@@ -593,7 +593,6 @@ func RelayTask(c *gin.Context) {
 		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 			common.SysError("settle task billing error: " + settleErr.Error())
 		}
-		service.LogTaskConsumption(c, relayInfo)
 
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
@@ -614,6 +613,8 @@ func RelayTask(c *gin.Context) {
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
+		// 消费日志带 task_id，计费视图据此折叠后续结算/退款
+		service.LogTaskConsumption(c, relayInfo, task.TaskID)
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}
