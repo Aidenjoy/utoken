@@ -97,7 +97,6 @@ const organizationFormSchema = z.object({
     .regex(ORG_VALIDATION.NAME_PATTERN),
   display_name: z.string().trim().max(ORG_VALIDATION.DISPLAY_NAME_MAX_LENGTH),
   group: z.string().trim().min(1),
-  owner_username: z.string().trim(),
   quota_amount: z.number().min(0),
   warning_threshold: z.number().min(0),
   daily_usage_alert: z.number().min(0),
@@ -116,7 +115,6 @@ const EMPTY_DEFAULTS: OrganizationFormInput = {
   name: '',
   display_name: '',
   group: 'default',
-  owner_username: '',
   quota_amount: 0,
   warning_threshold: 0,
   daily_usage_alert: 0,
@@ -226,7 +224,6 @@ export function OrganizationMutateDrawer({
             ...shared,
             name: values.name,
             quota: parseQuotaFromDollars(values.quota_amount),
-            owner_username: values.owner_username || undefined,
           } satisfies AdminCreateOrganizationPayload)
 
       if (!result.success) {
@@ -277,7 +274,7 @@ export function OrganizationMutateDrawer({
                   'Changing the group also moves every member account to the new group so billing ratios stay consistent.'
                 )
               : t(
-                  'An organization owns one shared quota pool. Optionally appoint an existing user as its admin and fund the pool now.'
+                  'An organization owns one shared quota pool. Fund the pool now.'
                 )}
           </SheetDescription>
         </SheetHeader>
@@ -371,23 +368,10 @@ export function OrganizationMutateDrawer({
 
             {!isEdit ? (
               <SideDrawerSection>
-                <SideDrawerSectionHeader title={t('Initial Setup')} />
-                <FormField
-                  control={form.control}
-                  name='owner_username'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Organization Admin Username')}</FormLabel>
-                      <FormControl>
-                        <Input {...field} autoComplete='off' />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'An existing user who will manage this organization. Leave empty to appoint nobody.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
+                <SideDrawerSectionHeader
+                  title={t('Initial Setup')}
+                  description={t(
+                    'Organization admins can be appointed later from the member list.'
                   )}
                 />
                 <FormField

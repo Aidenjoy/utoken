@@ -73,7 +73,7 @@ import {
   getOrgRoleOptions,
 } from '../constants'
 import { ORG_MEMBER_STATUS, ORG_ROLE, type OrgMemberDetail } from '../types'
-import { useOrganization } from './organization-context'
+import { useOptionalOrganization } from './organization-context'
 
 export type MemberDrawerMode = 'create' | 'invite' | 'edit'
 
@@ -122,6 +122,13 @@ type Props = {
   mode: MemberDrawerMode
   member: OrgMemberDetail | null
   onOpenChange: (open: boolean) => void
+  /**
+   * 系统管理员代管某企业时传入目标企业 ID（后端按 org_id 查询参数定位）；
+   * 企业管理员操作本企业时留空。
+   */
+  orgId?: number
+  /** 无 OrganizationProvider 时（代管场景）由调用方提供刷新回调。 */
+  onRefresh?: () => void
 }
 
 const MODE_TITLES: Record<MemberDrawerMode, string> = {
@@ -143,9 +150,11 @@ export function MemberMutateDrawer({
   mode,
   member,
   onOpenChange,
+  orgId,
+  onRefresh,
 }: Props) {
   const { t } = useTranslation()
-  const { triggerRefresh } = useOrganization()
+  const orgContext = useOptionalOrganization()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const roleOptions = useMemo(() => getOrgRoleOptions(t), [t])
 
@@ -184,28 +193,38 @@ export function MemberMutateDrawer({
       const quotaLimit = parseQuotaFromDollars(values.quota_amount)
       let result
       if (mode === 'create') {
-        result = await createOrgMember({
-          username: values.username,
-          password: values.password,
-          display_name: values.display_name || undefined,
-          email: values.email || undefined,
-          org_role: values.org_role,
-          quota_limit: quotaLimit,
-        })
+        result = await createOrgMember(
+          {
+            username: values.username,
+            password: values.password,
+            display_name: values.display_name || undefined,
+            email: values.email || undefined,
+            org_role: values.org_role,
+            quota_limit: quotaLimit,
+          },
+          orgId
+        )
       } else if (mode === 'invite') {
-        result = await inviteOrgMember({
-          username: values.username,
-          org_role: values.org_role,
-          quota_limit: quotaLimit,
-        })
+        result = await inviteOrgMember(
+          {
+            username: values.username,
+            org_role: values.org_role,
+            quota_limit: quotaLimit,
+          },
+          orgId
+        )
       } else if (member) {
-        result = await updateOrgMember(member.id, {
-          org_role: values.org_role,
-          quota_limit: quotaLimit,
-          status: values.enabled
-            ? ORG_MEMBER_STATUS.ENABLED
-            : ORG_MEMBER_STATUS.DISABLED,
-        })
+        result = await updateOrgMember(
+          member.id,
+          {
+            org_role: values.org_role,
+            quota_limit: quotaLimit,
+            status: values.enabled
+              ? ORG_MEMBER_STATUS.ENABLED
+              : ORG_MEMBER_STATUS.DISABLED,
+          },
+          orgId
+        )
       }
       if (!result || !result.success) {
         toast.error(result?.message || t(FAILURE_MESSAGE_BY_MODE[mode]))
@@ -213,7 +232,11 @@ export function MemberMutateDrawer({
       }
       toast.success(t(SUCCESS_MESSAGE_BY_MODE[mode]))
       onOpenChange(false)
-      triggerRefresh()
+      if (onRefresh) {
+        onRefresh()
+      } else {
+        orgContext?.triggerRefresh()
+      }
     } finally {
       setIsSubmitting(false)
     }

@@ -95,3 +95,12 @@ export function useOrganization() {
   }
   return context
 }
+
+/**
+ * 供可在 Provider 外复用的组件（如系统管理员代管企业成员的抽屉）使用：
+ * 无 Provider 时返回 null，由调用方自行提供刷新回调与目标企业。
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useOptionalOrganization() {
+  return useContext(OrganizationContext)
+}

@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -40,8 +42,16 @@ import {
   ORG_MEMBER_STATUSES,
   ORG_ROLES,
 } from '@/features/organization/constants'
-import type { Organization } from '@/features/organization/types'
+import type {
+  Organization,
+  OrgMemberDetail,
+} from '@/features/organization/types'
 import { formatQuota, formatTimestamp } from '@/lib/format'
+
+import {
+  MemberMutateDrawer,
+  type MemberDrawerMode,
+} from '@/features/organization/components/member-mutate-drawer'
 
 import { getAdminOrganizationMembers } from '../api'
 import { ORG_ADMIN_ERROR_MESSAGES } from '../constants'
@@ -52,11 +62,18 @@ type Props = {
   onOpenChange: (open: boolean) => void
 }
 
+type DrawerState = {
+  mode: MemberDrawerMode
+  member: OrgMemberDetail | null
+}
+
 /**
- * Read-only member list for a system administrator. Member management belongs
- * to the organization admin, so this dialog never offers edits — an
- * administrator acting on behalf of an organization does it as that
- * organization's own admin.
+ * Member list for a system administrator. Reading is always allowed; adding
+ * and editing members are offered too because an organization created without
+ * an admin (or whose admin appointment failed) would otherwise have nobody who
+ * can ever populate or promote it. Writes go through the organization-scoped
+ * endpoints with an explicit `org_id`, i.e. the administrator acts on behalf of
+ * that org.
  */
 export function OrganizationMembersDialog({
   open,
@@ -64,6 +81,26 @@ export function OrganizationMembersDialog({
   onOpenChange,
 }: Props) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  // 抽屉内容与开关分离：关闭动画期间仍渲染最后一次的状态，
+  // 避免退出动画里表单回退成“创建成员”。
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerState, setDrawerState] = useState<DrawerState>({
+    mode: 'create',
+    member: null,
+  })
+
+  const openDrawer = (state: DrawerState) => {
+    setDrawerState(state)
+    setDrawerOpen(true)
+  }
+
+  const refreshMembers = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ['admin-organization-members', organization?.id ?? 0],
+    })
+    void queryClient.invalidateQueries({ queryKey: ['admin-organizations'] })
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-organization-members', organization?.id ?? 0],
@@ -96,6 +133,21 @@ export function OrganizationMembersDialog({
             })}
           </DialogDescription>
         </DialogHeader>
+        <div className='flex items-center justify-end gap-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => openDrawer({ mode: 'invite', member: null })}
+          >
+            {t('Add Existing User')}
+          </Button>
+          <Button
+            size='sm'
+            onClick={() => openDrawer({ mode: 'create', member: null })}
+          >
+            {t('Create Member')}
+          </Button>
+        </div>
         <div className='max-h-[60vh] overflow-auto'>
           <Table>
             <TableHeader>
@@ -105,13 +157,14 @@ export function OrganizationMembersDialog({
                 <TableHead className='text-right'>{t('Sub-quota')}</TableHead>
                 <TableHead>{t('Status')}</TableHead>
                 <TableHead>{t('Joined At')}</TableHead>
+                <TableHead className='text-right'>{t('Actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading || members.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className='text-muted-foreground py-10 text-center'
                   >
                     {isLoading ? t('Loading...') : t('No Members Found')}
@@ -165,6 +218,15 @@ export function OrganizationMembersDialog({
                       <TableCell className='text-muted-foreground text-xs'>
                         {formatTimestamp(member.joined_at)}
                       </TableCell>
+                      <TableCell className='text-right'>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => openDrawer({ mode: 'edit', member })}
+                        >
+                          {t('Edit')}
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   )
                 })
@@ -172,6 +234,16 @@ export function OrganizationMembersDialog({
             </TableBody>
           </Table>
         </div>
+        <MemberMutateDrawer
+          open={drawerOpen}
+          mode={drawerState.mode}
+          member={drawerState.member}
+          orgId={organization?.id}
+          onRefresh={refreshMembers}
+          onOpenChange={(value) => {
+            if (!value) setDrawerOpen(false)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )
