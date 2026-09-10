@@ -65,6 +65,11 @@ interface PlaygroundVideoInputProps {
   onGroupChange: (group: string) => void
   onClearTasks?: () => void
   hasTasks?: boolean
+  /**
+   * Text pre-filled from the Prompt Library. It only seeds the draft —
+   * nothing is sent until the user submits.
+   */
+  initialText?: string
   onUploadMediaItem?: (
     file: File,
     type: 'image' | 'video' | 'audio',
@@ -104,16 +109,29 @@ export function PlaygroundVideoInput({
   onGroupChange,
   onClearTasks,
   hasTasks,
+  initialText,
   onUploadMediaItem,
   uploadProgress,
 }: PlaygroundVideoInputProps) {
   const { t } = useTranslation()
-  const [prompt, setPrompt] = useState('')
-  const [isEmpty, setIsEmpty] = useState(true)
+  const [prompt, setPrompt] = useState(initialText ?? '')
+  const [isEmpty, setIsEmpty] = useState((initialText ?? '').trim() === '')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoFileInputRef = useRef<HTMLInputElement>(null)
   const audioFileInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
+
+  // Seed a Prompt Library template into the contentEditable editor. The editor
+  // DOM is the submit-time source of truth (handleSubmit reads innerText), so
+  // the text must land in the node, not only in the mirror state; re-seeding
+  // also covers mounting later after a playground mode switch. The placeholder
+  // overlay tracks emptiness separately, so keep it in sync.
+  useEffect(() => {
+    if (!initialText) return
+    if (editorRef.current) editorRef.current.innerText = initialText
+    setPrompt(initialText)
+    setIsEmpty(initialText.trim() === '')
+  }, [initialText])
 
   // --- @ mention popup state ---
   const [showMention, setShowMention] = useState(false)

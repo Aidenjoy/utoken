@@ -79,11 +79,15 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
   // Detect model type to switch between chat, video and image UI
   const modelType = getModelType(config.model)
 
+  // The template text follows the user into whichever mode is active, so
+  // picking a template while an image/video model is selected still lands the
+  // text in the composer the user actually sees.
   if (modelType === 'video') {
     return (
       <PlaygroundVideoMode
         group={config.group}
         groups={groups}
+        initialText={initialPrompt}
         model={config.model}
         models={models}
         onGroupChange={(value) => updateConfig('group', value)}
@@ -97,6 +101,7 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
       <PlaygroundImageMode
         group={config.group}
         groups={groups}
+        initialText={initialPrompt}
         model={config.model}
         models={models}
         onGroupChange={(value) => updateConfig('group', value)}

@@ -16,6 +16,8 @@ interface PlaygroundVideoModeProps {
   groups: GroupOption[]
   onModelChange: (model: string) => void
   onGroupChange: (group: string) => void
+  /** Prompt Library template text seeded into the composer. */
+  initialText?: string
 }
 
 export function PlaygroundVideoMode({
@@ -25,6 +27,7 @@ export function PlaygroundVideoMode({
   groups,
   onModelChange,
   onGroupChange,
+  initialText,
 }: PlaygroundVideoModeProps) {
   const [videoConfig, setVideoConfig] = useState<VideoConfig>(() => {
     const initial = getInitialVideoConfig()
@@ -69,6 +72,7 @@ export function PlaygroundVideoMode({
           disabled={isGenerating}
           groups={groups}
           hasTasks={videoTasks.length > 0}
+          initialText={initialText}
           isGenerating={isGenerating}
           models={models}
           onClearTasks={clearTasks}

@@ -1,5 +1,5 @@
 import { ImageIcon, SendIcon, SquareIcon, Trash2Icon } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -46,6 +46,11 @@ interface PlaygroundImageInputProps {
   onGroupChange: (group: string) => void
   onClearTasks?: () => void
   hasTasks?: boolean
+  /**
+   * Text pre-filled from the Prompt Library. It only seeds the draft —
+   * nothing is sent until the user submits.
+   */
+  initialText?: string
 }
 
 export function PlaygroundImageInput({
@@ -61,9 +66,16 @@ export function PlaygroundImageInput({
   onGroupChange,
   onClearTasks,
   hasTasks,
+  initialText,
 }: PlaygroundImageInputProps) {
   const { t } = useTranslation()
-  const [prompt, setPrompt] = useState('')
+  const [prompt, setPrompt] = useState(initialText ?? '')
+
+  // Re-seed when the user picks a template while this composer is mounted,
+  // including mounting later after a playground mode switch.
+  useEffect(() => {
+    if (initialText) setPrompt(initialText)
+  }, [initialText])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Size and format vocabularies are provider-specific, and Ark 400s on a value

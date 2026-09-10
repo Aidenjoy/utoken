@@ -17,6 +17,8 @@ interface PlaygroundImageModeProps {
   groups: GroupOption[]
   onModelChange: (model: string) => void
   onGroupChange: (group: string) => void
+  /** Prompt Library template text seeded into the composer. */
+  initialText?: string
 }
 
 export function PlaygroundImageMode({
@@ -26,6 +28,7 @@ export function PlaygroundImageMode({
   groups,
   onModelChange,
   onGroupChange,
+  initialText,
 }: PlaygroundImageModeProps) {
   const [imageConfig, setImageConfig] = useState<ImageConfig>(() =>
     normalizeImageConfig({ ...getInitialImageConfig(), group }, model)
@@ -71,6 +74,7 @@ export function PlaygroundImageMode({
           disabled={isGenerating}
           groups={groups}
           hasTasks={imageTasks.length > 0}
+          initialText={initialText}
           isGenerating={isGenerating}
           models={models}
           onClearTasks={clearTasks}
