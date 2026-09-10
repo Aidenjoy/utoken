@@ -1,18 +1,68 @@
 package taskcommon
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 )
+
+// volcLenientInt 容忍数字、数字字符串与空值（""、null、无法解析一律记 0）。
+// 个别中转站会把数字字段降级为字符串（无值时给空串），严格 int 会让整个
+// 任务响应反序列化失败，任务被永久卡在进行中，这里统一降级兜底。
+type volcLenientInt int
+
+func (v *volcLenientInt) UnmarshalJSON(data []byte) error {
+	switch strings.TrimSpace(string(data)) {
+	case "", "null", `""`:
+		return nil
+	}
+	var n int
+	if err := common.Unmarshal(data, &n); err == nil {
+		*v = volcLenientInt(n)
+		return nil
+	}
+	var s string
+	if err := common.Unmarshal(data, &s); err == nil {
+		if parsed, convErr := strconv.Atoi(strings.TrimSpace(s)); convErr == nil {
+			*v = volcLenientInt(parsed)
+		}
+	}
+	return nil
+}
+
+// volcUsage 兼容官方与中转站的 usage：官方为数字对象，部分中转站把全部字段
+// 降级为字符串（无值时为空串），tool_usage 可能是对象或字符串。仅提取计费
+// 用到的两个 token 字段，任何异常形态都降级为 0，不阻断任务状态解析。
+type volcUsage struct {
+	CompletionTokens int
+	TotalTokens      int
+}
+
+func (u *volcUsage) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := common.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	for key, target := range map[string]*int{
+		"completion_tokens": &u.CompletionTokens,
+		"total_tokens":      &u.TotalTokens,
+	} {
+		var v volcLenientInt
+		if err := common.Unmarshal(raw[key], &v); err == nil {
+			*target = int(v)
+		}
+	}
+	return nil
+}
 
 // ---------------------------------------------------------------------------
 // Volcengine Ark shared protocol helpers — used by both the common-format
@@ -47,28 +97,19 @@ type VolcTaskResponse struct {
 		Content struct {
 			VideoURL string `json:"video_url"`
 		} `json:"content"`
-		Usage struct {
-			CompletionTokens int `json:"completion_tokens"`
-			TotalTokens      int `json:"total_tokens"`
-		} `json:"usage"`
-		Resolution string `json:"resolution"`
+		Usage      volcUsage `json:"usage"`
+		Resolution string    `json:"resolution"`
 	} `json:"resultSummary"`
-	Seed            int          `json:"seed"`
-	Resolution      string       `json:"resolution"`
-	Duration        dto.IntValue `json:"duration"`
-	Ratio           string       `json:"ratio"`
-	FramesPerSecond int          `json:"framespersecond"`
-	ServiceTier     string       `json:"service_tier"`
+	Seed            volcLenientInt `json:"seed"`
+	Resolution      string         `json:"resolution"`
+	Duration        volcLenientInt `json:"duration"`
+	Ratio           string         `json:"ratio"`
+	FramesPerSecond volcLenientInt `json:"framespersecond"`
+	ServiceTier     string         `json:"service_tier"`
 	Tools           []struct {
 		Type string `json:"type"`
 	} `json:"tools"`
-	Usage struct {
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
-		ToolUsage        struct {
-			WebSearch int `json:"web_search"`
-		} `json:"tool_usage"`
-	} `json:"usage"`
+	Usage volcUsage `json:"usage"`
 	Error struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
@@ -110,7 +151,20 @@ func ParseVolcTaskResult(respBody []byte, logPrefix string) (*relaycommon.TaskIn
 	resTask := VolcTaskResponse{}
 	if err := common.Unmarshal(respBody, &resTask); err != nil {
 		common.SysError(fmt.Sprintf("%s Failed to unmarshal task result: %v, body: %s", logPrefix, err, logBody))
-		return nil, errors.Wrap(err, "unmarshal task result failed")
+		// 兜底：仅解析推进状态所需的关键字段，避免单个异常字段把任务永久卡在进行中
+		fallback := struct {
+			ID      string `json:"id"`
+			Status  string `json:"status"`
+			Content struct {
+				VideoURL string `json:"video_url"`
+			} `json:"content"`
+		}{}
+		if fbErr := common.Unmarshal(respBody, &fallback); fbErr != nil {
+			return nil, errors.Wrap(err, "unmarshal task result failed")
+		}
+		resTask.ID = fallback.ID
+		resTask.Status = fallback.Status
+		resTask.Content.VideoURL = fallback.Content.VideoURL
 	}
 
 	common.SysLog(fmt.Sprintf("%s Task status: id=%s status=%s error=%s",
