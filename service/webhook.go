@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -32,10 +33,11 @@ func generateSignature(secret string, payload []byte) string {
 
 // SendWebhookNotify 发送 webhook 通知
 func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error {
-	// 处理占位符
+	// 处理占位符：与其它渠道一致，按序替换 {{value}}，
+	// 不能用 fmt.Sprintf（content 不含 % 动词，会把参数追加成 %!(EXTRA ...) 垃圾串）
 	content := data.Content
 	for _, value := range data.Values {
-		content = fmt.Sprintf(content, value)
+		content = strings.Replace(content, dto.ContentValueParam, fmt.Sprintf("%v", value), 1)
 	}
 
 	// 构建 webhook 负载
@@ -100,10 +102,11 @@ func SendWebhookNotify(webhookURL string, secret string, data dto.Notify) error 
 		// 设置请求头
 		req.Header.Set("Content-Type", "application/json")
 
-		// 如果有 secret，生成签名
+		// 如果有 secret，生成签名（与 worker 分支一致，同时携带 Bearer 凭证）
 		if secret != "" {
 			signature := generateSignature(secret, payloadBytes)
 			req.Header.Set("X-Webhook-Signature", signature)
+			req.Header.Set("Authorization", "Bearer "+secret)
 		}
 
 		// 发送请求
