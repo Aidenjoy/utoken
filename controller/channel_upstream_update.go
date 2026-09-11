@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -298,6 +299,10 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 	case constant.ChannelTypeVolcEngine, constant.ChannelTypeVolcEngineImage:
 		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
 			url = fmt.Sprintf("%s/v1/models", plan.OpenAIBaseURL)
+		} else if taskcommon.HasVolcVersionPathSuffix(baseURL) {
+			// base 已带版本路径（如 Agent Plan 的 /api/plan/v3）：模型列表挂在版本基址下，
+			// 再拼 /v1/models 会叠出双重版本路径
+			url = fmt.Sprintf("%s/models", strings.TrimSuffix(baseURL, "/"))
 		} else {
 			url = fmt.Sprintf("%s/v1/models", baseURL)
 		}

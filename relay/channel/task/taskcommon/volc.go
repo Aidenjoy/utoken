@@ -69,12 +69,19 @@ func (u *volcUsage) UnmarshalJSON(data []byte) error {
 // doubao adapter and the official-protocol passthrough (arknative) adapter.
 // ---------------------------------------------------------------------------
 
+// HasVolcVersionPathSuffix 判断 baseURL 是否已带版本路径后缀
+// （/v1、/api/v2、/api/plan/v3 等）。自行拼接版本路径的调用方命中时
+// 必须跳过拼接，避免叠出 /api/plan/v3/api/v3/... 双重路径。
+func HasVolcVersionPathSuffix(baseURL string) bool {
+	return volcVersionPathSuffixRE.MatchString(strings.TrimSuffix(baseURL, "/"))
+}
+
 // BuildVolcTaskURL 按渠道 baseURL 构造火山方舟任务地址。
 // baseURL 已带版本路径后缀（如中转站用 /api/v2 代替官方 /api/v3）时直接拼任务路径，
 // 避免拼出 /api/v2/api/v3/... 双重路径；无版本后缀视为火山官方，拼默认 /api/v3。
 func BuildVolcTaskURL(baseURL, taskPath string) string {
 	trimmed := strings.TrimSuffix(baseURL, "/")
-	if volcVersionPathSuffixRE.MatchString(trimmed) {
+	if HasVolcVersionPathSuffix(trimmed) {
 		return trimmed + taskPath
 	}
 	return trimmed + "/api/v3" + taskPath

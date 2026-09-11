@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -250,6 +251,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		baseUrl = channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine]
 	}
 	specialPlan, hasSpecialPlan := channelconstant.ChannelSpecialBases[baseUrl]
+	// 会话族接口的版本基址：base 已带版本路径（如火山方舟 Agent Plan 的
+	// https://ark.cn-beijing.volces.com/api/plan/v3）时原样使用，裸域名拼官方默认 /api/v3。
+	apiBase := arkAPIBase(baseUrl)
 
 	switch info.RelayFormat {
 	case types.RelayFormatClaude:
@@ -257,9 +261,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			return fmt.Sprintf("%s/v1/messages", specialPlan.ClaudeBaseURL), nil
 		}
 		if strings.HasPrefix(info.UpstreamModelName, "bot") {
-			return fmt.Sprintf("%s/api/v3/bots/chat/completions", baseUrl), nil
+			return fmt.Sprintf("%s/bots/chat/completions", apiBase), nil
 		}
-		return fmt.Sprintf("%s/api/v3/chat/completions", baseUrl), nil
+		return fmt.Sprintf("%s/chat/completions", apiBase), nil
 	default:
 		switch info.RelayMode {
 		case constant.RelayModeChatCompletions:
@@ -267,20 +271,20 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 				return fmt.Sprintf("%s/chat/completions", specialPlan.OpenAIBaseURL), nil
 			}
 			if strings.HasPrefix(info.UpstreamModelName, "bot") {
-				return fmt.Sprintf("%s/api/v3/bots/chat/completions", baseUrl), nil
+				return fmt.Sprintf("%s/bots/chat/completions", apiBase), nil
 			}
-			return fmt.Sprintf("%s/api/v3/chat/completions", baseUrl), nil
+			return fmt.Sprintf("%s/chat/completions", apiBase), nil
 		case constant.RelayModeEmbeddings:
-			return fmt.Sprintf("%s/api/v3/embeddings", baseUrl), nil
+			return fmt.Sprintf("%s/embeddings", apiBase), nil
 		//豆包的图生图也走generations接口: https://www.volcengine.com/docs/82379/1824121
 		case constant.RelayModeImagesGenerations, constant.RelayModeImagesEdits:
-			return fmt.Sprintf("%s/api/v3/images/generations", baseUrl), nil
+			return fmt.Sprintf("%s/images/generations", apiBase), nil
 		//case constant.RelayModeImagesEdits:
-		//	return fmt.Sprintf("%s/api/v3/images/edits", baseUrl), nil
+		//	return fmt.Sprintf("%s/images/edits", apiBase), nil
 		case constant.RelayModeRerank:
-			return fmt.Sprintf("%s/api/v3/rerank", baseUrl), nil
+			return fmt.Sprintf("%s/rerank", apiBase), nil
 		case constant.RelayModeResponses:
-			return fmt.Sprintf("%s/api/v3/responses", baseUrl), nil
+			return fmt.Sprintf("%s/responses", apiBase), nil
 		case constant.RelayModeAudioSpeech:
 			if baseUrl == channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine] {
 				return "wss://openspeech.bytedance.com/api/v1/tts/ws_binary", nil
@@ -290,6 +294,17 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("unsupported relay mode: %d", info.RelayMode)
+}
+
+// arkAPIBase 解析会话族接口的版本基址：base 已带版本路径后缀
+// （Agent Plan 的 /api/plan/v3、中转站的 /v1 等）时原样返回，
+// 裸域名视为火山官方，拼默认 /api/v3。
+func arkAPIBase(baseUrl string) string {
+	trimmed := strings.TrimSuffix(baseUrl, "/")
+	if taskcommon.HasVolcVersionPathSuffix(trimmed) {
+		return trimmed
+	}
+	return trimmed + "/api/v3"
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {

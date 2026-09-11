@@ -2675,6 +2675,13 @@ export function ChannelMutateDrawer({
                                         },
                                         {
                                           value:
+                                            'https://ark.cn-beijing.volces.com/api/plan/v3',
+                                          label: t(
+                                            'https://ark.cn-beijing.volces.com/api/plan/v3 (Agent Plan)'
+                                          ),
+                                        },
+                                        {
+                                          value:
                                             'https://ark.ap-southeast.bytepluses.com',
                                           label: t(
                                             'https://ark.ap-southeast.bytepluses.com'
@@ -2701,6 +2708,11 @@ export function ChannelMutateDrawer({
                                           <SelectItem value='https://ark.cn-beijing.volces.com'>
                                             {t(
                                               'https://ark.cn-beijing.volces.com'
+                                            )}
+                                          </SelectItem>
+                                          <SelectItem value='https://ark.cn-beijing.volces.com/api/plan/v3'>
+                                            {t(
+                                              'https://ark.cn-beijing.volces.com/api/plan/v3 (Agent Plan)'
                                             )}
                                           </SelectItem>
                                           <SelectItem value='https://ark.ap-southeast.bytepluses.com'>
