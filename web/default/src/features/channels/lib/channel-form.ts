@@ -492,7 +492,7 @@ export function transformChannelToFormDefaults(
     name: channel.name || '',
     type: channel.type,
     base_url: channel.base_url || '',
-    key: '', // Never populate key from backend for security
+    key: channel.key || '', // 回显密钥（后端仅对敏感写权限角色下发），供编辑时区分多密钥
     openai_organization: channel.openai_organization || '',
     models: channel.models || '',
     group: parseGroups(channel.group || 'default'),
@@ -513,7 +513,7 @@ export function transformChannelToFormDefaults(
     multi_key_mode: 'single',
     multi_key_type: channel.channel_info.multi_key_mode || 'random',
     batch_add_set_key_prefix_2_name: false,
-    key_mode: 'append', // Default to append mode for editing multi-key channels
+    key_mode: 'replace', // 回显完整密钥列表后默认覆盖，所见即所得；仍可手动切追加
     // Channel extra settings
     ...extraSettings,
     // Type-specific settings

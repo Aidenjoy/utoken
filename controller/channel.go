@@ -393,12 +393,17 @@ func GetChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	channel, err := model.GetChannelById(id, false)
+	channel, err := model.GetChannelById(id, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	if channel != nil {
+		// 密钥仅对具备敏感写权限的管理员回显，供编辑表单区分多密钥；
+		// 其余角色维持不下发密钥的旧行为。
+		if !authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
+			channel.Key = ""
+		}
 		clearChannelInfo(channel)
 	}
 	c.JSON(http.StatusOK, gin.H{

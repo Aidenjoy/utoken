@@ -616,6 +616,7 @@ export function ChannelMutateDrawer({
   const initialModelsRef = useRef<string[]>([])
   const initialModelMappingRef = useRef<string>('')
   const initialStatusCodeMappingRef = useRef<string>('')
+  const initialKeyRef = useRef<string>('')
   const [statusCodeRiskOpen, setStatusCodeRiskOpen] = useState(false)
   const [statusCodeRiskDetailItems, setStatusCodeRiskDetailItems] = useState<
     string[]
@@ -1250,12 +1251,14 @@ export function ChannelMutateDrawer({
       initialModelMappingRef.current = channelData.data.model_mapping || ''
       initialStatusCodeMappingRef.current =
         channelData.data.status_code_mapping || ''
+      initialKeyRef.current = defaults.key
     } else if (!isEditing) {
       form.reset(CHANNEL_FORM_DEFAULT_VALUES)
       setAdvancedSettingsOpen(false)
       initialModelsRef.current = []
       initialModelMappingRef.current = ''
       initialStatusCodeMappingRef.current = ''
+      initialKeyRef.current = ''
     }
   }, [isEditing, channelData, form])
 
@@ -1719,6 +1722,12 @@ export function ChannelMutateDrawer({
             form.setValue('models', data.models)
           }
         }
+      }
+
+      // 回显的密钥未被修改时按空串提交（保留现有密钥），避免多 key 追加模式
+      // 把回显内容逐行重新追加（vertex JSON 密钥会产生换行碎片污染密钥列表）。
+      if (isEditing && data.key === initialKeyRef.current) {
+        data.key = ''
       }
 
       await channelMutation.mutateAsync(data)
