@@ -268,6 +268,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
     seedreamConfig,
   ])
 
+  const existingNames = useMemo(() => models.map((model) => model.name), [
+    models,
+  ])
+
   const modeCounts = useMemo(
     () =>
       models.reduce(
@@ -505,7 +509,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
   })
 
   const persistPricingData = useCallback(
-    (data: ModelRatioData, targetNames: string[] = [data.name]) => {
+    (
+      data: ModelRatioData,
+      targetNames: string[] = [data.name],
+      staleNames: string[] = []
+    ) => {
       const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
         fallback: {},
         silent: true,
@@ -565,7 +573,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         if (Number.isFinite(parsed)) target[name] = parsed
       }
 
-      targetNames.forEach((name) => {
+      const removeName = (name: string) => {
         delete priceMap[name]
         delete ratioMap[name]
         delete cacheMap[name]
@@ -578,6 +586,13 @@ const ModelRatioVisualEditorComponent = forwardRef<
         delete billingExprMap[name]
         delete seedanceConfigMap[name]
         delete seedreamConfigMap[name]
+      }
+
+      // 改名时旧名的键必须一并移除，否则旧定价残留在各 map 中形成重复条目。
+      staleNames.forEach(removeName)
+
+      targetNames.forEach((name) => {
+        removeName(name)
 
         if (data.billingMode === 'tiered_expr') {
           const combined = combineBillingExpr(
@@ -698,12 +713,17 @@ const ModelRatioVisualEditorComponent = forwardRef<
         if (!editorOpen || !editorPanelRef.current) return true
         const data = await editorPanelRef.current.commitDraft()
         if (!data) return false
-        persistPricingData(data)
+        const originalName = editData?.name
+        persistPricingData(
+          data,
+          [data.name],
+          originalName && originalName !== data.name ? [originalName] : []
+        )
         setEditData(data)
         return true
       },
     }),
-    [editorOpen, persistPricingData]
+    [editorOpen, persistPricingData, editData]
   )
 
   const hasRows = table.getRowModel().rows.length > 0
@@ -820,6 +840,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
             <ModelPricingEditorPanel
               ref={editorPanelRef}
               editData={editData}
+              existingNames={existingNames}
               onSave={onSave}
               isSaving={isSaving}
               className='h-full min-h-0'
@@ -858,6 +879,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           open={sheetOpen}
           onOpenChange={setSheetOpen}
           editData={editData}
+          existingNames={existingNames}
           onSave={onSave}
           isSaving={isSaving}
         />

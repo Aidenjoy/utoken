@@ -143,6 +143,7 @@
     "A dedicated internal token is created automatically and used for AI calls, so every request is billed to your account.": "系统会自动创建专用内部令牌用于 AI 调用，每次请求都会计费到您的账户。",
     "A disabled member keeps the account and history but can no longer consume the pool.": "停用成员会保留账号与历史记录，但无法再消耗企业额度池。",
     "A focused home for keys, balance, routing, and service health.": "集中展示密钥、余额、路由和服务健康状态。",
+    "A model with this name already exists.": "已存在同名模型。",
     "About": "关于",
     "About {{days}} days left": "约剩 {{days}} 天",
     "Accept Unpriced Models": "接受未定价模型",

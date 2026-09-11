@@ -143,6 +143,7 @@
     "A dedicated internal token is created automatically and used for AI calls, so every request is billed to your account.": "Một token nội bộ chuyên dụng được tạo tự động và dùng cho các lệnh gọi AI, nên mọi yêu cầu đều được tính vào tài khoản của bạn.",
     "A disabled member keeps the account and history but can no longer consume the pool.": "Thành viên bị vô hiệu hóa vẫn giữ tài khoản và lịch sử nhưng không thể tiếp tục dùng quỹ chung.",
     "A focused home for keys, balance, routing, and service health.": "Trang tổng quan tập trung cho khóa, số dư, định tuyến và trạng thái dịch vụ.",
+    "A model with this name already exists.": "Một mô hình với tên này đã tồn tại.",
     "About": "Giới thiệu",
     "About {{days}} days left": "Còn khoảng {{days}} ngày",
     "Accept Unpriced Models": "Chấp nhận các Mô hình chưa định giá",

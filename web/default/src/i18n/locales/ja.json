@@ -143,6 +143,7 @@
     "A dedicated internal token is created automatically and used for AI calls, so every request is billed to your account.": "専用の内部トークンが自動作成され、AI 呼び出しに使用されます。すべてのリクエストはご自身のアカウントに課金されます。",
     "A disabled member keeps the account and history but can no longer consume the pool.": "停止されたメンバーはアカウントと履歴を保持しますが、共有プールは消費できなくなります。",
     "A focused home for keys, balance, routing, and service health.": "キー、残高、ルーティング、サービス状態を集約したホームです。",
+    "A model with this name already exists.": "この名前のモデルは既に存在します。",
     "About": "このサービスについて",
     "About {{days}} days left": "約 {{days}} 日分",
     "Accept Unpriced Models": "価格設定されていないモデルを許可",

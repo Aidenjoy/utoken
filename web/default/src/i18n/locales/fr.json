@@ -143,6 +143,7 @@
     "A dedicated internal token is created automatically and used for AI calls, so every request is billed to your account.": "Un jeton interne dédié est créé automatiquement et utilisé pour les appels IA ; chaque requête est donc facturée sur votre compte.",
     "A disabled member keeps the account and history but can no longer consume the pool.": "Un membre désactivé conserve son compte et son historique, mais ne peut plus consommer le pool.",
     "A focused home for keys, balance, routing, and service health.": "Un accueil dédié aux clés, au solde, au routage et à l'état du service.",
+    "A model with this name already exists.": "Un modèle avec ce nom existe déjà.",
     "About": "À propos",
     "About {{days}} days left": "Environ {{days}} jours restants",
     "Accept Unpriced Models": "Accepter les modèles non tarifés",

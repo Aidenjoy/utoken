@@ -99,6 +99,8 @@ type ModelPricingSheetProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   editData?: ModelRatioData | null
+  // 当前定价表中已存在的模型名，用于改名/新增时的重名校验。
+  existingNames?: string[]
   onSave?: () => void | Promise<void>
   isSaving?: boolean
 }
@@ -118,7 +120,7 @@ export const ModelPricingSheet = forwardRef<
   ModelPricingEditorPanelHandle,
   ModelPricingSheetProps
 >(function ModelPricingSheet(
-  { open, onOpenChange, editData, onSave, isSaving },
+  { open, onOpenChange, editData, existingNames, onSave, isSaving },
   ref
 ) {
   const { t } = useTranslation()
@@ -138,6 +140,7 @@ export const ModelPricingSheet = forwardRef<
         <ModelPricingEditorPanel
           ref={ref}
           editData={editData}
+          existingNames={existingNames}
           onSave={onSave}
           isSaving={isSaving}
           className='h-full rounded-none border-0'
@@ -151,7 +154,7 @@ export const ModelPricingEditorPanel = forwardRef<
   ModelPricingEditorPanelHandle,
   ModelPricingEditorPanelProps
 >(function ModelPricingEditorPanel(
-  { editData, className, onSave, isSaving },
+  { editData, existingNames, className, onSave, isSaving },
   ref
 ) {
   const { t } = useTranslation()
@@ -533,10 +536,18 @@ export const ModelPricingEditorPanel = forwardRef<
       commitDraft: async () => {
         const isValid = await form.trigger()
         if (!isValid || !validatePricingValues()) return null
-        return buildSubmitData(form.getValues())
+        const data = buildSubmitData(form.getValues())
+        // 改名（或新增）撞上已有模型名时拒绝提交，避免覆盖另一模型的定价。
+        if (existingNames?.includes(data.name) && data.name !== editData?.name) {
+          form.setError('name', {
+            message: t('A model with this name already exists.'),
+          })
+          return null
+        }
+        return data
       },
     }),
-    [form, validatePricingValues, buildSubmitData]
+    [form, validatePricingValues, buildSubmitData, existingNames, editData, t]
   )
 
   const showActions = Boolean(onSave)
@@ -587,11 +598,7 @@ export const ModelPricingEditorPanel = forwardRef<
                     <FormItem>
                       <FormLabel>{t('Model name')}</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder={t('gpt-4')}
-                          {...field}
-                          disabled={isEditMode}
-                        />
+                        <Input placeholder={t('gpt-4')} {...field} />
                       </FormControl>
                       <FormDescription>
                         {t(

@@ -143,6 +143,7 @@
     "A dedicated internal token is created automatically and used for AI calls, so every request is billed to your account.": "Специальный внутренний токен создаётся автоматически и используется для ИИ-вызовов, поэтому каждый запрос списывается с вашего аккаунта.",
     "A disabled member keeps the account and history but can no longer consume the pool.": "Отключённый участник сохраняет аккаунт и историю, но больше не может расходовать общий пул.",
     "A focused home for keys, balance, routing, and service health.": "Единый экран для ключей, баланса, маршрутов и состояния сервиса.",
+    "A model with this name already exists.": "Модель с таким именем уже существует.",
     "About": "О проекте",
     "About {{days}} days left": "Примерно {{days}} дней",
     "Accept Unpriced Models": "Принимать модели без цены",
