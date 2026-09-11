@@ -59,7 +59,11 @@ export function useUpdateOption() {
           }
         }
 
-        toast.success(i18next.t('Setting updated successfully'))
+        // 批量保存会按变更键逐个提交、连续触发多次 onSuccess；
+        // 固定 id 让 sonner 复用同一条提示，避免堆叠出 N 条成功弹窗。
+        toast.success(i18next.t('Setting updated successfully'), {
+          id: 'system-option-update-success',
+        })
       } else {
         toast.error(data.message || i18next.t('Failed to update setting'))
       }
