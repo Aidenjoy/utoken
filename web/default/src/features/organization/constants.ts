@@ -91,13 +91,7 @@ export const ORG_STATUSES: Record<
 // ============================================================================
 
 /** Empty value means "notify every organization admin". */
-export const ORG_NOTIFY_TYPES = [
-  '',
-  'email',
-  'webhook',
-  'bark',
-  'gotify',
-] as const
+export const ORG_NOTIFY_TYPES = ['', 'email', 'webhook'] as const
 
 export type OrgNotifyType = (typeof ORG_NOTIFY_TYPES)[number]
 
@@ -105,8 +99,6 @@ export const ORG_NOTIFY_TYPE_LABELS: Record<OrgNotifyType, string> = {
   '': 'All organization admins',
   email: 'Email',
   webhook: 'Webhook',
-  bark: 'Bark',
-  gotify: 'Gotify',
 }
 
 /**
@@ -117,8 +109,16 @@ export const ORG_NOTIFY_TARGET_PLACEHOLDERS: Record<OrgNotifyType, string> = {
   '': 'Recipients are resolved automatically',
   email: 'alert@example.com',
   webhook: 'https://example.com/webhook',
-  bark: 'Bark device key',
-  gotify: 'https://gotify.example.com',
+}
+
+/**
+ * Organizations saved before a channel was retired can still carry its value;
+ * fall back to "all admins" so the select never shows an unusable option.
+ */
+export function normalizeOrgNotifyType(value: string | null | undefined): OrgNotifyType {
+  return (ORG_NOTIFY_TYPES as readonly string[]).includes(value ?? '')
+    ? (value as OrgNotifyType)
+    : ''
 }
 
 export function getOrgNotifyTypeOptions(t: TFunction) {

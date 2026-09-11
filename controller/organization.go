@@ -35,8 +35,6 @@ var orgNotifyTypes = map[string]bool{
 	"":                    true,
 	dto.NotifyTypeEmail:   true,
 	dto.NotifyTypeWebhook: true,
-	dto.NotifyTypeBark:    true,
-	dto.NotifyTypeGotify:  true,
 }
 
 // loadScopedOrganization 解析本次请求的企业：企业管理员取自己所属企业，

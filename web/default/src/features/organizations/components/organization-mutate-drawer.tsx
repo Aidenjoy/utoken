@@ -61,10 +61,12 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import { OrgNotifyProtocolHelp } from '@/features/organization/components/org-notify-protocol-help'
 import {
   ORG_NOTIFY_TARGET_PLACEHOLDERS,
   ORG_VALIDATION,
   getOrgNotifyTypeOptions,
+  normalizeOrgNotifyType,
   type OrgNotifyType,
 } from '@/features/organization/constants'
 import type { Organization } from '@/features/organization/types'
@@ -182,7 +184,7 @@ export function OrganizationMutateDrawer({
         organization.daily_usage_alert > 0
           ? quotaUnitsToDollars(organization.daily_usage_alert)
           : 0,
-      notify_type: organization.notify_type ?? '',
+      notify_type: normalizeOrgNotifyType(organization.notify_type),
       notify_target: organization.notify_target ?? '',
       cache_enabled: organization.cache_enabled,
       cache_ttl:
@@ -460,23 +462,26 @@ export function OrganizationMutateDrawer({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('Notification Channel')}</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(value) => field.onChange(value ?? '')}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent alignItemWithTrigger={false}>
-                        {notifyTypeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className='flex items-center gap-1.5'>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => field.onChange(value ?? '')}
+                      >
+                        <FormControl>
+                          <SelectTrigger className='flex-1'>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent alignItemWithTrigger={false}>
+                          {notifyTypeOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <OrgNotifyProtocolHelp />
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
