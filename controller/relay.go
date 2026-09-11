@@ -240,11 +240,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if newAPIError == nil {
 			relayInfo.LastError = nil
+			// 成功即清除该渠道的失败计数与熔断标记
+			service.RecordChannelSuccess(channel.Id)
 			return
 		}
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
+
+		// 记录失败用于分布式熔断：同一渠道在窗口期内连续失败达到阈值后，
+		// 所有节点都会暂时跳过它，避免集群同时持续撞一个故障渠道。
+		// 仅对渠道侧错误计数，用户侧错误（如额度不足、参数非法）不代表渠道故障。
+		if service.ShouldCountTowardCircuitBreaker(newAPIError) {
+			service.RecordChannelFailure(channel.Id)
+		}
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 

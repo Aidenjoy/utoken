@@ -238,37 +238,53 @@ func RedisHGetObj(key string, obj interface{}) error {
 	return nil
 }
 
-// RedisIncr Add this function to handle atomic increments
+// RedisSetNX 原子设置键值，仅当键不存在时设置成功。
+// 返回 true = 设置成功（首次写入），false = 键已存在。
+// 用于分布式幂等锁、熔断器标记等场景。
+func RedisSetNX(key string, value string, expiration time.Duration) bool {
+	if !RedisEnabled {
+		return true // Redis 未启用时放行（降级模式）
+	}
+	ctx := context.Background()
+	ok, err := RDB.SetNX(ctx, key, value, expiration).Result()
+	if err != nil {
+		SysLog(fmt.Sprintf("Redis SETNX failed (key=%s): %v", key, err))
+		return false // 出错时不放行，避免漏掉重复请求
+	}
+	return ok
+}
+
+// RedisExpire 设置键过期时间。
+func RedisExpire(key string, expiration time.Duration) error {
+	ctx := context.Background()
+	return RDB.Expire(ctx, key, expiration).Err()
+}
+
+// RedisIncr 原子递增指定 key 的值。
+// 如果 key 不存在，Redis 会自动创建并设值为 delta（不保留 TTL）。
+// 如果 key 已存在且有 TTL，递增后重新设置相同的 TTL。
 func RedisIncr(key string, delta int64) error {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis INCR: key=%s, delta=%d", key, delta))
 	}
-	// 检查键的剩余生存时间
-	ttlCmd := RDB.TTL(context.Background(), key)
-	ttl, err := ttlCmd.Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return fmt.Errorf("failed to get TTL: %w", err)
-	}
+	ctx := context.Background()
 
-	// 只有在 key 存在且有 TTL 时才需要特殊处理
+	// 查询当前 TTL
+	ttlCmd := RDB.TTL(ctx, key)
+	ttl, _ := ttlCmd.Result()
+
+	// 执行递增
+	val, err := RDB.IncrBy(ctx, key, delta).Result()
+	if err != nil {
+		return fmt.Errorf("failed to incr key %s: %w", key, err)
+	}
+	_ = val
+
+	// 已有 TTL：保持原有过期策略
 	if ttl > 0 {
-		ctx := context.Background()
-		// 开始一个Redis事务
-		txn := RDB.TxPipeline()
-
-		// 减少余额
-		decrCmd := txn.IncrBy(ctx, key, delta)
-		if err := decrCmd.Err(); err != nil {
-			return err // 如果减少失败，则直接返回错误
-		}
-
-		// 重新设置过期时间，使用原来的过期时间
-		txn.Expire(ctx, key, ttl)
-
-		// 执行事务
-		_, err = txn.Exec(ctx)
-		return err
+		_ = RDB.Expire(ctx, key, ttl).Err()
 	}
+
 	return nil
 }
 

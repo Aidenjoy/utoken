@@ -1,11 +1,13 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -221,10 +223,14 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
-		// 企业额度池不足 / 成员子额度超限 / 企业或成员已停用：与钱包额度不足同义，
+		// 钱包/企业额度不足 / 成员子额度超限 / 企业或成员已停用：与钱包额度不足同义，
 		// 按 403 返回且不重试、不记错误日志（属于正常业务拒绝而非系统故障）。
-		if errors.Is(err, model.ErrOrgQuotaInsufficient) || errors.Is(err, model.ErrOrgMemberQuotaExceeded) ||
+		if errors.Is(err, model.ErrInsufficientUserQuota) ||
+			errors.Is(err, model.ErrOrgQuotaInsufficient) || errors.Is(err, model.ErrOrgMemberQuotaExceeded) ||
 			errors.Is(err, model.ErrOrgDisabled) || errors.Is(err, model.ErrOrgMemberDisabled) {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+		if errors.Is(err, model.ErrInsufficientTokenQuota) {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
 		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
@@ -331,7 +337,13 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 
 	switch s.funding.Source() {
 	case BillingSourceWallet:
-		return s.relayInfo.UserQuota > trustQuota
+		if s.relayInfo.UserQuota <= trustQuota {
+			return false
+		}
+		// 并发闸门：信任旁路跳过预扣费，余额检查与实际消费之间存在窗口期。
+		// 高并发下大量请求可能同时通过余额检查并各自消费，导致透支。
+		// 用 Redis 计数器限制同一用户的在途信任请求数，超限则降级为正常预扣费路径。
+		return acquireTrustSlot(s.relayInfo.UserId)
 	case BillingSourceSubscription:
 		// 订阅不能启用信任旁路。原因：
 		// 1. PreConsumeUserSubscription 要求 amount>0 来创建预扣记录并锁定订阅
@@ -345,6 +357,41 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 	default:
 		return false
 	}
+}
+
+// trustSlotTTL 信任令牌有效期：覆盖一次请求的正常耗时，
+// 过期自动释放，避免请求异常中断时槽位泄漏。
+const trustSlotTTL = 60 * time.Second
+
+// acquireTrustSlot 尝试占用一个信任令牌。
+// Redis 未启用时放行（降级为原有行为，不做并发限制）。
+func acquireTrustSlot(userId int) bool {
+	if !common.RedisEnabled {
+		return true
+	}
+	key := fmt.Sprintf("trust:active:%d", userId)
+	// INCRBY 原子递增后读取当前值，判断是否超过上限。
+	// RedisIncr 不返回新值，这里直接用底层客户端拿到结果。
+	ctx := context.Background()
+	count, err := common.RDB.Incr(ctx, key).Result()
+	if err != nil {
+		// Redis 异常时保守放行，避免因基础设施故障拒绝正常请求
+		return true
+	}
+	if count == 1 {
+		// 首次创建，设置过期时间；否则沿用既有 TTL
+		common.RDB.Expire(ctx, key, trustSlotTTL)
+	}
+	limit := common.GetTrustConcurrentLimit()
+	if limit <= 0 {
+		limit = 5
+	}
+	if count > int64(limit) {
+		// 超限：释放本次占位（避免把槽位长期占满）并降级为预扣费路径
+		common.RDB.Decr(ctx, key)
+		return false
+	}
+	return true
 }
 
 // syncRelayInfo 将 BillingSession 的状态同步到 RelayInfo 的兼容字段上。
@@ -383,6 +430,26 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	// 请求级幂等：客户端重试或网关重放同一 requestId 时不得重复扣费。
+	// 计费失败（下面的 preConsume 返回错误）时会释放占位，允许用户重试；
+	// 计费成功则保留占位，重复请求在此被拒绝。
+	if !TryAcquireBillingIdempotency(relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName) {
+		return nil, types.NewErrorWithStatusCode(
+			fmt.Errorf("重复的请求（requestId=%s），请勿重试已受理的请求", relayInfo.RequestId),
+			types.ErrorCodeInvalidRequest, http.StatusConflict,
+			types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+
+	session, apiErr := newBillingSession(c, relayInfo, preConsumedQuota)
+	if apiErr != nil {
+		// 计费未成立：释放幂等位，允许客户端修正后用同一 requestId 重试
+		ReleaseBillingIdempotency(relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName)
+	}
+	return session, apiErr
+}
+
+// newBillingSession 按计费偏好创建预扣费会话（不含幂等占位）。
+func newBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
 	// 企业额度池优先：成员的消费一律先扣企业池，与个人计费偏好无关
@@ -545,7 +612,8 @@ func isOrgQuotaShortage(apiErr *types.NewAPIError) bool {
 	if apiErr == nil {
 		return false
 	}
-	return errors.Is(apiErr, model.ErrOrgQuotaInsufficient) ||
+	return errors.Is(apiErr, model.ErrInsufficientUserQuota) ||
+		errors.Is(apiErr, model.ErrOrgQuotaInsufficient) ||
 		errors.Is(apiErr, model.ErrOrgMemberQuotaExceeded) ||
 		errors.Is(apiErr, model.ErrOrgDisabled) ||
 		errors.Is(apiErr, model.ErrOrgMemberDisabled)

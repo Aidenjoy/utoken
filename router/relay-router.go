@@ -85,6 +85,15 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundUploadRouter.GET("/assets", controller.ListAssets)
 		playgroundUploadRouter.GET("/assets/:id", controller.GetAsset)
 		playgroundUploadRouter.DELETE("/assets/:id", controller.DeleteAsset)
+
+		// 源素材库：原件存自有 TOS，渠道副本按需同步。
+		// 路径与 /assets 分开，避免 :id 路由与 /source-assets 前缀冲突。
+		playgroundUploadRouter.POST("/source-assets/upload", controller.UploadSourceAsset)
+		playgroundUploadRouter.GET("/source-assets", controller.ListSourceAssets)
+		playgroundUploadRouter.GET("/source-assets/sync/status", controller.GetSourceAssetSyncStatus)
+		playgroundUploadRouter.POST("/source-assets/sync", controller.SyncSourceAsset)
+		playgroundUploadRouter.GET("/source-assets/:id", controller.GetSourceAsset)
+		playgroundUploadRouter.DELETE("/source-assets/:id", controller.DeleteSourceAsset)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))

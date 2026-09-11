@@ -194,6 +194,17 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+
+		// 素材前置检查：视频任务引用 asset:// 时，确认素材在目标渠道已就绪
+		// （已同步且审核通过）。未就绪则提前拒绝，避免用户等到上游报错，
+		// 也避免已提交的任务因素材不可用而失败扣费。
+		if channel != nil && isVideoSubmitPath(c.Request.URL.Path) && c.Request.Method == http.MethodPost {
+			if preflightErr := preflightAssetRefsForChannel(c, channel.Id); preflightErr != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, preflightErr.Error())
+				return
+			}
+		}
+
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {

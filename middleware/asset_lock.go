@@ -134,6 +134,45 @@ func isVideoSubmitPath(path string) bool {
 		strings.HasPrefix(path, "/api/v3/contents/generations/tasks")
 }
 
+// preflightAssetRefsForChannel 在转发前确认请求体引用的素材在目标渠道已就绪。
+//
+// 素材在某渠道的上游状态有三种：审核中（pending）、审核通过（active）、
+// 审核失败（failed）。只有 active 才能用于生成；pending/failed 若直接提交，
+// 上游会在任务执行阶段报错，用户已付费却拿不到结果。因此在这里提前拦截并
+// 给出明确原因，让用户能及时换素材或换渠道。
+//
+// 请求体无 asset:// 引用时直接放行。
+func preflightAssetRefsForChannel(c *gin.Context, channelId int) error {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return nil // 读体失败不阻断转发，交由下游处理
+	}
+	body, err := storage.Bytes()
+	if err != nil {
+		return nil
+	}
+	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
+		return seekErr
+	}
+	c.Request.Body = io.NopCloser(storage)
+
+	assetIDs := ExtractAssetIDs(body)
+	if len(assetIDs) == 0 {
+		return nil
+	}
+
+	// 复用 service 层的前置检查：按「渠道 × 上游素材 ID」查副本状态。
+	check := service.CheckAssetsByUpstreamIDs(channelId, assetIDs)
+	if check.Passed {
+		return nil
+	}
+	if len(check.Issues) == 0 {
+		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorAssetNotReady))
+	}
+	// 只回报首个问题，避免错误信息过长淹没重点
+	return fmt.Errorf("%s", check.Issues[0].Detail)
+}
+
 // selectAssetLockedChannel 校验锁定渠道在当前分组下可用：
 // 渠道启用、支持请求路径，且在当前分组（auto 时逐个候选分组）下启用所请求模型。
 func selectAssetLockedChannel(c *gin.Context, channelId int, modelName string, usingGroup string) (*model.Channel, string, error) {

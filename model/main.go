@@ -300,6 +300,7 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&Asset{},
+		&SourceAsset{},
 		&DirectorProject{},
 		&DirectorEpisode{},
 		&DirectorCharacter{},

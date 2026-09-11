@@ -435,30 +435,53 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
+	if common.BatchUpdateEnabled {
+		// 批量模式：原子地检查余额并排队扣减（计入已排队的 delta）
+		if !tryQueueTokenQuotaDecrease(id, quota) {
+			return ErrInsufficientTokenQuota
+		}
+		// 缓存必须同步更新：DB 要等下次刷写才变化，若缓存不同步，
+		// 后续读取令牌余额会拿到扣减前的旧值。
+		if common.RedisEnabled {
+			gopool.Go(func() {
+				if err := cacheDecrTokenQuota(key, int64(quota)); err != nil {
+					common.SysLog("failed to decrease token quota cache: " + err.Error())
+				}
+			})
+		}
+		return nil
+	}
+	if err := decreaseTokenQuota(id, quota); err != nil {
+		return err
+	}
+	// DB 扣减成功后才更新 Redis 缓存
 	if common.RedisEnabled {
 		gopool.Go(func() {
-			err := cacheDecrTokenQuota(key, int64(quota))
-			if err != nil {
-				common.SysLog("failed to decrease token quota: " + err.Error())
+			if err := cacheDecrTokenQuota(key, int64(quota)); err != nil {
+				common.SysLog("failed to decrease token quota cache: " + err.Error())
 			}
 		})
 	}
-	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
-		return nil
-	}
-	return decreaseTokenQuota(id, quota)
+	return nil
 }
 
-func decreaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
+// decreaseTokenQuota 原子扣减令牌余额。
+// WHERE remain_quota >= quota 保证并发安全：余额不足时返回 ErrInsufficientTokenQuota。
+func decreaseTokenQuota(id int, quota int) error {
+	result := DB.Model(&Token{}).
+		Where("id = ? AND remain_quota >= ?", id, quota).
+		Updates(map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
 			"used_quota":    gorm.Expr("used_quota + ?", quota),
 			"accessed_time": common.GetTimestamp(),
-		},
-	).Error
-	return err
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrInsufficientTokenQuota
+	}
+	return nil
 }
 
 // CountUserTokens 统计令牌数；userId>0 限定该用户，userId<=0 表示全部用户

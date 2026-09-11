@@ -22,6 +22,27 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(assetStatusPollHandler{})
+}
+
+// assetStatusPollHandler 轮询 pending 素材的上游审核状态。
+// 素材提交到渠道后需要等上游审核，只有审核通过（active）才能用于视频生成；
+// 该任务把审核结果同步回本地，供前置检查与前端状态展示使用。
+type assetStatusPollHandler struct{}
+
+func (assetStatusPollHandler) Type() string { return model.SystemTaskTypeAssetStatusPoll }
+
+func (assetStatusPollHandler) Enabled() bool {
+	return model.HasPendingAssets()
+}
+
+func (assetStatusPollHandler) Interval() time.Duration { return 30 * time.Second }
+
+func (assetStatusPollHandler) NewPayload() any { return nil }
+
+func (assetStatusPollHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	service.PollAssetStatuses()
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, nil, nil)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

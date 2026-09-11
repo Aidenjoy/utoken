@@ -22,6 +22,7 @@ import {
   BookOpen,
   Box,
   Building,
+  Calculator,
   Camera,
   Clapperboard,
   CreditCard,
@@ -86,6 +87,11 @@ export function useSidebarData(): SidebarData {
             title: t('Prompt Library'),
             url: '/prompts',
             icon: BookOpen,
+          },
+          {
+            title: t('Cost Calculator'),
+            url: '/cost-calculator',
+            icon: Calculator,
           },
           {
             title: t('Chat'),

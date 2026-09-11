@@ -59,6 +59,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     playground: true,
     asset: true,
     chat: true,
+    calculator: true,
   },
   console: {
     enabled: true,

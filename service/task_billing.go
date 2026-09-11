@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -144,6 +145,38 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	}
 }
 
+// settleTaskFundingWithRetry 以指数退避重试调整任务资金来源。
+//
+// 差额结算的资金调整（补扣/退款）失败会导致账目不平：补扣失败平台少收钱，
+// 退款失败用户被多扣。这类失败通常是瞬时故障（DB 连接抖动、行锁超时），
+// 重试可解决；重试耗尽则记录 recovery 日志，供管理员按 task_id 人工对账。
+func settleTaskFundingWithRetry(ctx context.Context, task *model.Task, delta int) error {
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := taskAdjustFunding(task, delta); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt < maxAttempts {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+	}
+
+	// 重试耗尽：登记 recovery 记录，包含对账所需的全部关键信息
+	direction := "补扣"
+	if delta < 0 {
+		direction = "退款"
+	}
+	logger.LogError(ctx, fmt.Sprintf(
+		"[BILLING_RECOVERY] 差额结算最终失败，需人工对账: task_id=%s user_id=%d delta=%d(%s) billing_source=%s err=%s",
+		task.TaskID, task.UserId, delta, direction,
+		task.PrivateData.BillingSource, lastErr.Error(),
+	))
+	return lastErr
+}
+
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
@@ -252,9 +285,10 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		reason,
 	))
 
-	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
+	// 调整资金来源（带重试：结算失败意味着平台少收钱或多退款，
+	// 不能只记日志放过，重试耗尽后登记待人工处理的工单）
+	if err := settleTaskFundingWithRetry(ctx, task, quotaDelta); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整最终失败 task %s: %s", task.TaskID, err.Error()))
 		return
 	}
 

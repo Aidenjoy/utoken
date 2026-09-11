@@ -184,6 +184,14 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
+		// 素材同步管理（管理员）：跨用户将源素材同步到指定/全部渠道
+		assetAdminRoute := apiRouter.Group("/asset")
+		assetAdminRoute.Use(middleware.AdminAuth())
+		{
+			assetAdminRoute.POST("/sync", controller.AdminSyncSourceAsset)
+			assetAdminRoute.GET("/sync/status", controller.GetSourceAssetSyncStatus)
+		}
+
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{

@@ -276,6 +276,7 @@ distributor.invalid_request_parse_model: "無效的請求，無法解析模型"
 distributor.asset_not_found: "請求中引用的素材 {{.Asset}} 未在您的帳戶下註冊"
 distributor.asset_channel_conflict: "請求引用了屬於不同管道的素材，所有引用素材必須來自同一管道"
 distributor.asset_channel_unavailable: "引用素材所屬管道 {{.Channel}} 不可用（已禁用，或目前群組下未啟用模型 {{.Model}}）"
+distributor.asset_not_ready: "引用的素材在目標管道尚未就緒（同步中或審核未通過），請稍後重試或更換素材"
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "自訂 OAuth 供應者不存在"

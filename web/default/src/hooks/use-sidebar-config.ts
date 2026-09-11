@@ -43,6 +43,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     asset: true,
     chat: true,
     prompt: true,
+    calculator: true,
   },
   console: {
     enabled: true,
@@ -103,6 +104,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/playground': { section: 'chat', module: 'playground' },
   '/asset-library': { section: 'chat', module: 'asset' },
   '/prompts': { section: 'chat', module: 'prompt' },
+  '/cost-calculator': { section: 'chat', module: 'calculator' },
   '/dashboard': { section: 'console', module: 'detail' },
   '/dashboard/overview': { section: 'console', module: 'detail' },
   '/dashboard/models': { section: 'console', module: 'detail' },

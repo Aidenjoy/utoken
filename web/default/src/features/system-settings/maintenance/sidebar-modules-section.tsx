@@ -102,6 +102,12 @@ export function SidebarModulesSection({
         title: t('Chat'),
         description: t('Access previous conversations and start new ones.'),
       },
+      calculator: {
+        title: t('Cost Calculator'),
+        description: t(
+          'Estimate language, image, and video generation costs from list prices. Inputs are kept in memory only and never saved.'
+        ),
+      },
     },
     console: {
       detail: {

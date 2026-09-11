@@ -26,20 +26,21 @@ const (
 // 因此素材与「用户 × 渠道」绑定；视频任务引用 asset://<AssetID> 时
 // 由 Distribute 中间件强制锁定到 ChannelID 对应渠道转发。
 type Asset struct {
-	ID          int64  `json:"id" gorm:"primaryKey"`
-	CreatedAt   int64  `json:"created_at" gorm:"index"`
-	UpdatedAt   int64  `json:"updated_at"`
-	UserID      int    `json:"user_id" gorm:"index:idx_asset_user_channel,priority:1"`
-	ChannelID   int    `json:"channel_id" gorm:"index:idx_asset_user_channel,priority:2;index:idx_asset_channel_asset,priority:1"`
-	AssetID     string `json:"asset_id" gorm:"type:varchar(191);index:idx_asset_channel_asset,priority:2"` // 上游素材 ID
-	Name        string `json:"name" gorm:"type:varchar(191)"`
-	AssetType   string `json:"asset_type" gorm:"type:varchar(20)"`
-	Status      string `json:"status" gorm:"type:varchar(20);index"`
-	SourceURL   string `json:"source_url" gorm:"type:text"`   // 用户注册时提供的素材 URL
-	PreviewURL  string `json:"preview_url" gorm:"type:text"`  // 上游返回的可访问 URL（可能带签名时效）
-	GroupID     string `json:"group_id" gorm:"type:varchar(191)"`
-	ProjectName string `json:"project_name" gorm:"type:varchar(191)"`
-	ErrorMsg    string `json:"error_msg" gorm:"type:text"`
+	ID            int64  `json:"id" gorm:"primaryKey"`
+	CreatedAt     int64  `json:"created_at" gorm:"index"`
+	UpdatedAt     int64  `json:"updated_at"`
+	UserID        int    `json:"user_id" gorm:"index:idx_asset_user_channel,priority:1"`
+	ChannelID     int    `json:"channel_id" gorm:"index:idx_asset_user_channel,priority:2;index:idx_asset_channel_asset,priority:1;uniqueIndex:idx_asset_source_channel,priority:2"`
+	AssetID       string `json:"asset_id" gorm:"type:varchar(191);index:idx_asset_channel_asset,priority:2"` // 上游素材 ID
+	SourceAssetId *int64 `json:"source_asset_id,omitempty" gorm:"index;uniqueIndex:idx_asset_source_channel,priority:1"` // 源素材关联 ID（可为空，兼容旧数据）
+	Name          string `json:"name" gorm:"type:varchar(191)"`
+	AssetType     string `json:"asset_type" gorm:"type:varchar(20)"`
+	Status        string `json:"status" gorm:"type:varchar(20);index"`
+	SourceURL     string `json:"source_url" gorm:"type:text"`  // 用户注册时提供的素材 URL
+	PreviewURL    string `json:"preview_url" gorm:"type:text"` // 上游返回的可访问 URL（可能带签名时效）
+	GroupID       string `json:"group_id" gorm:"type:varchar(191)"`
+	ProjectName   string `json:"project_name" gorm:"type:varchar(191)"`
+	ErrorMsg      string `json:"error_msg" gorm:"type:text"`
 }
 
 func (Asset) TableName() string {

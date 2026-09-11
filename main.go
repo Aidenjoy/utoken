@@ -130,6 +130,10 @@ func main() {
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()
 
+	// Redis 心跳：面向运行时协调的低延迟存活探测（负载、在线判定）。
+	// 与上面的 SystemInstance DB 上报互补，Redis 未启用时自动跳过。
+	service.StartClusterHeartbeat()
+
 	// Wire task polling adaptor factory (breaks service -> relay import cycle).
 	// Must run before the system task runner starts: the async_task_poll handler
 	// calls service.RunTaskPollingOnce, which needs this factory set.

@@ -5,6 +5,7 @@ import "errors"
 // Common errors
 var (
 	ErrDatabase = errors.New("database error")
+	ErrNotFound = errors.New("record not found")
 )
 
 // User auth errors
@@ -24,6 +25,12 @@ var (
 
 // Redemption errors
 var ErrRedeemFailed = errors.New("redeem.failed")
+
+// Quota / balance errors
+var (
+	ErrInsufficientUserQuota  = errors.New("insufficient user quota")
+	ErrInsufficientTokenQuota = errors.New("insufficient token quota")
+)
 
 // 2FA errors
 var ErrTwoFANotEnabled = errors.New("2fa not enabled")

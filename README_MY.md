@@ -104,6 +104,7 @@ server {
 
     # 添加这一行，允许最大 200MB 上传
     client_max_body_size 200m;
+    # 视频生成任务耗时长，超时需放大，否则上游还在跑 nginx 就先返回 504
     proxy_read_timeout 600s;
     proxy_send_timeout 600s;
 
@@ -112,7 +113,8 @@ server {
     gzip_min_length 1k;
     gzip_comp_level 4;
     gzip_proxied any;
-    gzip_types text/plain text/xml text/css text/js;
+    # 必须含 application/javascript 与 application/json，否则 JS/接口响应不会被压缩
+    gzip_types text/plain text/xml text/css text/js application/javascript application/json;
     gzip_vary on;
     gzip_http_version   1.0; #兼容多层nginx 反代
     gzip_disable "MSIE [1-6]\.(?!.*SV1)";
@@ -126,8 +128,71 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 流式响应（stream=true / SSE）必须关闭缓冲，否则会攒批输出、前端看到卡顿
+        proxy_buffering off;
+    }
+
+    # 大文件上传：边收边转发，避免 nginx 先把整个 body 落盘
+    location /pg/files/upload {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        client_max_body_size 200m;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+    }
+
+    # 源素材上传（与 /pg/files/upload 同理）
+    location /pg/source-assets/upload {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        client_max_body_size 200m;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+    }
+
+    # WebSocket 长连接（/v1/realtime 语音等），需单独配置协议升级头
+    location /v1/realtime {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
     }
 }
+
+> **多机集群部署**（前置机 + 多应用节点 + 独立数据库）见 `docs/yun/deployment.md`。
+> 单机改多机时，nginx 需调整的差异点（upstream、keepalive、流式缓冲等）见该文档第 5.5 节。
+
+**批量更新与信任并发**（可选，多节点部署时建议开启）：
+
+```bash
+# .env 追加
+BATCH_UPDATE_ENABLED=true       # 启用批量额度累加（降低 DB 写压力）
+BATCH_UPDATE_INTERVAL=5         # 刷写间隔（秒）
+TRUST_CONCURRENT_LIMIT=5        # 同用户信任旁路并发上限，防高并发透支
+```
+
+> `BATCH_UPDATE_ENABLED=true` 时，额度变更先在内存与 Redis 累加、每 5 秒批量刷写 DB。
+> 集群模式下 Redis 会持久化未刷写的增量；单机部署若不开 Redis，进程重启会丢失这不到 5 秒的增量。
+> 不接受该风险就保持默认（不设该变量），走实时写库。
+
+
 
 
 

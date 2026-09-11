@@ -1138,25 +1138,45 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-	})
 	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
+		// 批量模式：原子地检查余额并排队扣减（计入已排队的 delta）
+		if !tryQueueUserQuotaDecrease(id, quota) {
+			return ErrInsufficientUserQuota
+		}
+		// 缓存必须同步更新：DB 要等下次刷写才变化，若缓存不同步，
+		// 后续 GetUserQuota 会读到扣减前的旧值，导致基于旧余额的判断失真。
+		gopool.Go(func() {
+			if err := cacheDecrUserQuota(id, int64(quota)); err != nil {
+				common.SysLog("failed to decrease user quota cache: " + err.Error())
+			}
+		})
 		return nil
 	}
-	return decreaseUserQuota(id, quota)
-}
-
-func decreaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
-	if err != nil {
+	if err := decreaseUserQuota(id, quota); err != nil {
 		return err
 	}
-	return err
+	// DB 扣减成功后才更新 Redis 缓存
+	gopool.Go(func() {
+		if err := cacheDecrUserQuota(id, int64(quota)); err != nil {
+			common.SysLog("failed to decrease user quota cache: " + err.Error())
+		}
+	})
+	return nil
+}
+
+// decreaseUserQuota 原子扣减用户余额。
+// WHERE quota >= quota 保证并发安全：余额不足时返回 ErrInsufficientUserQuota。
+func decreaseUserQuota(id int, quota int) error {
+	result := DB.Model(&User{}).
+		Where("id = ? AND quota >= ?", id, quota).
+		Update("quota", gorm.Expr("quota - ?", quota))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrInsufficientUserQuota
+	}
+	return nil
 }
 
 func DeltaUpdateUserQuota(id int, delta int) (err error) {

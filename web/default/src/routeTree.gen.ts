@@ -55,6 +55,7 @@ import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedDirectorIndexRouteImport } from './routes/_authenticated/director/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
+import { Route as AuthenticatedCostCalculatorIndexRouteImport } from './routes/_authenticated/cost-calculator/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
@@ -331,6 +332,12 @@ const AuthenticatedDashboardIndexRoute =
     path: '/dashboard/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedCostCalculatorIndexRoute =
+  AuthenticatedCostCalculatorIndexRouteImport.update({
+    id: '/cost-calculator/',
+    path: '/cost-calculator/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedChannelsIndexRoute =
   AuthenticatedChannelsIndexRouteImport.update({
     id: '/channels/',
@@ -548,6 +555,7 @@ export interface FileRoutesByFullPath {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/director/': typeof AuthenticatedDirectorIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
@@ -622,6 +630,7 @@ export interface FileRoutesByTo {
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
+  '/cost-calculator': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/director': typeof AuthenticatedDirectorIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
@@ -700,6 +709,7 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/_authenticated/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/director/': typeof AuthenticatedDirectorIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
@@ -778,6 +788,7 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/asset-library/'
     | '/channels/'
+    | '/cost-calculator/'
     | '/dashboard/'
     | '/director/'
     | '/keys/'
@@ -852,6 +863,7 @@ export interface FileRouteTypes {
     | '/usage-logs/$section'
     | '/asset-library'
     | '/channels'
+    | '/cost-calculator'
     | '/dashboard'
     | '/director'
     | '/keys'
@@ -929,6 +941,7 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/asset-library/'
     | '/_authenticated/channels/'
+    | '/_authenticated/cost-calculator/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/director/'
     | '/_authenticated/keys/'
@@ -1314,6 +1327,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/cost-calculator/': {
+      id: '/_authenticated/cost-calculator/'
+      path: '/cost-calculator'
+      fullPath: '/cost-calculator/'
+      preLoaderRoute: typeof AuthenticatedCostCalculatorIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/channels/': {
       id: '/_authenticated/channels/'
       path: '/channels'
@@ -1660,6 +1680,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
+  AuthenticatedCostCalculatorIndexRoute: typeof AuthenticatedCostCalculatorIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedDirectorIndexRoute: typeof AuthenticatedDirectorIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
@@ -1695,6 +1716,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
+  AuthenticatedCostCalculatorIndexRoute: AuthenticatedCostCalculatorIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedDirectorIndexRoute: AuthenticatedDirectorIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
