@@ -120,7 +120,7 @@ export function OrganizationUsage() {
     total && total.count > 0 ? (total.cache_hits / total.count) * 100 : 0
 
   return (
-    <div className='space-y-4'>
+    <div className='h-full min-h-0 space-y-4 overflow-y-auto pb-3'>
       <div className='flex flex-wrap items-end gap-3'>
         <div className='flex flex-col gap-1'>
           <label className='text-muted-foreground text-xs'>

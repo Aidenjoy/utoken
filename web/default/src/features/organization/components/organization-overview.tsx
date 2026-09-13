@@ -80,7 +80,7 @@ export function OrganizationOverview() {
     detail?.organization.cache_enabled ?? summary.cache_enabled
 
   return (
-    <div className='space-y-4'>
+    <div className='h-full min-h-0 space-y-4 overflow-y-auto pb-3'>
       <Card>
         <CardHeader className='flex flex-row items-center justify-between space-y-0'>
           <CardTitle className='text-base font-semibold'>

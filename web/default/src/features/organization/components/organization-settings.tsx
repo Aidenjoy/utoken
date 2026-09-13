@@ -174,9 +174,12 @@ export function OrganizationSettings() {
 
   return (
     <Form {...form}>
+      {/* The workspace page uses the fixedContent layout (overflow-hidden), so
+          the form must scroll on its own; without this the submit button at
+          the bottom is clipped away on shorter viewports. */}
       <form
         onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
-        className='space-y-4'
+        className='h-full min-h-0 space-y-4 overflow-y-auto pb-3'
       >
         <Card>
           <CardHeader>
