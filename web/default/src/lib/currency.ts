@@ -215,7 +215,9 @@ function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
   }
 }
 
-function getBillingDisplayMeta(config: CurrencyConfig): DisplayMeta {
+function getBillingDisplayMeta(
+  config: CurrencyConfig
+): Exclude<DisplayMeta, { kind: 'tokens' }> {
   const meta = getDisplayMeta(config)
   if (meta.kind === 'tokens') {
     return {
@@ -539,6 +541,25 @@ export function getCurrencyLabel(): string {
     default:
       return 'USD'
   }
+}
+
+/**
+ * Get the currency symbol used by billing/pricing displays.
+ *
+ * Follows the admin-configured display currency (USD → "$", CNY → "¥",
+ * CUSTOM → the configured symbol). TOKENS display falls back to "$" since
+ * billing contexts never render token amounts, matching the behavior of
+ * formatBillingCurrencyFromUSD().
+ *
+ * @returns Currency symbol string (e.g. "$", "¥", "€")
+ *
+ * @remarks
+ * Use this for input prefixes and custom amount formatting that must stay
+ * consistent with the model pricing displays.
+ */
+export function getBillingCurrencySymbol(): string {
+  const { config } = getCurrencyDisplay()
+  return getBillingDisplayMeta(config).symbol
 }
 
 /**

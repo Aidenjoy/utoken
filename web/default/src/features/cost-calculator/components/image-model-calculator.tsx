@@ -19,10 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { getBillingCurrencySymbol } from '@/lib/currency'
+
 import {
   discountFactor,
   discountPercent,
-  formatUsd,
+  formatAmount,
   parseAmount,
   unitCost,
 } from '../lib/calc'
@@ -35,6 +37,8 @@ import { CostSummary } from './cost-summary'
  */
 export function ImageModelCalculator() {
   const { t } = useTranslation()
+  // 价格由用户按站点配置币种录入，输入前缀与结果展示均跟随该币种（与模型广场一致）
+  const currencySymbol = getBillingCurrencySymbol()
   const [priceInputImage, setPriceInputImage] = useState('')
   const [priceOutputImage, setPriceOutputImage] = useState('')
   const [inputImages, setInputImages] = useState('')
@@ -58,14 +62,14 @@ export function ImageModelCalculator() {
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
         <CalculatorField
           label={t('Input Image Price')}
-          prefix='$'
+          prefix={currencySymbol}
           suffix={t('per image')}
           value={priceInputImage}
           onChange={setPriceInputImage}
         />
         <CalculatorField
           label={t('Output Image Price')}
-          prefix='$'
+          prefix={currencySymbol}
           suffix={t('per image')}
           value={priceOutputImage}
           onChange={setPriceOutputImage}
@@ -84,13 +88,19 @@ export function ImageModelCalculator() {
       </div>
       <CostSummary
         rows={[
-          { label: t('Input Image Cost'), value: formatUsd(inputImageCost) },
-          { label: t('Output Image Cost'), value: formatUsd(outputImageCost) },
+          {
+            label: t('Input Image Cost'),
+            value: formatAmount(inputImageCost, currencySymbol),
+          },
+          {
+            label: t('Output Image Cost'),
+            value: formatAmount(outputImageCost, currencySymbol),
+          },
           { label: t('Discount Rate'), value: `${discountPercent(discount)}%` },
         ]}
         total={{
           label: t('Estimated Total'),
-          value: formatUsd(inputImageCost + outputImageCost),
+          value: formatAmount(inputImageCost + outputImageCost, currencySymbol),
         }}
       />
     </div>

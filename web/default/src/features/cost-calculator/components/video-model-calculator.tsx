@@ -19,10 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { getBillingCurrencySymbol } from '@/lib/currency'
+
 import {
   discountFactor,
   discountPercent,
-  formatUsd,
+  formatAmount,
   parseAmount,
   tokenCost,
 } from '../lib/calc'
@@ -36,6 +38,8 @@ import { CostSummary } from './cost-summary'
  */
 export function VideoModelCalculator() {
   const { t } = useTranslation()
+  // 价格由用户按站点配置币种录入，输入前缀与结果展示均跟随该币种（与模型广场一致）
+  const currencySymbol = getBillingCurrencySymbol()
   const [priceWithoutVideoInput, setPriceWithoutVideoInput] = useState('')
   const [priceWithVideoInput, setPriceWithVideoInput] = useState('')
   const [tokens, setTokens] = useState('')
@@ -63,14 +67,14 @@ export function VideoModelCalculator() {
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
         <CalculatorField
           label={t('Price without Video Input')}
-          prefix='$'
+          prefix={currencySymbol}
           suffix={t('Per 1M tokens')}
           value={priceWithoutVideoInput}
           onChange={setPriceWithoutVideoInput}
         />
         <CalculatorField
           label={t('Price with Video Input')}
-          prefix='$'
+          prefix={currencySymbol}
           suffix={t('Per 1M tokens')}
           value={priceWithVideoInput}
           onChange={setPriceWithVideoInput}
@@ -86,11 +90,11 @@ export function VideoModelCalculator() {
         rows={[
           {
             label: t('Cost without Video Input'),
-            value: formatUsd(withoutVideoInputCost),
+            value: formatAmount(withoutVideoInputCost, currencySymbol),
           },
           {
             label: t('Cost with Video Input'),
-            value: formatUsd(withVideoInputCost),
+            value: formatAmount(withVideoInputCost, currencySymbol),
           },
           { label: t('Discount Rate'), value: `${discountPercent(discount)}%` },
         ]}

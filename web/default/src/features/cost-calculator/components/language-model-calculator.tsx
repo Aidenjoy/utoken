@@ -19,10 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { getBillingCurrencySymbol } from '@/lib/currency'
+
 import {
   discountFactor,
   discountPercent,
-  formatUsd,
+  formatAmount,
   parseAmount,
   tokenCost,
 } from '../lib/calc'
@@ -35,6 +37,8 @@ import { CostSummary } from './cost-summary'
  */
 export function LanguageModelCalculator() {
   const { t } = useTranslation()
+  // 价格由用户按站点配置币种录入，输入前缀与结果展示均跟随该币种（与模型广场一致）
+  const currencySymbol = getBillingCurrencySymbol()
   const [priceCacheHit, setPriceCacheHit] = useState('')
   const [priceCacheMiss, setPriceCacheMiss] = useState('')
   const [priceOutput, setPriceOutput] = useState('')
@@ -65,21 +69,21 @@ export function LanguageModelCalculator() {
       <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
         <CalculatorField
           label={t('Input Price (Cache Hit)')}
-          prefix='$'
+          prefix={currencySymbol}
           suffix={t('Per 1M tokens')}
           value={priceCacheHit}
           onChange={setPriceCacheHit}
         />
         <CalculatorField
           label={t('Input Price (Cache Miss)')}
-          prefix='$'
+          prefix={currencySymbol}
           suffix={t('Per 1M tokens')}
           value={priceCacheMiss}
           onChange={setPriceCacheMiss}
         />
         <CalculatorField
           label={t('Output Price')}
-          prefix='$'
+          prefix={currencySymbol}
           suffix={t('Per 1M tokens')}
           value={priceOutput}
           onChange={setPriceOutput}
@@ -103,17 +107,26 @@ export function LanguageModelCalculator() {
       </div>
       <CostSummary
         rows={[
-          { label: t('Cache Hit Input Cost'), value: formatUsd(cacheHitCost) },
+          {
+            label: t('Cache Hit Input Cost'),
+            value: formatAmount(cacheHitCost, currencySymbol),
+          },
           {
             label: t('Cache Miss Input Cost'),
-            value: formatUsd(cacheMissCost),
+            value: formatAmount(cacheMissCost, currencySymbol),
           },
-          { label: t('Output Cost'), value: formatUsd(outputCost) },
+          {
+            label: t('Output Cost'),
+            value: formatAmount(outputCost, currencySymbol),
+          },
           { label: t('Discount Rate'), value: `${discountPercent(discount)}%` },
         ]}
         total={{
           label: t('Estimated Total'),
-          value: formatUsd(cacheHitCost + cacheMissCost + outputCost),
+          value: formatAmount(
+            cacheHitCost + cacheMissCost + outputCost,
+            currencySymbol
+          ),
         }}
       />
     </div>

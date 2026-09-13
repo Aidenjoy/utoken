@@ -4,7 +4,7 @@ import { describe, test } from 'node:test'
 import {
   discountFactor,
   discountPercent,
-  formatUsd,
+  formatAmount,
   parseAmount,
   tokenCost,
   unitCost,
@@ -37,10 +37,15 @@ describe('cost calculator math', () => {
     assert.equal(parseAmount('12.5'), 12.5)
   })
 
-  test('formatUsd keeps up to six decimals with grouping', () => {
-    assert.equal(formatUsd(0), '$0')
-    assert.equal(formatUsd(0.0000004), '$0')
-    assert.equal(formatUsd(0.0021), '$0.0021')
-    assert.equal(formatUsd(1234.5), '$1,234.5')
+  test('formatAmount keeps up to six decimals with grouping', () => {
+    assert.equal(formatAmount(0, '$'), '$0')
+    assert.equal(formatAmount(0.0000004, '$'), '$0')
+    assert.equal(formatAmount(0.0021, '$'), '$0.0021')
+    assert.equal(formatAmount(1234.5, '$'), '$1,234.5')
+  })
+
+  test('formatAmount prefixes the configured currency symbol', () => {
+    assert.equal(formatAmount(0.0021, '¥'), '¥0.0021')
+    assert.equal(formatAmount(1234.5, '€'), '€1,234.5')
   })
 })

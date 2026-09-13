@@ -57,8 +57,8 @@ export function unitCost(
   return pricePerUnit * units * factor
 }
 
-/** Calculator prices are entered in USD, so results stay in USD as well. */
-export function formatUsd(value: number): string {
+/** Prices are entered in the site's configured currency, so results keep it. */
+export function formatAmount(value: number, symbol: string): string {
   const rounded = Math.round(value * MILLION) / MILLION
-  return `$${rounded.toLocaleString('en-US', { maximumFractionDigits: 6 })}`
+  return `${symbol}${rounded.toLocaleString('en-US', { maximumFractionDigits: 6 })}`
 }
