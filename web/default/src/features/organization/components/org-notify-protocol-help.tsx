@@ -61,20 +61,10 @@ export function OrgNotifyProtocolHelp() {
         </DialogHeader>
         <div className='space-y-4'>
           <section className='space-y-1'>
-            <h4 className='text-sm font-medium'>
-              {t('All organization admins')}
-            </h4>
-            <p className='text-muted-foreground text-sm'>
-              {t(
-                'No integration needed. The alert is delivered to every enabled organization admin (or the usernames in Notification Target) through the notification method each admin configured in their profile; email is used when they have not configured one. The message itself matches the email example below.'
-              )}
-            </p>
-          </section>
-          <section className='space-y-1'>
             <h4 className='text-sm font-medium'>{t('Email')}</h4>
             <p className='text-muted-foreground text-sm'>
               {t(
-                'Sent to the notification email from the recipient profile settings, falling back to the account email. The subject is the alert title and the body is the alert text with all values filled in.'
+                'Sent to every address listed in Notification Target, multiple addresses separated by ;. The subject is the alert title and the body is the alert text with all values filled in.'
               )}
             </p>
             <pre className='bg-muted text-foreground overflow-x-auto rounded-md p-2 font-mono text-xs whitespace-pre-wrap'>
@@ -87,12 +77,7 @@ export function OrgNotifyProtocolHelp() {
             <h4 className='text-sm font-medium'>{t('Webhook')}</h4>
             <p className='text-muted-foreground text-sm'>
               {t(
-                'One HTTP POST per alert to the webhook URL from the recipient profile settings, with Content-Type: application/json. Any 2xx response status counts as delivered; the request is skipped when the recipient has no webhook URL.'
-              )}
-            </p>
-            <p className='text-muted-foreground text-sm'>
-              {t(
-                'When the recipient configured a webhook secret, requests also carry Authorization: Bearer <secret> and X-Webhook-Signature, the HMAC-SHA256 hex digest of the raw request body keyed by the secret.'
+                'One HTTP POST per alert to the URL in Notification Target, with Content-Type: application/json. Any 2xx response status counts as delivered.'
               )}
             </p>
             <pre className='bg-muted text-foreground overflow-x-auto rounded-md p-2 font-mono text-xs whitespace-pre-wrap'>

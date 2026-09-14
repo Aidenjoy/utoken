@@ -139,8 +139,7 @@ export function OrganizationSettings() {
 
   const notifyType = form.watch('notify_type') as OrgNotifyType
   const targetPlaceholder =
-    ORG_NOTIFY_TARGET_PLACEHOLDERS[notifyType] ??
-    ORG_NOTIFY_TARGET_PLACEHOLDERS['']
+    notifyType === '' ? '' : ORG_NOTIFY_TARGET_PLACEHOLDERS[notifyType]
 
   const onSubmit = async (values: SettingsFormValues) => {
     setIsSubmitting(true)
@@ -296,7 +295,7 @@ export function OrganizationSettings() {
                     >
                       <FormControl>
                         <SelectTrigger className='flex-1'>
-                          <SelectValue />
+                          <SelectValue placeholder={t('Not configured')} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent alignItemWithTrigger={false}>
@@ -322,11 +321,6 @@ export function OrganizationSettings() {
                   <FormControl>
                     <Input {...field} placeholder={t(targetPlaceholder)} />
                   </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Leave empty to notify every organization admin through their own account settings.'
-                    )}
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -367,6 +367,7 @@ const (
 	MsgOrgUsernameRequired     = "org.username_required"
 	MsgOrgPasswordInvalid      = "org.password_invalid"
 	MsgOrgNotifyTypeInvalid    = "org.notify_type_invalid"
+	MsgOrgNotifyTargetInvalid  = "org.notify_target_invalid"
 	MsgOrgThresholdInvalid     = "org.threshold_invalid"
 	MsgOrgCacheFeatureDisabled = "org.cache_feature_disabled"
 	MsgOrgNotEmpty             = "org.not_empty"

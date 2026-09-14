@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -398,4 +399,42 @@ func TestCreateOrganizationWithSetupAtomicity(t *testing.T) {
 		assert.Equal(t, created.Id, refreshed.OrgId, "owner account linked to the new organization")
 		assert.Equal(t, "vip", refreshed.Group, "owner inherits the organization billing group")
 	})
+}
+
+// TestValidateOrgNotifyPair 锁定通知渠道与通知目标的成对校验契约：
+// 目标语义随渠道变化（分号分隔邮箱列表 / http(s) URL），
+// 控制器依赖它在落库前拒绝非法组合。
+func TestValidateOrgNotifyPair(t *testing.T) {
+	tests := []struct {
+		name       string
+		notifyType string
+		target     string
+		wantErr    bool
+	}{
+		{"unconfigured channel skips validation", "", "leftover", false},
+		{"single email", dto.NotifyTypeEmail, "ops@example.com", false},
+		{"semicolon separated emails with spaces", dto.NotifyTypeEmail, " ops@example.com ; on-call@example.com ", false},
+		{"email channel without target", dto.NotifyTypeEmail, "", true},
+		{"email channel with separators only", dto.NotifyTypeEmail, " ; ; ", true},
+		{"email channel with malformed address", dto.NotifyTypeEmail, "ops@example.com;not-an-email", true},
+		{"webhook https url", dto.NotifyTypeWebhook, "https://example.com/hook", false},
+		{"webhook http url", dto.NotifyTypeWebhook, "http://10.0.0.1:8080/hook", false},
+		{"webhook without scheme", dto.NotifyTypeWebhook, "example.com/hook", true},
+		{"webhook empty target", dto.NotifyTypeWebhook, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateOrgNotify(tt.notifyType, tt.target)
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrOrgNotifyTargetInvalid)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestParseOrgNotifyEmails(t *testing.T) {
+	assert.Equal(t, []string{"a@example.com", "b@example.com"}, ParseOrgNotifyEmails(" a@example.com ;; b@example.com "))
+	assert.Empty(t, ParseOrgNotifyEmails(" ; "))
 }

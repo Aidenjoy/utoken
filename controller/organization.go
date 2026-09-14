@@ -29,8 +29,7 @@ import (
 // orgUsageDefaultRangeDays 是用量报表与消费明细未显式传时间窗时的默认回溯天数
 const orgUsageDefaultRangeDays = 30
 
-// orgNotifyTypes 是企业可复用的通知方式，与个人额度预警共用同一套发送器；
-// 空值表示不单独通知（回落到发给全部企业管理员）。
+// orgNotifyTypes 是企业可用的通知渠道；空值表示未配置渠道（告警仅审计不投递）。
 var orgNotifyTypes = map[string]bool{
 	"":                    true,
 	dto.NotifyTypeEmail:   true,
@@ -277,17 +276,29 @@ func UpdateOrganization(c *gin.Context) {
 		fields["daily_usage_alert"] = *req.DailyUsageAlert
 		alertTouched = true
 	}
-	if req.NotifyType != nil {
-		notifyType := strings.TrimSpace(*req.NotifyType)
+	if req.NotifyType != nil || req.NotifyTarget != nil {
+		// 渠道与目标成对校验：目标语义随渠道变化（邮箱列表 / webhook URL），
+		// 未配置渠道时目标一并清空。
+		notifyType := org.NotifyType
+		if req.NotifyType != nil {
+			notifyType = strings.TrimSpace(*req.NotifyType)
+		}
+		notifyTarget := org.NotifyTarget
+		if req.NotifyTarget != nil {
+			notifyTarget = strings.TrimSpace(*req.NotifyTarget)
+		}
 		if !orgNotifyTypes[notifyType] {
 			common.ApiErrorI18n(c, i18n.MsgOrgNotifyTypeInvalid)
 			return
 		}
+		if notifyType == "" {
+			notifyTarget = ""
+		} else if err := model.ValidateOrgNotify(notifyType, notifyTarget); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgOrgNotifyTargetInvalid)
+			return
+		}
 		fields["notify_type"] = notifyType
-		alertTouched = true
-	}
-	if req.NotifyTarget != nil {
-		fields["notify_target"] = strings.TrimSpace(*req.NotifyTarget)
+		fields["notify_target"] = notifyTarget
 		alertTouched = true
 	}
 	if req.CacheEnabled != nil {
@@ -870,6 +881,13 @@ func AdminCreateOrganization(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgOrgNotifyTypeInvalid)
 		return
 	}
+	notifyTarget := strings.TrimSpace(req.NotifyTarget)
+	if notifyType == "" {
+		notifyTarget = ""
+	} else if err := model.ValidateOrgNotify(notifyType, notifyTarget); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgOrgNotifyTargetInvalid)
+		return
+	}
 	cacheTTL := req.CacheTTL
 	if cacheTTL <= 0 {
 		cacheTTL = model.OrgCacheTTLDefault
@@ -901,7 +919,7 @@ func AdminCreateOrganization(c *gin.Context) {
 		OwnerUserId:         0,
 		WarningThreshold:    req.WarningThreshold,
 		NotifyType:          notifyType,
-		NotifyTarget:        strings.TrimSpace(req.NotifyTarget),
+		NotifyTarget:        notifyTarget,
 		DailyUsageAlert:     req.DailyUsageAlert,
 		CacheEnabled:        cacheEnabled,
 		CacheTTL:            cacheTTL,
@@ -988,17 +1006,29 @@ func AdminUpdateOrganization(c *gin.Context) {
 		fields["daily_usage_alert"] = *req.DailyUsageAlert
 		alertTouched = true
 	}
-	if req.NotifyType != nil {
-		notifyType := strings.TrimSpace(*req.NotifyType)
+	if req.NotifyType != nil || req.NotifyTarget != nil {
+		// 渠道与目标成对校验：目标语义随渠道变化（邮箱列表 / webhook URL），
+		// 未配置渠道时目标一并清空。
+		notifyType := org.NotifyType
+		if req.NotifyType != nil {
+			notifyType = strings.TrimSpace(*req.NotifyType)
+		}
+		notifyTarget := org.NotifyTarget
+		if req.NotifyTarget != nil {
+			notifyTarget = strings.TrimSpace(*req.NotifyTarget)
+		}
 		if !orgNotifyTypes[notifyType] {
 			common.ApiErrorI18n(c, i18n.MsgOrgNotifyTypeInvalid)
 			return
 		}
+		if notifyType == "" {
+			notifyTarget = ""
+		} else if err := model.ValidateOrgNotify(notifyType, notifyTarget); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgOrgNotifyTargetInvalid)
+			return
+		}
 		fields["notify_type"] = notifyType
-		alertTouched = true
-	}
-	if req.NotifyTarget != nil {
-		fields["notify_target"] = strings.TrimSpace(*req.NotifyTarget)
+		fields["notify_target"] = notifyTarget
 		alertTouched = true
 	}
 	if req.CacheEnabled != nil {

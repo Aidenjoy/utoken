@@ -90,34 +90,37 @@ export const ORG_STATUSES: Record<
 // Alert channels (mirrors controller.orgNotifyTypes)
 // ============================================================================
 
-/** Empty value means "notify every organization admin". */
-export const ORG_NOTIFY_TYPES = ['', 'email', 'webhook'] as const
+/** 可选通知渠道；表单空值表示未配置渠道（告警仅审计不投递）。 */
+export const ORG_NOTIFY_TYPES = ['email', 'webhook'] as const
 
-export type OrgNotifyType = (typeof ORG_NOTIFY_TYPES)[number]
+export type OrgNotifyChannel = (typeof ORG_NOTIFY_TYPES)[number]
 
-export const ORG_NOTIFY_TYPE_LABELS: Record<OrgNotifyType, string> = {
-  '': 'All organization admins',
+/** 表单值类型：空串表示未配置渠道，下拉显示占位符。 */
+export type OrgNotifyType = OrgNotifyChannel | ''
+
+export const ORG_NOTIFY_TYPE_LABELS: Record<OrgNotifyChannel, string> = {
   email: 'Email',
   webhook: 'Webhook',
 }
 
 /**
- * Placeholder for the notify target field. Only the concrete channels take a
- * destination; the "all admins" option resolves recipients server-side.
+ * Placeholder for the notify target field: the email channel takes a
+ * semicolon-separated address list, the webhook channel a single URL.
  */
-export const ORG_NOTIFY_TARGET_PLACEHOLDERS: Record<OrgNotifyType, string> = {
-  '': 'Recipients are resolved automatically',
-  email: 'alert@example.com',
+export const ORG_NOTIFY_TARGET_PLACEHOLDERS: Record<OrgNotifyChannel, string> = {
+  email: 'alert@example.com;ops@example.com',
   webhook: 'https://example.com/webhook',
 }
 
 /**
  * Organizations saved before a channel was retired can still carry its value;
- * fall back to "all admins" so the select never shows an unusable option.
+ * fall back to unconfigured so the select never shows an unusable option.
  */
-export function normalizeOrgNotifyType(value: string | null | undefined): OrgNotifyType {
+export function normalizeOrgNotifyType(
+  value: string | null | undefined,
+): OrgNotifyType {
   return (ORG_NOTIFY_TYPES as readonly string[]).includes(value ?? '')
-    ? (value as OrgNotifyType)
+    ? (value as OrgNotifyChannel)
     : ''
 }
 

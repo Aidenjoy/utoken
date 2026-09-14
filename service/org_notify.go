@@ -18,6 +18,12 @@ import (
 // 余额跌破阈值后的每一次请求都会触发一封通知，把管理员的邮箱/推送刷爆。
 const orgAlertCooldown = 24 * time.Hour
 
+// orgAlertRetryInterval 是投递失败后的最小重试间隔：失败时把冷却时间戳回拨到
+// “差一个重试间隔满冷却”，间隔到期后的第一笔结算自动重试；成功则保持完整冷却。
+// 既让配置修好后在一个间隔内自动恢复投递，也避免渠道故障时按结算频率重试
+// 打爆 SMTP/目标服务与数据库（重试频率与结算 QPS 解耦）。
+const orgAlertRetryInterval = 10 * time.Minute
+
 // 企业告警审计动作标识，与 controller/audit.go 的 auditContentTemplates
 // 及前端 AUDIT_TEMPLATES 一一对应。
 const (
@@ -51,13 +57,19 @@ func checkOrgQuotaThreshold(org *model.Organization) {
 	if org.WarningThreshold <= 0 || org.Quota > org.WarningThreshold {
 		return
 	}
+	if !orgAlertConfigured(org) {
+		return
+	}
 	if !claimOrgAlert(org.Id, "last_alert_at", org.LastAlertAt) {
 		return
 	}
 	title := fmt.Sprintf("企业 %s 额度池即将用尽", orgAlertDisplayName(org))
 	content := "企业 {{value}} 的额度池余额为 {{value}}，已跌破预警阈值 {{value}}，请及时充值以免影响成员使用。"
 	values := []interface{}{orgAlertDisplayName(org), logger.FormatQuota(org.Quota), logger.FormatQuota(org.WarningThreshold)}
-	sendOrgAlert(org, dto.NotifyTypeQuotaExceed, title, content, values)
+	if !sendOrgAlert(org, dto.NotifyTypeQuotaExceed, title, content, values) {
+		scheduleOrgAlertRetry(org.Id, "last_alert_at")
+		return
+	}
 	recordOrgAlertAudit(org, AlertActionOrgQuotaLow, map[string]interface{}{
 		"name":      orgAlertDisplayName(org),
 		"threshold": org.WarningThreshold,
@@ -68,6 +80,9 @@ func checkOrgQuotaThreshold(org *model.Organization) {
 // checkOrgDailyUsage 企业当日累计用量超过 DailyUsageAlert 时通知企业管理员。
 func checkOrgDailyUsage(org *model.Organization) {
 	if org.DailyUsageAlert <= 0 {
+		return
+	}
+	if !orgAlertConfigured(org) {
 		return
 	}
 	now := common.GetTimestamp()
@@ -81,7 +96,10 @@ func checkOrgDailyUsage(org *model.Organization) {
 	title := fmt.Sprintf("企业 %s 当日用量超限", orgAlertDisplayName(org))
 	content := "企业 {{value}} 当日累计用量为 {{value}}，已超过告警阈值 {{value}}。"
 	values := []interface{}{orgAlertDisplayName(org), logger.FormatQuota(used), logger.FormatQuota(org.DailyUsageAlert)}
-	sendOrgAlert(org, dto.NotifyTypeQuotaExceed, title, content, values)
+	if !sendOrgAlert(org, dto.NotifyTypeQuotaExceed, title, content, values) {
+		scheduleOrgAlertRetry(org.Id, "last_daily_alert_at")
+		return
+	}
 	recordOrgAlertAudit(org, AlertActionOrgDailyUsage, map[string]interface{}{
 		"name":      orgAlertDisplayName(org),
 		"threshold": org.DailyUsageAlert,
@@ -128,9 +146,10 @@ func checkOrgMemberQuotaThreshold(org *model.Organization, userId int) {
 	})
 }
 
-// claimOrgAlert 以"先占位再发送"的方式实现冷却去重：先把告警时间戳推到当前时间，
+// claimOrgAlert 以“先占位再发送”的方式实现冷却去重：先把告警时间戳推到当前时间，
 // 只有占位成功（距上次告警已超过冷却窗口）才返回 true。
-// 先写后发可以让并发结算请求中只有一个发出通知，代价是发送失败也要等冷却结束。
+// 先写后发可以让并发结算请求中只有一个发出通知；投递失败时调用方经
+// scheduleOrgAlertRetry 回拨时间戳，失败不再消耗完整冷却。
 func claimOrgAlert(orgId int, field string, lastAlertAt int64) bool {
 	now := common.GetTimestamp()
 	if lastAlertAt > 0 && now-lastAlertAt < int64(orgAlertCooldown.Seconds()) {
@@ -143,55 +162,52 @@ func claimOrgAlert(orgId int, field string, lastAlertAt int64) bool {
 	return true
 }
 
-// sendOrgAlert 按企业配置的通知方式发给收件人。
-// NotifyTarget 非空时按逗号分隔的用户名定向发送，否则发给全部启用的企业管理员。
-func sendOrgAlert(org *model.Organization, notifyType string, title string, content string, values []interface{}) {
-	for _, recipient := range orgAlertRecipients(org) {
-		setting := recipient.setting
-		if org.NotifyType != "" {
-			setting.NotifyType = org.NotifyType
-		}
-		if err := NotifyUser(recipient.userId, recipient.email, setting, dto.NewNotify(notifyType, title, content, values)); err != nil {
-			common.SysError(fmt.Sprintf("failed to send org alert to user %d (orgId=%d): %s", recipient.userId, org.Id, err.Error()))
-		}
+// orgAlertConfigured 企业是否配置了可投递的通知渠道（渠道与目标齐备）。
+// 未配置时告警整体跳过：不占位、不投递、不审计，避免结算路径空转。
+func orgAlertConfigured(org *model.Organization) bool {
+	switch org.NotifyType {
+	case dto.NotifyTypeEmail:
+		return len(model.ParseOrgNotifyEmails(org.NotifyTarget)) > 0
+	case dto.NotifyTypeWebhook:
+		return strings.TrimSpace(org.NotifyTarget) != ""
+	}
+	return false
+}
+
+// scheduleOrgAlertRetry 投递失败时把冷却时间戳回拨到“差一个重试间隔满冷却”，
+// 使 orgAlertRetryInterval 到期后的第一笔结算能再次占位自动重试。
+func scheduleOrgAlertRetry(orgId int, field string) {
+	backdated := common.GetTimestamp() - int64((orgAlertCooldown - orgAlertRetryInterval).Seconds())
+	if err := model.UpdateOrgAlertTimestamp(orgId, field, backdated); err != nil {
+		common.SysError(fmt.Sprintf("failed to backdate org alert (orgId=%d, field=%s): %s", orgId, field, err.Error()))
 	}
 }
 
-type orgAlertRecipient struct {
-	userId  int
-	email   string
-	setting dto.UserSetting
-}
-
-func orgAlertRecipients(org *model.Organization) []orgAlertRecipient {
-	userIds := make([]int, 0, 4)
-	if target := strings.TrimSpace(org.NotifyTarget); target != "" {
-		for _, username := range strings.Split(target, ",") {
-			username = strings.TrimSpace(username)
-			if username == "" {
-				continue
-			}
-			if user, err := model.GetUserByUsername(username); err == nil && user != nil {
-				userIds = append(userIds, user.Id)
+// sendOrgAlert 按企业配置的通知渠道投递：email 渠道向 NotifyTarget 中
+// 分号分隔的每个地址各发一封，webhook 渠道向目标 URL POST；
+// 返回是否至少一个收件方投递成功，调用方据此决定冷却（成功=完整冷却，
+// 失败=重试间隔后自动重试）。
+func sendOrgAlert(org *model.Organization, notifyType string, title string, content string, values []interface{}) bool {
+	notify := dto.NewNotify(notifyType, title, content, values)
+	switch org.NotifyType {
+	case dto.NotifyTypeEmail:
+		delivered := false
+		for _, addr := range model.ParseOrgNotifyEmails(org.NotifyTarget) {
+			if err := sendEmailNotify(addr, notify); err != nil {
+				common.SysError(fmt.Sprintf("failed to send org alert to %s (orgId=%d): %s", addr, org.Id, err.Error()))
+			} else {
+				delivered = true
 			}
 		}
-	} else if adminIds, err := model.GetOrgAdminUserIds(org.Id); err == nil {
-		userIds = append(userIds, adminIds...)
-	}
-
-	recipients := make([]orgAlertRecipient, 0, len(userIds))
-	for _, userId := range userIds {
-		user, err := model.GetUserById(userId, false)
-		if err != nil || user == nil {
-			continue
+		return delivered
+	case dto.NotifyTypeWebhook:
+		if err := SendWebhookNotify(org.NotifyTarget, "", notify); err != nil {
+			common.SysError(fmt.Sprintf("failed to send org alert webhook (orgId=%d): %s", org.Id, err.Error()))
+			return false
 		}
-		setting, settingErr := model.GetUserSetting(userId, false)
-		if settingErr != nil {
-			setting = dto.UserSetting{}
-		}
-		recipients = append(recipients, orgAlertRecipient{userId: userId, email: user.Email, setting: setting})
+		return true
 	}
-	return recipients
+	return false
 }
 
 // recordOrgAlertAudit 把告警事件写入审计日志，归属到企业负责人（缺失时退回首个企业管理员）。

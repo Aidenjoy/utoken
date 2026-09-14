@@ -198,8 +198,7 @@ export function OrganizationMutateDrawer({
 
   const notifyType = form.watch('notify_type') as OrgNotifyType
   const targetPlaceholder =
-    ORG_NOTIFY_TARGET_PLACEHOLDERS[notifyType] ??
-    ORG_NOTIFY_TARGET_PLACEHOLDERS['']
+    notifyType === '' ? '' : ORG_NOTIFY_TARGET_PLACEHOLDERS[notifyType]
   const cacheEnabled = form.watch('cache_enabled')
 
   const onSubmit = async (values: OrganizationFormValues) => {
@@ -469,7 +468,7 @@ export function OrganizationMutateDrawer({
                       >
                         <FormControl>
                           <SelectTrigger className='flex-1'>
-                            <SelectValue />
+                            <SelectValue placeholder={t('Not configured')} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent alignItemWithTrigger={false}>
@@ -495,11 +494,6 @@ export function OrganizationMutateDrawer({
                     <FormControl>
                       <Input {...field} placeholder={t(targetPlaceholder)} />
                     </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Leave empty to notify every organization admin through their own account settings.'
-                      )}
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

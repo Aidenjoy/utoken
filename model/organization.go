@@ -3,9 +3,11 @@ package model
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 
 	"gorm.io/gorm"
 )
@@ -55,6 +57,7 @@ var (
 	ErrOrgQuotaInsufficient   = errors.New("organization quota insufficient")
 	ErrOrgMemberQuotaExceeded = errors.New("organization member quota limit exceeded")
 	ErrOrgNotEmpty            = errors.New("organization still has members")
+	ErrOrgNotifyTargetInvalid = errors.New("invalid organization notify target")
 )
 
 // Organization 企业（组织）。
@@ -73,8 +76,8 @@ type Organization struct {
 	UsedQuota int `json:"used_quota" gorm:"type:int;default:0"` // 企业额度池累计消耗
 
 	WarningThreshold int    `json:"warning_threshold" gorm:"type:int;default:0"` // 企业级额度预警阈值，0=关闭
-	NotifyType       string `json:"notify_type" gorm:"size:32"`                  // 复用 dto.NotifyType*
-	NotifyTarget     string `json:"notify_target" gorm:"size:512"`               // 空=发给全部企业管理员
+	NotifyType       string `json:"notify_type" gorm:"size:32"`                  // 复用 dto.NotifyType*，空=未配置通知渠道
+	NotifyTarget     string `json:"notify_target" gorm:"size:512"`               // email 渠道为分号分隔邮箱列表，webhook 渠道为目标 URL
 	DailyUsageAlert  int    `json:"daily_usage_alert" gorm:"type:int;default:0"` // 日用量告警阈值，0=关闭
 	LastAlertAt      int64  `json:"last_alert_at" gorm:"bigint;default:0"`
 	LastDailyAlertAt int64  `json:"last_daily_alert_at" gorm:"bigint;default:0"`
@@ -90,6 +93,43 @@ type Organization struct {
 
 func (Organization) TableName() string {
 	return "organizations"
+}
+
+// ParseOrgNotifyEmails 把 email 渠道的通知目标按分号拆成收件邮箱列表，
+// 跳过空白项；邮箱格式校验由 ValidateOrgNotify 负责。
+func ParseOrgNotifyEmails(target string) []string {
+	parts := strings.Split(target, ";")
+	emails := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if addr := strings.TrimSpace(part); addr != "" {
+			emails = append(emails, addr)
+		}
+	}
+	return emails
+}
+
+// ValidateOrgNotify 成对校验通知渠道与通知目标：空渠道表示未配置（目标由调用方清空）；
+// email 渠道目标为分号分隔的邮箱列表且至少一个；webhook 渠道目标为单个 http(s) URL。
+// 校验不通过返回 ErrOrgNotifyTargetInvalid。
+func ValidateOrgNotify(notifyType string, notifyTarget string) error {
+	switch notifyType {
+	case dto.NotifyTypeEmail:
+		emails := ParseOrgNotifyEmails(notifyTarget)
+		if len(emails) == 0 {
+			return ErrOrgNotifyTargetInvalid
+		}
+		for _, addr := range emails {
+			if common.Validate.Var(addr, "email") != nil {
+				return ErrOrgNotifyTargetInvalid
+			}
+		}
+	case dto.NotifyTypeWebhook:
+		u, err := url.Parse(strings.TrimSpace(notifyTarget))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return ErrOrgNotifyTargetInvalid
+		}
+	}
+	return nil
 }
 
 // OrgMember 企业成员。QuotaLimit 为成员子额度（0=不限），消费时累加 QuotaUsed。
