@@ -117,6 +117,11 @@ func (p *ArkOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 		PreviewURL string `json:"PreviewURL"`
 	}
 	if err := p.call(arkActionGetAsset, body, &result); err != nil {
+		// 终端性错误（如帧率/参数不合规）转成 failed 结果，前端不再无限转圈；
+		// 可重试错误（限流/鉴权/服务端/网络）原样返回，素材保持 pending 继续轮询。
+		if failed := terminalFailureResult(err); failed != nil {
+			return failed, nil
+		}
 		return nil, err
 	}
 	preview := result.PreviewURL
@@ -196,7 +201,7 @@ func (p *ArkOfficialProtocol) call(action string, body []byte, out any) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, truncate(respBody))
+		return &UpstreamError{Protocol: "ark_official", Action: action, Status: resp.StatusCode, Message: truncate(respBody)}
 	}
 
 	var envelope struct {
@@ -214,7 +219,9 @@ func (p *ArkOfficialProtocol) call(action string, body []byte, out any) error {
 	}
 	if envelope.ResponseMetadata.Error != nil {
 		e := envelope.ResponseMetadata.Error
-		return fmt.Errorf("ark official %s failed (code=%s): %s", action, e.Code, e.Message)
+		// HTTP 200 但信封携带业务错误：真实状态由 C 系列错误码承载，Status 留 0，
+		// 交给 Terminal() 从 Code 解析（如 C400999 → 400 → 终端错误）。
+		return &UpstreamError{Protocol: "ark_official", Action: action, Code: e.Code, Message: e.Message}
 	}
 	if out != nil {
 		if err := common.Unmarshal(envelope.Result, out); err != nil {

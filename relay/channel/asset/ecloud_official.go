@@ -111,6 +111,10 @@ func (p *EcloudOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 		ErrorMessage string `json:"errorMessage"`
 	}
 	if err := p.call(http.MethodGet, ecloudAssetPath+"/"+url.PathEscape(assetID), nil, &detail); err != nil {
+		// 终端性错误（内容/参数不合规）转 failed，避免前端无限转圈；可重试错误保持 pending。
+		if failed := terminalFailureResult(err); failed != nil {
+			return failed, nil
+		}
 		return nil, err
 	}
 	return &QueryResult{
@@ -182,7 +186,7 @@ func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any)
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, truncate(respBody))
+			lastErr = &UpstreamError{Protocol: "ecloud", Status: resp.StatusCode, Message: truncate(respBody)}
 			if attempt == 0 && isEcloudTimestampError(respBody) {
 				ecloudAdjustClock(resp, now())
 				continue
@@ -200,7 +204,7 @@ func (p *EcloudOfficialProtocol) call(method, path string, body []byte, out any)
 			return fmt.Errorf("parse ecloud response failed: %w, body: %s", err, truncate(respBody))
 		}
 		if envelope.State != "OK" {
-			return fmt.Errorf("ecloud asset request failed (code=%s): %s", envelope.ErrorCode, envelope.ErrorMessage)
+			return &UpstreamError{Protocol: "ecloud", Code: envelope.ErrorCode, Message: envelope.ErrorMessage}
 		}
 		if out != nil {
 			if err := common.Unmarshal(envelope.Body, out); err != nil {

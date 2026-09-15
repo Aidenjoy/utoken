@@ -109,6 +109,10 @@ func refreshPendingAssets(assets []*model.Asset) {
 			a.PreviewURL = preview
 		}
 		a.ErrorMsg = res.ErrorMsg
+		// 终端性失败（如帧率/参数不合规）留痕，便于运维定位素材为何不再轮询。
+		if res.Status == model.AssetStatusFailed {
+			common.SysLog(fmt.Sprintf("[Asset] marked failed (asset=%d, upstream_id=%s): %s", a.ID, a.AssetID, res.ErrorMsg))
+		}
 	}
 }
 

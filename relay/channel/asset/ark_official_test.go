@@ -168,6 +168,58 @@ func TestArkOfficialQueryAndError(t *testing.T) {
 	assert.Contains(t, err.Error(), "asset not found")
 }
 
+// TestArkOfficialQueryTerminalErrorMarksFailed 验证终端性上游错误（HTTP 200 信封
+// 携带 C400xxx 内容校验错误，如帧率不合规）被转成 failed 结果并透出上游原文，
+// 而不是无限期停留在 pending；可重试错误（C500xxx / 限流）仍返回 error 保持轮询。
+func TestArkOfficialQueryTerminalErrorMarksFailed(t *testing.T) {
+	tests := []struct {
+		name       string
+		envelope   string
+		wantFailed bool
+		wantErrMsg string
+		wantErrSub string
+	}{
+		{
+			name:       "frame rate rejected (C400999) is terminal",
+			envelope:   `{"ResponseMetadata":{"Error":{"CodeN":400999,"Code":"C400999","Message":"Frame rate must be between 23.8 FPS and 60 FPS."}},"Result":null}`,
+			wantFailed: true,
+			wantErrMsg: "Frame rate must be between 23.8 FPS and 60 FPS.",
+		},
+		{
+			name:       "server error (C500001) is retryable",
+			envelope:   `{"ResponseMetadata":{"Error":{"CodeN":500001,"Code":"C500001","Message":"internal service error"}},"Result":null}`,
+			wantFailed: false,
+			wantErrSub: "C500001",
+		},
+		{
+			name:       "rate limit (C429001) is retryable",
+			envelope:   `{"ResponseMetadata":{"Error":{"CodeN":429001,"Code":"C429001","Message":"rate limit exceeded"}},"Result":null}`,
+			wantFailed: false,
+			wantErrSub: "C429001",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(tt.envelope))
+			}))
+			defer srv.Close()
+
+			p := newOfficialProtocolForTest(srv.URL)
+			res, err := p.Query("asset-x")
+			if tt.wantFailed {
+				require.NoError(t, err)
+				assert.Equal(t, model.AssetStatusFailed, res.Status)
+				assert.Equal(t, tt.wantErrMsg, res.ErrorMsg)
+				return
+			}
+			require.Error(t, err)
+			assert.Nil(t, res)
+			assert.Contains(t, err.Error(), tt.wantErrSub)
+		})
+	}
+}
+
 func TestArkOfficialMissingGroupIDAutoCreatesDefaultGroup(t *testing.T) {
 	var actions []string
 	bodies := map[string]string{}

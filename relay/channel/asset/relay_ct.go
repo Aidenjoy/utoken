@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -82,6 +83,10 @@ func (p *RelayProtocol) Query(assetID string) (*QueryResult, error) {
 
 	respBody, err := p.do(httpReq)
 	if err != nil {
+		// 终端性错误（内容/参数不合规）转 failed，避免前端无限转圈；可重试错误保持 pending。
+		if failed := terminalFailureResult(err); failed != nil {
+			return failed, nil
+		}
 		return nil, err
 	}
 
@@ -96,7 +101,11 @@ func (p *RelayProtocol) Query(assetID string) (*QueryResult, error) {
 		return nil, fmt.Errorf("parse query response failed: %w, body: %s", err, truncate(respBody))
 	}
 	if resp.Code != 0 {
-		return nil, fmt.Errorf("upstream asset query failed (code=%d): %s", resp.Code, resp.Message)
+		upErr := &UpstreamError{Protocol: "relay", Code: strconv.Itoa(resp.Code), Message: resp.Message}
+		if failed := terminalFailureResult(upErr); failed != nil {
+			return failed, nil
+		}
+		return nil, upErr
 	}
 	return &QueryResult{
 		Status:     NormalizeUpstreamStatus(resp.Data.Status),
@@ -132,7 +141,7 @@ func (p *RelayProtocol) do(req *http.Request) ([]byte, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, truncate(respBody))
+		return nil, &UpstreamError{Protocol: "relay", Status: resp.StatusCode, Message: truncate(respBody)}
 	}
 	return respBody, nil
 }
