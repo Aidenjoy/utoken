@@ -7,12 +7,15 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 
 	"github.com/gin-gonic/gin"
 )
 
 func SetRouter(router *gin.Engine, assets ThemeAssets) {
+	// 健康探测路由直接挂在 engine 根上，不进入任何分组，因此不经过 gzip、限流与鉴权中间件。
+	router.GET("/healthz", controller.GetHealth)
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)

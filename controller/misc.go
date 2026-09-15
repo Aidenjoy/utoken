@@ -41,6 +41,20 @@ func TestStatus(c *gin.Context) {
 	return
 }
 
+// GetHealth 供负载均衡健康探测使用：只返回进程内存信息，不查询数据库、Redis 或任何上游，
+// 因此进程一旦崩溃或卡死，探测必然失败，可据此摘除节点。
+func GetHealth(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"message":    "ok",
+		"node_name":  common.GetNodeIdentity().Name,
+		"is_master":  common.IsMasterNode,
+		"version":    common.Version,
+		"start_time": common.StartTime,
+	})
+	return
+}
+
 func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
