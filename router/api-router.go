@@ -190,6 +190,10 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			assetAdminRoute.POST("/sync", controller.AdminSyncSourceAsset)
 			assetAdminRoute.GET("/sync/status", controller.GetSourceAssetSyncStatus)
+			// 按渠道跨用户迁移素材：源渠道 -> 目标渠道
+			assetAdminRoute.GET("/channels", controller.GetAssetProviders)
+			assetAdminRoute.GET("/channel/:channelId/assets", controller.AdminListChannelAssets)
+			assetAdminRoute.POST("/channel-sync", controller.AdminSyncChannelAssets)
 		}
 
 		optionRoute := apiRouter.Group("/option")

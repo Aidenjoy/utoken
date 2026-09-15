@@ -57,6 +57,7 @@ import { Route as AuthenticatedDirectorIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedCostCalculatorIndexRouteImport } from './routes/_authenticated/cost-calculator/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
+import { Route as AuthenticatedAssetSyncIndexRouteImport } from './routes/_authenticated/asset-sync/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedOrganizationSectionRouteImport } from './routes/_authenticated/organization/$section'
@@ -344,6 +345,12 @@ const AuthenticatedChannelsIndexRoute =
     path: '/channels/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAssetSyncIndexRoute =
+  AuthenticatedAssetSyncIndexRouteImport.update({
+    id: '/asset-sync/',
+    path: '/asset-sync/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAssetLibraryIndexRoute =
   AuthenticatedAssetLibraryIndexRouteImport.update({
     id: '/asset-library/',
@@ -554,6 +561,7 @@ export interface FileRoutesByFullPath {
   '/organization/$section': typeof AuthenticatedOrganizationSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
+  '/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -629,6 +637,7 @@ export interface FileRoutesByTo {
   '/organization/$section': typeof AuthenticatedOrganizationSectionRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
+  '/asset-sync': typeof AuthenticatedAssetSyncIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
@@ -708,6 +717,7 @@ export interface FileRoutesById {
   '/_authenticated/organization/$section': typeof AuthenticatedOrganizationSectionRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
+  '/_authenticated/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -787,6 +797,7 @@ export interface FileRouteTypes {
     | '/organization/$section'
     | '/usage-logs/$section'
     | '/asset-library/'
+    | '/asset-sync/'
     | '/channels/'
     | '/cost-calculator/'
     | '/dashboard/'
@@ -862,6 +873,7 @@ export interface FileRouteTypes {
     | '/organization/$section'
     | '/usage-logs/$section'
     | '/asset-library'
+    | '/asset-sync'
     | '/channels'
     | '/cost-calculator'
     | '/dashboard'
@@ -940,6 +952,7 @@ export interface FileRouteTypes {
     | '/_authenticated/organization/$section'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/asset-library/'
+    | '/_authenticated/asset-sync/'
     | '/_authenticated/channels/'
     | '/_authenticated/cost-calculator/'
     | '/_authenticated/dashboard/'
@@ -1341,6 +1354,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChannelsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/asset-sync/': {
+      id: '/_authenticated/asset-sync/'
+      path: '/asset-sync'
+      fullPath: '/asset-sync/'
+      preLoaderRoute: typeof AuthenticatedAssetSyncIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/asset-library/': {
       id: '/_authenticated/asset-library/'
       path: '/asset-library'
@@ -1679,6 +1699,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedOrganizationSectionRoute: typeof AuthenticatedOrganizationSectionRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
+  AuthenticatedAssetSyncIndexRoute: typeof AuthenticatedAssetSyncIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCostCalculatorIndexRoute: typeof AuthenticatedCostCalculatorIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
@@ -1715,6 +1736,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOrganizationSectionRoute: AuthenticatedOrganizationSectionRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
+  AuthenticatedAssetSyncIndexRoute: AuthenticatedAssetSyncIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedCostCalculatorIndexRoute: AuthenticatedCostCalculatorIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,

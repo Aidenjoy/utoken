@@ -237,6 +237,87 @@ func GetAssetProviders(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"providers": providers})
 }
 
+// AdminListChannelAssets 管理员：跨用户列出某渠道下的素材副本，附带归属用户名。
+// 状态由后台轮询维护，此处不主动刷新上游，避免跨用户批量拉取造成的上游压力。
+func AdminListChannelAssets(c *gin.Context) {
+	channelId, err := strconv.Atoi(c.Param("channelId"))
+	if err != nil || channelId <= 0 {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "无效的渠道 ID")
+		return
+	}
+	assets, err := model.GetAssetsByChannel(channelId, 0, 200)
+	if err != nil {
+		assetJSONError(c, http.StatusInternalServerError, "query_data_error", err.Error())
+		return
+	}
+	userIds := make([]int, 0, len(assets))
+	seen := make(map[int]bool, len(assets))
+	for _, a := range assets {
+		if a.UserID > 0 && !seen[a.UserID] {
+			seen[a.UserID] = true
+			userIds = append(userIds, a.UserID)
+		}
+	}
+	names, err := model.GetUserNamesByIds(userIds)
+	if err != nil {
+		names = map[int]string{}
+	}
+	list := make([]gin.H, 0, len(assets))
+	for _, a := range assets {
+		list = append(list, gin.H{
+			"id":          a.ID,
+			"user_id":     a.UserID,
+			"username":    names[a.UserID],
+			"channel_id":  a.ChannelID,
+			"asset_id":    a.AssetID,
+			"name":        a.Name,
+			"asset_type":  a.AssetType,
+			"status":      a.Status,
+			"source_url":  a.SourceURL,
+			"preview_url": a.PreviewURL,
+			"error_msg":   a.ErrorMsg,
+			"created_at":  a.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"assets": list})
+}
+
+type adminChannelSyncRequest struct {
+	SourceChannelId int     `json:"source_channel_id"`
+	TargetChannelId int     `json:"target_channel_id"`
+	AssetIds        []int64 `json:"asset_ids"`
+}
+
+// adminChannelSyncMaxAssets 单次同步素材上限，防超大请求。
+const adminChannelSyncMaxAssets = 200
+
+// AdminSyncChannelAssets 管理员：把源渠道下勾选的素材批量同步到目标渠道。
+func AdminSyncChannelAssets(c *gin.Context) {
+	var req adminChannelSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "请求体无效: "+err.Error())
+		return
+	}
+	if req.SourceChannelId <= 0 || req.TargetChannelId <= 0 {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "source_channel_id 与 target_channel_id 必填")
+		return
+	}
+	if req.SourceChannelId == req.TargetChannelId {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "源渠道与目标渠道不能相同")
+		return
+	}
+	if len(req.AssetIds) == 0 {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "请至少选择一个素材")
+		return
+	}
+	if len(req.AssetIds) > adminChannelSyncMaxAssets {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", fmt.Sprintf("单次最多同步 %d 个素材", adminChannelSyncMaxAssets))
+		return
+	}
+	results := service.SyncAssetsToChannel(req.SourceChannelId, req.TargetChannelId, req.AssetIds)
+	c.JSON(http.StatusOK, gin.H{"sync_tasks": results})
+}
+
 type assetUploadRequest struct {
 	ChannelId int    `json:"channel_id"`
 	Channel   string `json:"channel"` // 渠道名称（对外 API 用名称代替数字 ID，便于记忆）

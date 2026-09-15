@@ -103,6 +103,27 @@ func GetUserAssets(userId int, channelId int, startIdx int, num int) ([]*Asset, 
 	return assets, err
 }
 
+// GetAssetsByChannel 跨用户列出某渠道下的素材副本（管理员按渠道同步用）。
+func GetAssetsByChannel(channelId int, startIdx int, num int) ([]*Asset, error) {
+	if num == 0 {
+		num = 50
+	}
+	var assets []*Asset
+	query := DB.Where("channel_id = ?", channelId)
+	if startIdx == 0 {
+		return assets, query.Order("id desc").Limit(num).Find(&assets).Error
+	}
+	return assets, query.Order("id desc").Limit(num).Offset(startIdx).Find(&assets).Error
+}
+
+// GetAssetByChannelAndSourceURL 按渠道 + 源 URL 定位已存在副本。
+// 供 SourceAssetId 为空（直接按 URL 注册）的素材在跨渠道同步时做幂等预检。
+func GetAssetByChannelAndSourceURL(channelId int, sourceURL string) (*Asset, error) {
+	var asset Asset
+	err := DB.Where("channel_id = ? AND source_url = ?", channelId, sourceURL).First(&asset).Error
+	return &asset, err
+}
+
 func DeleteAssetById(id int64, userId int) (string, error) {
 	if id == 0 {
 		return "", errors.New("asset id is required")
@@ -128,6 +149,26 @@ func UpdateAssetStatus(id int64, status string, previewURL string, errMsg string
 		updates["preview_url"] = previewURL
 	}
 	return DB.Model(&Asset{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// UpsertChannelAssetBySourceURL 幂等写入无 SourceAssetId 的渠道副本，键为 (channel_id, source_url)。
+// 与 UpsertChannelAsset 行为一致：命中则复用旧行并清空 error_msg，否则新建。
+func UpsertChannelAssetBySourceURL(a *Asset) error {
+	var existing Asset
+	err := DB.Where("channel_id = ? AND source_url = ?", a.ChannelID, a.SourceURL).First(&existing).Error
+	if err == nil {
+		a.ID = existing.ID
+		a.CreatedAt = existing.CreatedAt
+		return DB.Model(&Asset{}).Where("id = ?", existing.ID).Updates(map[string]any{
+			"asset_id":     a.AssetID,
+			"status":       a.Status,
+			"group_id":     a.GroupID,
+			"project_name": a.ProjectName,
+			"error_msg":    "",
+			"updated_at":   time.Now().Unix(),
+		}).Error
+	}
+	return a.Insert()
 }
 
 // AssetURIScheme 素材引用前缀，视频任务 content 中以 asset://<上游素材ID> 引用素材。

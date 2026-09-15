@@ -28,6 +28,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  FolderSync,
   Images,
   Key,
   LayoutDashboard,
@@ -235,6 +236,12 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Asset Sync'),
+            url: '/asset-sync',
+            icon: FolderSync,
             requiredRole: ROLE.ADMIN,
           },
           {

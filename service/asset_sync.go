@@ -26,6 +26,8 @@ type SyncResult struct {
 	ChannelName string `json:"channel_name"`
 	Status      string `json:"status"` // active / pending / failed / skipped
 	AssetID     string `json:"asset_id,omitempty"`
+	AssetDBID   int64  `json:"asset_db_id,omitempty"` // 源素材在 assets 表的主键，供逐条反馈定位
+	Name        string `json:"name,omitempty"`        // 源素材名称，供前端展示
 	Error       string `json:"error,omitempty"`
 }
 
@@ -127,6 +129,121 @@ func EnsureAssetForChannel(sourceAssetId int64, channelId int) (string, error) {
 		return "", fmt.Errorf("素材同步到渠道 %d 失败: %s", channelId, result.Error)
 	}
 	return result.AssetID, nil
+}
+
+// SyncAssetToChannel 把「源渠道已有的素材副本」再上传到目标渠道。
+// 用于管理员按渠道批量迁移素材：以 src.SourceURL 通过目标渠道协议重新登记，
+// 新副本保留原 user_id，状态 pending，由 PollAssetStatuses 后续刷新。
+func SyncAssetToChannel(src *model.Asset, targetChannelId int) SyncResult {
+	result := SyncResult{ChannelID: targetChannelId, AssetDBID: src.ID, Name: src.Name}
+	if src.ChannelID == targetChannelId {
+		result.Status = "skipped"
+		result.Error = "源渠道与目标渠道相同"
+		return result
+	}
+	if src.SourceURL == "" {
+		result.Status = "failed"
+		result.Error = "素材缺少源地址，无法同步"
+		return result
+	}
+	if AssetProtocolFactoryFunc == nil {
+		result.Status = "failed"
+		result.Error = "素材协议未初始化"
+		return result
+	}
+
+	channel, err := model.GetChannelById(targetChannelId, true)
+	if err != nil || channel == nil {
+		result.Status = "failed"
+		result.Error = "目标渠道不存在"
+		return result
+	}
+	result.ChannelName = channel.Name
+	if channel.Status != common.ChannelStatusEnabled {
+		result.Status = "failed"
+		result.Error = "目标渠道已禁用"
+		return result
+	}
+	if channel.GetOtherSettings().AssetUploadProtocol == "" {
+		result.Status = "failed"
+		result.Error = "目标渠道未开启素材上传协议"
+		return result
+	}
+
+	// 幂等预检：目标渠道已有 active 副本则跳过，避免重复上传。
+	var existing *model.Asset
+	if src.SourceAssetId != nil {
+		existing, _ = model.GetAssetBySourceAndChannel(*src.SourceAssetId, targetChannelId)
+	} else {
+		existing, _ = model.GetAssetByChannelAndSourceURL(targetChannelId, src.SourceURL)
+	}
+	if existing != nil && existing.Status == model.AssetStatusActive {
+		result.Status = "skipped"
+		result.AssetID = existing.AssetID
+		return result
+	}
+
+	protocol, err := AssetProtocolFactoryFunc(channel)
+	if err != nil {
+		result.Status = "failed"
+		result.Error = "协议创建失败: " + err.Error()
+		return result
+	}
+
+	assetID, groupID, projectName, err := protocol.Upload(src.SourceURL, src.AssetType, src.Name)
+	if err != nil {
+		common.SysError(fmt.Sprintf("[AssetSync] cross-channel upload failed (asset=%d, target=%d): %v", src.ID, targetChannelId, err))
+		result.Status = "failed"
+		result.Error = err.Error()
+		return result
+	}
+
+	target := &model.Asset{
+		UserID:        src.UserID,
+		ChannelID:     targetChannelId,
+		AssetID:       assetID,
+		SourceAssetId: src.SourceAssetId,
+		Name:          src.Name,
+		AssetType:     src.AssetType,
+		Status:        model.AssetStatusPending,
+		SourceURL:     src.SourceURL,
+		GroupID:       groupID,
+		ProjectName:   projectName,
+	}
+	if src.SourceAssetId != nil {
+		err = model.UpsertChannelAsset(target)
+	} else {
+		err = model.UpsertChannelAssetBySourceURL(target)
+	}
+	if err != nil {
+		result.Status = "failed"
+		result.Error = "DB 写入失败: " + err.Error()
+		return result
+	}
+
+	common.SysLog(fmt.Sprintf("[AssetSync] synced asset %d to channel %d (asset_id=%s)", src.ID, targetChannelId, assetID))
+	result.Status = "pending"
+	result.AssetID = assetID
+	return result
+}
+
+// SyncAssetsToChannel 批量把源渠道下的素材同步到目标渠道，逐个返回结果。
+// 仅处理确属 sourceChannelId 的素材，越权 ID 直接判失败。
+func SyncAssetsToChannel(sourceChannelId int, targetChannelId int, assetIds []int64) []SyncResult {
+	results := make([]SyncResult, 0, len(assetIds))
+	for _, id := range assetIds {
+		asset, err := model.GetAssetById(id)
+		if err != nil || asset == nil {
+			results = append(results, SyncResult{ChannelID: targetChannelId, AssetDBID: id, Status: "failed", Error: "素材不存在"})
+			continue
+		}
+		if asset.ChannelID != sourceChannelId {
+			results = append(results, SyncResult{ChannelID: targetChannelId, AssetDBID: id, Name: asset.Name, Status: "failed", Error: "素材不属于所选源渠道"})
+			continue
+		}
+		results = append(results, SyncAssetToChannel(asset, targetChannelId))
+	}
+	return results
 }
 
 // PreflightCheck 视频生成前置检查结果。
