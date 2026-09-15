@@ -61,7 +61,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	}
 	// 2) 调整令牌额度
 	var tokenErr error
-	if !s.relayInfo.IsPlayground {
+	if s.tokenQuotaTracked() {
 		if delta > 0 {
 			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
 		} else {
@@ -140,6 +140,10 @@ func (s *BillingSession) needsRefundLocked() bool {
 	if s.tokenConsumed > 0 {
 		return true
 	}
+	// 钱包可能在 tokenConsumed=0 时仍预扣了额度（如无限额度令牌不扣令牌余额）
+	if wallet, ok := s.funding.(*WalletFunding); ok && wallet.consumed > 0 {
+		return true
+	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
 		return true
@@ -179,7 +183,9 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 	}
 
 	s.preConsumedQuota += delta
-	s.tokenConsumed += delta
+	if s.tokenQuotaTracked() {
+		s.tokenConsumed += delta
+	}
 	s.extraReserved += delta
 	s.syncRelayInfo()
 	return nil
@@ -208,7 +214,9 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
-		s.tokenConsumed = effectiveQuota
+		if s.tokenQuotaTracked() {
+			s.tokenConsumed = effectiveQuota
+		}
 	}
 
 	// ---- 2) 预扣资金来源 ----
@@ -304,13 +312,20 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 }
 
 func (s *BillingSession) reserveToken(delta int) error {
-	if delta <= 0 || s.relayInfo.IsPlayground {
+	if delta <= 0 || !s.tokenQuotaTracked() {
 		return nil
 	}
 	if err := PreConsumeTokenQuota(s.relayInfo, delta); err != nil {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 	}
 	return nil
+}
+
+// tokenQuotaTracked 报告本会话是否需要实际预扣/结算令牌额度。
+// 游乐场请求按用户计费、无限额度令牌没有余额上限，二者都不触碰 token 的
+// remain_quota；否则异步任务的强制预扣会因无限令牌 remain_quota<=0 被误拒。
+func (s *BillingSession) tokenQuotaTracked() bool {
+	return !s.relayInfo.IsPlayground && !s.relayInfo.TokenUnlimited
 }
 
 // shouldTrust 统一信任额度检查，适用于钱包和订阅。

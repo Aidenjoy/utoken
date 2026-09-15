@@ -76,15 +76,15 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 // 异步任务计费辅助函数
 // ---------------------------------------------------------------------------
 
-// resolveTokenKey 通过 TokenId 运行时获取令牌 Key（用于 Redis 缓存操作）。
-// 如果令牌已被删除或查询失败，返回空字符串。
-func resolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
+// resolveTaskToken 通过 TokenId 运行时获取令牌（用于读取 Key 与无限额度标志）。
+// 如果令牌已被删除或查询失败，返回 nil。
+func resolveTaskToken(ctx context.Context, tokenId int, taskID string) *model.Token {
 	token, err := model.GetTokenById(tokenId)
 	if err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("获取令牌 key 失败 (tokenId=%d, task=%s): %s", tokenId, taskID, err.Error()))
-		return ""
+		logger.LogWarn(ctx, fmt.Sprintf("获取令牌失败 (tokenId=%d, task=%s): %s", tokenId, taskID, err.Error()))
+		return nil
 	}
-	return token.Key
+	return token
 }
 
 // taskIsSubscription 判断任务是否通过订阅计费。
@@ -125,20 +125,21 @@ func taskAdjustFunding(task *model.Task, delta int) error {
 }
 
 // taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。
-// 需要通过 resolveTokenKey 运行时获取 key（不从 PrivateData 中读取）。
+// 无限额度令牌没有余额上限，跳过令牌级调整（与预扣费旁路对称），
+// 否则结算会把 remain_quota 越扣越负、退费又把它抬回，账目无意义且会触发余额不足告警。
 func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 	if task.PrivateData.TokenId <= 0 || delta == 0 {
 		return
 	}
-	tokenKey := resolveTokenKey(ctx, task.PrivateData.TokenId, task.TaskID)
-	if tokenKey == "" {
+	token := resolveTaskToken(ctx, task.PrivateData.TokenId, task.TaskID)
+	if token == nil || token.UnlimitedQuota || token.Key == "" {
 		return
 	}
 	var err error
 	if delta > 0 {
-		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, tokenKey, delta)
+		err = model.DecreaseTokenQuota(task.PrivateData.TokenId, token.Key, delta)
 	} else {
-		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, tokenKey, -delta)
+		err = model.IncreaseTokenQuota(task.PrivateData.TokenId, token.Key, -delta)
 	}
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("调整令牌额度失败 (delta=%d, task=%s): %s", delta, task.TaskID, err.Error()))
