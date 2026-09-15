@@ -249,6 +249,20 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { mobileOrder: 30 },
     },
     {
+      accessorKey: 'org_name',
+      header: t('Organization'),
+      cell: ({ row }) => {
+        const orgName = row.getValue('org_name') as string
+        if (!orgName) {
+          return <span className='text-muted-foreground text-sm'>-</span>
+        }
+        return <span className='text-sm'>{orgName}</span>
+      },
+      enableSorting: false,
+      size: 140,
+      meta: { mobileOrder: 25 },
+    },
+    {
       accessorKey: 'role',
       header: t('Role'),
       cell: ({ row }) => {

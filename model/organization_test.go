@@ -438,3 +438,33 @@ func TestParseOrgNotifyEmails(t *testing.T) {
 	assert.Equal(t, []string{"a@example.com", "b@example.com"}, ParseOrgNotifyEmails(" a@example.com ;; b@example.com "))
 	assert.Empty(t, ParseOrgNotifyEmails(" ; "))
 }
+
+// TestAttachOrgNamesBackfillsOrgDisplayNames 锁定用户列表企业列的回填契约：
+// 优先 display_name、缺失时回落 name、无企业用户保持空串。
+func TestAttachOrgNamesBackfillsOrgDisplayNames(t *testing.T) {
+	setupOrgFixture(t)
+
+	withDisplay := seedOrg(t, 1, 100, OrgStatusEnabled)
+	plain := &Organization{Id: 2, Name: "plain-org", Group: "vip", Status: OrgStatusEnabled}
+	require.NoError(t, DB.Create(plain).Error)
+
+	owner := &User{Id: 9201, Username: "attach-owner", AffCode: "aff-attach-1", Status: common.UserStatusEnabled, Group: DefaultUserGroup, OrgId: withDisplay.Id}
+	plainMember := &User{Id: 9202, Username: "attach-plain", AffCode: "aff-attach-2", Status: common.UserStatusEnabled, Group: DefaultUserGroup, OrgId: plain.Id}
+	free := &User{Id: 9203, Username: "attach-free", AffCode: "aff-attach-3", Status: common.UserStatusEnabled, Group: DefaultUserGroup}
+	for _, u := range []*User{owner, plainMember, free} {
+		require.NoError(t, DB.Create(u).Error)
+	}
+
+	users := []*User{
+		{Id: owner.Id, OrgId: withDisplay.Id},
+		{Id: plainMember.Id, OrgId: plain.Id},
+		{Id: free.Id},
+	}
+	require.NoError(t, AttachOrgNames(users))
+
+	assert.Equal(t, withDisplay.DisplayName, users[0].OrgName, "display_name preferred")
+	assert.Equal(t, plain.Name, users[1].OrgName, "falls back to name when display_name empty")
+	assert.Empty(t, users[2].OrgName, "users without org stay empty")
+
+	require.NoError(t, AttachOrgNames(nil), "empty input is a no-op")
+}

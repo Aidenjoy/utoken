@@ -46,6 +46,7 @@ type User struct {
 	AffHistoryQuota  int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
 	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	OrgId            int                        `json:"org_id" gorm:"type:int;column:org_id;index;default:0"` // 所属企业（组织），0=无企业
+	OrgName          string                     `json:"org_name" gorm:"-"`                                    // 所属企业展示名（列表返回时回填，不落库）
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
@@ -323,6 +324,10 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		return nil, 0, err
 	}
 
+	if err = AttachOrgNames(users); err != nil {
+		return nil, 0, err
+	}
+
 	return users, total, nil
 }
 
@@ -391,7 +396,43 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 		return nil, 0, err
 	}
 
+	if err = AttachOrgNames(users); err != nil {
+		return nil, 0, err
+	}
+
 	return users, total, nil
+}
+
+// AttachOrgNames 为列表中的用户批量回填所属企业展示名（优先 display_name）：
+// 一次查询企业表完成映射，无企业的用户保持空串。
+func AttachOrgNames(users []*User) error {
+	orgIds := make([]int, 0, 8)
+	seen := make(map[int]bool, 8)
+	for _, u := range users {
+		if u.OrgId > 0 && !seen[u.OrgId] {
+			seen[u.OrgId] = true
+			orgIds = append(orgIds, u.OrgId)
+		}
+	}
+	if len(orgIds) == 0 {
+		return nil
+	}
+	var orgs []Organization
+	if err := DB.Select("id, name, display_name").Where("id IN ?", orgIds).Find(&orgs).Error; err != nil {
+		return err
+	}
+	names := make(map[int]string, len(orgs))
+	for _, org := range orgs {
+		if org.DisplayName != "" {
+			names[org.Id] = org.DisplayName
+		} else {
+			names[org.Id] = org.Name
+		}
+	}
+	for _, u := range users {
+		u.OrgName = names[u.OrgId]
+	}
+	return nil
 }
 
 // GetUserNamesByIds 批量查询 用户 ID → 用户名，供管理员跨用户列表展示归属。
