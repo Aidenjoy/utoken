@@ -3,12 +3,13 @@ import {
   ImageIcon,
   MusicIcon,
   SendIcon,
+  SparklesIcon,
   SquareIcon,
   Trash2Icon,
   Volume2Icon,
   VolumeXIcon,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -27,7 +28,7 @@ import {
 import { getModelCategory } from '@/lib/model-category'
 import { cn } from '@/lib/utils'
 
-import { listAssets } from '../../api'
+import { ensureSourceAsset, listAssets, listSourceAssets } from '../../api'
 import {
   ASPECT_RATIOS,
   DEFAULT_VIDEO_CONFIG,
@@ -37,6 +38,7 @@ import {
   MAX_REFERENCE_IMAGES,
   MAX_VIDEOS,
   RESOLUTIONS,
+  SMART_ASSET_REF_PREFIX,
   SMART_VIDEO_DURATION,
   VIDEO_COUNT_RANGE,
   VIDEO_MODES,
@@ -44,10 +46,12 @@ import {
 import type {
   AspectRatio,
   Asset,
+  AssetStatus,
   GroupOption,
   MediaItem,
   ModelOption,
   Resolution,
+  SourceAsset,
   VideoConfig,
   VideoMode,
 } from '../../types'
@@ -143,6 +147,19 @@ export function PlaygroundVideoInput({
 
   // --- asset library assets shown in the @ mention popup ---
   const [libraryAssets, setLibraryAssets] = useState<Asset[]>([])
+  // --- smart (source) assets shown in the @ mention popup ---
+  // Channel-independent: referenced as asset://yun-<id> and routed server-side.
+  const [librarySourceAssets, setLibrarySourceAssets] = useState<SourceAsset[]>(
+    []
+  )
+  // De-dupe ensure pre-warm calls per (sourceId, model, group).
+  const ensuredKeysRef = useRef<Set<string>>(new Set())
+  // Per-smart-asset (yun-<id>) channel-copy readiness for the current
+  // model/group, so submit can soft-block while a copy is still under review.
+  const [smartAssetStatus, setSmartAssetStatus] = useState<
+    Record<string, AssetStatus>
+  >({})
+  const smartPollTimersRef = useRef<Record<string, number>>({})
 
   // --- uploading placeholder state ---
   const [uploadingItems, setUploadingItems] = useState<
@@ -224,9 +241,26 @@ export function PlaygroundVideoInput({
     }
   }
 
+  // Smart assets in the composer whose channel copy is still under review for
+  // the current model/group — used to soft-block submit with an inline hint
+  // instead of letting Distribute answer with a 400 after the fact.
+  const hasPendingSmartAsset = config.mediaItems.some(
+    (item) =>
+      item.assetId?.startsWith(SMART_ASSET_REF_PREFIX) &&
+      smartAssetStatus[item.assetId] === 'pending'
+  )
+
   const handleSubmit = () => {
     const text = editorRef.current?.innerText.trim() || ''
     if (!text) return
+    if (hasPendingSmartAsset) {
+      toast.info(
+        t(
+          'Smart asset is under channel review and usually takes 1-2 minutes. You can generate once approved.'
+        )
+      )
+      return
+    }
     onSubmit(text)
     if (editorRef.current) {
       editorRef.current.innerHTML = ''
@@ -650,6 +684,19 @@ export function PlaygroundVideoInput({
     }
   }, [showMention, config.mode, config.model, config.group])
 
+  // Smart (source) assets are channel-independent, so fetch them once when the
+  // popup opens in reference mode — no model/group filter applies.
+  useEffect(() => {
+    if (!showMention || config.mode !== 'reference') return
+    let cancelled = false
+    void listSourceAssets().then((list) => {
+      if (!cancelled) setLibrarySourceAssets(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [showMention, config.mode])
+
   const mentionLibraryAssets = libraryAssets.filter(
     (asset) =>
       !config.mediaItems.some((item) => item.assetId === asset.asset_id) &&
@@ -682,6 +729,159 @@ export function PlaygroundVideoInput({
       mediaItems: [...configRef.current.mediaItems, item],
     })
     handleMentionSelect(item)
+  }
+
+  // Smart assets already added to the composer, filtered by the popup tab and
+  // de-duplicated against existing media items by their yun- reference id.
+  const mentionSourceAssets = librarySourceAssets.filter(
+    (asset) =>
+      !config.mediaItems.some(
+        (item) => item.assetId === `${SMART_ASSET_REF_PREFIX}${asset.id}`
+      ) &&
+      (mentionFilter === 'all' ||
+        (mentionFilter === 'video'
+          ? asset.asset_type === 'Video'
+          : mentionFilter === 'audio'
+            ? asset.asset_type === 'Audio'
+            : asset.asset_type === 'Image'))
+  )
+
+  const recordSmartStatus = useCallback(
+    (refId: string, status: AssetStatus) => {
+      setSmartAssetStatus((prev) =>
+        prev[refId] === status ? prev : { ...prev, [refId]: status }
+      )
+    },
+    []
+  )
+
+  const stopSmartPoll = useCallback((refId: string) => {
+    const timer = smartPollTimersRef.current[refId]
+    if (timer) {
+      window.clearInterval(timer)
+      delete smartPollTimersRef.current[refId]
+    }
+  }, [])
+
+  // Poll the (idempotent) ensure endpoint while a copy is under review so the
+  // inline hint clears and submit unblocks the moment it turns active.
+  const startSmartPoll = useCallback(
+    (sourceId: number, refId: string) => {
+      if (smartPollTimersRef.current[refId]) return
+      const timer = window.setInterval(() => {
+        const model = configRef.current.model
+        const group = configRef.current.group
+        if (!model) return
+        void ensureSourceAsset(sourceId, model, group).then((res) => {
+          if (!res) return
+          recordSmartStatus(refId, res.status)
+          if (res.status === 'pending') return
+          stopSmartPoll(refId)
+          if (res.status === 'active') {
+            toast.success(t('Smart asset is ready; you can generate now'))
+          }
+        })
+      }, 5000)
+      smartPollTimersRef.current[refId] = timer
+    },
+    [recordSmartStatus, stopSmartPoll, t]
+  )
+
+  // Pre-warm the channel copy for a smart asset so it is (likely) already
+  // active by submit time. Fire-and-forget and de-duplicated per
+  // (sourceId, model, group); a pending result records the status (driving the
+  // inline "under review" hint), nudges the user, and starts polling. Failures
+  // are ignored here — submit surfaces the authoritative error via Distribute.
+  const ensureSourceAssetQuiet = useCallback(
+    (sourceId: number) => {
+      const model = configRef.current.model
+      const group = configRef.current.group
+      if (!model) return
+      const key = `${sourceId}:${model}:${group}`
+      if (ensuredKeysRef.current.has(key)) return
+      ensuredKeysRef.current.add(key)
+      const refId = `${SMART_ASSET_REF_PREFIX}${sourceId}`
+      void ensureSourceAsset(sourceId, model, group).then((res) => {
+        if (!res) return
+        recordSmartStatus(refId, res.status)
+        if (res.status === 'pending') {
+          toast.info(
+            t(
+              'Smart asset submitted for channel review; it can be used once approved'
+            )
+          )
+          startSmartPoll(sourceId, refId)
+        } else {
+          stopSmartPoll(refId)
+        }
+      })
+    },
+    [t, recordSmartStatus, startSmartPoll, stopSmartPoll]
+  )
+
+  // Re-warm whenever the selected model/group changes while smart assets are
+  // attached, so the copy exists on the channel that will actually serve it.
+  useEffect(() => {
+    if (config.mode !== 'reference') return
+    for (const item of config.mediaItems) {
+      if (!item.assetId?.startsWith(SMART_ASSET_REF_PREFIX)) continue
+      const id = Number(item.assetId.slice(SMART_ASSET_REF_PREFIX.length))
+      if (!Number.isNaN(id)) ensureSourceAssetQuiet(id)
+    }
+  }, [
+    config.mode,
+    config.model,
+    config.group,
+    config.mediaItems,
+    ensureSourceAssetQuiet,
+  ])
+
+  // Stop polling smart assets that are no longer referenced in the composer.
+  useEffect(() => {
+    const activeRefs = new Set(
+      config.mediaItems
+        .map((item) => item.assetId)
+        .filter(
+          (id): id is string => !!id?.startsWith(SMART_ASSET_REF_PREFIX)
+        )
+    )
+    for (const refId of Object.keys(smartPollTimersRef.current)) {
+      if (!activeRefs.has(refId)) stopSmartPoll(refId)
+    }
+  }, [config.mediaItems, stopSmartPoll])
+
+  // Clear any pending smart-asset poll timers on unmount.
+  useEffect(() => {
+    const timers = smartPollTimersRef.current
+    return () => {
+      for (const refId of Object.keys(timers)) {
+        window.clearInterval(timers[refId])
+      }
+    }
+  }, [])
+
+  // Add a smart asset as a media item; remoteUrl carries asset://yun-<id> and
+  // flows through buildSubmitPayload unchanged, then pre-warm the channel copy.
+  const handleSourceAssetSelect = (asset: SourceAsset) => {
+    const refId = `${SMART_ASSET_REF_PREFIX}${asset.id}`
+    const item: MediaItem = {
+      url: asset.source_url,
+      remoteUrl: `asset://${refId}`,
+      type:
+        asset.asset_type === 'Video'
+          ? 'video'
+          : asset.asset_type === 'Audio'
+            ? 'audio'
+            : 'image',
+      name: asset.name || refId,
+      assetId: refId,
+    }
+    onConfigChange({
+      ...configRef.current,
+      mediaItems: [...configRef.current.mediaItems, item],
+    })
+    handleMentionSelect(item)
+    ensureSourceAssetQuiet(asset.id)
   }
 
   return (
@@ -1111,6 +1311,18 @@ export function PlaygroundVideoInput({
             )}
           </div>
 
+          {/* Soft-block hint while a referenced smart asset is under review */}
+          {hasPendingSmartAsset && (
+            <div className='text-muted-foreground bg-muted/30 flex items-center gap-1.5 border-t px-3 py-1.5 text-[11px]'>
+              <SparklesIcon className='text-violet-500 shrink-0' size={12} />
+              <span>
+                {t(
+                  'Smart asset is under channel review and usually takes 1-2 minutes. You can generate once approved.'
+                )}
+              </span>
+            </div>
+          )}
+
           {/* Footer with model selector and submit */}
           <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex items-center justify-between gap-2 border-t px-3 py-2.5 backdrop-blur'>
             <ModelGroupSelector
@@ -1135,12 +1347,23 @@ export function PlaygroundVideoInput({
             ) : (
               <Button
                 className='h-8 px-3 font-medium shadow-sm'
-                disabled={disabled || !prompt.trim() || !config.model}
+                disabled={
+                  disabled ||
+                  !prompt.trim() ||
+                  !config.model ||
+                  hasPendingSmartAsset
+                }
                 onClick={handleSubmit}
                 size='sm'
               >
-                <SendIcon size={16} />
-                <span className='hidden sm:inline'>{t('Generate')}</span>
+                {hasPendingSmartAsset ? (
+                  <span className='size-4 animate-spin rounded-full border-2 border-current border-t-transparent' />
+                ) : (
+                  <SendIcon size={16} />
+                )}
+                <span className='hidden sm:inline'>
+                  {hasPendingSmartAsset ? t('Under review') : t('Generate')}
+                </span>
               </Button>
             )}
           </div>
@@ -1257,6 +1480,7 @@ export function PlaygroundVideoInput({
                             src={asset.preview_url || asset.source_url}
                             alt={asset.name}
                             className='size-full object-cover'
+                            referrerPolicy='no-referrer'
                           />
                         ) : asset.asset_type === 'Video' ? (
                           <video
@@ -1281,10 +1505,58 @@ export function PlaygroundVideoInput({
                   ))}
                 </>
               )}
+              {mentionSourceAssets.length > 0 && (
+                <>
+                  <div className='text-muted-foreground/80 flex items-center gap-1 px-3 pt-1.5 pb-0.5 text-[10px] font-medium tracking-wide uppercase'>
+                    <SparklesIcon size={11} />
+                    {t('Smart Assets')}
+                  </div>
+                  {mentionSourceAssets.map((asset) => (
+                    <button
+                      key={`yun-${asset.id}`}
+                      className='hover:bg-muted/60 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors'
+                      onClick={() => handleSourceAssetSelect(asset)}
+                    >
+                      <div className='size-8 shrink-0 overflow-hidden rounded border'>
+                        {asset.asset_type === 'Image' ? (
+                          <img
+                            src={asset.source_url}
+                            alt={asset.name}
+                            className='size-full object-cover'
+                            referrerPolicy='no-referrer'
+                          />
+                        ) : asset.asset_type === 'Video' ? (
+                          <video
+                            src={asset.source_url}
+                            className='size-full object-cover'
+                          />
+                        ) : (
+                          <div className='bg-muted flex size-full items-center justify-center'>
+                            <MusicIcon
+                              size={14}
+                              className='text-muted-foreground'
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className='min-w-0 flex-1'>
+                        <div className='truncate text-xs font-medium'>
+                          {asset.name || `${SMART_ASSET_REF_PREFIX}${asset.id}`}
+                        </div>
+                      </div>
+                      <SparklesIcon
+                        size={13}
+                        className='text-violet-500 shrink-0'
+                      />
+                    </button>
+                  ))}
+                </>
+              )}
               {config.mediaItems.filter(
                 (item) => mentionFilter === 'all' || item.type === mentionFilter
               ).length === 0 &&
-                mentionLibraryAssets.length === 0 && (
+                mentionLibraryAssets.length === 0 &&
+                mentionSourceAssets.length === 0 && (
                   <div className='text-muted-foreground px-3 py-2 text-center text-xs'>
                     {t('No resources uploaded yet')}
                   </div>

@@ -16,9 +16,11 @@ type stubAssetAdapter struct {
 	uploadedURL   string
 	uploadedType  string
 	uploadedName  string
+	uploadCalls   int
 }
 
 func (s *stubAssetAdapter) Upload(url string, assetType string, name string) (string, string, string, error) {
+	s.uploadCalls++
 	s.uploadedURL = url
 	s.uploadedType = assetType
 	s.uploadedName = name

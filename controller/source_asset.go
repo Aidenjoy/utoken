@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -185,6 +186,56 @@ func SyncSourceAsset(c *gin.Context) {
 
 	results := service.SyncSourceAssetToChannels(req.SourceAssetId, req.ChannelIds)
 	c.JSON(http.StatusOK, gin.H{"sync_tasks": results})
+}
+
+type ensureSourceAssetRequest struct {
+	SourceAssetId int64  `json:"source_asset_id"`
+	Model         string `json:"model"`
+	Group         string `json:"group"`
+}
+
+// EnsureSourceAsset 智能素材预热：按视频提交同一套解析逻辑挑选渠道，
+// 必要时现场触发同步，返回副本当前状态（active/pending/failed）。
+// 前端在 @ 选中 yun 素材、或切换模型/分组后调用，让提交前副本尽量已过审。
+func EnsureSourceAsset(c *gin.Context) {
+	userId := c.GetInt("id")
+	var req ensureSourceAssetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		sourceAssetJSONError(c, http.StatusBadRequest, "invalid_request", "请求体无效: "+err.Error())
+		return
+	}
+	if req.SourceAssetId <= 0 || strings.TrimSpace(req.Model) == "" {
+		sourceAssetJSONError(c, http.StatusBadRequest, "invalid_request", "source_asset_id 与 model 必填")
+		return
+	}
+
+	ref := service.SmartAssetRefPrefix + strconv.FormatInt(req.SourceAssetId, 10)
+	resolutions, channelId, err := service.ResolveSmartAssetRefs(userId, []string{ref}, req.Model, ensureCandidateGroups(userId, req.Group))
+	if err != nil {
+		status := http.StatusBadRequest
+		var smartErr *service.SmartAssetError
+		if errors.As(err, &smartErr) && smartErr.Kind == service.SmartAssetNotFound {
+			status = http.StatusNotFound
+		}
+		sourceAssetJSONError(c, status, "ensure_failed", err.Error())
+		return
+	}
+	res := resolutions[0]
+	c.JSON(http.StatusOK, gin.H{
+		"status":            res.Status,
+		"channel_id":        channelId,
+		"upstream_asset_id": res.UpstreamAssetId,
+	})
+}
+
+// ensureCandidateGroups 展开预热的候选分组：显式分组直接用；
+// 空或 auto 按用户自动分组列表（与 Distribute 的选择语义一致）。
+func ensureCandidateGroups(userId int, group string) []string {
+	if group != "" && group != "auto" {
+		return []string{group}
+	}
+	userGroup, _ := model.GetUserGroup(userId, false)
+	return service.GetUserAutoGroup(userGroup)
 }
 
 // AdminSyncSourceAsset 管理员入口：可跨用户同步任意源素材到任意渠道。

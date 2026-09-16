@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -87,7 +89,14 @@ func (e *AssetLockError) Error() string {
 
 // ResolveAssetLockedChannelId 读取原始请求体并解析 asset:// 引用：
 // 返回应锁定的渠道 ID；无引用返回 0, nil；校验失败返回已 i18n 的错误。
-func ResolveAssetLockedChannelId(c *gin.Context, userId int) (int, error) {
+//
+// 引用分两类：
+//   - 智能素材（yun- 前缀）：按 modelName × 候选分组解析源素材，挑选渠道、
+//     必要时现场同步，并把 body 中的 yun 引用改写为真实上游素材 ID；
+//   - 渠道素材（上游 ID）：按既有逻辑校验归属与同渠道收敛。
+//
+// 两类可混用，但最终必须收敛到同一渠道，否则报渠道冲突。
+func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, usingGroup string) (int, error) {
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		return 0, err
@@ -106,14 +115,93 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int) (int, error) {
 	if len(assetIDs) == 0 {
 		return 0, nil
 	}
-	channelId, err := ValidateUserAssetRefs(userId, assetIDs)
-	if err != nil {
-		if lockErr, ok := err.(*AssetLockError); ok {
-			return 0, translateAssetLockError(c, lockErr)
+
+	var smartRefs, upstreamRefs []string
+	for _, id := range assetIDs {
+		if strings.HasPrefix(id, service.SmartAssetRefPrefix) {
+			smartRefs = append(smartRefs, id)
+		} else {
+			upstreamRefs = append(upstreamRefs, id)
 		}
-		return 0, err
 	}
-	return channelId, nil
+
+	lockedChannelId := 0
+	if len(smartRefs) > 0 {
+		resolutions, channelId, resolveErr := service.ResolveSmartAssetRefs(
+			userId, smartRefs, modelName, smartAssetCandidateGroups(c, usingGroup))
+		if resolveErr != nil {
+			return 0, translateSmartAssetError(c, resolveErr, modelName, usingGroup)
+		}
+		mapping := make(map[string]string, len(resolutions))
+		for _, r := range resolutions {
+			mapping[r.Ref] = r.UpstreamAssetId
+		}
+		if newBody := rewriteAssetRefs(body, mapping); !bytes.Equal(newBody, body) {
+			if replaceErr := common.ReplaceBodyStorage(c, newBody); replaceErr != nil {
+				return 0, replaceErr
+			}
+		}
+		lockedChannelId = channelId
+	}
+
+	if len(upstreamRefs) > 0 {
+		channelId, validateErr := ValidateUserAssetRefs(userId, upstreamRefs)
+		if validateErr != nil {
+			if lockErr, ok := validateErr.(*AssetLockError); ok {
+				return 0, translateAssetLockError(c, lockErr)
+			}
+			return 0, validateErr
+		}
+		if lockedChannelId > 0 && channelId != lockedChannelId {
+			return 0, translateAssetLockError(c, &AssetLockError{Kind: AssetLockChannelConflict, Asset: upstreamRefs[0]})
+		}
+		lockedChannelId = channelId
+	}
+	return lockedChannelId, nil
+}
+
+// rewriteAssetRefs 把 body 中的智能素材引用替换为真实上游素材 ID。
+// 走正则整段匹配而非字节替换，避免 yun-1 误命中 yun-12 的前缀。
+func rewriteAssetRefs(body []byte, mapping map[string]string) []byte {
+	if len(mapping) == 0 {
+		return body
+	}
+	return assetURIRegexp.ReplaceAllFunc(body, func(match []byte) []byte {
+		id := string(match[len("asset://"):])
+		if upstream, ok := mapping[id]; ok {
+			return []byte("asset://" + upstream)
+		}
+		return match
+	})
+}
+
+// smartAssetCandidateGroups 展开智能素材解析的候选分组：
+// 显式分组直接用；空或 auto 按用户自动分组列表（与 selectAssetLockedChannel 语义一致）。
+func smartAssetCandidateGroups(c *gin.Context, usingGroup string) []string {
+	if usingGroup != "" && usingGroup != "auto" {
+		return []string{usingGroup}
+	}
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	return service.GetUserAutoGroup(userGroup)
+}
+
+func translateSmartAssetError(c *gin.Context, err error, modelName string, usingGroup string) error {
+	var smartErr *service.SmartAssetError
+	if !errors.As(err, &smartErr) {
+		return err
+	}
+	switch smartErr.Kind {
+	case service.SmartAssetNotFound:
+		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorAssetNotFound, map[string]any{"Asset": smartErr.Ref}))
+	case service.SmartAssetNoModelChannel:
+		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelName}))
+	case service.SmartAssetNoProtocolChannel:
+		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorAssetNoProtocolChannel, map[string]any{"Model": modelName}))
+	case service.SmartAssetSyncFailed:
+		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorAssetSmartSyncFailed, map[string]any{"Ref": smartErr.Ref, "Error": smartErr.Detail}))
+	default:
+		return err
+	}
 }
 
 func translateAssetLockError(c *gin.Context, err *AssetLockError) error {

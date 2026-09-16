@@ -95,6 +95,26 @@ func GetBodyStorage(c *gin.Context) (BodyStorage, error) {
 	return bs, nil
 }
 
+// ReplaceBodyStorage 用新内容替换请求体存储（供中间件改写请求体，
+// 例如把智能素材 asset://yun-x 引用替换为真实上游素材 ID）。
+// 关闭旧存储并更新上下文缓存、Body 与 ContentLength；请求结束时
+// CleanupBodyStorage 关闭的即当前存储，清理语义不变。
+func ReplaceBodyStorage(c *gin.Context, data []byte) error {
+	if old, exists := c.Get(KeyBodyStorage); exists && old != nil {
+		if bs, ok := old.(BodyStorage); ok {
+			_ = bs.Close()
+		}
+	}
+	storage, err := CreateBodyStorage(data)
+	if err != nil {
+		return err
+	}
+	c.Set(KeyBodyStorage, storage)
+	c.Request.Body = io.NopCloser(storage)
+	c.Request.ContentLength = int64(len(data))
+	return nil
+}
+
 // CleanupBodyStorage 清理请求体存储（应在请求结束时调用）
 func CleanupBodyStorage(c *gin.Context) {
 	if storage, exists := c.Get(KeyBodyStorage); exists && storage != nil {

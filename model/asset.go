@@ -138,6 +138,25 @@ func DeleteAssetById(id int64, userId int) (string, error) {
 	return "", nil
 }
 
+// DeleteAssetsByUserAndAssetID 按「用户 + 上游素材 ID」删除渠道素材记录，返回删除行数。
+// 供对外删除接口使用：按 user+asset_id 全删，避免遗漏同 ID 的多渠道登记。
+func DeleteAssetsByUserAndAssetID(userId int, assetID string) (int64, error) {
+	if assetID == "" {
+		return 0, errors.New("asset id is required")
+	}
+	result := DB.Where("user_id = ? AND asset_id = ?", userId, assetID).Delete(&Asset{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+// DeleteAssetsBySourceAssetId 级联删除某源素材在各渠道的副本记录。
+// 供删除智能素材时清理 assets 表映射（上游素材保留，仅删本地登记）。
+func DeleteAssetsBySourceAssetId(sourceAssetId int64) error {
+	return DB.Where("source_asset_id = ?", sourceAssetId).Delete(&Asset{}).Error
+}
+
 // AdminDeleteChannelAssetById 按渠道与素材 ID 删除副本（管理员跨用户操作，不限归属）。
 // 限定 channel_id 防止误删其他渠道下的同名副本。
 func AdminDeleteChannelAssetById(channelId int, id int64) error {

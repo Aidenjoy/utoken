@@ -22,6 +22,7 @@ import {
   API_ENDPOINTS,
   ASSET_API_ENDPOINTS,
   IMAGE_API_ENDPOINTS,
+  SOURCE_ASSET_API_ENDPOINTS,
   VIDEO_API_ENDPOINTS,
 } from './constants'
 import type {
@@ -30,10 +31,12 @@ import type {
   AssetType,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  EnsureSourceAssetResponse,
   ImageGenerationRequest,
   ImageGenerationResponse,
   ModelOption,
   GroupOption,
+  SourceAsset,
   VideoSubmitRequest,
   VideoSubmitResponse,
   VideoTaskResponse,
@@ -294,5 +297,95 @@ export async function deleteAsset(id: number): Promise<void> {
     } as Record<string, unknown>)
   } catch (error) {
     throw new Error(assetErrorMessage(error))
+  }
+}
+
+/**
+ * Upload a source asset (smart asset): the file lands on our own TOS and is
+ * registered in source_assets, not bound to any channel. Channel copies are
+ * created later by `ensureSourceAsset` (or at video-submit time).
+ *
+ * @param file      The file to upload
+ * @param name      Optional display name (defaults to the file name server-side)
+ * @param assetType Optional Image/Video/Audio (server infers from extension if omitted)
+ */
+export async function uploadSourceAsset(
+  file: File,
+  name?: string,
+  assetType?: AssetType,
+  onProgress?: (percent: number) => void
+): Promise<SourceAsset> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (name) formData.append('name', name)
+  if (assetType) formData.append('asset_type', assetType)
+  try {
+    const res = await api.post(SOURCE_ASSET_API_ENDPOINTS.UPLOAD, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (e: { loaded: number; total?: number }) => {
+        if (onProgress && e.total) {
+          onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      },
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+    return res.data as SourceAsset
+  } catch (error) {
+    throw new Error(assetErrorMessage(error))
+  }
+}
+
+/**
+ * List the current user's source assets, each with its per-channel copies.
+ * Source assets are channel-independent, so no model/group filter applies.
+ */
+export async function listSourceAssets(): Promise<SourceAsset[]> {
+  try {
+    const res = await api.get(SOURCE_ASSET_API_ENDPOINTS.LIST, {
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+    return Array.isArray(res.data?.assets) ? res.data.assets : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Delete a source-asset registration (local record only; channel copies and
+ * upstream assets are kept).
+ */
+export async function deleteSourceAsset(id: number): Promise<void> {
+  try {
+    await api.delete(SOURCE_ASSET_API_ENDPOINTS.DETAIL(id), {
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+  } catch (error) {
+    throw new Error(assetErrorMessage(error))
+  }
+}
+
+/**
+ * Pre-warm a source asset for the selected model/group: the backend picks the
+ * channel exactly like video submit does and syncs the copy if missing, so the
+ * copy is (likely) already active by the time the user submits.
+ *
+ * Idempotent: an existing pending copy returns immediately without re-upload.
+ * Returns null when the request fails (e.g. no channel serves the model), the
+ * caller surfaces a toast and submit still works via the middleware path.
+ */
+export async function ensureSourceAsset(
+  id: number,
+  model: string,
+  group: string
+): Promise<EnsureSourceAssetResponse | null> {
+  try {
+    const res = await api.post(
+      SOURCE_ASSET_API_ENDPOINTS.ENSURE,
+      { source_asset_id: id, model, group },
+      { skipErrorHandler: true } as Record<string, unknown>
+    )
+    return res.data as EnsureSourceAssetResponse
+  } catch {
+    return null
   }
 }

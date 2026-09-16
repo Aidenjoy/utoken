@@ -68,5 +68,6 @@ func SetVideoRouter(router *gin.Engine) {
 	{
 		relayAssetRouter.POST("/upload", controller.RelayUploadAsset)
 		relayAssetRouter.GET("/:id", controller.RelayGetAsset)
+		relayAssetRouter.DELETE("/:id", controller.RelayDeleteAsset)
 	}
 }

@@ -27,7 +27,9 @@ var commonFalseVal string
 var logKeyCol string
 var logGroupCol string
 
-func initCol() {
+// InitCol 初始化数据库方言相关的列名常量。InitDB 内部会调用；
+// 测试包自行搭建 DB（不走 InitDB）时也须调用，否则 `group` 等保留列名为空导致查询失败。
+func InitCol() {
 	// init common column names
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		commonGroupCol = `"group"`
@@ -185,7 +187,7 @@ func InitDB() (err error) {
 		if os.Getenv("LOG_SQL_DSN") == "" {
 			common.SetLogDatabaseType(dbType)
 		}
-		initCol()
+		InitCol()
 		if common.DebugEnabled {
 			db = db.Debug()
 		}
@@ -223,13 +225,13 @@ func InitLogDB() (err error) {
 	if os.Getenv("LOG_SQL_DSN") == "" {
 		LOG_DB = DB
 		common.SetLogDatabaseType(common.MainDatabaseType())
-		initCol()
+		InitCol()
 		return
 	}
 	db, dbType, err := chooseDB("LOG_SQL_DSN", true)
 	if err == nil {
 		common.SetLogDatabaseType(dbType)
-		initCol()
+		InitCol()
 		if common.DebugEnabled {
 			db = db.Debug()
 		}

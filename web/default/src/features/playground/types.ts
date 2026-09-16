@@ -215,6 +215,36 @@ export interface AssetProvider {
   protocol: string
 }
 
+/**
+ * A source asset is the user's original file stored on our own TOS, not bound
+ * to any channel. Per-channel copies (Asset rows) are synced on demand; the
+ * `channels` field carries those copies with their sync status.
+ *
+ * The stable reference id used in the playground is `yun-<id>`, submitted as
+ * `asset://yun-<id>`; the Distribute middleware rewrites it to the real
+ * upstream asset id of whichever channel serves the selected model.
+ */
+export interface SourceAsset {
+  id: number
+  user_id: number
+  name: string
+  asset_type: AssetType
+  source_url: string
+  file_size: number
+  status: AssetStatus
+  created_at: number
+  updated_at: number
+  /** Per-channel copies synced from this source asset (may be empty) */
+  channels?: Asset[]
+}
+
+/** Result of POST /pg/source-assets/ensure (smart-asset pre-warm). */
+export interface EnsureSourceAssetResponse {
+  status: AssetStatus
+  channel_id: number
+  upstream_asset_id: string
+}
+
 export interface VideoConfig {
   model: string
   group: string

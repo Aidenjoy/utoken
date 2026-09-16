@@ -113,6 +113,21 @@ export const ASSET_API_ENDPOINTS = {
   DETAIL: (id: number) => `/pg/assets/${id}`,
 } as const
 
+// Source-asset library (smart assets) endpoints. A source asset is uploaded
+// once to our own TOS and is not bound to a channel; `ensure` pre-warms the
+// per-channel copy for the currently selected model/group.
+export const SOURCE_ASSET_API_ENDPOINTS = {
+  UPLOAD: '/pg/source-assets/upload',
+  LIST: '/pg/source-assets',
+  DETAIL: (id: number) => `/pg/source-assets/${id}`,
+  ENSURE: '/pg/source-assets/ensure',
+} as const
+
+// Smart-asset reference prefix: a source asset with id N is referenced in the
+// video body as `asset://yun-N`. The Distribute middleware rewrites it to the
+// real upstream asset id at submit time.
+export const SMART_ASSET_REF_PREFIX = 'yun-' as const
+
 export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   model: '',
   group: DEFAULT_GROUP,

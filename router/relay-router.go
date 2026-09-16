@@ -92,6 +92,8 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundUploadRouter.GET("/source-assets", controller.ListSourceAssets)
 		playgroundUploadRouter.GET("/source-assets/sync/status", controller.GetSourceAssetSyncStatus)
 		playgroundUploadRouter.POST("/source-assets/sync", controller.SyncSourceAsset)
+		// 智能素材预热：按模型挑选渠道并按需同步（与视频提交同一套解析逻辑）
+		playgroundUploadRouter.POST("/source-assets/ensure", controller.EnsureSourceAsset)
 		playgroundUploadRouter.GET("/source-assets/:id", controller.GetSourceAsset)
 		playgroundUploadRouter.DELETE("/source-assets/:id", controller.DeleteSourceAsset)
 	}

@@ -73,6 +73,15 @@ func GetSourceAssetByAssetId(assetId int64) (*SourceAsset, error) {
 	return &asset, err
 }
 
+// GetSourceAssetByUserAndURL 按「用户 + 源地址」查找已登记的源素材。
+// 供以 URL 注册智能素材时做幂等去重，避免同一地址重复登记产生多份智能素材。
+// 未命中时返回 record-not-found 错误，调用方须按 error 判定。
+func GetSourceAssetByUserAndURL(userId int, sourceURL string) (*SourceAsset, error) {
+	var asset SourceAsset
+	err := DB.Where("user_id = ? AND source_url = ?", userId, sourceURL).First(&asset).Error
+	return &asset, err
+}
+
 // GetAssetsBySourceAssetId 查询指定源素材在所有渠道的副本。
 func GetAssetsBySourceAssetId(sourceAssetId int64) ([]*Asset, error) {
 	var assets []*Asset

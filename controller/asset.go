@@ -414,8 +414,15 @@ func resolveAssetProtocolChannelForModel(group, modelName string) (*model.Channe
 	return picked, nil
 }
 
-// registerAssetForUser 素材注册核心流程：校验 → 上游注册 → 组 ID 回写 → 复用/落库。
-func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *assetRegisterError) {
+// assetRegisterResult 素材注册结果：渠道素材（Asset 非 nil，已绑定具体渠道）
+// 或智能素材（SourceAsset 非 nil，不绑定渠道，提交/预热时自动路由）二者其一。
+type assetRegisterResult struct {
+	Asset       *model.Asset
+	SourceAsset *model.SourceAsset
+}
+
+// registerAssetForUser 素材注册核心流程：校验 →（指定渠道）上游注册 /（未指定渠道）登记智能素材。
+func registerAssetForUser(userId int, req assetUploadRequest) (*assetRegisterResult, *assetRegisterError) {
 	req.URL = strings.TrimSpace(req.URL)
 	if !model.IsValidAssetType(req.AssetType) {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", "asset_type must be one of Image/Video/Audio"}
@@ -436,11 +443,46 @@ func registerAssetForUser(userId int, req assetUploadRequest) (*model.Asset, *as
 	if req.Name == "" {
 		req.Name = fmt.Sprintf("asset-%d", time.Now().Unix())
 	}
+	// 未指定渠道（channel_id 与 channel 均为空）→ 登记为智能素材：
+	// 不绑定渠道，返回 yun-<id> 稳定引用，视频提交/预热时自动路由到服务该模型的渠道并按需同步。
+	if req.ChannelId <= 0 && strings.TrimSpace(req.Channel) == "" {
+		source, regErr := registerSourceAssetFromURL(userId, req.URL, req.AssetType, req.Name)
+		if regErr != nil {
+			return nil, regErr
+		}
+		return &assetRegisterResult{SourceAsset: source}, nil
+	}
 	channel, err := resolveAssetProtocolChannel(req.ChannelId, req.Channel)
 	if err != nil {
 		return nil, &assetRegisterError{http.StatusBadRequest, "invalid_request", err.Error()}
 	}
-	return registerAssetToChannel(userId, channel, req.URL, req.AssetType, req.Name)
+	asset, regErr := registerAssetToChannel(userId, channel, req.URL, req.AssetType, req.Name)
+	if regErr != nil {
+		return nil, regErr
+	}
+	return &assetRegisterResult{Asset: asset}, nil
+}
+
+// registerSourceAssetFromURL 以远程 URL 登记智能素材（源素材，不绑定渠道）。
+// 与文件上传路径不同，这里不写 TOS——SourceURL 直接指向调用方提供的公网地址；
+// 渠道副本在视频提交/预热时按需通过该 URL 同步（见 service.syncToChannel）。
+// 同一用户重复登记同一 URL 幂等复用，避免产生多份智能素材。
+func registerSourceAssetFromURL(userId int, url, assetType, name string) (*model.SourceAsset, *assetRegisterError) {
+	if existing, err := model.GetSourceAssetByUserAndURL(userId, url); err == nil && existing.ID > 0 {
+		return existing, nil
+	}
+	asset := &model.SourceAsset{
+		UserID:    userId,
+		Name:      name,
+		AssetType: assetType,
+		SourceURL: url,
+		Status:    model.AssetStatusActive,
+	}
+	if err := asset.Insert(); err != nil {
+		return nil, &assetRegisterError{http.StatusInternalServerError, "insert_error", err.Error()}
+	}
+	common.SysLog(fmt.Sprintf("[SourceAsset] user %d registered smart asset %d from URL (type=%s)", userId, asset.ID, assetType))
+	return asset, nil
 }
 
 // registerAssetToChannel 向指定渠道注册素材：上游注册 → 组 ID 回写 → 复用/落库。
@@ -506,12 +548,13 @@ func UploadAsset(c *gin.Context) {
 		assetJSONError(c, http.StatusBadRequest, "invalid_request", "channel_id is required")
 		return
 	}
-	asset, regErr := registerAssetForUser(userId, req)
+	result, regErr := registerAssetForUser(userId, req)
 	if regErr != nil {
 		assetJSONError(c, regErr.status, regErr.typ, regErr.msg)
 		return
 	}
-	c.JSON(http.StatusOK, asset)
+	// 管理端入口 channel_id 必填，恒为渠道素材。
+	c.JSON(http.StatusOK, result.Asset)
 }
 
 // relayAssetJSON 中转站风格对外信封：{"code":0,"message":"ok","data":...}，code 非 0 即失败。
@@ -549,11 +592,22 @@ func RelayUploadAsset(c *gin.Context) {
 		relayAssetJSON(c, 1, "invalid request body: "+err.Error(), nil)
 		return
 	}
-	asset, regErr := registerAssetForUser(userId, req)
+	result, regErr := registerAssetForUser(userId, req)
 	if regErr != nil {
 		relayAssetJSON(c, 1, regErr.msg, nil)
 		return
 	}
+	// 智能素材（未指定渠道）：返回 yun-<id> 稳定引用，视频任务中以 asset://yun-<id> 引用，
+	// 提交时自动路由到服务该模型的渠道并按需同步。
+	if result.SourceAsset != nil {
+		relayAssetJSON(c, 0, "ok", gin.H{
+			"Id":    service.SmartAssetRefPrefix + strconv.FormatInt(result.SourceAsset.ID, 10),
+			"Name":  result.SourceAsset.Name,
+			"Smart": true,
+		})
+		return
+	}
+	asset := result.Asset
 	relayAssetJSON(c, 0, "ok", gin.H{
 		"Id":          asset.AssetID,
 		"GroupId":     asset.GroupID,
@@ -563,9 +617,14 @@ func RelayUploadAsset(c *gin.Context) {
 
 // RelayGetAsset 对外（Bearer token）素材状态查询接口，兼容中转站契约：
 // GET {base}/api/assets/{id}；pending 时顺带向上游刷新。仅能查询本人素材。
+// id 为 yun-<源素材ID> 时按智能素材查询（返回源素材 + 各渠道副本状态）。
 func RelayGetAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	assetID := c.Param("id")
+	if strings.HasPrefix(assetID, service.SmartAssetRefPrefix) {
+		relayGetSmartAsset(c, userId, assetID)
+		return
+	}
 	assets, err := model.GetUserAssetsByAssetIDs(userId, []string{assetID})
 	if err != nil || len(assets) == 0 {
 		relayAssetJSON(c, 1, "asset not found", nil)
@@ -585,6 +644,110 @@ func RelayGetAsset(c *gin.Context) {
 		"CreateTime":  relayAssetTime(asset.CreatedAt),
 		"UpdateTime":  relayAssetTime(asset.UpdatedAt),
 	})
+}
+
+// relayGetSmartAsset 处理智能素材（yun-<id>）的状态查询：智能素材渠道无关，
+// 就绪与否取决于视频提交时自动路由到的那个渠道，故返回源素材本体 + 各渠道副本。
+// 汇总 Status：任一副本 active 即 Active；否则有 pending 或尚无副本为 Pending（首次引用时自动同步）；全 failed 为 Failed。
+func relayGetSmartAsset(c *gin.Context, userId int, ref string) {
+	idStr := strings.TrimPrefix(ref, service.SmartAssetRefPrefix)
+	sourceId, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		relayAssetJSON(c, 1, "asset not found", nil)
+		return
+	}
+	source, err := model.GetSourceAssetById(sourceId)
+	if err != nil || source.UserID != userId {
+		relayAssetJSON(c, 1, "asset not found", nil)
+		return
+	}
+	copies, _ := model.GetAssetsBySourceAssetId(sourceId)
+	refreshPendingAssets(copies)
+
+	anyActive, anyPending := false, false
+	for _, cp := range copies {
+		switch cp.Status {
+		case model.AssetStatusActive:
+			anyActive = true
+		case model.AssetStatusPending:
+			anyPending = true
+		}
+	}
+	status := model.AssetStatusFailed
+	switch {
+	case anyActive:
+		status = model.AssetStatusActive
+	case anyPending || len(copies) == 0:
+		status = model.AssetStatusPending
+	}
+
+	channels := make([]gin.H, 0, len(copies))
+	for _, cp := range copies {
+		channels = append(channels, gin.H{
+			"ChannelId": cp.ChannelID,
+			"AssetId":   cp.AssetID,
+			"Status":    relayAssetStatus(cp.Status),
+		})
+	}
+	relayAssetJSON(c, 0, "ok", gin.H{
+		"Id":         ref,
+		"Name":       source.Name,
+		"AssetType":  source.AssetType,
+		"Status":     relayAssetStatus(status),
+		"Smart":      true,
+		"URL":        source.SourceURL,
+		"CreateTime": relayAssetTime(source.CreatedAt),
+		"UpdateTime": relayAssetTime(source.UpdatedAt),
+		"Channels":   channels,
+	})
+}
+
+// RelayDeleteAsset 对外（Bearer token）素材删除接口：DELETE {base}/api/assets/{id}。
+// 仅删除本地登记记录（TOS 原件与上游素材保留，上游无删除 API）：
+// id 为 yun-<源素材ID> 时级联删除其各渠道副本记录后删除源素材登记；
+// 否则按上游素材 ID 删除本人渠道素材记录。仅能删除本人素材。
+func RelayDeleteAsset(c *gin.Context) {
+	userId := c.GetInt("id")
+	assetID := c.Param("id")
+	if strings.HasPrefix(assetID, service.SmartAssetRefPrefix) {
+		relayDeleteSmartAsset(c, userId, assetID)
+		return
+	}
+	deleted, err := model.DeleteAssetsByUserAndAssetID(userId, assetID)
+	if err != nil {
+		relayAssetJSON(c, 1, err.Error(), nil)
+		return
+	}
+	if deleted == 0 {
+		relayAssetJSON(c, 1, "asset not found", nil)
+		return
+	}
+	relayAssetJSON(c, 0, "ok", gin.H{"Id": assetID, "Deleted": true})
+}
+
+// relayDeleteSmartAsset 删除智能素材：先级联删除其各渠道副本记录，再删除源素材登记。
+// 删除后 yun-<id> 与 asset://yun-<id> 引用均失效；上游素材保留。
+func relayDeleteSmartAsset(c *gin.Context, userId int, ref string) {
+	idStr := strings.TrimPrefix(ref, service.SmartAssetRefPrefix)
+	sourceId, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		relayAssetJSON(c, 1, "asset not found", nil)
+		return
+	}
+	source, err := model.GetSourceAssetById(sourceId)
+	if err != nil || source.UserID != userId {
+		relayAssetJSON(c, 1, "asset not found", nil)
+		return
+	}
+	if err := model.DeleteAssetsBySourceAssetId(sourceId); err != nil {
+		relayAssetJSON(c, 1, err.Error(), nil)
+		return
+	}
+	if err := model.DeleteSourceAssetById(sourceId, userId); err != nil {
+		relayAssetJSON(c, 1, err.Error(), nil)
+		return
+	}
+	relayAssetJSON(c, 0, "ok", gin.H{"Id": ref, "Deleted": true})
 }
 
 // persistAssetGroupID 将自动创建的默认素材组 ID 回写到渠道 other settings。

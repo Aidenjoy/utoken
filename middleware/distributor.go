@@ -115,8 +115,9 @@ func Distribute() func(c *gin.Context) {
 
 				// asset:// 素材引用：素材 ID 只在注册它的渠道上游有效，
 				// 命中时强制锁定到素材所属渠道，跳过亲和性与随机选择。
+				// 智能素材（yun- 引用）在此处解析、同步并改写为真实上游 ID。
 				if isVideoSubmitPath(c.Request.URL.Path) && c.Request.Method == http.MethodPost {
-					lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"))
+					lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"), modelRequest.Model, usingGroup)
 					if lockErr != nil {
 						abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
 						return

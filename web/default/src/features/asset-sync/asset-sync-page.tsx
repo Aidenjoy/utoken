@@ -86,7 +86,14 @@ function AssetThumb({ asset }: { asset: ChannelAsset }) {
       </div>
     )
   }
-  return <img src={src} alt={asset.name} className='size-full object-cover' />
+  return (
+    <img
+      src={src}
+      alt={asset.name}
+      className='size-full object-cover'
+      referrerPolicy='no-referrer'
+    />
+  )
 }
 
 export function AssetSyncPage() {

@@ -63,7 +63,12 @@ func SyncSourceAssetToChannels(sourceAssetId int64, channelIds []int) []SyncResu
 }
 
 func syncToChannel(source *model.SourceAsset, channelId int) SyncResult {
-	existing, _ := model.GetAssetBySourceAndChannel(source.ID, channelId)
+	// GetAssetBySourceAndChannel 在未命中时返回非 nil 的零值 *Asset + error，
+	// 必须按 error 判定是否真的已有副本，否则新建分支永远走不到。
+	existing, existingErr := model.GetAssetBySourceAndChannel(source.ID, channelId)
+	if existingErr != nil {
+		existing = nil
+	}
 	if existing != nil && existing.Status == model.AssetStatusActive {
 		return SyncResult{ChannelID: channelId, Status: "skipped", AssetID: existing.AssetID}
 	}
@@ -323,7 +328,7 @@ func CheckAssetsByUpstreamIDs(channelId int, upstreamAssetIDs []string) *Preflig
 			check.Issues = append(check.Issues, AssetIssue{
 				ChannelId: channelId,
 				IssueType: "pending_review",
-				Detail:    fmt.Sprintf("素材 %s 在渠道 %d 审核中，请稍后重试", assetID, channelId),
+				Detail:    fmt.Sprintf("素材 %s 在渠道 %d 审核中（通常需 1-2 分钟），请耐心等待审核通过后重试", assetID, channelId),
 			})
 		case model.AssetStatusFailed:
 			check.Passed = false

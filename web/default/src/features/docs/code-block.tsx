@@ -48,11 +48,12 @@ function highlightJson(code: string): ReactNode[] {
   })
 }
 
-export type HttpMethod = 'GET' | 'POST'
+export type HttpMethod = 'GET' | 'POST' | 'DELETE'
 
 const METHOD_STYLES: Record<HttpMethod, string> = {
   GET: 'bg-sky-500/15 text-sky-400 ring-sky-500/30',
   POST: 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30',
+  DELETE: 'bg-rose-500/15 text-rose-400 ring-rose-500/30',
 }
 
 interface CodeBlockProps {

@@ -326,6 +326,8 @@ const (
 	MsgDistributorAssetChannelConflict    = "distributor.asset_channel_conflict"
 	MsgDistributorAssetChannelUnavailable = "distributor.asset_channel_unavailable"
 	MsgDistributorAssetNotReady           = "distributor.asset_not_ready"
+	MsgDistributorAssetNoProtocolChannel  = "distributor.asset_no_protocol_channel"
+	MsgDistributorAssetSmartSyncFailed    = "distributor.asset_smart_sync_failed"
 )
 
 // Custom OAuth provider related messages
