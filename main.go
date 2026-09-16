@@ -145,6 +145,12 @@ func main() {
 		return a
 	}
 
+	// Wire asset protocol factory (breaks service -> relay/channel/asset import cycle).
+	// Must run before any asset sync/poll path: SyncAssetToChannel and PollAssetStatuses
+	// read service.AssetProtocolFactoryFunc, which stays nil (surfacing as
+	// "素材协议未初始化") until injected here.
+	controller.InitAssetProtocolFactory()
+
 	// Register the periodic channel test, upstream model update, and async task
 	// polling (Midjourney / Suno / video) jobs as scheduled system tasks
 	// (DB-lease dedup across masters + run history), then start the runner that
