@@ -138,6 +138,22 @@ func DeleteAssetById(id int64, userId int) (string, error) {
 	return "", nil
 }
 
+// AdminDeleteChannelAssetById 按渠道与素材 ID 删除副本（管理员跨用户操作，不限归属）。
+// 限定 channel_id 防止误删其他渠道下的同名副本。
+func AdminDeleteChannelAssetById(channelId int, id int64) error {
+	if id == 0 {
+		return errors.New("asset id is required")
+	}
+	result := DB.Where("id = ? AND channel_id = ?", id, channelId).Delete(&Asset{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("asset not found")
+	}
+	return nil
+}
+
 // UpdateAssetStatus 刷新素材状态与预览地址（上游查询成功时调用）。
 func UpdateAssetStatus(id int64, status string, previewURL string, errMsg string) error {
 	updates := map[string]any{

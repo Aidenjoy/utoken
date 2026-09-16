@@ -56,7 +56,21 @@ export async function listChannelAssets(
   }
 }
 
-/** 把源渠道下勾选的素材批量同步到目标渠道。 */
+/** 删除渠道下的素材副本（仅本地记录；上游无删除 API，远端素材保留）。 */
+export async function deleteChannelAsset(
+  channelId: number,
+  assetId: number
+): Promise<void> {
+  try {
+    await api.delete(`/api/asset/channel/${channelId}/assets/${assetId}`, {
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+  } catch (error) {
+    throw new Error(assetSyncErrorMessage(error))
+  }
+}
+
+
 export async function syncChannelAssets(payload: {
   source_channel_id: number
   target_channel_id: number

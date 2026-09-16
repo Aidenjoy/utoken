@@ -156,3 +156,32 @@ func TestSyncAssetsToChannelRejectsForeignAsset(t *testing.T) {
 	assert.Equal(t, "failed", results[0].Status)
 	assert.Empty(t, stub.uploadedURL)
 }
+
+// TestAdminDeleteChannelAssetByIdScoping 管理员删除只作用于指定渠道下的副本，跨渠道 ID 误配时拒绝删除。
+func TestAdminDeleteChannelAssetByIdScoping(t *testing.T) {
+	stub := &stubAssetAdapter{}
+	setupAssetSyncTest(t, stub)
+
+	keep := &model.Asset{
+		UserID: 1, ChannelID: 51, AssetID: "keep-1", Name: "keep",
+		AssetType: model.AssetTypeImage, Status: model.AssetStatusActive, SourceURL: "http://src/keep.png",
+	}
+	require.NoError(t, keep.Insert())
+	gone := &model.Asset{
+		UserID: 2, ChannelID: 52, AssetID: "gone-1", Name: "gone",
+		AssetType: model.AssetTypeImage, Status: model.AssetStatusActive, SourceURL: "http://src/gone.png",
+	}
+	require.NoError(t, gone.Insert())
+
+	// 渠道不匹配：拒绝删除，副本保留
+	assert.Error(t, model.AdminDeleteChannelAssetById(51, gone.ID))
+	_, err := model.GetAssetById(gone.ID)
+	require.NoError(t, err)
+
+	// 渠道匹配：删除成功，其他渠道副本不受影响
+	require.NoError(t, model.AdminDeleteChannelAssetById(52, gone.ID))
+	_, err = model.GetAssetById(gone.ID)
+	assert.Error(t, err)
+	_, err = model.GetAssetById(keep.ID)
+	assert.NoError(t, err)
+}

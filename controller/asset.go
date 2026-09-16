@@ -664,3 +664,22 @@ func DeleteAsset(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// AdminDeleteChannelAsset 按 ID 删除渠道下的素材副本（管理员；上游无删除 API，远端素材保留）。
+func AdminDeleteChannelAsset(c *gin.Context) {
+	channelId, err := strconv.Atoi(c.Param("channelId"))
+	if err != nil {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "invalid channel id")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		assetJSONError(c, http.StatusBadRequest, "invalid_request", "invalid asset id")
+		return
+	}
+	if err := model.AdminDeleteChannelAssetById(channelId, id); err != nil {
+		assetJSONError(c, http.StatusNotFound, "not_found", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

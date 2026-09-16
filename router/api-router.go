@@ -194,6 +194,7 @@ func SetApiRouter(router *gin.Engine) {
 			assetAdminRoute.GET("/channels", controller.GetAssetProviders)
 			assetAdminRoute.GET("/channel/:channelId/assets", controller.AdminListChannelAssets)
 			assetAdminRoute.POST("/channel-sync", controller.AdminSyncChannelAssets)
+			assetAdminRoute.DELETE("/channel/:channelId/assets/:id", controller.AdminDeleteChannelAsset)
 		}
 
 		optionRoute := apiRouter.Group("/option")
