@@ -39,6 +39,25 @@ const STATUS_RELATED_KEYS = [
   'general_setting.custom_currency_exchange_rate',
 ]
 
+// 模型广场 /api/pricing 的 react-query 缓存（queryKey ['pricing']，staleTime 5 分钟）。
+// 管理员在系统设置里改模型价后，若不同步失效这份缓存，切到广场页在 5 分钟内仍会
+// 命中旧的新鲜缓存不重新拉取，表现为「保存成功但广场价格过一会才变」。这里列出
+// 所有会影响广场展示的定价项，保存成功后一并失效 ['pricing']。
+const PRICING_RATIO_KEYS = new Set([
+  'ModelRatio',
+  'ModelPrice',
+  'CompletionRatio',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+])
+
+function isPricingRelatedKey(key: string): boolean {
+  return PRICING_RATIO_KEYS.has(key) || key.startsWith('billing_setting.')
+}
+
 export function useUpdateOption() {
   const queryClient = useQueryClient()
 
@@ -48,6 +67,11 @@ export function useUpdateOption() {
       if (data.success) {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
+
+        // 改到模型定价相关项时失效模型广场缓存，确保切过去立即拉到最新价格
+        if (isPricingRelatedKey(variables.key)) {
+          queryClient.invalidateQueries({ queryKey: ['pricing'] })
+        }
 
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.includes(variables.key)) {

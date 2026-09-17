@@ -573,6 +573,19 @@ func updateOptionMap(key string, value string) (err error) {
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
 	}
+	// 模型广场 /api/pricing 的 pricingMap 缓存仅按 1 分钟 TTL 或显式失效后重建。
+	// billing_setting.* 变更已在 handleConfigUpdate 中调用 InvalidatePricingCache，
+	// 但下列倍率/单价项此前只刷新 exposed 缓存，导致管理员改价（尤其是仅改动这些
+	// 项的改名）后广场最长 1 分钟仍展示旧价、出现后台价与前端价不一致或部分不刷新。
+	// 与 billing_setting 保持一致，改价成功后显式失效定价缓存，下次读取立即按最新
+	// 内存值重建。
+	if err == nil {
+		switch key {
+		case "ModelRatio", "ModelPrice", "CompletionRatio", "CacheRatio",
+			"CreateCacheRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio":
+			InvalidatePricingCache()
+		}
+	}
 	return err
 }
 
