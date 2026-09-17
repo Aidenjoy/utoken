@@ -155,6 +155,7 @@ type orgSummaryResponse struct {
 	PoolQuota     int    `json:"pool_quota"`
 	PoolUsedQuota int    `json:"pool_used_quota"`
 	PoolHidden    bool   `json:"pool_quota_hidden"`
+	QuotaHeadroom int    `json:"quota_headroom"`
 	MemberCount   int64  `json:"member_count"`
 	CacheEnabled  bool   `json:"cache_enabled"`
 }
@@ -191,6 +192,10 @@ func GetOrgSummary(c *gin.Context) {
 	if !org.HidePoolQuota || member.IsAdmin() || middleware.IsSystemAdmin(c) {
 		resp.PoolQuota = org.Quota
 		resp.PoolUsedQuota = org.UsedQuota
+		// 可分配余量与池余额同可见性：成员子额度新增/上调不得超过该余量
+		if headroom, headroomErr := model.GetOrgQuotaHeadroom(org.Id); headroomErr == nil {
+			resp.QuotaHeadroom = headroom
+		}
 	} else {
 		resp.PoolHidden = true
 	}
@@ -212,9 +217,11 @@ func GetOrganization(c *gin.Context) {
 		return
 	}
 	memberCount, _ := model.CountOrgMembers(org.Id)
+	headroom, _ := model.GetOrgQuotaHeadroom(org.Id)
 	common.ApiSuccess(c, gin.H{
 		"organization":    org,
 		"member_count":    memberCount,
+		"quota_headroom":  headroom,
 		"cache_supported": common.RedisEnabled,
 	})
 }
@@ -455,6 +462,10 @@ func CreateOrgMember(c *gin.Context) {
 		QuotaLimit: req.QuotaLimit,
 	}
 	if err := model.CreateOrgMemberUser(user, member); err != nil {
+		if errors.Is(err, model.ErrOrgMemberQuotaExceedsPool) {
+			common.ApiErrorI18n(c, i18n.MsgOrgMemberQuotaExceedsPool)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -526,6 +537,10 @@ func InviteOrgMember(c *gin.Context) {
 	if err := model.AddOrgMember(member); err != nil {
 		if errors.Is(err, model.ErrOrgUserAlreadyInOrg) {
 			common.ApiErrorI18n(c, i18n.MsgOrgUserAlreadyInOrg)
+			return
+		}
+		if errors.Is(err, model.ErrOrgMemberQuotaExceedsPool) {
+			common.ApiErrorI18n(c, i18n.MsgOrgMemberQuotaExceedsPool)
 			return
 		}
 		common.ApiError(c, err)
@@ -622,6 +637,10 @@ func UpdateOrgMember(c *gin.Context) {
 		}
 	}
 	if err := model.UpdateOrgMemberFields(member.Id, fields); err != nil {
+		if errors.Is(err, model.ErrOrgMemberQuotaExceedsPool) {
+			common.ApiErrorI18n(c, i18n.MsgOrgMemberQuotaExceedsPool)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -844,9 +863,11 @@ func AdminGetOrganization(c *gin.Context) {
 		return
 	}
 	memberCount, _ := model.CountOrgMembers(org.Id)
+	headroom, _ := model.GetOrgQuotaHeadroom(org.Id)
 	common.ApiSuccess(c, gin.H{
 		"organization":    org,
 		"member_count":    memberCount,
+		"quota_headroom":  headroom,
 		"cache_supported": common.RedisEnabled,
 	})
 }
@@ -1134,6 +1155,10 @@ func AdminAdjustOrgQuota(c *gin.Context) {
 	if err := model.IncreaseOrgQuota(org.Id, req.Quota); err != nil {
 		if errors.Is(err, model.ErrOrgQuotaInsufficient) {
 			common.ApiErrorI18n(c, i18n.MsgOrgQuotaInsufficient)
+			return
+		}
+		if errors.Is(err, model.ErrOrgPoolBelowCommitments) {
+			common.ApiErrorI18n(c, i18n.MsgOrgPoolBelowCommitments)
 			return
 		}
 		common.ApiError(c, err)

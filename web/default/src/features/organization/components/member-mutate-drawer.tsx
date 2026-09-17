@@ -127,6 +127,11 @@ type Props = {
    * 企业管理员操作本企业时留空。
    */
   orgId?: number
+  /**
+   * 企业池剩余可分配余量（quota 单位）：成员子额度新增/上调的上限。
+   * null 表示未知（后端仍会强制校验，前端不做前置拦截）。
+   */
+  quotaHeadroom?: number | null
   /** 无 OrganizationProvider 时（代管场景）由调用方提供刷新回调。 */
   onRefresh?: () => void
 }
@@ -151,6 +156,7 @@ export function MemberMutateDrawer({
   member,
   onOpenChange,
   orgId,
+  quotaHeadroom = null,
   onRefresh,
 }: Props) {
   const { t } = useTranslation()
@@ -187,10 +193,36 @@ export function MemberMutateDrawer({
   const isEdit = mode === 'edit'
   const isCreate = mode === 'create'
 
+  // 成员子额度的"剩余"必须由企业池兑付：新增/上调上限 = 池剩余可分配余量
+  // + 本成员已承诺量（上限剩余），与后端 checkOrgQuotaCommitmentTx 同口径。
+  const currentPromisedUnits =
+    isEdit && member && member.quota_limit > 0
+      ? Math.max(0, member.quota_limit - member.quota_used)
+      : 0
+  const maxAllocUnits =
+    quotaHeadroom == null ? null : quotaHeadroom + currentPromisedUnits
+  // 展示上限与池余额卡片同舍入口径；池余额在 quota 单位下不一定整分
+  // （如实际 85.69997 展示为 85.7），提交时一分以内的超出按展示舍入误差
+  // 夹紧到池实际余量，保证"照着显示的值输"一定能保存。
+  const maxAllocLabel = maxAllocUnits == null ? null : formatQuota(maxAllocUnits)
+  const centUnits = parseQuotaFromDollars(0.01)
+
   const onSubmit = async (values: MemberFormValues) => {
+    let quotaLimit = parseQuotaFromDollars(values.quota_amount)
+    if (maxAllocUnits != null && quotaLimit > maxAllocUnits) {
+      if (quotaLimit - maxAllocUnits >= centUnits) {
+        form.setError('quota_amount', {
+          type: 'manual',
+          message: t('Sub-quota exceeds the allocatable pool balance ({{amount}})', {
+            amount: maxAllocLabel ?? '',
+          }),
+        })
+        return
+      }
+      quotaLimit = maxAllocUnits
+    }
     setIsSubmitting(true)
     try {
-      const quotaLimit = parseQuotaFromDollars(values.quota_amount)
       let result
       if (mode === 'create') {
         result = await createOrgMember(
@@ -405,9 +437,10 @@ export function MemberMutateDrawer({
                         min={0}
                         step='any'
                         value={Number.isFinite(field.value) ? field.value : ''}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          form.clearErrors('quota_amount')
                           field.onChange(event.target.valueAsNumber || 0)
-                        }
+                        }}
                       />
                     </FormControl>
                     <FormDescription>
@@ -417,6 +450,13 @@ export function MemberMutateDrawer({
                           )} · ${t('0 means unlimited')}`
                         : t('0 means unlimited')}
                     </FormDescription>
+                    {maxAllocUnits != null && (
+                      <FormDescription>
+                        {t('Allocatable from the pool: {{amount}}', {
+                          amount: maxAllocLabel ?? '',
+                        })}
+                      </FormDescription>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

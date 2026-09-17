@@ -53,7 +53,7 @@ import {
   type MemberDrawerMode,
 } from '@/features/organization/components/member-mutate-drawer'
 
-import { getAdminOrganizationMembers } from '../api'
+import { getAdminOrganization, getAdminOrganizationMembers } from '../api'
 import { ORG_ADMIN_ERROR_MESSAGES } from '../constants'
 
 type Props = {
@@ -99,6 +99,9 @@ export function OrganizationMembersDialog({
     void queryClient.invalidateQueries({
       queryKey: ['admin-organization-members', organization?.id ?? 0],
     })
+    void queryClient.invalidateQueries({
+      queryKey: ['admin-organization-detail', organization?.id ?? 0],
+    })
     void queryClient.invalidateQueries({ queryKey: ['admin-organizations'] })
   }
 
@@ -121,6 +124,16 @@ export function OrganizationMembersDialog({
   })
 
   const members = data ?? []
+
+  // 池剩余可分配余量取自企业详情，供成员子额度抽屉做上限前置校验
+  const { data: detail } = useQuery({
+    queryKey: ['admin-organization-detail', organization?.id ?? 0],
+    enabled: open && organization !== null,
+    queryFn: async () => {
+      const result = await getAdminOrganization(organization?.id ?? 0)
+      return result.success ? result.data : undefined
+    },
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -239,6 +252,7 @@ export function OrganizationMembersDialog({
           mode={drawerState.mode}
           member={drawerState.member}
           orgId={organization?.id}
+          quotaHeadroom={detail?.quota_headroom ?? null}
           onRefresh={refreshMembers}
           onOpenChange={(value) => {
             if (!value) setDrawerOpen(false)

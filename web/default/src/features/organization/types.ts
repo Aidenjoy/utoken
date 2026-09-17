@@ -111,6 +111,8 @@ export interface OrgSummary {
   pool_quota?: number
   pool_used_quota?: number
   pool_quota_hidden?: boolean
+  /** Pool balance still allocatable to member sub-quotas; absent when the pool is hidden. */
+  quota_headroom?: number
   member_count?: number
   cache_enabled?: boolean
 }
@@ -120,6 +122,8 @@ export interface OrganizationDetail {
   member_count: number
   /** False when Redis is unavailable, i.e. the cache switch cannot be turned on. */
   cache_supported: boolean
+  /** Pool balance still allocatable to member sub-quotas. */
+  quota_headroom?: number
 }
 
 /** Only the fields an organization admin may change (`PUT /api/org/`). */

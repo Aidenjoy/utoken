@@ -354,6 +354,100 @@ func TestGetOrgUsageAggregatesByOrgDimension(t *testing.T) {
 	assert.NotContains(t, byMember, 303, "other org member must not leak into this report")
 }
 
+// TestOrgMemberQuotaCommitmentCap 守护成员子额度严格分配不变量：Σ 成员子额度剩余承诺 ≤ 池余额。
+// 池 100 给 A 设 90 后 B 只能再设 10；已用部分不计承诺、下调到已用之下立即释放承诺；
+// 存量超承诺脏数据按 ratchet 只允许下调不允许上调，保证管理入口始终能修正回合规。
+func TestOrgMemberQuotaCommitmentCap(t *testing.T) {
+	setupOrgFixture(t)
+	org := seedOrg(t, 1, 100, OrgStatusEnabled)
+	a := seedOrgMember(t, org, 101, OrgRoleMember, 0, OrgMemberStatusEnabled)
+	b := seedOrgMember(t, org, 102, OrgRoleMember, 0, OrgMemberStatusEnabled)
+
+	require.NoError(t, UpdateOrgMemberFields(a.Id, map[string]interface{}{"quota_limit": 90}))
+	require.NoError(t, UpdateOrgMemberFields(b.Id, map[string]interface{}{"quota_limit": 10}))
+	require.ErrorIs(t, UpdateOrgMemberFields(b.Id, map[string]interface{}{"quota_limit": 11}), ErrOrgMemberQuotaExceedsPool)
+	assert.Equal(t, 10, reloadMember(t, b.Id).QuotaLimit, "rejected update must not persist")
+
+	headroom, err := GetOrgQuotaHeadroom(org.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 0, headroom, "pool fully committed leaves no headroom")
+
+	// 消费同时减少池与成员剩余，不变量守恒：A 消费 50 后 B 仍不能上调
+	require.NoError(t, ConsumeOrgQuota(org.Id, a.UserId, 50))
+	require.ErrorIs(t, UpdateOrgMemberFields(b.Id, map[string]interface{}{"quota_limit": 20}), ErrOrgMemberQuotaExceedsPool)
+
+	// A 上限下调到已用量之下：承诺归零，释放出的余量才能再分配给 B
+	require.NoError(t, UpdateOrgMemberFields(a.Id, map[string]interface{}{"quota_limit": 30}))
+	require.NoError(t, UpdateOrgMemberFields(b.Id, map[string]interface{}{"quota_limit": 20}))
+	require.ErrorIs(t, UpdateOrgMemberFields(b.Id, map[string]interface{}{"quota_limit": 60}), ErrOrgMemberQuotaExceedsPool)
+
+	// 不限（0）不承诺具体数额，始终允许
+	require.NoError(t, UpdateOrgMemberFields(b.Id, map[string]interface{}{"quota_limit": 0}))
+
+	// 存量脏数据（seed 绕过校验直接写入超承诺上限）：ratchet 只降不升
+	dirty := seedOrgMember(t, org, 103, OrgRoleMember, 5000, OrgMemberStatusEnabled)
+	require.ErrorIs(t, UpdateOrgMemberFields(dirty.Id, map[string]interface{}{"quota_limit": 6000}), ErrOrgMemberQuotaExceedsPool)
+
+	// 超承诺状态下新建成员：带数额承诺被拒，不限允许
+	joiner := &User{Id: 104, Username: "user-104", AffCode: "aff-104", Status: common.UserStatusEnabled, Group: DefaultUserGroup}
+	require.NoError(t, DB.Create(joiner).Error)
+	require.ErrorIs(t, AddOrgMember(&OrgMember{OrgId: org.Id, UserId: joiner.Id, OrgRole: OrgRoleMember, QuotaLimit: 1}), ErrOrgMemberQuotaExceedsPool)
+	free := &User{Id: 105, Username: "user-105", AffCode: "aff-105", Status: common.UserStatusEnabled, Group: DefaultUserGroup}
+	require.NoError(t, DB.Create(free).Error)
+	require.NoError(t, AddOrgMember(&OrgMember{OrgId: org.Id, UserId: free.Id, OrgRole: OrgRoleMember, QuotaLimit: 0}))
+
+	require.NoError(t, UpdateOrgMemberFields(dirty.Id, map[string]interface{}{"quota_limit": 40}), "lowering a dirty cap back into compliance must stay possible")
+}
+
+// TestCreateOrgMemberUserCommitmentCap 校验企业内新建账号路径同样受承诺总额约束。
+func TestCreateOrgMemberUserCommitmentCap(t *testing.T) {
+	setupOrgFixture(t)
+	org := seedOrg(t, 1, 50, OrgStatusEnabled)
+
+	over := &User{Username: "over-cap", AffCode: "aff-over", Status: common.UserStatusEnabled, Group: DefaultUserGroup}
+	err := CreateOrgMemberUser(over, &OrgMember{OrgId: org.Id, OrgRole: OrgRoleMember, QuotaLimit: 60})
+	require.ErrorIs(t, err, ErrOrgMemberQuotaExceedsPool)
+	var count int64
+	require.NoError(t, DB.Model(&User{}).Where("username = ?", "over-cap").Count(&count).Error)
+	assert.Zero(t, count, "rejected create must not leave an orphan account behind")
+
+	fit := &User{Username: "fit-cap", AffCode: "aff-fit", Status: common.UserStatusEnabled, Group: DefaultUserGroup}
+	require.NoError(t, CreateOrgMemberUser(fit, &OrgMember{OrgId: org.Id, OrgRole: OrgRoleMember, QuotaLimit: 50}))
+}
+
+// TestConsumeOrgQuotaUnlimitedRespectsCommitments 守护不限成员只能消费池的自由余量：
+// 否则不限成员会吃掉已承诺给 capped 成员的部分，使 capped 成员的"剩余"兑付失败。
+func TestConsumeOrgQuotaUnlimitedRespectsCommitments(t *testing.T) {
+	setupOrgFixture(t)
+	org := seedOrg(t, 1, 100, OrgStatusEnabled)
+	capped := seedOrgMember(t, org, 101, OrgRoleMember, 90, OrgMemberStatusEnabled)
+	unlimited := seedOrgMember(t, org, 102, OrgRoleMember, 0, OrgMemberStatusEnabled)
+
+	// 池 100 但 90 已承诺给 capped：不限成员最多只能动 10
+	require.ErrorIs(t, ConsumeOrgQuota(org.Id, unlimited.UserId, 11), ErrOrgQuotaInsufficient)
+	require.NoError(t, ConsumeOrgQuota(org.Id, unlimited.UserId, 10))
+
+	// capped 成员的承诺始终可兑付：池剩 90 时仍能消费满自己的 90
+	require.NoError(t, ConsumeOrgQuota(org.Id, capped.UserId, 90))
+	assert.Equal(t, 0, reloadOrg(t, org.Id).Quota)
+}
+
+// TestIncreaseOrgQuotaRespectsMemberCommitments 校验负向调额不得低于成员子额度已承诺总额。
+func TestIncreaseOrgQuotaRespectsMemberCommitments(t *testing.T) {
+	setupOrgFixture(t)
+	org := seedOrg(t, 1, 100, OrgStatusEnabled)
+	seedOrgMember(t, org, 101, OrgRoleMember, 90, OrgMemberStatusEnabled)
+
+	require.ErrorIs(t, IncreaseOrgQuota(org.Id, -20), ErrOrgPoolBelowCommitments)
+	assert.Equal(t, 100, reloadOrg(t, org.Id).Quota, "rejected deduction must not persist")
+
+	require.NoError(t, IncreaseOrgQuota(org.Id, -10))
+	assert.Equal(t, 90, reloadOrg(t, org.Id).Quota)
+
+	require.NoError(t, IncreaseOrgQuota(org.Id, 50), "top-up is never blocked by commitments")
+	assert.Equal(t, 140, reloadOrg(t, org.Id).Quota)
+}
+
 // TestCreateOrganizationWithSetupAtomicity 锁定管理员建企业的原子性契约：
 // 管理员用户名不存在或已属于其他企业时不得留下已创建的企业（否则重试即报
 // 标识被占用、列表多出无主企业）；成功时企业、初始额度池与首位管理员一并落库。

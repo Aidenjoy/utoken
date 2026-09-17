@@ -47,17 +47,19 @@ const DefaultUserGroup = "default"
 const orgMemberListLimit = 1000
 
 var (
-	ErrOrgNotFound            = errors.New("organization not found")
-	ErrOrgDisabled            = errors.New("organization is disabled")
-	ErrOrgNameTaken           = errors.New("organization name already exists")
-	ErrOrgMemberNotFound      = errors.New("organization member not found")
-	ErrOrgMemberDisabled      = errors.New("organization member is disabled")
-	ErrOrgUserAlreadyInOrg    = errors.New("user already belongs to an organization")
-	ErrOrgUserNotFound        = errors.New("organization owner user not found")
-	ErrOrgQuotaInsufficient   = errors.New("organization quota insufficient")
-	ErrOrgMemberQuotaExceeded = errors.New("organization member quota limit exceeded")
-	ErrOrgNotEmpty            = errors.New("organization still has members")
-	ErrOrgNotifyTargetInvalid = errors.New("invalid organization notify target")
+	ErrOrgNotFound               = errors.New("organization not found")
+	ErrOrgDisabled               = errors.New("organization is disabled")
+	ErrOrgNameTaken              = errors.New("organization name already exists")
+	ErrOrgMemberNotFound         = errors.New("organization member not found")
+	ErrOrgMemberDisabled         = errors.New("organization member is disabled")
+	ErrOrgUserAlreadyInOrg       = errors.New("user already belongs to an organization")
+	ErrOrgUserNotFound           = errors.New("organization owner user not found")
+	ErrOrgQuotaInsufficient      = errors.New("organization quota insufficient")
+	ErrOrgMemberQuotaExceeded    = errors.New("organization member quota limit exceeded")
+	ErrOrgMemberQuotaExceedsPool = errors.New("member sub-quota commitments exceed organization pool balance")
+	ErrOrgPoolBelowCommitments   = errors.New("organization pool balance below member sub-quota commitments")
+	ErrOrgNotEmpty               = errors.New("organization still has members")
+	ErrOrgNotifyTargetInvalid    = errors.New("invalid organization notify target")
 )
 
 // Organization 企业（组织）。
@@ -168,6 +170,28 @@ func (m *OrgMember) RemainQuota() int {
 		return 0
 	}
 	return remain
+}
+
+// PromisedQuota 成员子额度对企业池的承诺量：上限剩余（收敛到 0）。
+// 成员端展示的"剩余"必须由企业池兑付，因此全部成员的承诺总额不得超过池余额；
+// QuotaLimit<=0（不限）不承诺具体数额，返回 0，其消费另受池自由余量约束。
+func (m *OrgMember) PromisedQuota() int {
+	if m == nil {
+		return 0
+	}
+	return orgMemberPromisedFor(m.QuotaLimit, m.QuotaUsed)
+}
+
+// orgMemberPromisedFor 计算给定上限/已用量下的承诺量，0 上限视为不限（无承诺）
+func orgMemberPromisedFor(quotaLimit int, quotaUsed int) int {
+	if quotaLimit <= 0 {
+		return 0
+	}
+	promised := quotaLimit - quotaUsed
+	if promised < 0 {
+		return 0
+	}
+	return promised
 }
 
 // OrgMemberDetail 成员列表展示用的联表结果
@@ -451,7 +475,9 @@ func DeleteOrganization(orgId int) error {
 	})
 }
 
-// IncreaseOrgQuota 调整企业额度池余额（管理员充值/调额），delta 可为负
+// IncreaseOrgQuota 调整企业额度池余额（管理员充值/调额），delta 可为负。
+// 负向调额不得使余额为负，也不得低于成员子额度已承诺总额：
+// 池余额低于承诺总额会让成员端展示的"剩余"变成池兑付不了的空头数字。
 func IncreaseOrgQuota(orgId int, delta int) error {
 	if orgId <= 0 {
 		return ErrOrgNotFound
@@ -471,9 +497,36 @@ func IncreaseOrgQuota(orgId int, delta int) error {
 		if newQuota < 0 {
 			return ErrOrgQuotaInsufficient
 		}
+		if delta < 0 {
+			promised, err := getOrgPromisedQuotaTx(tx, orgId, 0)
+			if err != nil {
+				return err
+			}
+			if newQuota < promised {
+				return ErrOrgPoolBelowCommitments
+			}
+		}
 		return tx.Model(&Organization{}).Where("id = ?", orgId).
 			Update("quota", gorm.Expr("quota + ?", delta)).Error
 	})
+}
+
+// GetOrgQuotaHeadroom 企业池当前还可承诺给成员子额度的余量（池余额-Σ承诺，收敛到 0），
+// 供管理端展示"可分配上限"；成员子额度的新增/上调不得超过该余量。
+func GetOrgQuotaHeadroom(orgId int) (int, error) {
+	org, err := GetOrganizationById(orgId)
+	if err != nil {
+		return 0, err
+	}
+	promised, err := getOrgPromisedQuotaTx(DB, orgId, 0)
+	if err != nil {
+		return 0, err
+	}
+	headroom := org.Quota - promised
+	if headroom < 0 {
+		return 0, nil
+	}
+	return headroom, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -594,8 +647,14 @@ func AddOrgMember(member *OrgMember) error {
 		member.JoinedAt = common.GetTimestamp()
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		org, err := getOrganizationByIdTx(tx, member.OrgId)
-		if err != nil {
+		var org Organization
+		if err := lockForUpdate(tx).Where("id = ?", member.OrgId).First(&org).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrOrgNotFound
+			}
+			return err
+		}
+		if err := checkOrgQuotaCommitmentTx(tx, &org, 0, 0, member.PromisedQuota()); err != nil {
 			return err
 		}
 		var count int64
@@ -648,12 +707,18 @@ func CreateOrgMemberUser(user *User, member *OrgMember) error {
 	}
 	user.Role = common.RoleCommonUser
 	if err := DB.Transaction(func(tx *gorm.DB) error {
-		org, err := getOrganizationByIdTx(tx, member.OrgId)
-		if err != nil {
+		var org Organization
+		if err := lockForUpdate(tx).Where("id = ?", member.OrgId).First(&org).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrOrgNotFound
+			}
 			return err
 		}
 		if org.Status != OrgStatusEnabled {
 			return ErrOrgDisabled
+		}
+		if err := checkOrgQuotaCommitmentTx(tx, &org, 0, 0, member.PromisedQuota()); err != nil {
+			return err
 		}
 		user.OrgId = org.Id
 		user.Group = org.Group
@@ -685,6 +750,22 @@ func UpdateOrgMemberFields(id int, fields map[string]interface{}) error {
 		member, err := getOrgMemberByIdTx(tx, id)
 		if err != nil {
 			return err
+		}
+		if raw, ok := fields["quota_limit"]; ok {
+			newLimit, ok := raw.(int)
+			if !ok {
+				return errors.New("invalid quota_limit field type")
+			}
+			var org Organization
+			if err := lockForUpdate(tx).Where("id = ?", member.OrgId).First(&org).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrOrgNotFound
+				}
+				return err
+			}
+			if err := checkOrgQuotaCommitmentTx(tx, &org, member.Id, member.PromisedQuota(), orgMemberPromisedFor(newLimit, member.QuotaUsed)); err != nil {
+				return err
+			}
 		}
 		if err := tx.Model(&OrgMember{}).Where("id = ?", id).Updates(fields).Error; err != nil {
 			return err
@@ -825,6 +906,42 @@ func GetActiveOrganizationForUser(userId int) (*Organization, *OrgMember, error)
 // 企业额度池计费
 // ---------------------------------------------------------------------------
 
+// getOrgPromisedQuotaTx 汇总企业内全部成员子额度的承诺量（excludeMemberId>0 时排除该成员）。
+// 调用方应已持有企业行锁，保证与并发的调额/扣费串行。
+func getOrgPromisedQuotaTx(tx *gorm.DB, orgId int, excludeMemberId int) (int, error) {
+	var members []OrgMember
+	query := tx.Model(&OrgMember{}).Where("org_id = ?", orgId)
+	if excludeMemberId > 0 {
+		query = query.Where("id <> ?", excludeMemberId)
+	}
+	if err := query.Find(&members).Error; err != nil {
+		return 0, err
+	}
+	total := 0
+	for i := range members {
+		total += members[i].PromisedQuota()
+	}
+	return total, nil
+}
+
+// checkOrgQuotaCommitmentTx 校验严格分配不变量：变更后全部成员子额度承诺总额不得超过池余额。
+// oldPromised/newPromised 为本次变更成员变更前/后的承诺量（新建成员 oldPromised=0）。
+// 企业已处于超承诺状态（存量脏数据）时只允许不增加该成员承诺量的修改（ratchet），
+// 保证脏数据始终能向下修正回合规，而不是把管理入口整体锁死。
+func checkOrgQuotaCommitmentTx(tx *gorm.DB, org *Organization, excludeMemberId int, oldPromised int, newPromised int) error {
+	others, err := getOrgPromisedQuotaTx(tx, org.Id, excludeMemberId)
+	if err != nil {
+		return err
+	}
+	if others+newPromised <= org.Quota {
+		return nil
+	}
+	if newPromised <= oldPromised {
+		return nil
+	}
+	return ErrOrgMemberQuotaExceedsPool
+}
+
 // ConsumeOrgQuota 从企业额度池扣减额度，并在同一事务内校验成员子额度。
 // 双条件：企业池余额充足 且 成员 QuotaUsed+quota <= QuotaLimit（QuotaLimit<=0 视为不限）。
 // 任一条件不满足则整体回滚，分别返回 ErrOrgQuotaInsufficient / ErrOrgMemberQuotaExceeded。
@@ -864,8 +981,21 @@ func ConsumeOrgQuota(orgId int, userId int, quota int) error {
 			if member.Status != OrgMemberStatusEnabled {
 				return ErrOrgMemberDisabled
 			}
-			if member.QuotaLimit > 0 && member.QuotaUsed+quota > member.QuotaLimit {
-				return ErrOrgMemberQuotaExceeded
+			if member.QuotaLimit > 0 {
+				if member.QuotaUsed+quota > member.QuotaLimit {
+					return ErrOrgMemberQuotaExceeded
+				}
+			} else {
+				// 不限成员不承诺具体数额，只允许消费池的"自由余量"（池余额-Σ capped 承诺），
+				// 否则不限成员会吃掉已承诺给 capped 成员子额度剩余的部分，
+				// 使 capped 成员端展示的"剩余"在运行时兑付失败。
+				promised, err := getOrgPromisedQuotaTx(tx, orgId, 0)
+				if err != nil {
+					return err
+				}
+				if org.Quota-quota < promised {
+					return ErrOrgQuotaInsufficient
+				}
 			}
 			if err := tx.Model(&OrgMember{}).Where("id = ?", member.Id).
 				Update("quota_used", gorm.Expr("quota_used + ?", quota)).Error; err != nil {

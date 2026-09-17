@@ -53,7 +53,7 @@ import { useOrganization } from './organization-context'
  */
 export function OrganizationMembers() {
   const { t } = useTranslation()
-  const { triggerRefresh } = useOrganization()
+  const { summary, triggerRefresh } = useOrganization()
 
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(20)
@@ -189,6 +189,7 @@ export function OrganizationMembers() {
         open={drawerOpen}
         mode={drawerMode}
         member={currentMember}
+        quotaHeadroom={summary?.quota_headroom ?? null}
         onOpenChange={setDrawerOpen}
       />
 
