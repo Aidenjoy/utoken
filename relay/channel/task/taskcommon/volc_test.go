@@ -21,16 +21,32 @@ func TestParseVolcTaskResultRelayStringUsage(t *testing.T) {
 	require.Equal(t, 40594, info.CompletionTokens)
 	require.Equal(t, 40594, info.TotalTokens)
 	require.Equal(t, "480p", info.Resolution)
+	require.Equal(t, int64(1789027908), info.FinishTime)
 }
 
 func TestParseVolcTaskResultOfficialUsage(t *testing.T) {
-	body := `{"id":"t-official","status":"succeeded","content":{"video_url":"https://example.com/o.mp4"},"resolution":"720p","usage":{"completion_tokens":100,"total_tokens":120,"tool_usage":{"web_search":2}}}`
+	body := `{"id":"t-official","status":"succeeded","content":{"video_url":"https://example.com/o.mp4"},"resolution":"720p","updated_at":1789624209,"usage":{"completion_tokens":100,"total_tokens":120,"tool_usage":{"web_search":2}}}`
 	info, err := ParseVolcTaskResult([]byte(body), "[DoubaoVideo]")
 	require.NoError(t, err)
 	require.Equal(t, model.TaskStatusSuccess, info.Status)
 	require.Equal(t, 100, info.CompletionTokens)
 	require.Equal(t, 120, info.TotalTokens)
 	require.Equal(t, "720p", info.Resolution)
+	require.Equal(t, int64(1789624209), info.FinishTime)
+}
+
+// TestParseVolcTaskResultISOUpdatedAt 中转站把 updated_at 降级为 ISO 8601
+// 字符串时也应折算成 unix 秒；无法解析的形态记 0，不阻断状态推进。
+func TestParseVolcTaskResultISOUpdatedAt(t *testing.T) {
+	body := `{"id":"t-iso","status":"succeeded","content":{"video_url":"u"},"updated_at":"2026-09-17T05:50:09Z","usage":{"total_tokens":10}}`
+	info, err := ParseVolcTaskResult([]byte(body), "[ArkNative]")
+	require.NoError(t, err)
+	require.Equal(t, int64(1789624209), info.FinishTime)
+
+	body = `{"id":"t-bad-time","status":"succeeded","content":{"video_url":"u"},"updated_at":"not-a-time","usage":{"total_tokens":10}}`
+	info, err = ParseVolcTaskResult([]byte(body), "[ArkNative]")
+	require.NoError(t, err)
+	require.Equal(t, int64(0), info.FinishTime)
 }
 
 func TestParseVolcTaskResultDegradedUsageShapes(t *testing.T) {
@@ -70,4 +86,6 @@ func TestParseVolcTaskResultRunningStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, model.TaskStatusInProgress, info.Status)
 	require.Equal(t, "50%", info.Progress)
+	// 非终态不记录 FinishTime
+	require.Equal(t, int64(0), info.FinishTime)
 }

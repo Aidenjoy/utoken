@@ -475,6 +475,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		taskResult.Url = t.GetResultURL()
 		taskResult.Progress = t.Progress
 		taskResult.Reason = t.FailReason
+		taskResult.FinishTime = t.FinishTime
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
@@ -495,6 +496,13 @@ func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, ta
 	task.Data = redactVideoResponseBody(responseBody)
 
 	now := time.Now().Unix()
+	// 完成时间优先采用上游报告的终态时刻（漏结算任务被很久后的查询补结算时，
+	// 本地检测时刻会严重偏离真实完成时间）；拒绝异常时钟（未来时间/早于提交
+	// 时间）并回退到本地检测时刻。
+	finishAt := now
+	if ts := taskResult.FinishTime; ts > 0 && ts <= now && ts >= task.SubmitTime {
+		finishAt = ts
+	}
 	if taskResult.Status == "" {
 		//taskResult = relaycommon.FailTaskInfo("upstream returned empty status")
 		errorResult := &dto.GeneralErrorResponse{}
@@ -535,7 +543,7 @@ func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, ta
 	case model.TaskStatusSuccess:
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {
-			task.FinishTime = now
+			task.FinishTime = finishAt
 		}
 		if strings.HasPrefix(taskResult.Url, "data:") {
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
@@ -553,7 +561,7 @@ func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, ta
 		task.Status = model.TaskStatusFailure
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {
-			task.FinishTime = now
+			task.FinishTime = finishAt
 		}
 		task.FailReason = taskResult.Reason
 		logger.LogInfo(ctx, fmt.Sprintf("Task %s failed: %s", task.TaskID, task.FailReason))

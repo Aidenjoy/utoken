@@ -378,12 +378,15 @@ func TestApplyUpstreamTaskResultSettlesMissedTerminalTask(t *testing.T) {
 	require.NoError(t, model.DB.Create(task).Error)
 
 	adaptor := &fixedSettleAdaptor{quota: actualQuota}
+	// 上游报告的真实终态时刻（补结算场景下与本地检测时刻差异巨大），应被采用
+	upstreamFinish := time.Now().Add(-2 * time.Minute).Unix()
 	taskResult := &relaycommon.TaskInfo{
 		Status:           model.TaskStatusSuccess,
 		Progress:         "100%",
 		TotalTokens:      totalTokens,
 		CompletionTokens: totalTokens,
 		Url:              "https://upstream/video.mp4",
+		FinishTime:       upstreamFinish,
 	}
 	body := []byte(`{"id":"upstream_1","status":"succeeded"}`)
 
@@ -396,11 +399,11 @@ func TestApplyUpstreamTaskResultSettlesMissedTerminalTask(t *testing.T) {
 	assert.Equal(t, preConsumed-actualQuota, refund.Quota)
 	assert.Equal(t, totalTokens, refund.CompletionTokens)
 
-	// 任务落库：quota 更新为实际额度，FinishTime 被补上（任务日志耗时可展示）
+	// 任务落库：quota 更新为实际额度，FinishTime 采用上游真实终态时刻（任务日志耗时准确）
 	var reloaded model.Task
 	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
 	assert.Equal(t, actualQuota, reloaded.Quota)
-	assert.Greater(t, reloaded.FinishTime, int64(0))
+	assert.Equal(t, upstreamFinish, reloaded.FinishTime)
 
 	// 重复应用同一终态结果（客户端再次查询）：delta=0，不得产生第二笔日志或资金变动
 	logsBefore := countLogs(t)

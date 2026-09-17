@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -34,6 +35,35 @@ func (v *volcLenientInt) UnmarshalJSON(data []byte) error {
 	if err := common.Unmarshal(data, &s); err == nil {
 		if parsed, convErr := strconv.Atoi(strings.TrimSpace(s)); convErr == nil {
 			*v = volcLenientInt(parsed)
+		}
+	}
+	return nil
+}
+
+// volcLenientUnix 兼容 unix 数字时间戳与 ISO 8601 字符串（官方为数字，
+// 部分中转站降级为字符串），统一折算为秒；无法解析一律记 0，
+// 不阻断任务响应反序列化。
+type volcLenientUnix int64
+
+func (u *volcLenientUnix) UnmarshalJSON(data []byte) error {
+	switch strings.TrimSpace(string(data)) {
+	case "", "null", `""`:
+		return nil
+	}
+	var n int64
+	if err := common.Unmarshal(data, &n); err == nil {
+		*u = volcLenientUnix(n)
+		return nil
+	}
+	var s string
+	if err := common.Unmarshal(data, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if n, convErr := strconv.ParseInt(s, 10, 64); convErr == nil {
+			*u = volcLenientUnix(n)
+			return nil
+		}
+		if t, parseErr := time.Parse(time.RFC3339, s); parseErr == nil {
+			*u = volcLenientUnix(t.Unix())
 		}
 	}
 	return nil
@@ -121,8 +151,10 @@ type VolcTaskResponse struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error"`
-	// 注意：不解析 created_at / updated_at —— 官方为 unix 数字，中转站为 ISO 字符串，
-	// 且包内无使用方；声明为 int64 会在中转站响应上整体反序列化失败。
+	// UpdatedAt 为任务终态时间（成功/失败时的最后更新时间），用于结算时记录真实
+	// 完成时刻；官方为 unix 数字，中转站为 ISO 字符串，用宽容类型兼容。
+	// created_at 仍不解析：包内无使用方，且两种格式的类型差异同上。
+	UpdatedAt volcLenientUnix `json:"updated_at"`
 }
 
 // VideoURL 返回任务结果视频地址：官方顶层 content 优先，中转站 resultSummary 兜底。
@@ -198,10 +230,12 @@ func ParseVolcTaskResult(respBody []byte, logPrefix string) (*relaycommon.TaskIn
 		taskResult.TotalTokens = resTask.TotalTokens()
 		// 解析实际输出分辨率用于 seedance 按分辨率结算
 		taskResult.Resolution = resTask.OutputResolution()
+		taskResult.FinishTime = int64(resTask.UpdatedAt)
 	case "failed":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"
 		taskResult.Reason = resTask.Error.Message
+		taskResult.FinishTime = int64(resTask.UpdatedAt)
 	default:
 		// Unknown status, treat as processing
 		taskResult.Status = model.TaskStatusInProgress

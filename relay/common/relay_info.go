@@ -802,6 +802,7 @@ type TaskInfo struct {
 	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
 	Resolution       string `json:"resolution,omitempty"`        // 上游返回的实际输出分辨率，用于 seedance 按分辨率结算
+	FinishTime       int64  `json:"finish_time,omitempty"`       // 上游报告的终态时间（unix 秒），0 表示未知，结算时回退到本地检测时刻
 }
 
 func FailTaskInfo(reason string) *TaskInfo {
