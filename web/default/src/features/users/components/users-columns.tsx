@@ -173,12 +173,36 @@ export function useUsersColumns(): ColumnDef<User>[] {
       header: t('Quota'),
       cell: ({ row }) => {
         const user = row.original
+        const isOrgMember = (user.org_id ?? 0) > 0
+        const orgLimit = user.org_quota_limit ?? 0
+        const orgUsed = user.org_quota_used ?? 0
+        const orgCapped = isOrgMember && orgLimit > 0
+        const orgRemaining = orgCapped ? Math.max(0, orgLimit - orgUsed) : 0
+        // used_quota 是用户终生总消费（含企业代付部分的镜像记录，与
+        // org_members.quota_used 相等），个人钱包消费需减去企业已用，
+        // 否则个人总额会被企业消费虚增（没充过钱的成员会显示成 +¥4.21）。
+        const walletUsed = Math.max(
+          0,
+          user.used_quota - (isOrgMember ? orgUsed : 0)
+        )
+        const walletRemaining = user.quota
+        const walletTotal = walletUsed + walletRemaining
+        // 企业成员按"企业子额度 + 个人钱包"合并口径展示，与非企业用户
+        // "前面剩余、后面总额"的规则一致；总额位用"企业额度+个人额度"
+        // 展示构成（如 ¥200+¥100，个人钱包为 0 时即 ¥100+¥0）。
         const used = user.used_quota
-        const remaining = user.quota
-        const total = used + remaining
+        const remaining = walletRemaining + (orgCapped ? orgRemaining : 0)
+        const total = walletTotal + (orgCapped ? orgLimit : 0)
         const percentage = total > 0 ? (remaining / total) * 100 : 0
+        const totalLabel = !isOrgMember
+          ? formatQuota(total)
+          : orgCapped
+            ? `${formatQuota(orgLimit)}+${formatQuota(walletTotal)}`
+            : walletTotal > 0
+              ? `${t('Unlimited')}+${formatQuota(walletTotal)}`
+              : t('Unlimited')
 
-        if (total === 0) {
+        if (!isOrgMember && total === 0) {
           return (
             <StatusBadge
               label={t('No Quota')}
@@ -199,7 +223,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
                   {formatQuota(remaining)}
                 </span>
                 <span className='text-muted-foreground tabular-nums'>
-                  {formatQuota(total)}
+                  {totalLabel}
                 </span>
               </div>
               <Progress
@@ -216,7 +240,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
                   {t('Remaining:')} {formatQuota(remaining)}
                 </div>
                 <div>
-                  {t('Total:')} {formatQuota(total)}
+                  {t('Total:')} {totalLabel}
                 </div>
                 <div>
                   {t('Percentage:')} {percentage.toFixed(1)}%

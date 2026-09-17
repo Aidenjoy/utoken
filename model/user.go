@@ -47,6 +47,8 @@ type User struct {
 	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	OrgId            int                        `json:"org_id" gorm:"type:int;column:org_id;index;default:0"` // 所属企业（组织），0=无企业
 	OrgName          string                     `json:"org_name" gorm:"-"`                                    // 所属企业展示名（列表返回时回填，不落库）
+	OrgQuotaLimit    int                        `json:"org_quota_limit" gorm:"-"`                             // 企业子额度上限（列表返回时回填，0=不限，不落库）
+	OrgQuotaUsed     int                        `json:"org_quota_used" gorm:"-"`                              // 企业子额度已用（列表返回时回填，不落库）
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
@@ -328,6 +330,10 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		return nil, 0, err
 	}
 
+	if err = AttachOrgMemberQuotas(users); err != nil {
+		return nil, 0, err
+	}
+
 	return users, total, nil
 }
 
@@ -400,6 +406,10 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 		return nil, 0, err
 	}
 
+	if err = AttachOrgMemberQuotas(users); err != nil {
+		return nil, 0, err
+	}
+
 	return users, total, nil
 }
 
@@ -431,6 +441,48 @@ func AttachOrgNames(users []*User) error {
 	}
 	for _, u := range users {
 		u.OrgName = names[u.OrgId]
+	}
+	return nil
+}
+
+// AttachOrgMemberQuotas 为列表中的企业成员批量回填子额度上限与用量（org_members）：
+// 一次查询完成映射，无企业或无成员记录的用户保持零值。
+// 成员可能存有历史多企业记录，只取 (user_id, org_id) 与用户归属快照匹配的那条。
+func AttachOrgMemberQuotas(users []*User) error {
+	userIds := make([]int, 0, len(users))
+	orgIds := make([]int, 0, 8)
+	want := make(map[int]int, len(users))
+	seenOrg := make(map[int]bool, 8)
+	for _, u := range users {
+		if u.OrgId <= 0 {
+			continue
+		}
+		userIds = append(userIds, u.Id)
+		want[u.Id] = u.OrgId
+		if !seenOrg[u.OrgId] {
+			seenOrg[u.OrgId] = true
+			orgIds = append(orgIds, u.OrgId)
+		}
+	}
+	if len(userIds) == 0 {
+		return nil
+	}
+	var members []OrgMember
+	if err := DB.Where("user_id IN ? AND org_id IN ?", userIds, orgIds).
+		Find(&members).Error; err != nil {
+		return err
+	}
+	byUser := make(map[int]*OrgMember, len(members))
+	for i := range members {
+		if want[members[i].UserId] == members[i].OrgId {
+			byUser[members[i].UserId] = &members[i]
+		}
+	}
+	for _, u := range users {
+		if m := byUser[u.Id]; m != nil {
+			u.OrgQuotaLimit = m.QuotaLimit
+			u.OrgQuotaUsed = m.QuotaUsed
+		}
 	}
 	return nil
 }
