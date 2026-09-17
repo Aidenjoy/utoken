@@ -464,8 +464,6 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	logger.LogDebugJSON(ctx, "updateVideoSingleTask response: %s", responseBody)
 
-	snap := task.Snapshot()
-
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems dto.TaskResponse[model.Task]
@@ -477,20 +475,30 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		taskResult.Url = t.GetResultURL()
 		taskResult.Progress = t.Progress
 		taskResult.Reason = t.FailReason
-		task.Data = t.Data
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
 
-	task.Data = redactVideoResponseBody(responseBody)
-
 	logger.LogDebug(ctx, "updateVideoSingleTask taskResult: %+v", taskResult)
+
+	return ApplyUpstreamTaskResult(ctx, adaptor, task, taskResult, responseBody)
+}
+
+// ApplyUpstreamTaskResult 把上游查询结果 taskResult 写回本地任务并做 CAS 状态迁移，
+// 进入终态时执行计费处理（成功 → 差额结算，失败 → 全额退款）。
+// 后台轮询与客户端实时查询旁路（relay 的 arkNativePassthroughFetch / tryRealtimeFetch）
+// 共用本函数：任务一旦进入终态就不再被 GetAllUnFinishSyncTasks 捞起，谁先把任务
+// 推进到终态谁负责结算，另一方 CAS 失败即跳过，保证计费恰好执行一次。
+// responseBody 为上游原始查询响应，用于 task.Data 快照与空状态错误探测。
+func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo, responseBody []byte) error {
+	snap := task.Snapshot()
+	task.Data = redactVideoResponseBody(responseBody)
 
 	now := time.Now().Unix()
 	if taskResult.Status == "" {
 		//taskResult = relaycommon.FailTaskInfo("upstream returned empty status")
 		errorResult := &dto.GeneralErrorResponse{}
-		if err = common.Unmarshal(responseBody, &errorResult); err == nil {
+		if err := common.Unmarshal(responseBody, &errorResult); err == nil {
 			openaiError := errorResult.TryToOpenAIError()
 			if openaiError != nil {
 				// 返回规范的 OpenAI 错误格式，提取错误信息，判断错误是否为任务失败
@@ -503,7 +511,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 				taskResult = relaycommon.FailTaskInfo("upstream returned error")
 			} else {
 				// unknown error format, log original response
-				logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", taskId, string(responseBody)))
+				logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", task.TaskID, string(responseBody)))
 				taskResult = relaycommon.FailTaskInfo("upstream returned unrecognized message")
 			}
 		}
@@ -541,7 +549,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		}
 		shouldSettle = true
 	case model.TaskStatusFailure:
-		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
+		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", task.TaskID), task)
 		task.Status = model.TaskStatusFailure
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {

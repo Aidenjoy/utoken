@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
-	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -466,20 +466,12 @@ func arkNativePassthroughFetch(task *model.Task) []byte {
 		return nil
 	}
 
-	// 顺便同步本地任务状态（与 tryRealtimeFetch 一致）
+	// 顺便同步本地任务状态；进入终态时必须在此结算/退款（与后台轮询共用逻辑）：
+	// 任务一旦被标记为 Success/Failure，后台轮询不再捕获它，不在这里结算
+	// 就会导致计费永不执行，使用日志缺失带 token 的退费/结算记录。
 	if ti, parseErr := adaptor.ParseTaskResult(body); parseErr == nil && ti != nil {
-		snap := task.Snapshot()
-		if ti.Status != "" {
-			task.Status = model.TaskStatus(ti.Status)
-		}
-		if ti.Progress != "" {
-			task.Progress = ti.Progress
-		}
-		if ti.Url != "" && !strings.HasPrefix(ti.Url, "data:") {
-			task.PrivateData.ResultURL = ti.Url
-		}
-		if !snap.Equal(task.Snapshot()) {
-			_, _ = task.UpdateWithStatus(snap.Status)
+		if applyErr := service.ApplyUpstreamTaskResult(context.Background(), adaptor, task, ti, body); applyErr != nil {
+			common.SysLog(fmt.Sprintf("[ArkNative] apply realtime task result failed, task=%s err=%v", task.TaskID, applyErr))
 		}
 	}
 	return body
@@ -525,26 +517,10 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 		return nil
 	}
 
-	snap := task.Snapshot()
-
-	// 将上游最新状态更新到 task
-	if ti.Status != "" {
-		task.Status = model.TaskStatus(ti.Status)
-	}
-	if ti.Progress != "" {
-		task.Progress = ti.Progress
-	}
-	if strings.HasPrefix(ti.Url, "data:") {
-		// data: URI — kept in Data, not ResultURL
-	} else if ti.Url != "" {
-		task.PrivateData.ResultURL = ti.Url
-	} else if task.Status == model.TaskStatusSuccess {
-		// No URL from adaptor — construct proxy URL using public task ID
-		task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
-	}
-
-	if !snap.Equal(task.Snapshot()) {
-		_, _ = task.UpdateWithStatus(snap.Status)
+	// 将上游最新状态更新到 task；进入终态时同步结算/退款（与后台轮询共用逻辑，
+	// 否则客户端先查询把任务标成终态后，后台轮询会跳过计费）
+	if applyErr := service.ApplyUpstreamTaskResult(context.Background(), adaptor, task, ti, body); applyErr != nil {
+		common.SysLog(fmt.Sprintf("apply realtime task result failed, task=%s err=%v", task.TaskID, applyErr))
 	}
 
 	// OpenAI Video API 由调用者的 ConvertToOpenAIVideo 分支处理

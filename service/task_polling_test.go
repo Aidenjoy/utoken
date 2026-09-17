@@ -332,6 +332,83 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 	assert.ElementsMatch(t, []string{"upstream_sleepy_1", "upstream_fast_1", "upstream_fast_2"}, adaptor.fetchedTaskIDs())
 }
 
+// fixedSettleAdaptor 只用于验证 ApplyUpstreamTaskResult 的结算行为：
+// AdjustBillingOnComplete 返回预设实际额度；Apply 不应触发任何上游请求，
+// FetchTask/ParseTaskResult 被调用即 panic 暴露误用。
+type fixedSettleAdaptor struct{ quota int }
+
+func (a *fixedSettleAdaptor) Init(_ *relaycommon.RelayInfo) {}
+
+func (a *fixedSettleAdaptor) FetchTask(string, string, map[string]any, string) (*http.Response, error) {
+	panic("ApplyUpstreamTaskResult must not call FetchTask")
+}
+
+func (a *fixedSettleAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
+	panic("ApplyUpstreamTaskResult must not call ParseTaskResult")
+}
+
+func (a *fixedSettleAdaptor) AdjustBillingOnComplete(*model.Task, *relaycommon.TaskInfo) int {
+	return a.quota
+}
+
+// TestApplyUpstreamTaskResultSettlesMissedTerminalTask 锁定漏结算补偿路径：
+// 历史版本中实时查询把任务标成 Success 但不结算，后台轮询又不再捕获终态任务，
+// 导致结算永不执行。修复后对已终态任务再次应用上游终态结果时，必须补执行
+// 差额结算（带 token 的退费日志）并补 FinishTime；重复应用不得二次扣费。
+func TestApplyUpstreamTaskResultSettlesMissedTerminalTask(t *testing.T) {
+	truncate(t)
+
+	const (
+		userID      = 9101
+		tokenID     = 9102
+		channelID   = 9103
+		initQuota   = 10000
+		preConsumed = 3000
+		actualQuota = 1000
+		totalTokens = 40594
+	)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-ark-settle", initQuota)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	// 场景：任务已被旧版实时查询标成终态，但结算缺失（FinishTime 未落）
+	task.Status = model.TaskStatusSuccess
+	task.Progress = "100%"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	adaptor := &fixedSettleAdaptor{quota: actualQuota}
+	taskResult := &relaycommon.TaskInfo{
+		Status:           model.TaskStatusSuccess,
+		Progress:         "100%",
+		TotalTokens:      totalTokens,
+		CompletionTokens: totalTokens,
+		Url:              "https://upstream/video.mp4",
+	}
+	body := []byte(`{"id":"upstream_1","status":"succeeded"}`)
+
+	require.NoError(t, ApplyUpstreamTaskResult(context.Background(), adaptor, task, taskResult, body))
+
+	// 差额退费：退款额 = 预扣 - 实际，且退费日志带真实 token 用量
+	assert.Equal(t, initQuota+(preConsumed-actualQuota), getUserQuota(t, userID))
+	var refund model.Log
+	require.NoError(t, model.DB.Where("type = ?", model.LogTypeRefund).First(&refund).Error)
+	assert.Equal(t, preConsumed-actualQuota, refund.Quota)
+	assert.Equal(t, totalTokens, refund.CompletionTokens)
+
+	// 任务落库：quota 更新为实际额度，FinishTime 被补上（任务日志耗时可展示）
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, actualQuota, reloaded.Quota)
+	assert.Greater(t, reloaded.FinishTime, int64(0))
+
+	// 重复应用同一终态结果（客户端再次查询）：delta=0，不得产生第二笔日志或资金变动
+	logsBefore := countLogs(t)
+	require.NoError(t, ApplyUpstreamTaskResult(context.Background(), adaptor, task, taskResult, body))
+	assert.Equal(t, logsBefore, countLogs(t))
+	assert.Equal(t, initQuota+(preConsumed-actualQuota), getUserQuota(t, userID))
+}
+
 // TestSplitTaskUsageTokens 锁定结算日志 token 拆分语义：方舟视频 completion=total
 // 全记 completion；有独立 completion 时 prompt=total-completion；异常输入归零。
 func TestSplitTaskUsageTokens(t *testing.T) {
