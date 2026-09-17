@@ -46,7 +46,7 @@ export function resolveDocsSiteUrl(status: unknown): string {
   return ''
 }
 
-const VIDEO_MODEL = 'ty-doubao-seedance-2-0'
+const VIDEO_MODEL = 'doubao-seedance-2-0'
 
 function buildLanguageSections(siteUrl: string): DocSection[] {
   const baseUrl = `${siteUrl}/v1`
