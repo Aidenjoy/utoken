@@ -21,7 +21,7 @@ import * as z from 'zod'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 
 import { safeJsonParse } from '../utils/json-parser'
-import { formatPricingNumber } from './pricing-format'
+import { formatDisplayPrice } from './pricing-format'
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
   z.object({
@@ -199,7 +199,7 @@ export function toNumberOrNull(value: unknown): number | null {
 function ratioToBasePrice(ratio: unknown): string {
   const num = toNumberOrNull(ratio)
   if (num === null) return ''
-  return formatPricingNumber(num * 2)
+  return formatDisplayPrice(num * 2)
 }
 
 function deriveLanePrice(
@@ -210,7 +210,7 @@ function deriveLanePrice(
   const ratioNumber = toNumberOrNull(ratio)
   const denominatorNumber = toNumberOrNull(denominator)
   if (ratioNumber === null || denominatorNumber === null) return fallback
-  return formatPricingNumber(ratioNumber * denominatorNumber)
+  return formatDisplayPrice(ratioNumber * denominatorNumber)
 }
 
 // parseSeedanceConfig / serializeSeedanceConfig 在编辑器的按分辨率字符串表单与
