@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 // ============================================================================
-// 云导演（Cloud Director）类型定义，与后端 model/director*.go 的 JSON 字段对应
+// 视频工厂（Video Factory）类型定义，与后端 model/director*.go 的 JSON 字段对应
 // ============================================================================
 
 export type DirectorCategory = 'drama' | 'ecommerce' | 'ad' | 'daily'

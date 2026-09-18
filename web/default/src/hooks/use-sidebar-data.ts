@@ -103,7 +103,7 @@ export function useSidebarData(): SidebarData {
       },
       {
         id: 'director',
-        title: t('Cloud Director'),
+        title: t('Video Factory'),
         items: [
           {
             title: t('Short Drama'),

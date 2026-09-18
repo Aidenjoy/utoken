@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -58,6 +59,8 @@ export interface PublicHeaderProps {
   showNavigation?: boolean
   showAuthButtons?: boolean
   showNotifications?: boolean
+  /** 首屏为深色整屏视觉时，导航在顶部使用白色文字。 */
+  overHero?: boolean
   className?: string
 }
 
@@ -71,6 +74,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     homeUrl = 'http://model.yundashi.com',
     showAuthButtons = true,
     showNotifications = true,
+    overHero = false,
   } = props
 
   const { t } = useTranslation()
@@ -97,6 +101,41 @@ export function PublicHeader(props: PublicHeaderProps) {
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+  const heroOverlay = overHero && !scrolled && !mobileOpen
+  const navLinkIdleClass = heroOverlay
+    ? 'text-white/70 hover:text-white'
+    : 'text-muted-foreground hover:text-foreground'
+  const navLinkActiveClass = heroOverlay ? 'text-white' : 'text-foreground'
+  const navDividerClass = heroOverlay ? 'bg-white/25' : 'bg-border/40'
+
+  let logoContent: React.ReactNode = (
+    <HeaderLogo
+      src={systemLogo}
+      loading={loading}
+      logoLoaded={logoLoaded}
+      className='size-full rounded-lg object-contain'
+    />
+  )
+  if (loading) {
+    logoContent = <Skeleton className='size-full rounded-lg' />
+  } else if (customLogo) {
+    logoContent = customLogo
+  }
+
+  let authControl: React.ReactNode = (
+    <Button
+      size='sm'
+      className='h-8 rounded-lg px-3.5 text-xs font-medium'
+      render={<Link to='/sign-in' />}
+    >
+      {t('Sign in')}
+    </Button>
+  )
+  if (loading) {
+    authControl = <Skeleton className='h-8 w-20 rounded-lg' />
+  } else if (isAuthenticated) {
+    authControl = <ProfileDropdown />
+  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -176,18 +215,14 @@ export function PublicHeader(props: PublicHeaderProps) {
   return (
     <>
       <header className='pointer-events-none fixed inset-x-0 top-0 z-50'>
-        <div
-          className={cn(
-            'pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            scrolled ? 'max-w-[52rem] px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
-          )}
-        >
+        <div className='pointer-events-auto w-full transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]'>
           <nav
             className={cn(
-              'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              'flex items-center justify-between px-4 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] md:px-8',
               scrolled
-                ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
-                : 'h-20 px-3'
+                ? 'bg-background/75 border-border/40 h-14 border-b backdrop-blur-xl'
+                : 'h-20',
+              heroOverlay && 'text-white'
             )}
           >
             {/* Logo */}
@@ -202,21 +237,10 @@ export function PublicHeader(props: PublicHeaderProps) {
                 <div
                   className={cn(
                     'flex shrink-0 items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105',
-                    scrolled ? 'size-7' : 'size-14'
+                    scrolled ? 'size-6' : 'size-9'
                   )}
                 >
-                  {loading ? (
-                    <Skeleton className='size-full rounded-lg' />
-                  ) : customLogo ? (
-                    customLogo
-                  ) : (
-                    <HeaderLogo
-                      src={systemLogo}
-                      loading={loading}
-                      logoLoaded={logoLoaded}
-                      className='size-full rounded-lg object-contain'
-                    />
-                  )}
+                  {logoContent}
                 </div>
                 <span
                   className={cn(
@@ -242,21 +266,10 @@ export function PublicHeader(props: PublicHeaderProps) {
                 <div
                   className={cn(
                     'flex shrink-0 items-center justify-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-105',
-                    scrolled ? 'size-7' : 'size-14'
+                    scrolled ? 'size-6' : 'size-9'
                   )}
                 >
-                  {loading ? (
-                    <Skeleton className='size-full rounded-lg' />
-                  ) : customLogo ? (
-                    customLogo
-                  ) : (
-                    <HeaderLogo
-                      src={systemLogo}
-                      loading={loading}
-                      logoLoaded={logoLoaded}
-                      className='size-full rounded-lg object-contain'
-                    />
-                  )}
+                  {logoContent}
                 </div>
                 <span
                   className={cn(
@@ -275,12 +288,77 @@ export function PublicHeader(props: PublicHeaderProps) {
 
             {/* Desktop nav */}
             <div className='hidden items-center gap-0.5 sm:flex'>
-              {links.map((link, i) => {
+              {links.map((link) => {
                 const isActive = pathname === link.href
+                if (link.children?.length) {
+                  const childActive = link.children.some(
+                    (child) => pathname === child.href
+                  )
+                  return (
+                    <div key={link.title} className='group relative'>
+                      <button
+                        type='button'
+                        className={cn(
+                          'flex items-center gap-1 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200',
+                          childActive ? navLinkActiveClass : navLinkIdleClass
+                        )}
+                      >
+                        {t(link.title)}
+                        <ChevronDown className='size-3.5 opacity-60 transition-transform duration-200 group-hover:rotate-180' />
+                      </button>
+                      <div className='invisible absolute top-full left-1/2 -translate-x-1/2 translate-y-1 pt-3 opacity-0 transition-all duration-200 ease-out group-hover:visible group-hover:translate-y-0 group-hover:opacity-100'>
+                        <div className='bg-popover/90 text-popover-foreground border-border/40 min-w-60 rounded-2xl border p-2 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.5)] backdrop-blur-2xl'>
+                          {link.children.map((child) => {
+                            const ChildIcon = child.icon
+                            if (child.disabled) {
+                              return (
+                                <span
+                                  key={child.title}
+                                  className='text-muted-foreground/60 flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5'
+                                >
+                                  {ChildIcon && (
+                                    <span className='bg-muted/70 flex size-8 shrink-0 items-center justify-center rounded-lg'>
+                                      <ChildIcon className='size-4' />
+                                    </span>
+                                  )}
+                                  <span className='text-[13px] font-medium'>
+                                    {t(child.title)}
+                                  </span>
+                                  <span className='bg-muted text-muted-foreground ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium'>
+                                    {t('In development')}
+                                  </span>
+                                </span>
+                              )
+                            }
+                            return (
+                              <Link
+                                key={`${child.title}-${child.href}`}
+                                to={child.href}
+                                onClick={(event) =>
+                                  handleNavLinkClick(event, child)
+                                }
+                                className='group/item hover:bg-accent/80 flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors'
+                              >
+                                {ChildIcon && (
+                                  <span className='bg-muted/70 text-muted-foreground group-hover/item:bg-background group-hover/item:text-foreground flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors'>
+                                    <ChildIcon className='size-4' />
+                                  </span>
+                                )}
+                                <span className='text-[13px] font-medium'>
+                                  {t(child.title)}
+                                </span>
+                              </Link>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
                 if (link.external) {
                   return (
                     <a
-                      key={i}
+                      key={`${link.title}-${link.href}`}
                       href={link.href}
                       target={link.sameTab ? undefined : '_blank'}
                       rel={link.sameTab ? undefined : 'noopener noreferrer'}
@@ -288,7 +366,8 @@ export function PublicHeader(props: PublicHeaderProps) {
                       tabIndex={link.disabled ? -1 : undefined}
                       onClick={(event) => handleNavLinkClick(event, link)}
                       className={cn(
-                        'text-muted-foreground hover:text-foreground rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200',
+                        'rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200',
+                        navLinkIdleClass,
                         link.disabled && 'pointer-events-none opacity-50'
                       )}
                     >
@@ -298,15 +377,13 @@ export function PublicHeader(props: PublicHeaderProps) {
                 }
                 return (
                   <Link
-                    key={i}
+                    key={`${link.title}-${link.href}`}
                     to={link.href}
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
                     className={cn(
                       'rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200',
-                      isActive
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
+                      isActive ? navLinkActiveClass : navLinkIdleClass,
                       link.disabled && 'pointer-events-none opacity-50'
                     )}
                   >
@@ -318,7 +395,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               {(showLanguageSwitcher ||
                 showThemeSwitch ||
                 showNotifications) && (
-                <div className='bg-border/40 mx-2 h-4 w-px' />
+                <div className={cn('mx-2 h-4 w-px', navDividerClass)} />
               )}
 
               {showLanguageSwitcher && <LanguageSwitcher />}
@@ -338,20 +415,8 @@ export function PublicHeader(props: PublicHeaderProps) {
 
               {showAuthButtons && (
                 <>
-                  <div className='bg-border/40 mx-1 h-4 w-px' />
-                  {loading ? (
-                    <Skeleton className='h-8 w-20 rounded-lg' />
-                  ) : isAuthenticated ? (
-                    <ProfileDropdown />
-                  ) : (
-                    <Button
-                      size='sm'
-                      className='h-8 rounded-lg px-3.5 text-xs font-medium'
-                      render={<Link to='/sign-in' />}
-                    >
-                      {t('Sign in')}
-                    </Button>
-                  )}
+                  <div className={cn('mx-1 h-4 w-px', navDividerClass)} />
+                  {authControl}
                 </>
               )}
             </div>
@@ -420,10 +485,69 @@ export function PublicHeader(props: PublicHeaderProps) {
               const transitionStyle = {
                 transitionDelay: mobileOpen ? `${100 + i * 50}ms` : '0ms',
               }
+              if (link.children?.length) {
+                return (
+                  <div
+                    key={link.title}
+                    className={cn(
+                      'flex flex-col transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                      mobileOpen
+                        ? 'translate-y-0 opacity-100'
+                        : 'translate-y-4 opacity-0'
+                    )}
+                    style={transitionStyle}
+                  >
+                    <span className='text-foreground flex items-center py-3 text-base font-medium tracking-tight'>
+                      {t(link.title)}
+                    </span>
+                    <div className='flex flex-col pl-4'>
+                      {link.children.map((child) => {
+                        const ChildIcon = child.icon
+                        if (child.disabled) {
+                          return (
+                            <span
+                              key={child.title}
+                              className='text-muted-foreground/50 flex items-center gap-3 py-2.5 text-[15px]'
+                            >
+                              {ChildIcon && (
+                                <ChildIcon className='size-4 opacity-60' />
+                              )}
+                              {t(child.title)}
+                              <span className='bg-muted rounded-full px-2 py-0.5 text-[10px] leading-none font-medium'>
+                                {t('In development')}
+                              </span>
+                            </span>
+                          )
+                        }
+                        return (
+                          <Link
+                            key={`${child.title}-${child.href}`}
+                            to={child.href}
+                            onClick={(event) =>
+                              handleNavLinkClick(event, child, true)
+                            }
+                            className={cn(
+                              'flex items-center gap-3 py-2.5 text-[15px]',
+                              pathname === child.href
+                                ? 'text-foreground'
+                                : 'text-muted-foreground'
+                            )}
+                          >
+                            {ChildIcon && (
+                              <ChildIcon className='size-4 opacity-60' />
+                            )}
+                            {t(child.title)}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              }
               if (link.external) {
                 return (
                   <a
-                    key={i}
+                    key={`${link.title}-${link.href}`}
                     href={link.href}
                     target={link.sameTab ? undefined : '_blank'}
                     rel={link.sameTab ? undefined : 'noopener noreferrer'}
@@ -439,7 +563,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               }
               return (
                 <Link
-                  key={i}
+                  key={`${link.title}-${link.href}`}
                   to={link.href}
                   disabled={link.disabled}
                   onClick={(event) => handleNavLinkClick(event, link, true)}

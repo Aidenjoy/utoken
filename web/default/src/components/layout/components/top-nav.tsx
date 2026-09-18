@@ -17,19 +17,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { Menu } from 'lucide-react'
+import { ChevronDown, Menu } from 'lucide-react'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
-import { type TopNavLink } from '../types'
+import type { TopNavLink } from '../types'
 
 type TopNavProps = React.HTMLAttributes<HTMLElement> & {
   links: TopNavLink[]
@@ -40,6 +44,7 @@ type TopNavProps = React.HTMLAttributes<HTMLElement> & {
  * 在大屏幕显示水平导航，在小屏幕显示下拉菜单
  */
 export function TopNav({ className, links, ...props }: TopNavProps) {
+  const { t } = useTranslation()
   // 规范化链接，确保所有可选属性都有默认值
   const normalizedLinks = useMemo(
     () =>
@@ -52,6 +57,34 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
     [links]
   )
 
+  // 二级菜单项：禁用项展示“开发中”徽标，可用项带图标跳转
+  const renderChildMenuItems = (children: TopNavLink[]) =>
+    children.map((child) => {
+      const ChildIcon = child.icon
+      if (child.disabled) {
+        return (
+          <DropdownMenuItem key={child.title} disabled>
+            {ChildIcon && <ChildIcon className='size-4' />}
+            {child.title}
+            <span className='bg-muted text-muted-foreground ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium'>
+              {t('In development')}
+            </span>
+          </DropdownMenuItem>
+        )
+      }
+      return (
+        <DropdownMenuItem
+          key={`${child.title}-${child.href}`}
+          render={
+            <Link to={child.href}>
+              {ChildIcon && <ChildIcon className='size-4' />}
+              {child.title}
+            </Link>
+          }
+        />
+      )
+    })
+
   return (
     <>
       {/* 移动端下拉菜单 */}
@@ -63,8 +96,19 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
             <Menu />
           </DropdownMenuTrigger>
           <DropdownMenuContent side='bottom' align='start'>
-            {normalizedLinks.map(
-              ({ title, href, isActive, disabled, external }) => (
+            {normalizedLinks.map((link) => {
+              const { title, href, isActive, disabled, external } = link
+              if (link.children?.length) {
+                return (
+                  <DropdownMenuSub key={title}>
+                    <DropdownMenuSubTrigger>{title}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className='min-w-44'>
+                      {renderChildMenuItems(link.children)}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )
+              }
+              return (
                 <DropdownMenuItem
                   key={`${title}-${href}`}
                   render={
@@ -87,9 +131,9 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
                       </Link>
                     )
                   }
-                ></DropdownMenuItem>
+                />
               )
-            )}
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -102,8 +146,33 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
         )}
         {...props}
       >
-        {normalizedLinks.map(({ title, href, isActive, disabled, external }) =>
-          external ? (
+        {normalizedLinks.map((link) => {
+          const { title, href, isActive, disabled, external } = link
+          if (link.children?.length) {
+            return (
+              <DropdownMenu key={title} modal={false}>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type='button'
+                      className={`hover:text-primary flex items-center gap-1 text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
+                    />
+                  }
+                >
+                  {title}
+                  <ChevronDown className='size-3.5 opacity-60' />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side='bottom'
+                  align='start'
+                  className='min-w-48'
+                >
+                  {renderChildMenuItems(link.children)}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          }
+          return external ? (
             <a
               key={`${title}-${href}`}
               href={href}
@@ -123,7 +192,7 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
               {title}
             </Link>
           )
-        )}
+        })}
       </nav>
     </>
   )

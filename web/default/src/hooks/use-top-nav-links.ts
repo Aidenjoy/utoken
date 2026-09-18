@@ -16,6 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  BookOpen,
+  Camera,
+  Clapperboard,
+  Image as ImageIcon,
+  Megaphone,
+  Palette,
+  ShoppingCart,
+  Sparkles,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -30,6 +40,8 @@ export type TopNavLink = {
   requiresAuth?: boolean
   external?: boolean
   sameTab?: boolean
+  icon?: React.ElementType
+  children?: TopNavLink[]
 }
 
 /**
@@ -63,23 +75,52 @@ export function useTopNavLinks(): TopNavLink[] {
 
   const links: TopNavLink[] = []
 
-  // 主页 — external link to model.yundashi.com
+  // 首页
+  if (modules?.home !== false) {
+    links.push({ title: t('Home'), href: '/' })
+  }
+
+  // 视频工厂 — 四个视频创作方向
   links.push({
-    title: t('Home'),
-    href: 'http://model.yundashi.com',
-    external: true,
-    sameTab: true,
+    title: t('Video Factory'),
+    href: '/director',
+    children: [
+      {
+        title: t('Short Drama'),
+        href: '/director/drama',
+        requiresAuth: !isAuthed,
+        icon: Clapperboard,
+      },
+      {
+        title: t('E-commerce Video'),
+        href: '/director/ecommerce',
+        requiresAuth: !isAuthed,
+        icon: ShoppingCart,
+      },
+      {
+        title: t('Ad Video'),
+        href: '/director/ad',
+        requiresAuth: !isAuthed,
+        icon: Megaphone,
+      },
+      {
+        title: t('Daily Video'),
+        href: '/director/daily',
+        requiresAuth: !isAuthed,
+        icon: Camera,
+      },
+    ],
   })
 
-  // 算力商店 (was Home)
-  if (modules?.home !== false) {
-    links.push({ title: t('Compute Store'), href: '/' })
-  }
-
-  // Console -> /dashboard (new console path)
-  if (modules?.console !== false) {
-    links.push({ title: t('Console'), href: '/dashboard' })
-  }
+  // 图片工厂 — 开发中，暂无链接
+  links.push({
+    title: t('Image Factory'),
+    href: '',
+    children: [
+      { title: t('Product visuals'), href: '', disabled: true, icon: ImageIcon },
+      { title: t('Product design'), href: '', disabled: true, icon: Palette },
+    ],
+  })
 
   // Pricing
   const pricing = modules?.pricing
@@ -95,8 +136,15 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
-  // Developer Docs — static API usage guide, always visible
-  links.push({ title: t('Developer Docs'), href: '/docs' })
+  // 教程 — 开发者文档移至二级，设计觉醒开发中
+  links.push({
+    title: t('Tutorials'),
+    href: '',
+    children: [
+      { title: t('Developer Docs'), href: '/docs', icon: BookOpen },
+      { title: t('Design awakening'), href: '', disabled: true, icon: Sparkles },
+    ],
+  })
 
   // Docs (supports external links) — hidden by default, enable via backend config
   if (modules?.docs === true) {
@@ -112,5 +160,11 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('About'), href: '/about' })
   }
 
-  return links
+  // 去除标题与地址完全相同的重复项（例如 pricing 与 rankings 同时开启）。
+  return links.filter(
+    (link, index) =>
+      links.findIndex(
+        (item) => item.title === link.title && item.href === link.href
+      ) === index
+  )
 }
