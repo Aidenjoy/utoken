@@ -20,6 +20,7 @@ import { Link } from '@tanstack/react-router'
 import { ChevronDown, Menu } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -57,18 +58,18 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
     [links]
   )
 
-  // 二级菜单项：禁用项展示“开发中”徽标，可用项带图标跳转
+  // 二级菜单项：未上线项点击弹出开发中提示，可用项带图标跳转
   const renderChildMenuItems = (children: TopNavLink[]) =>
     children.map((child) => {
       const ChildIcon = child.icon
       if (child.disabled) {
         return (
-          <DropdownMenuItem key={child.title} disabled>
+          <DropdownMenuItem
+            key={child.title}
+            onClick={() => toast(t('This feature is under development'))}
+          >
             {ChildIcon && <ChildIcon className='size-4' />}
             {child.title}
-            <span className='bg-muted text-muted-foreground ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium'>
-              {t('In development')}
-            </span>
           </DropdownMenuItem>
         )
       }

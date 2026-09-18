@@ -20,6 +20,7 @@ import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -306,28 +307,31 @@ export function PublicHeader(props: PublicHeaderProps) {
                         {t(link.title)}
                         <ChevronDown className='size-3.5 opacity-60 transition-transform duration-200 group-hover:rotate-180' />
                       </button>
-                      <div className='invisible absolute top-full left-1/2 -translate-x-1/2 translate-y-1 pt-3 opacity-0 transition-all duration-200 ease-out group-hover:visible group-hover:translate-y-0 group-hover:opacity-100'>
-                        <div className='bg-popover/90 text-popover-foreground border-border/40 min-w-60 rounded-2xl border p-2 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.5)] backdrop-blur-2xl'>
+                      <div className='invisible absolute top-full left-1/2 -translate-x-1/2 translate-y-2 scale-[0.97] pt-3 opacity-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100'>
+                        <div className='bg-popover/90 text-popover-foreground border-border/40 ring-foreground/5 w-max min-w-44 rounded-2xl border p-1.5 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.5)] ring-1 backdrop-blur-2xl'>
                           {link.children.map((child) => {
                             const ChildIcon = child.icon
                             if (child.disabled) {
                               return (
-                                <span
+                                <button
                                   key={child.title}
-                                  className='text-muted-foreground/60 flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5'
+                                  type='button'
+                                  onClick={() =>
+                                    toast(
+                                      t('This feature is under development')
+                                    )
+                                  }
+                                  className='group/item hover:bg-accent/80 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors'
                                 >
                                   {ChildIcon && (
-                                    <span className='bg-muted/70 flex size-8 shrink-0 items-center justify-center rounded-lg'>
+                                    <span className='bg-muted/70 text-muted-foreground group-hover/item:bg-background group-hover/item:text-foreground flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors'>
                                       <ChildIcon className='size-4' />
                                     </span>
                                   )}
                                   <span className='text-[13px] font-medium'>
                                     {t(child.title)}
                                   </span>
-                                  <span className='bg-muted text-muted-foreground ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium'>
-                                    {t('In development')}
-                                  </span>
-                                </span>
+                                </button>
                               )
                             }
                             return (
@@ -505,18 +509,19 @@ export function PublicHeader(props: PublicHeaderProps) {
                         const ChildIcon = child.icon
                         if (child.disabled) {
                           return (
-                            <span
+                            <button
                               key={child.title}
-                              className='text-muted-foreground/50 flex items-center gap-3 py-2.5 text-[15px]'
+                              type='button'
+                              onClick={() =>
+                                toast(t('This feature is under development'))
+                              }
+                              className='text-muted-foreground flex items-center gap-3 py-2.5 text-left text-[15px]'
                             >
                               {ChildIcon && (
                                 <ChildIcon className='size-4 opacity-60' />
                               )}
                               {t(child.title)}
-                              <span className='bg-muted rounded-full px-2 py-0.5 text-[10px] leading-none font-medium'>
-                                {t('In development')}
-                              </span>
-                            </span>
+                            </button>
                           )
                         }
                         return (

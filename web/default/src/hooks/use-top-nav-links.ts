@@ -20,11 +20,14 @@ import {
   BookOpen,
   Camera,
   Clapperboard,
-  Image as ImageIcon,
+  Layers,
   Megaphone,
-  Palette,
+  Package,
+  Scissors,
+  Shirt,
   ShoppingCart,
   Sparkles,
+  Users,
 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -112,13 +115,29 @@ export function useTopNavLinks(): TopNavLink[] {
     ],
   })
 
-  // 图片工厂 — 开发中，暂无链接
+  // 模特穿搭 — 开发中，暂无链接
   links.push({
-    title: t('Image Factory'),
+    title: t('Model Styling'),
     href: '',
     children: [
-      { title: t('Product visuals'), href: '', disabled: true, icon: ImageIcon },
-      { title: t('Product design'), href: '', disabled: true, icon: Palette },
+      { title: t('Free Try-On'), href: '', disabled: true, icon: Shirt },
+      { title: t('Multi-Item Try-On'), href: '', disabled: true, icon: Layers },
+      { title: t('Duo Try-On'), href: '', disabled: true, icon: Users },
+    ],
+  })
+
+  // 爆款设计 — 开发中，暂无链接
+  links.push({
+    title: t('Viral Design'),
+    href: '',
+    children: [
+      { title: t('Fashion Design'), href: '', disabled: true, icon: Scissors },
+      {
+        title: t('Merchandise Design'),
+        href: '',
+        disabled: true,
+        icon: Package,
+      },
     ],
   })
 
