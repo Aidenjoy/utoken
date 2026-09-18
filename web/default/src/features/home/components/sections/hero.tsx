@@ -66,14 +66,16 @@ export function Hero(props: HeroProps) {
       <div className='home-hero-overlay' aria-hidden='true' />
       <div className='home-hero-content home-container'>
         <h1 id='home-title' className='home-title'>
-          <span className='home-title-line'>{t('Create infinite stories')}</span>
+          <span className='home-title-line'>
+            {t('Create infinite possibilities')}
+          </span>
           <span className='home-title-line home-title-gradient'>
             {t('Create like a Hollywood director')}
           </span>
         </h1>
         <p className='home-sub'>
           {t(
-            'One-stop AI creation — language models and video generation in a single cinematic workflow'
+            'One-stop AI creation — cinematic workflow, e-commerce model styling, and viral design in one place'
           )}
         </p>
         <div className='home-actions'>

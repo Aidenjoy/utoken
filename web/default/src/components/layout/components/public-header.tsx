@@ -72,7 +72,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     showLanguageSwitcher = true,
     logo: customLogo,
     siteName: customSiteName,
-    homeUrl = 'http://model.yundashi.com',
+    homeUrl = '/',
     showAuthButtons = true,
     showNotifications = true,
     overHero = false,
