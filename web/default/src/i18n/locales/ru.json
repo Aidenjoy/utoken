@@ -5254,7 +5254,7 @@
     "This expression is too complex for the visual editor. Please switch to expression mode to edit.": "Для визуального редактора это выражение слишком сложно. Переключитесь в режим выражения для правки.",
     "This FAQ entry will be removed from the list.": "Эта запись FAQ будет удалена из списка.",
     "This feature is experimental. Configuration format and behavior may change.": "Эта функция является экспериментальной. Формат конфигурации и поведение могут измениться.",
-    "This feature is under development": "Эта функция находится в разработке",
+    "This feature is under development": "Эта функция находится в процессе обновления",
     "This feature requires server-side WeChat configuration": "Эта функция требует серверной конфигурации WeChat",
     "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.": "Эта историческая запись была создана до появления функции аудита и не содержит данных аудита. Текущая версия уже поддерживает запись IP-адреса сервера, IP обратного вызова, способа оплаты и версии системы, но эти поля будут заполняться только в новых записях — восполнить их в старых записях задним числом невозможно.",
     "This identifier is sent to the payment backend when creating an order. Use alipay for Alipay, wxpay for WeChat Pay, stripe for Stripe. Custom values must be supported by your payment provider.": "Этот идентификатор отправляется в платежный backend при создании заказа. Для Alipay используйте alipay, для WeChat Pay — wxpay, для Stripe — stripe. Пользовательские значения должны поддерживаться вашим платежным провайдером.",

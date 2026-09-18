@@ -5254,7 +5254,7 @@
     "This expression is too complex for the visual editor. Please switch to expression mode to edit.": "This expression is too complex for the visual editor. Please switch to expression mode to edit.",
     "This FAQ entry will be removed from the list.": "This FAQ entry will be removed from the list.",
     "This feature is experimental. Configuration format and behavior may change.": "This feature is experimental. Configuration format and behavior may change.",
-    "This feature is under development": "This feature is under development",
+    "This feature is under development": "This feature is being upgraded",
     "This feature requires server-side WeChat configuration": "This feature requires server-side WeChat configuration",
     "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.": "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.",
     "This identifier is sent to the payment backend when creating an order. Use alipay for Alipay, wxpay for WeChat Pay, stripe for Stripe. Custom values must be supported by your payment provider.": "This identifier is sent to the payment backend when creating an order. Use alipay for Alipay, wxpay for WeChat Pay, stripe for Stripe. Custom values must be supported by your payment provider.",

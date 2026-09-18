@@ -5254,7 +5254,7 @@
     "This expression is too complex for the visual editor. Please switch to expression mode to edit.": "Biểu thức này quá phức tạp cho trình sửa trực quan. Hãy chuyển sang chế độ biểu thức để chỉnh sửa.",
     "This FAQ entry will be removed from the list.": "Mục FAQ này sẽ bị xóa khỏi danh sách.",
     "This feature is experimental. Configuration format and behavior may change.": "Tính năng này đang ở giai đoạn thử nghiệm. Định dạng cấu hình và hành vi có thể thay đổi.",
-    "This feature is under development": "Tính năng này đang được phát triển",
+    "This feature is under development": "Tính năng này đang được nâng cấp",
     "This feature requires server-side WeChat configuration": "Tính năng này yêu cầu cấu hình WeChat phía máy chủ",
     "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.": "Bản ghi lịch sử này được tạo trước khi tính năng thông tin kiểm toán ra đời nên thiếu dữ liệu kiểm toán. Phiên bản hiện tại đã hỗ trợ ghi lại IP máy chủ, IP gọi lại, phương thức thanh toán và phiên bản hệ thống, nhưng các trường này chỉ được ghi cho các bản ghi mới về sau — không thể bổ sung hồi tố cho bản ghi cũ.",
     "This identifier is sent to the payment backend when creating an order. Use alipay for Alipay, wxpay for WeChat Pay, stripe for Stripe. Custom values must be supported by your payment provider.": "Mã định danh này được gửi tới backend thanh toán khi tạo đơn hàng. Dùng alipay cho Alipay, wxpay cho WeChat Pay, stripe cho Stripe. Giá trị tùy chỉnh phải được nhà cung cấp thanh toán hỗ trợ.",

@@ -5254,7 +5254,7 @@
     "This expression is too complex for the visual editor. Please switch to expression mode to edit.": "此表达式对可视化编辑器过于复杂，请切换到表达式模式进行编辑。",
     "This FAQ entry will be removed from the list.": "此 FAQ 条目将从列表中移除。",
     "This feature is experimental. Configuration format and behavior may change.": "此功能为实验性功能。配置格式和行为可能会发生变化。",
-    "This feature is under development": "该功能正在开发中，敬请期待",
+    "This feature is under development": "该功能正在升级中，敬请期待",
     "This feature requires server-side WeChat configuration": "此功能需要服务器端微信配置",
     "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.": "该条历史记录缺少审计字段。当前版本已支持记录服务器 IP、回调 IP、支付方式与系统版本等审计信息；这些字段仅会写入后续新产生的记录，历史记录无法自动补齐。",
     "This identifier is sent to the payment backend when creating an order. Use alipay for Alipay, wxpay for WeChat Pay, stripe for Stripe. Custom values must be supported by your payment provider.": "创建订单时会把这个标识提交给支付后端。支付宝填 alipay，微信填 wxpay，Stripe 填 stripe。自定义值必须是支付服务支持的标识。",

@@ -5254,7 +5254,7 @@
     "This expression is too complex for the visual editor. Please switch to expression mode to edit.": "Cette expression est trop complexe pour l'éditeur visuel. Passez en mode expression pour la modifier.",
     "This FAQ entry will be removed from the list.": "Cette entrée de FAQ sera retirée de la liste.",
     "This feature is experimental. Configuration format and behavior may change.": "Cette fonctionnalité est expérimentale. Le format de configuration et le comportement peuvent changer.",
-    "This feature is under development": "Cette fonctionnalité est en cours de développement",
+    "This feature is under development": "Cette fonctionnalité est en cours d'amélioration",
     "This feature requires server-side WeChat configuration": "Cette fonctionnalité nécessite une configuration WeChat côté serveur",
     "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.": "Cet enregistrement historique date d'avant le suivi des informations d'audit et ne peut pas être complété rétroactivement. La version actuelle enregistre déjà l'IP du serveur, l'IP de rappel, le mode de paiement et la version du système pour les nouveaux paiements à venir.",
     "This identifier is sent to the payment backend when creating an order. Use alipay for Alipay, wxpay for WeChat Pay, stripe for Stripe. Custom values must be supported by your payment provider.": "Cet identifiant est envoyé au backend de paiement lors de la création d’une commande. Utilisez alipay pour Alipay, wxpay pour WeChat Pay, stripe pour Stripe. Les valeurs personnalisées doivent être prises en charge par votre fournisseur de paiement.",

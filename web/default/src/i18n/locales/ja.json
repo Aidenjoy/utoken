@@ -5254,7 +5254,7 @@
     "This expression is too complex for the visual editor. Please switch to expression mode to edit.": "この式はビジュアルエディタでは扱いにくいです。式モードに切り替えて編集してください。",
     "This FAQ entry will be removed from the list.": "この FAQ 項目はリストから削除されます。",
     "This feature is experimental. Configuration format and behavior may change.": "この機能は実験的です。設定フォーマットや動作は変更される可能性があります。",
-    "This feature is under development": "この機能は開発中です。お楽しみに",
+    "This feature is under development": "この機能はアップグレード中です。お楽しみに",
     "This feature requires server-side WeChat configuration": "この機能にはサーバー側のWeChat設定が必要です",
     "This historical record predates audit-info tracking and cannot be backfilled. The current instance already records server IP, callback IP, payment method, and system version for new top-ups going forward.": "このレコードは監査情報の記録に対応する前の履歴データのため、監査情報がありません。現在のバージョンではサーバーIP、コールバックIP、支払い方法、システムバージョンなどの監査情報を記録できますが、これらは今後新しく作成されるレコードにのみ適用され、過去のレコードを遡って補完することはできません。",
     "This identifier is sent to the payment backend when creating an order. Use alipay for Alipay, wxpay for WeChat Pay, stripe for Stripe. Custom values must be supported by your payment provider.": "注文作成時に、この識別子が決済バックエンドへ送信されます。Alipay は alipay、WeChat Pay は wxpay、Stripe は stripe を使ってください。カスタム値は決済サービス側で対応している必要があります。",
