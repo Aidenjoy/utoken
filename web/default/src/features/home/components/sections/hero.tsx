@@ -31,10 +31,6 @@ import heroSpace1280 from '@/assets/home/hero-space-1280.webp'
 import heroSpace2560 from '@/assets/home/hero-space-2560.webp'
 import { Button } from '@/components/ui/button'
 
-interface HeroProps {
-  isAuthenticated?: boolean
-}
-
 // 轮播画面对应平台可生成的多种视频风格，仅作氛围背景。
 // 1280w 供移动端等小屏，2560w 供桌面大屏，浏览器按 srcset 自动选择。
 const heroFrames = [
@@ -45,7 +41,7 @@ const heroFrames = [
   { w1280: heroInk1280, w2560: heroInk2560 },
 ]
 
-export function Hero(props: HeroProps) {
+export function Hero() {
   const { t } = useTranslation()
 
   return (
@@ -81,11 +77,9 @@ export function Hero(props: HeroProps) {
         <div className='home-actions'>
           <Button
             className='home-button-primary h-12 rounded-full px-7 text-[15px]'
-            render={
-              <Link to={props.isAuthenticated ? '/dashboard' : '/sign-up'} />
-            }
+            render={<Link to='/dashboard' />}
           >
-            {props.isAuthenticated ? t('Start exploring') : t('Get API Key')}
+            {t('Start exploring')}
           </Button>
         </div>
       </div>

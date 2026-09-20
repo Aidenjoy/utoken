@@ -666,6 +666,8 @@ For commercial licensing, please contact support@quantumnous.com
 .home-page .home-hero {
   position: relative;
   display: flex;
+  /* 老内核不认 svh（Chrome <108）时回退到 vh，保证满屏结构不塌 */
+  min-height: 100vh;
   min-height: 100svh;
   align-items: center;
   overflow: hidden;
@@ -827,6 +829,7 @@ For commercial licensing, please contact support@quantumnous.com
 .home-page .home-caps {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
   min-height: 100svh;
   /* 覆盖 .home-section 的基 padding，第二屏高度完全由内容+满屏约束决定 */
   padding-block: 0;
@@ -943,6 +946,7 @@ For commercial licensing, please contact support@quantumnous.com
     gap: 0;
   }
   .home-page .home-cap-card {
+    min-height: 100vh;
     min-height: 100svh;
     border: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -1005,48 +1009,6 @@ For commercial licensing, please contact support@quantumnous.com
     justify-content: center;
     gap: 6px 20px;
   }
-}
-
-/* --- Closing title-card: ends the page on a strong dark frame --- */
-.home-page .home-closing {
-  position: relative;
-  overflow: hidden;
-  text-align: center;
-}
-.home-page .home-closing-media,
-.home-page .home-closing-overlay {
-  position: absolute;
-  inset: 0;
-}
-.home-page .home-closing-media img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.35;
-}
-.home-page .home-closing-overlay {
-  background: linear-gradient(
-    to bottom,
-    #090c12 0%,
-    rgba(9, 12, 18, 0.2) 42%,
-    #090c12 100%
-  );
-}
-.home-page .home-closing .home-container {
-  position: relative;
-  z-index: 1;
-}
-.home-page .home-closing-title {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
-  font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -0.035em;
-  text-wrap: balance;
-  background: linear-gradient(90deg, #a78bfa 0%, #818cf8 48%, #60a5fa 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
 }
 
 /* --- Slim footer row on the dark home page --- */
