@@ -51,7 +51,7 @@ const lines = [
   {
     eyebrow: 'Model Square',
     title: 'One key, every model',
-    desc: 'OpenAI, Claude, Gemini and dozens more route through one unified API and one bill',
+    desc: 'Dozens of model providers route through one unified API and one bill',
     chips: ['Unified API', 'One bill', 'Auto routing'],
     img: capModels,
   },
