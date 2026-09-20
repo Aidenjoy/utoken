@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -982,6 +983,48 @@ func DeleteUser(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+// UpdateUserTokenRate 管理员设置用户 token 消耗费率（0-100，0 表示清除费率恢复默认 1.0 倍）。
+// Only admin user can do this.
+func UpdateUserTokenRate(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req struct {
+		TokenRate float64 `json:"token_rate"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if math.IsNaN(req.TokenRate) || math.IsInf(req.TokenRate, 0) || req.TokenRate < 0 || req.TokenRate > 100 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		return
+	}
+	myRole := c.GetInt("role")
+	if !canManageTargetRole(myRole, user.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+		return
+	}
+	if err := model.UpdateUserTokenRate(id, req.TokenRate); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAuditFor(c, id, "user.token_rate", map[string]interface{}{
+		"token_rate": req.TokenRate,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
 }
 
 func DeleteSelf(c *gin.Context) {

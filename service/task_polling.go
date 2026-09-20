@@ -464,6 +464,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	logger.LogDebugJSON(ctx, "updateVideoSingleTask response: %s", responseBody)
 
+	// 按用户 token 费率缩放上游响应中的 usage token 数（仅「按 seedance 计费」的
+	// 任务会被改写，其余原样返回）；必须在 ParseTaskResult / ApplyUpstreamTaskResult
+	// 之前执行，使计费结算、task.Data 快照与客户端可见 JSON 自动跟随缩放后的值。
+	responseBody = ScaleSeedanceTaskUsageByUserRate(responseBody, task, "[TaskPolling]")
+
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems dto.TaskResponse[model.Task]

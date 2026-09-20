@@ -134,6 +134,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.PUT("/", controller.UpdateUser)
+				adminRoute.PUT("/:id/token_rate", controller.UpdateUserTokenRate)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)

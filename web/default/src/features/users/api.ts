@@ -118,6 +118,20 @@ export async function manageUser(
 }
 
 /**
+ * Set a user's token consumption rate (0 clears the rate, restoring the default
+ * 1.0x multiplier). Only affects seedance video task billing.
+ */
+export async function updateUserTokenRate(
+  id: number,
+  tokenRate: number
+): Promise<ApiResponse> {
+  const res = await api.put(`/api/user/${id}/token_rate`, {
+    token_rate: tokenRate,
+  })
+  return res.data
+}
+
+/**
  * Adjust user quota atomically (add/subtract/override)
  */
 export async function adjustUserQuota(

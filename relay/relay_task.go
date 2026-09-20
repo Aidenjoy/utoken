@@ -466,6 +466,11 @@ func arkNativePassthroughFetch(task *model.Task) []byte {
 		return nil
 	}
 
+	// 按用户 token 费率缩放 usage（仅「按 seedance 计费」的任务会被改写，其余原样
+	// 返回）；在 ParseTaskResult / ApplyUpstreamTaskResult 之前执行，使实时透传给客户端的
+	// body、本地快照与结算全部使用缩放后的值。
+	body = service.ScaleSeedanceTaskUsageByUserRate(body, task, "[ArkNative]")
+
 	// 顺便同步本地任务状态；进入终态时必须在此结算/退款（与后台轮询共用逻辑）：
 	// 任务一旦被标记为 Success/Failure，后台轮询不再捕获它，不在这里结算
 	// 就会导致计费永不执行，使用日志缺失带 token 的退费/结算记录。

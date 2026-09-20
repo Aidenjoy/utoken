@@ -18,6 +18,14 @@ func DecodeJson(reader io.Reader, v any) error {
 	return json.NewDecoder(reader).Decode(v)
 }
 
+// UnmarshalUseNumber 解析 JSON，数字保留为 json.Number，避免大整数经 float64
+// 往返后精度丢失或被改写为科学计数法。
+func UnmarshalUseNumber(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	return dec.Decode(v)
+}
+
 func Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }

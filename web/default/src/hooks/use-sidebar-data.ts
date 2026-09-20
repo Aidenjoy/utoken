@@ -35,6 +35,7 @@ import {
   ListTodo,
   Megaphone,
   MessageSquare,
+  Percent,
   Radio,
   ScrollText,
   ServerCog,
@@ -260,6 +261,12 @@ export function useSidebarData(): SidebarData {
             title: t('Organization Management'),
             url: '/organizations',
             icon: Building,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Token Rate Management'),
+            url: '/token-rates',
+            icon: Percent,
             requiredRole: ROLE.ADMIN,
           },
           {
