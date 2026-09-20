@@ -42,6 +42,12 @@ interface FooterProps {
   className?: string
   /** Default false = show it. Set to true to hide the "© New API. 版权所有..." line. */
   hideProjectAttribution?: boolean
+  /**
+   * Render only a single thin copyright/legal row instead of the full
+   * multi-column footer. Used by the public home page, whose closing
+   * title-card already ends the page and only needs the legal line.
+   */
+  slim?: boolean
 }
 
 const NEW_API_FOOTER_ATTRIBUTION_KEY = [
@@ -226,6 +232,34 @@ export function Footer(props: FooterProps) {
   )
 
   const displayColumns = props.columns ?? fallbackColumns
+
+  if (props.slim) {
+    return (
+      <footer className={cn('border-t', props.className)}>
+        <div className='mx-auto flex w-full max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 px-6 py-5 text-xs'>
+          {footerHtml ? (
+            <div
+              className='custom-footer min-w-0 text-center'
+              dangerouslySetInnerHTML={{ __html: footerHtml }}
+            />
+          ) : (
+            <>
+              <span>
+                &copy; {currentYear} {displayName}.{' '}
+                {props.copyright ?? t('footer.defaultCopyright')}
+              </span>
+              <LegalLinks leadingSeparator />
+              {showAttributionByLogo ? (
+                <ProjectAttribution currentYear={currentYear} inline />
+              ) : (
+                <span>{t('One API. All models.')}</span>
+              )}
+            </>
+          )}
+        </div>
+      </footer>
+    )
+  }
 
   if (footerHtml) {
     return (

@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import heroInk1280 from '@/assets/home/hero-ink-1280.webp'
+import heroInk2560 from '@/assets/home/hero-ink-2560.webp'
 import { Button } from '@/components/ui/button'
 
 interface CTAProps {
@@ -34,11 +36,22 @@ export function CTA(props: CTAProps) {
 
   return (
     <section
-      className='home-section home-cta'
+      className='home-section home-closing'
       aria-labelledby='home-start-title'
     >
+      <div className='home-closing-media' aria-hidden='true'>
+        <img
+          src={heroInk1280}
+          srcSet={`${heroInk1280} 1280w, ${heroInk2560} 2560w`}
+          sizes='100vw'
+          alt=''
+          loading='lazy'
+          decoding='async'
+        />
+      </div>
+      <div className='home-closing-overlay' aria-hidden='true' />
       <div className='home-container'>
-        <h2 id='home-start-title' className='home-heading'>
+        <h2 id='home-start-title' className='home-closing-title'>
           {t('Your next idea starts here.')}
         </h2>
         <Button

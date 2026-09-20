@@ -16,6 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+export { Capabilities } from './sections/capabilities'
 export { CTA } from './sections/cta'
-export { Ecosystem } from './sections/ecosystem'
 export { Hero } from './sections/hero'

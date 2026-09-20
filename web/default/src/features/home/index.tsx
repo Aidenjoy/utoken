@@ -26,8 +26,8 @@ import { useTheme } from '@/context/theme-provider'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { Capabilities } from './components/sections/capabilities'
 import { CTA } from './components/sections/cta'
-import { Ecosystem } from './components/sections/ecosystem'
 import { Hero } from './components/sections/hero'
 import { useHomePageContent } from './hooks/use-home-page-content'
 
@@ -117,10 +117,10 @@ export function Home() {
     <PublicLayout showMainContainer={false} headerProps={{ overHero: true }}>
       <main className='home-page'>
         <Hero isAuthenticated={isAuthenticated} />
-        <Ecosystem />
+        <Capabilities />
         <CTA isAuthenticated={isAuthenticated} />
       </main>
-      <Footer hideProjectAttribution />
+      <Footer slim className='home-footer' hideProjectAttribution />
     </PublicLayout>
   )
 }

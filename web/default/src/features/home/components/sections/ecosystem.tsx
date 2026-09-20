@@ -49,20 +49,18 @@ export function Ecosystem() {
   if (names.length === 0) return null
 
   return (
-    <section className='home-section' aria-labelledby='home-ecosystem-title'>
-      <div className='home-container'>
-        <h2 id='home-ecosystem-title' className='home-ecosystem-title'>
-          {t('Models from the providers you already know.')}
-        </h2>
-        <ul className='home-vendors'>
-          {names.map((name) => (
-            <li key={name}>{name}</li>
-          ))}
-        </ul>
-        <Link to='/pricing' className='home-text-link text-[15px]'>
-          {t('View all models')}
-        </Link>
-      </div>
-    </section>
+    <div className='home-caps-vendors'>
+      <h2 id='home-ecosystem-title' className='home-caps-vendors-label'>
+        {t('Models from the providers you already know.')}
+      </h2>
+      <ul className='home-caps-vendors-list'>
+        {names.map((name) => (
+          <li key={name}>{name}</li>
+        ))}
+      </ul>
+      <Link to='/pricing' className='home-text-link'>
+        {t('View all models')}
+      </Link>
+    </div>
   )
 }
