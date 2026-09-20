@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -9,6 +8,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // ScaleSeedanceTaskUsageByUserRate 按用户 token 费率缩放 seedance 视频任务查询响应中的
@@ -43,76 +44,66 @@ func scaleVolcUsageByRate(body []byte, rate float64, userId int, logPrefix strin
 		return body
 	}
 
-	var payload map[string]any
-	if err := common.UnmarshalUseNumber(body, &payload); err != nil {
+	usagePath := locateVolcUsagePath(body)
+	if usagePath == "" {
 		return body
 	}
 
-	// 定位 usage 对象：官方顶层 usage 优先，中转站 result_summary.usage 兜底
-	//（与 taskcommon.VolcTaskResponse 的解析优先级一致）。
-	usage := locateVolcUsage(payload)
-	if usage == nil {
-		return body
-	}
-
-	oldCompletion, hasCompletion := readUsageTokens(usage, "completion_tokens")
-	oldTotal, hasTotal := readUsageTokens(usage, "total_tokens")
+	oldCompletion, hasCompletion := readUsageToken(body, usagePath+".completion_tokens")
+	oldTotal, hasTotal := readUsageToken(body, usagePath+".total_tokens")
 	if !hasCompletion && !hasTotal {
 		return body
 	}
 
 	newCompletion := scaleTokensByRate(oldCompletion, rate, userId, logPrefix)
 	newTotal := scaleTokensByRate(oldTotal, rate, userId, logPrefix)
+
+	// 用 sjson 原地替换这两个 token 值：整个文档的字段顺序、缩进与其余字段
+	// 保持上游原样，避免缩放后键序重排被客户端察觉异常。
+	scaled := body
+	var err error
 	if hasCompletion {
-		writeUsageTokens(usage, "completion_tokens", newCompletion)
+		if scaled, err = writeUsageToken(scaled, usagePath+".completion_tokens", newCompletion); err != nil {
+			return body
+		}
 	}
 	if hasTotal {
-		writeUsageTokens(usage, "total_tokens", newTotal)
+		if scaled, err = writeUsageToken(scaled, usagePath+".total_tokens", newTotal); err != nil {
+			return body
+		}
 	}
 
-	scaled, err := common.Marshal(payload)
-	if err != nil {
-		return body
-	}
-
-	// 原始响应日志已由 taskcommon.ParseVolcTaskResult 输出（"Fetch task response"），
-	// 这里补充改后响应与计算日志，便于用接口调用核算费率是否生效。
-	scaledLog := string(scaled)
-	if len(scaledLog) > 2000 {
-		scaledLog = scaledLog[:2000] + "...(truncated)"
-	}
-	common.SysLog(fmt.Sprintf("%s Fetch task response (after token rate): %s", logPrefix, scaledLog))
+	// 说明：本函数在 ParseTaskResult 之前缩放 body，因此 taskcommon.ParseVolcTaskResult
+	// 输出的 "Fetch task response" 已是缩放后的响应体（即客户端最终收到的 JSON），
+	// 无需再重复打印一次改后 body。这里只补一条计算日志，给出「原 token → 费率
+	// → 新 token」，便于用接口调用核算费率是否生效。
 	common.SysLog(fmt.Sprintf("%s Token rate applied: user=%d rate=%.4f completion_tokens %d -> %d, total_tokens %d -> %d",
 		logPrefix, userId, rate, oldCompletion, newCompletion, oldTotal, newTotal))
 	return scaled
 }
 
-// locateVolcUsage 返回响应中的 usage 对象：顶层优先，result_summary.usage 兜底。
-func locateVolcUsage(payload map[string]any) map[string]any {
-	if usage, ok := payload["usage"].(map[string]any); ok && usage != nil {
-		return usage
+// locateVolcUsagePath 返回 usage 对象的 gjson/sjson 路径：顶层优先，
+// result_summary.usage 兜底（与 taskcommon.VolcTaskResponse 的解析优先级一致）。
+func locateVolcUsagePath(body []byte) string {
+	if gjson.GetBytes(body, "usage").IsObject() {
+		return "usage"
 	}
-	if summary, ok := payload["result_summary"].(map[string]any); ok {
-		if usage, ok := summary["usage"].(map[string]any); ok {
-			return usage
-		}
+	if gjson.GetBytes(body, "result_summary.usage").IsObject() {
+		return "result_summary.usage"
 	}
-	return nil
+	return ""
 }
 
-// readUsageTokens 读取 usage 中的 token 数。上游存在数字与字符串两种形态
+// readUsageToken 读取指定路径的 token 数。上游存在数字与字符串两种形态
 // （见 taskcommon 的宽容整数解析），非法/负值视为不可缩放。
-func readUsageTokens(usage map[string]any, key string) (value int64, ok bool) {
-	raw, exists := usage[key]
-	if !exists {
-		return 0, false
-	}
+func readUsageToken(body []byte, path string) (value int64, ok bool) {
+	r := gjson.GetBytes(body, path)
 	var str string
-	switch v := raw.(type) {
-	case json.Number:
-		str = v.String()
-	case string:
-		str = v
+	switch r.Type {
+	case gjson.Number:
+		str = r.Raw
+	case gjson.String:
+		str = r.Str
 	default:
 		return 0, false
 	}
@@ -123,13 +114,13 @@ func readUsageTokens(usage map[string]any, key string) (value int64, ok bool) {
 	return parsed, true
 }
 
-// writeUsageTokens 按原始类型写回缩放后的 token 数（数字→数字，字符串→字符串）。
-func writeUsageTokens(usage map[string]any, key string, value int64) {
-	if _, isString := usage[key].(string); isString {
-		usage[key] = strconv.FormatInt(value, 10)
-		return
+// writeUsageToken 用 sjson 原地替换指定路径的 token 数，保持原始类型
+// （数字→数字，字符串→字符串）且不扰动文档其余部分与字段顺序。
+func writeUsageToken(body []byte, path string, value int64) ([]byte, error) {
+	if gjson.GetBytes(body, path).Type == gjson.String {
+		return sjson.SetBytes(body, path, strconv.FormatInt(value, 10))
 	}
-	usage[key] = json.Number(strconv.FormatInt(value, 10))
+	return sjson.SetBytes(body, path, value)
 }
 
 // scaleTokensByRate 计算 value*rate 并四舍五入；结果钳制在 [0, MaxInt32]

@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // parseScaledUsage 从缩放后的 body 中取出顶层 usage 对象，便于断言字段类型与数值。
@@ -139,4 +140,27 @@ func TestScaleSeedanceTaskUsageByUserRate_Gate(t *testing.T) {
 		}
 		assert.Equal(t, string(body), string(ScaleSeedanceTaskUsageByUserRate(body, task, "[Test]")))
 	})
+}
+
+// TestScaleVolcUsageByRate_PreservesKeyOrder 验证缩放保持上游原始字段顺序
+// （sjson 原地替换），不会重排为字母序 JSON 而被客户端察觉异常。
+func TestScaleVolcUsageByRate_PreservesKeyOrder(t *testing.T) {
+	const userId = 4244
+
+	body := []byte(`{"id":"t1","model":"doubao-seedance-2-0","status":"succeeded","content":{"video_url":"http://v"},"usage":{"completion_tokens":100,"total_tokens":100},"created_at":1,"seed":2,"resolution":"480p"}`)
+	got := scaleVolcUsageByRate(body, 1.5, userId, "[Test]")
+
+	topKeys := func(b []byte) []string {
+		var keys []string
+		gjson.ParseBytes(b).ForEach(func(k, _ gjson.Result) bool {
+			keys = append(keys, k.String())
+			return true
+		})
+		return keys
+	}
+	assert.Equal(t, topKeys(body), topKeys(got), "顶层字段顺序应保持上游原样")
+
+	usage := parseScaledUsage(t, got)
+	assert.EqualValues(t, 150, usage["completion_tokens"])
+	assert.EqualValues(t, 150, usage["total_tokens"])
 }
