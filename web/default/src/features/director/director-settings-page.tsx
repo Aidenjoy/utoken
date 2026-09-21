@@ -37,6 +37,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserModels } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
+import { getModelCategory } from '@/lib/model-category'
 
 import {
   getDirectorSettings,
@@ -82,12 +83,26 @@ export function DirectorSettingsPage() {
     }
   }, [settingsQuery.data])
 
-  const modelOptions = React.useMemo(
+  // 下拉选项按能力分类过滤：语言/图片/视频模型各自只展示同类模型
+  const textModelOptions = React.useMemo(
     () =>
-      (modelsQuery.data?.data ?? []).map((model) => ({
-        value: model,
-        label: model,
-      })),
+      (modelsQuery.data?.data ?? [])
+        .filter((model) => getModelCategory(model) === 'text')
+        .map((model) => ({ value: model, label: model })),
+    [modelsQuery.data]
+  )
+  const imageModelOptions = React.useMemo(
+    () =>
+      (modelsQuery.data?.data ?? [])
+        .filter((model) => getModelCategory(model) === 'image')
+        .map((model) => ({ value: model, label: model })),
+    [modelsQuery.data]
+  )
+  const videoModelOptions = React.useMemo(
+    () =>
+      (modelsQuery.data?.data ?? [])
+        .filter((model) => getModelCategory(model) === 'video')
+        .map((model) => ({ value: model, label: model })),
     [modelsQuery.data]
   )
 
@@ -179,7 +194,7 @@ export function DirectorSettingsPage() {
                     description={t(
                       'Used for rewriting, extraction and storyboard splitting'
                     )}
-                    options={modelOptions}
+                    options={textModelOptions}
                     value={textModel}
                     onValueChange={setTextModel}
                   />
@@ -189,7 +204,7 @@ export function DirectorSettingsPage() {
                     description={t(
                       'Used for character, scene, prop and storyboard images'
                     )}
-                    options={modelOptions}
+                    options={imageModelOptions}
                     value={imageModel}
                     onValueChange={setImageModel}
                   />
@@ -197,7 +212,7 @@ export function DirectorSettingsPage() {
                     id='director-video-model'
                     label={t('Video Model')}
                     description={t('Used for shot video generation')}
-                    options={modelOptions}
+                    options={videoModelOptions}
                     value={videoModel}
                     onValueChange={setVideoModel}
                   />

@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
+import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
+
 import { getUserGroups, getUserModels } from './api'
 import { AssetLibraryContent } from './components/video/asset-library'
 
@@ -47,8 +49,8 @@ export function AssetLibraryPage() {
   return (
     <div className='flex h-full flex-col gap-4 overflow-hidden p-4 md:p-6'>
       <header className='shrink-0 space-y-1'>
-        <h1 className='text-xl font-semibold tracking-tight'>
-          {t('Asset Library')}
+        <h1 className={SECTION_PAGE_TITLE_CLASS}>
+          {t('Virtual Human Library')}
         </h1>
         <p className='text-muted-foreground text-sm'>
           {t(

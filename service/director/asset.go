@@ -48,7 +48,7 @@ func (s *AssetService) ListAssets(f model.DirectorAssetFilter, withUsername bool
 }
 
 // builtinAssetCategories 内置分类键（生成环节自动登记，自定义分类不可重名）
-var builtinAssetCategories = []string{"character", "scene", "prop", "storyboard", "composed", "merged", "edited", "upload"}
+var builtinAssetCategories = []string{"character", "scene", "prop", "storyboard", "composed", "merged", "edited", "generated", "upload"}
 
 // UploadAsset 上传文件到 TOS 并登记为素材（分类默认 upload，可指定内置/自定义分类；场景默认视频工厂）
 // 文件按项目归档到 TOS 批次 director{projectID}

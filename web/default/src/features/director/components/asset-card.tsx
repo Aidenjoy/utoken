@@ -28,7 +28,7 @@ import type { DirectorAsset } from '../types'
 
 interface AssetCardProps {
   asset: DirectorAsset
-  categoryLabel: (key: string) => string
+  categoryLabel: (key: string, scene?: string) => string
   sceneLabel: (key: string) => string
   projectText: (id?: number | null) => string
   showOwner?: boolean // 管理员视图：显示归属用户 ID 与用户名
@@ -101,7 +101,7 @@ export function AssetCard(props: AssetCardProps) {
         )}
         <div className='flex items-center justify-between'>
           <Badge variant='outline' className='font-normal'>
-            {props.categoryLabel(asset.category)}
+            {props.categoryLabel(asset.category, asset.scene)}
           </Badge>
           <span className='text-muted-foreground text-xs'>
             {dayjs(asset.createdAt * 1000).format('YYYY-MM-DD')}

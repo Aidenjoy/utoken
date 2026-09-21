@@ -76,6 +76,7 @@ import {
   ASSET_SCENE_OPTIONS,
   ASSET_TYPE_OPTIONS,
   BUILTIN_ASSET_CATEGORIES,
+  WORKBENCH_ASSET_SCENES,
 } from './constants'
 import type { DirectorAsset } from './types'
 
@@ -193,9 +194,13 @@ export function DirectorAssetsPage() {
   ]
   const movableCats = [...builtinCats, ...customCatOptions]
 
-  const categoryLabel = (key: string) => {
+  const categoryLabel = (key: string, scene?: string) => {
     const hit = movableCats.find((c) => c.key === key)
-    return hit ? hit.label : key || t('Other')
+    if (hit) return hit.label
+    if (key) return key
+    // 早期工作台生成素材未打分类，按场景回显为「生成」
+    if (scene && WORKBENCH_ASSET_SCENES.includes(scene)) return t('Generated')
+    return t('Other')
   }
 
   // 场景徽标文案：历史素材场景为空时归属视频工厂

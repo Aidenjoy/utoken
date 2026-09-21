@@ -117,8 +117,8 @@ func ListDirectorAssets(f DirectorAssetFilter) ([]*DirectorAsset, int64, error) 
 	}
 	if f.Scene != "" {
 		if f.Scene == AssetSceneVideoFactory {
-			// 历史素材场景为空，归属视频工厂
-			query = query.Where("(scene = ? OR scene = '')", f.Scene)
+			// 兼容历史数据：场景为 NULL/空串的素材归属视频工厂
+			query = query.Where("(scene = ? OR scene IS NULL OR scene = '')", f.Scene)
 		} else {
 			query = query.Where("scene = ?", f.Scene)
 		}

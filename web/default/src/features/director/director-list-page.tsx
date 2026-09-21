@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clapperboard, Plus, Search } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Clapperboard, LayoutGrid, Plus, Search } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -187,71 +188,77 @@ export function DirectorListPage(props: DirectorListPageProps) {
 
   return (
     <>
-    <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t(categoryConfig.label)}
-      </SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        {isAdmin && <OwnerFilter value={owner} onChange={setOwner} />}
-        <div className='relative'>
-          <Search
-            aria-hidden='true'
-            className='text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2'
-          />
-          <Input
-            className='w-56 pl-8'
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder={t('Search projects...')}
-          />
-        </div>
-        <Button
-          onClick={() => {
-            setEditingProject(null)
-            setDialogOpen(true)
-          }}
-        >
-          <Plus aria-hidden='true' />
-          {t('Create Project')}
-        </Button>
-      </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        {renderProjects()}
+      <SectionPageLayout>
+        <SectionPageLayout.Title>
+          {t(categoryConfig.label)}
+        </SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          {isAdmin && <OwnerFilter value={owner} onChange={setOwner} />}
+          <div className='relative'>
+            <Search
+              aria-hidden='true'
+              className='text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2'
+            />
+            <Input
+              className='w-56 pl-8'
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder={t('Search projects...')}
+            />
+          </div>
+          <Button
+            onClick={() => {
+              setEditingProject(null)
+              setDialogOpen(true)
+            }}
+          >
+            <Plus aria-hidden='true' />
+            {t('Create Project')}
+          </Button>
+          <Button variant='outline' render={<Link to='/director/assets' />}>
+            <LayoutGrid aria-hidden='true' />
+            {t('Asset Library')}
+          </Button>
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          {renderProjects()}
 
-        {totalPages > 1 && (
-          <Pagination className='mt-6'>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  className={cn(page <= 1 && 'pointer-events-none opacity-50')}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                />
-              </PaginationItem>
-              {pageNumbers.map((num) => (
-                <PaginationItem key={num}>
-                  <PaginationLink
-                    isActive={page === num}
-                    onClick={() => setPage(num)}
-                  >
-                    {num}
-                  </PaginationLink>
+          {totalPages > 1 && (
+            <Pagination className='mt-6'>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    className={cn(
+                      page <= 1 && 'pointer-events-none opacity-50'
+                    )}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  />
                 </PaginationItem>
-              ))}
-              <PaginationItem>
-                <PaginationNext
-                  className={cn(
-                    page >= totalPages && 'pointer-events-none opacity-50'
-                  )}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        )}
-      </SectionPageLayout.Content>
-    </SectionPageLayout>
+                {pageNumbers.map((num) => (
+                  <PaginationItem key={num}>
+                    <PaginationLink
+                      isActive={page === num}
+                      onClick={() => setPage(num)}
+                    >
+                      {num}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    className={cn(
+                      page >= totalPages && 'pointer-events-none opacity-50'
+                    )}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
 
-    <ProjectDialog
+      <ProjectDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         category={props.category}

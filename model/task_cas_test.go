@@ -51,6 +51,7 @@ func TestMain(m *testing.M) {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&DirectorAsset{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}

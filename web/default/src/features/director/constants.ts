@@ -261,8 +261,12 @@ export const BUILTIN_ASSET_CATEGORIES: { key: string; label: string }[] = [
   { key: 'composed', label: 'Composed Clip' },
   { key: 'merged', label: 'Merged Video' },
   { key: 'edited', label: 'Edited Video' },
+  { key: 'generated', label: 'Generated' },
   { key: 'upload', label: 'Upload' },
 ]
+
+// 工作台三场景：归档生成素材时打「生成」分类，历史空分类素材也按此回显
+export const WORKBENCH_ASSET_SCENES = ['try-on', 'viral-hero', 'viral-design']
 
 // 素材类型筛选选项（与后端 detectUploadType 对应）
 export const ASSET_TYPE_OPTIONS: { value: string; label: string }[] = [

@@ -338,6 +338,11 @@ func migrateDB() error {
 		Update("status", DirectorStatusDraft).Error; err != nil {
 		return err
 	}
+	// 归一化历史素材：scene 列为后加的可空列，旧行为 NULL/空串，统一归属视频工厂
+	if err := DB.Model(&DirectorAsset{}).Where("scene IS NULL OR scene = ''").
+		Update("scene", AssetSceneVideoFactory).Error; err != nil {
+		return err
+	}
 	return dropDirectorRedundantColumns()
 }
 

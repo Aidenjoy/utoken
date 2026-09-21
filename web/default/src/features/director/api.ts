@@ -477,6 +477,18 @@ export async function deleteDirectorAsset(
   return res.data
 }
 
+export async function createDirectorAsset(params: {
+  url: string
+  scene?: string
+  type?: string
+  category?: string
+  name?: string
+  projectId?: number
+}): Promise<ApiResponse<DirectorAsset>> {
+  const res = await api.post(`${BASE}/asset`, params)
+  return res.data
+}
+
 export async function uploadDirectorAsset(params: {
   file: File
   projectId?: number
