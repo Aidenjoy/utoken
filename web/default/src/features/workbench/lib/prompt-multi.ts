@@ -16,14 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  MULTI_AGE_GROUPS,
-  MULTI_GENDERS,
-  MULTI_STRUCTURES,
-  TRY_ON_EXPRESSIONS,
-  TRY_ON_ORIENTATIONS,
-  TRY_ON_POSES,
-} from '../constants'
+import { MULTI_AGE_GROUPS, MULTI_GENDERS, MULTI_STRUCTURES } from '../constants'
 import type { ChipOption, MultiGarmentSlot, MultiTryOnConfig } from '../types'
 import type { TryOnRequest } from './prompt'
 
@@ -53,7 +46,7 @@ function labelOf(options: ChipOption[], value: string): string {
 /**
  * Fuse the structured multi-garment roles into one OpenAI-compatible image
  * body. Image order must stay in sync with the prompt role map: garment slots
- * in structure order, model, pose references, scene references.
+ * in structure order, model, pose references, scene references, scene background.
  */
 export function buildMultiTryOnRequest(config: MultiTryOnConfig): TryOnRequest {
   const structure =
@@ -82,51 +75,37 @@ export function buildMultiTryOnRequest(config: MultiTryOnConfig): TryOnRequest {
   config.references.forEach((reference) => {
     pushRole(
       reference.src,
-      'scene reference — borrow composition, camera angle and lighting only'
+      'composition reference — borrow composition, camera angle and lighting only'
     )
   })
+  if (config.scene) {
+    pushRole(
+      config.scene.src,
+      'scene background — compose the output against this environment (stage, indoor, etc.)'
+    )
+  }
 
-  const garmentLabel = config.garmentName.trim() || 'the provided outfit'
   const sentences = [
     'Professional e-commerce virtual try-on photography of a multi-piece outfit.',
     `Role map: ${roles.join('; ')}.`,
     STRUCTURE_SENTENCE[config.structure],
     config.model
-      ? `Dress the model in ${garmentLabel}.`
-      : `Cast a suitable commercial model and dress them in ${garmentLabel}.`,
+      ? 'Dress the model in the provided outfit.'
+      : 'Cast a suitable commercial model and dress them in the provided outfit.',
     `Garment category: ${labelOf(MULTI_GENDERS, config.gender)}, ${labelOf(
       MULTI_AGE_GROUPS,
       config.ageGroup
     )}.`,
     'Preserve every garment piece and the model identity unchanged; photorealistic skin texture, studio-grade lighting, clean catalog framing.',
+    'Pose, camera angle and background may be fully recreated for a fresh commercial look.',
   ]
-  if (config.description.trim()) {
-    sentences.push(`Garment notes: ${config.description.trim()}.`)
+  if (config.scene) {
+    sentences.push('Compose the shot against the provided scene background.')
   }
-  if (config.outputMode === 'keep-original') {
+  if (config.naturalVariation) {
     sentences.push(
-      'Keep the original action and background of the reference framing, only refine them.'
+      'Pose and expression must differ naturally from every reference; never copy a reference frame verbatim.'
     )
-  } else {
-    sentences.push(
-      'Pose, camera angle and background may be fully recreated for a fresh commercial look.'
-    )
-  }
-  if (config.pose !== 'auto') {
-    sentences.push(`Body pose: ${labelOf(TRY_ON_POSES, config.pose)}.`)
-  }
-  if (config.orientation !== 'auto') {
-    sentences.push(
-      `The model faces ${labelOf(TRY_ON_ORIENTATIONS, config.orientation)}.`
-    )
-  }
-  if (config.expression !== 'auto') {
-    sentences.push(
-      `Facial expression: ${labelOf(TRY_ON_EXPRESSIONS, config.expression)}.`
-    )
-  }
-  if (config.actionNote.trim()) {
-    sentences.push(`Action requirement: ${config.actionNote.trim()}.`)
   }
   if (config.ratio !== 'smart') {
     sentences.push(`Compose the frame in a ${config.ratio} aspect ratio.`)

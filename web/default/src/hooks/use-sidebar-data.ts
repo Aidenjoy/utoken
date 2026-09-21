@@ -88,7 +88,7 @@ export function useSidebarData(): SidebarData {
             icon: FlaskConical,
           },
           {
-            title: t('Virtual Human Asset Library'),
+            title: t('Virtual Human Library'),
             url: '/asset-library',
             icon: Images,
           },

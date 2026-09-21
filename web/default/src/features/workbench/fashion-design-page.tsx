@@ -18,11 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Eraser, History, LayoutGrid, Store } from 'lucide-react'
+import { Eraser, LayoutGrid } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -33,34 +34,27 @@ import { generateTryOnImages } from './api'
 import { BoardGlyph } from './components/board-glyph'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { HistoryDialog } from './components/history-dialog'
 import { ResolutionCards } from './components/resolution-cards'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
 import { UploadTile } from './components/upload-tile'
 import {
   createDefaultFashionDesignConfig,
-  FASHION_DESIGN_STORAGE_KEY,
   FASHION_DIRECTIONS,
   FASHION_PRESETS,
   fashionInputsFor,
   TRY_ON_RATIOS,
 } from './constants'
+import { buildImageSize } from './lib/image-size'
 import {
   buildFashionBatchRequests,
   buildFashionRequest,
 } from './lib/prompt-fashion'
-import {
-  clearTryOnTasks,
-  loadTryOnTasks,
-  removeTryOnTask,
-  saveTryOnTask,
-} from './lib/storage'
+import { saveGenerationToLibrary } from './lib/save-to-library'
 import type {
   ChipOption,
   FashionDesignConfig,
   FashionDirection,
   TryOnImage,
-  TryOnTask,
 } from './types'
 
 /**
@@ -76,10 +70,6 @@ export function FashionDesignPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [tasks, setTasks] = useState<TryOnTask[]>(() =>
-    loadTryOnTasks(FASHION_DESIGN_STORAGE_KEY)
-  )
   const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
@@ -154,7 +144,7 @@ export function FashionDesignPage() {
         const response = await generateTryOnImages({
           model: config.imageModel,
           prompt: request.prompt,
-          size: config.resolution,
+          size: buildImageSize(config.resolution, config.ratio),
           n: isBatch ? 1 : config.count,
           watermark: false,
           image:
@@ -178,26 +168,12 @@ export function FashionDesignPage() {
       }
       setResults(urls)
       setPhase('done')
-      const thumbs = (
-        config.images.garment.length > 0
-          ? config.images.garment
-          : config.images.fabric
-      ).slice(0, 3)
-      setTasks(
-        saveTryOnTask(
-          {
-            id: `${Date.now()}`,
-            createdAt: Date.now(),
-            imageModel: config.imageModel,
-            size: config.resolution,
-            count: urls.length,
-            prompt: requests[0].prompt,
-            results: urls,
-            garmentThumbs: thumbs.map((item) => item.src),
-            modelThumb: null,
-          },
-          FASHION_DESIGN_STORAGE_KEY
-        )
+      void saveGenerationToLibrary(
+        'viral-design',
+        t('Fashion Design'),
+        urls,
+        [...new Set(requests.flatMap((request) => request.images))],
+        t
       )
     } catch (generateError) {
       const message =
@@ -241,40 +217,17 @@ export function FashionDesignPage() {
   ]
 
   return (
-    <div className='flex flex-col gap-4 p-4 lg:p-6'>
-      <header className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex items-start gap-3'>
-          <Badge variant='outline' className='mt-1 gap-1'>
-            <Store className='size-3.5' />
-            {t('Product Visual Workbench')}
-          </Badge>
-          <div>
-            <h1 className='text-xl font-semibold'>{t('Fashion Design')}</h1>
-            <p className='text-muted-foreground text-sm'>
-              {t(
-                'Redesign, new styles, patterns, fabrics and line art in one workbench'
-              )}
-            </p>
-          </div>
-        </div>
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            render={<Link to='/asset-library' />}
-          >
-            <LayoutGrid className='size-4' />
-            {t('Asset Library')}
-          </Button>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => setHistoryOpen(true)}
-          >
-            <History className='size-4' />
-            {t('History')}
-          </Button>
-        </div>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+      <header className='flex flex-wrap items-center justify-between gap-3'>
+        <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Fashion Design')}</h1>
+        <Button
+          variant='outline'
+          size='sm'
+          render={<Link to='/director/assets' />}
+        >
+          <LayoutGrid className='size-4' />
+          {t('Asset Library')}
+        </Button>
       </header>
 
       <div className='grid gap-4 xl:grid-cols-2'>
@@ -412,16 +365,6 @@ export function FashionDesignPage() {
             countHidden={isBatch}
             onGenerate={() => void handleGenerate()}
           />
-
-          <p className='text-muted-foreground text-center text-xs'>
-            <Link to='/docs' className='hover:underline'>
-              {t('View upload guidelines')}
-            </Link>
-            {' · '}
-            <Link to='/user-agreement' className='hover:underline'>
-              {t('Disclaimer')}
-            </Link>
-          </p>
         </div>
 
         <ResultPanel
@@ -438,19 +381,6 @@ export function FashionDesignPage() {
           loadingLabel={t('Generating fashion designs...')}
         />
       </div>
-
-      <HistoryDialog
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        tasks={tasks}
-        onRemove={(taskId) =>
-          setTasks(removeTryOnTask(taskId, FASHION_DESIGN_STORAGE_KEY))
-        }
-        onClear={() => {
-          clearTryOnTasks(FASHION_DESIGN_STORAGE_KEY)
-          setTasks([])
-        }}
-      />
     </div>
   )
 }

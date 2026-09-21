@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { ZoomableImage } from '@/components/zoomable-image'
 
 export type ResultPhase = 'idle' | 'loading' | 'error' | 'done'
 
@@ -30,7 +31,8 @@ interface ResultPanelProps {
   error: string
   /** Skeleton count while loading. */
   count: number
-  onStartUpload: () => void
+  /** When omitted the idle card hides the upload shortcut button. */
+  onStartUpload?: () => void
   /** Idle copy overrides for the structured try-on pages. */
   idleTitle?: string
   idleDescription?: string
@@ -84,9 +86,11 @@ export function ResultPanel(props: ResultPanelProps) {
               ))}
             </div>
           ) : null}
-          <Button className='mt-5' onClick={props.onStartUpload}>
-            {t('Start uploading')}
-          </Button>
+          {props.onStartUpload ? (
+            <Button className='mt-5' onClick={props.onStartUpload}>
+              {t('Start uploading')}
+            </Button>
+          ) : null}
         </div>
       </div>
     )
@@ -129,10 +133,10 @@ export function ResultPanel(props: ResultPanelProps) {
             key={src}
             className='group border-border bg-card relative overflow-hidden rounded-md border'
           >
-            <img
+            <ZoomableImage
               src={src}
               alt={t('Try-on result {{index}}', { index: index + 1 })}
-              className='aspect-square w-full object-cover'
+              className='aspect-square w-full'
             />
             <a
               href={src}

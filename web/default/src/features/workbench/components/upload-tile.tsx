@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { ZoomableImage } from '@/components/zoomable-image'
 
 import { UPLOAD_MAX_BYTES } from '../constants'
 import type { TryOnImage } from '../types'
@@ -33,6 +34,8 @@ interface UploadTileProps {
   hint?: string
   max: number
   multiple?: boolean
+  /** Hides the upload affordance, e.g. sequential slots still locked. */
+  disabled?: boolean
   value: TryOnImage[]
   onChange: (next: TryOnImage[]) => void
 }
@@ -108,10 +111,10 @@ export function UploadTile(props: UploadTileProps) {
             key={image.id}
             className='group border-border bg-muted relative size-20 overflow-hidden rounded-md border'
           >
-            <img
+            <ZoomableImage
               src={image.src}
               alt={image.name}
-              className='size-full object-cover'
+              className='size-full'
             />
             <span className='absolute top-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white'>
               {index + 1}
@@ -132,7 +135,7 @@ export function UploadTile(props: UploadTileProps) {
             </Button>
           </div>
         ))}
-        {remaining > 0 ? (
+        {remaining > 0 && !props.disabled ? (
           <button
             type='button'
             className='border-border text-muted-foreground hover:border-primary hover:text-primary flex size-20 flex-col items-center justify-center gap-1 rounded-md border border-dashed text-xs'

@@ -63,7 +63,7 @@ export function GenerateBar(props: GenerateBarProps) {
         value={props.imageModel}
         onValueChange={(value) => props.onModelChange(value ?? '')}
       >
-        <SelectTrigger className='w-44'>
+        <SelectTrigger className='w-64 max-w-full'>
           <SelectValue placeholder={t('Select an image model')} />
         </SelectTrigger>
         <SelectContent alignItemWithTrigger={false}>

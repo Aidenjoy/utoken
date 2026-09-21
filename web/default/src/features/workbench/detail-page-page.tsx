@@ -18,12 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Boxes, Eraser, History, LayoutGrid, Sparkles } from 'lucide-react'
+import { Boxes, Eraser, LayoutGrid } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Badge } from '@/components/ui/badge'
+import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -42,7 +42,6 @@ import { getModelCategory } from '@/lib/model-category'
 import { generateTryOnImages } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { HistoryDialog } from './components/history-dialog'
 import { NumberedHead } from './components/numbered-head'
 import { ResolutionCards } from './components/resolution-cards'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
@@ -51,19 +50,14 @@ import {
   createDefaultDetailPageConfig,
   DETAIL_CONTENT_ELEMENTS,
   DETAIL_PAGE_COUNTS,
-  DETAIL_PAGE_STORAGE_KEY,
   DETAIL_SCENE_MODES,
   DETAIL_TEXT_LANGUAGES,
   TRY_ON_RATIOS,
 } from './constants'
+import { buildImageSize } from './lib/image-size'
 import { buildDetailPageRequest } from './lib/prompt-detail'
-import {
-  clearTryOnTasks,
-  loadTryOnTasks,
-  removeTryOnTask,
-  saveTryOnTask,
-} from './lib/storage'
-import type { ChipOption, DetailPageConfig, TryOnTask } from './types'
+import { saveGenerationToLibrary } from './lib/save-to-library'
+import type { ChipOption, DetailPageConfig } from './types'
 
 /**
  * Detail page set workbench: one product sample group plus confirmed selling
@@ -77,10 +71,6 @@ export function DetailPagePage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [tasks, setTasks] = useState<TryOnTask[]>(() =>
-    loadTryOnTasks(DETAIL_PAGE_STORAGE_KEY)
-  )
   const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
@@ -130,7 +120,7 @@ export function DetailPagePage() {
       const response = await generateTryOnImages({
         model: config.imageModel,
         prompt: request.prompt,
-        size: config.resolution,
+        size: buildImageSize(config.resolution, config.ratio),
         n: config.pageCount,
         watermark: false,
         image: request.images.length === 1 ? request.images[0] : request.images,
@@ -151,21 +141,12 @@ export function DetailPagePage() {
       }
       setResults(urls)
       setPhase('done')
-      setTasks(
-        saveTryOnTask(
-          {
-            id: `${Date.now()}`,
-            createdAt: Date.now(),
-            imageModel: config.imageModel,
-            size: config.resolution,
-            count: urls.length,
-            prompt: request.prompt,
-            results: urls,
-            garmentThumbs: config.products.slice(0, 3).map((item) => item.src),
-            modelThumb: null,
-          },
-          DETAIL_PAGE_STORAGE_KEY
-        )
+      void saveGenerationToLibrary(
+        'viral-hero',
+        t('Detail Page Images'),
+        urls,
+        request.images,
+        t
       )
     } catch (generateError) {
       const message =
@@ -207,38 +188,17 @@ export function DetailPagePage() {
   ]
 
   return (
-    <div className='flex flex-col gap-4 p-4 lg:p-6'>
-      <header className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex items-start gap-3'>
-          <Badge variant='outline' className='mt-1 gap-1'>
-            <Sparkles className='size-3.5' />
-            {t('Product Visual Workbench')}
-          </Badge>
-          <div>
-            <h1 className='text-xl font-semibold'>{t('Detail Page Images')}</h1>
-            <p className='text-muted-foreground text-sm'>
-              {t('Planning, generation and preview stay in sync')}
-            </p>
-          </div>
-        </div>
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            render={<Link to='/asset-library' />}
-          >
-            <LayoutGrid className='size-4' />
-            {t('Asset Library')}
-          </Button>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => setHistoryOpen(true)}
-          >
-            <History className='size-4' />
-            {t('History')}
-          </Button>
-        </div>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+      <header className='flex flex-wrap items-center justify-between gap-3'>
+        <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Detail Page Images')}</h1>
+        <Button
+          variant='outline'
+          size='sm'
+          render={<Link to='/director/assets' />}
+        >
+          <LayoutGrid className='size-4' />
+          {t('Asset Library')}
+        </Button>
       </header>
 
       <div className='grid gap-4 xl:grid-cols-2'>
@@ -481,16 +441,6 @@ export function DetailPagePage() {
             countHidden
             onGenerate={() => void handleGenerate()}
           />
-
-          <p className='text-muted-foreground text-center text-xs'>
-            <Link to='/docs' className='hover:underline'>
-              {t('View upload guidelines')}
-            </Link>
-            {' · '}
-            <Link to='/user-agreement' className='hover:underline'>
-              {t('Disclaimer')}
-            </Link>
-          </p>
         </div>
 
         <ResultPanel
@@ -507,19 +457,6 @@ export function DetailPagePage() {
           loadingLabel={t('Generating detail pages...')}
         />
       </div>
-
-      <HistoryDialog
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        tasks={tasks}
-        onRemove={(taskId) =>
-          setTasks(removeTryOnTask(taskId, DETAIL_PAGE_STORAGE_KEY))
-        }
-        onClear={() => {
-          clearTryOnTasks(DETAIL_PAGE_STORAGE_KEY)
-          setTasks([])
-        }}
-      />
     </div>
   )
 }

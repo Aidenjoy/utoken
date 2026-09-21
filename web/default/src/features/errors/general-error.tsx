@@ -22,19 +22,11 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const FEEDBACK_URL = 'https://github.com/QuantumNous/new-api/issues'
+import { getHttpStatus } from './http-status'
 
 type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
   minimal?: boolean
   error?: unknown
-}
-
-export function getHttpStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null) return undefined
-  const response = (error as Record<string, unknown>).response
-  if (typeof response !== 'object' || response === null) return undefined
-  const status = (response as Record<string, unknown>).status
-  return typeof status === 'number' ? status : undefined
 }
 
 export function GeneralError({
@@ -56,37 +48,23 @@ export function GeneralError({
 
   return (
     <div className={cn('h-svh w-full', className)}>
-      <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
+      <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center'>
         {!minimal && (
-          <h1 className='text-[7rem] leading-tight font-bold'>
+          <span
+            aria-hidden='true'
+            className='text-muted-foreground/25 text-[6.5rem] leading-none font-bold tracking-tight select-none'
+          >
             {status ?? 500}
-          </h1>
+          </span>
         )}
-        <span className='font-medium'>{title}</span>
-        <p className='text-muted-foreground text-center'>
-          {t('We apologize for the inconvenience.')} <br /> {description}
+        <h1 className='text-lg font-semibold'>{title}</h1>
+        <p className='text-muted-foreground max-w-md text-sm leading-relaxed'>
+          {t('We apologize for the inconvenience.')} {description}
         </p>
         {!minimal && (
-          <p className='text-muted-foreground text-center text-sm'>
-            {t('If this keeps happening, please report it on GitHub Issues.')}
-          </p>
-        )}
-        {!minimal && (
-          <div className='mt-6 flex flex-wrap justify-center gap-4'>
+          <div className='mt-4 flex flex-wrap justify-center gap-3'>
             <Button variant='outline' onClick={() => history.go(-1)}>
               {t('Go Back')}
-            </Button>
-            <Button
-              variant='outline'
-              render={
-                <a
-                  href={FEEDBACK_URL}
-                  target='_blank'
-                  rel='noopener noreferrer'
-                />
-              }
-            >
-              {t('Report an issue')}
             </Button>
             <Button onClick={() => navigate({ to: '/' })}>
               {t('Back to Home')}

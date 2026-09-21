@@ -16,13 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  DUO_GARMENT_STYLES,
-  TRY_ON_EXPRESSIONS,
-  TRY_ON_ORIENTATIONS,
-  TRY_ON_POSES,
-} from '../constants'
-import type { ChipOption, DuoRelation, DuoTryOnConfig } from '../types'
+import type { DuoRelation, DuoTryOnConfig } from '../types'
 import type { TryOnRequest } from './prompt'
 
 const RELATION_SENTENCE: Record<DuoRelation, string> = {
@@ -33,14 +27,10 @@ const RELATION_SENTENCE: Record<DuoRelation, string> = {
     'The two models are a parent and a child wearing coordinated looks.',
 }
 
-function labelOf(options: ChipOption[], value: string): string {
-  return options.find((option) => option.value === value)?.label ?? value
-}
-
 /**
  * Fuse the duo roles into one OpenAI-compatible image body. Image order must
- * stay in sync with the prompt role map: garment colorways, pair composition
- * reference, adult model, child model, pose references.
+ * stay in sync with the prompt role map: garment pieces or colorways, pair
+ * composition reference, model 1, model 2, scene background, pose references.
  */
 export function buildDuoTryOnRequest(config: DuoTryOnConfig): TryOnRequest {
   const images: string[] = []
@@ -50,10 +40,16 @@ export function buildDuoTryOnRequest(config: DuoTryOnConfig): TryOnRequest {
     roles.push(`image ${images.length}: ${description}`)
   }
 
+  // Exactly two shots in diff-color mode read as one colorway per model;
+  // otherwise every shot is a piece of the single outfit both models wear.
+  const colorways =
+    config.colorMode === 'diff-color' && config.garments.length === 2
   config.garments.forEach((garment, index) => {
     pushRole(
       garment.src,
-      `garment colorway ${index + 1} to wear on both models — keep fabric, cut, pattern and color exactly`
+      colorways
+        ? `garment colorway ${index + 1} of one design — keep cut and pattern exactly, apply this colorway`
+        : `garment piece ${index + 1} to wear — keep fabric, cut, pattern and color exactly`
     )
   })
   if (config.reference) {
@@ -65,69 +61,49 @@ export function buildDuoTryOnRequest(config: DuoTryOnConfig): TryOnRequest {
   if (config.adultModel) {
     pushRole(
       config.adultModel.src,
-      'adult model — preserve face, identity and body proportions exactly'
+      'model 1 — preserve face, identity and body proportions exactly'
     )
   }
   if (config.childModel) {
     pushRole(
       config.childModel.src,
-      'child model — preserve face, identity and body proportions exactly'
+      'model 2 — preserve face, identity and body proportions exactly'
+    )
+  }
+  if (config.scene) {
+    pushRole(
+      config.scene.src,
+      'scene background — compose the output against this environment (stage, indoor, etc.)'
     )
   }
   config.actions.forEach((action) => {
     pushRole(action.src, 'pose reference — borrow pose and action only')
   })
 
-  const garmentLabel = config.garmentName.trim() || 'the provided garment'
   const sentences = [
     'Professional e-commerce virtual try-on photography of two models in one scene.',
     `Role map: ${roles.join('; ')}.`,
     RELATION_SENTENCE[config.relation],
-    config.colorMode === 'same-color'
-      ? `Both models wear the identical garment in the same colorway: ${garmentLabel}.`
-      : `Both models wear the same design in different colorways, one per garment shot: ${garmentLabel}.`,
-    `Garment style: ${labelOf(DUO_GARMENT_STYLES, config.garmentStyle)}.`,
+    colorways
+      ? 'The garment shots are colorways of one design: dress model 1 in colorway 1 and model 2 in colorway 2, keeping cut and pattern identical.'
+      : 'Combine all provided garment pieces into one complete coordinated outfit and dress both models in it.',
   ]
+  if (!colorways && config.colorMode === 'diff-color') {
+    sentences.push(
+      'The two models wear different colorways of the combined outfit.'
+    )
+  }
   if (!config.adultModel && !config.childModel) {
     sentences.push(
       'Cast suitable commercial models matching the relation when no model photo is provided.'
     )
   }
   sentences.push(
-    'Preserve the garment and every model identity unchanged; photorealistic skin texture, studio-grade lighting, clean catalog framing.'
+    'Preserve the garment and every model identity unchanged; photorealistic skin texture, studio-grade lighting, clean catalog framing.',
+    'Pose, camera angle and background may be fully recreated for a fresh commercial look.'
   )
-  if (config.description.trim()) {
-    sentences.push(`Garment notes: ${config.description.trim()}.`)
-  }
-  if (config.outputMode === 'keep-original') {
-    sentences.push(
-      'Keep the original action and background of the reference framing, only refine them.'
-    )
-  } else {
-    sentences.push(
-      'Pose, camera angle and background may be fully recreated for a fresh commercial look.'
-    )
-  }
-  if (config.pose !== 'auto') {
-    sentences.push(`Body pose: ${labelOf(TRY_ON_POSES, config.pose)}.`)
-  }
-  if (config.orientation !== 'auto') {
-    sentences.push(
-      `Both models face ${labelOf(TRY_ON_ORIENTATIONS, config.orientation)}.`
-    )
-  }
-  if (config.expression !== 'auto') {
-    sentences.push(
-      `Facial expression: ${labelOf(TRY_ON_EXPRESSIONS, config.expression)}.`
-    )
-  }
-  if (config.actionNote.trim()) {
-    sentences.push(`Action requirement: ${config.actionNote.trim()}.`)
-  }
-  if (config.naturalVariation) {
-    sentences.push(
-      'Pose and expression must differ naturally from every reference; never copy a reference frame verbatim.'
-    )
+  if (config.scene) {
+    sentences.push('Compose the shot against the provided scene background.')
   }
   if (config.ratio !== 'smart') {
     sentences.push(`Compose the frame in a ${config.ratio} aspect ratio.`)

@@ -19,10 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 import type { ModelStudioConfig } from '../types'
 import type { TryOnRequest } from './prompt'
 
+/** Role suffix of each multi-view slot in the existing-model flow. */
+const MODEL_STUDIO_VIEW_ROLES = [
+  'front view reference',
+  'left side view reference',
+  'right side view reference',
+]
+
 /**
- * Fuse the portrait slots (or the single existing portrait) with the optional
- * haircut / hair color references into one OpenAI-compatible image body; the
- * prompt carries the index→role map plus the identity-preservation rules.
+ * Fuse the portrait slots (or the multi-view uploads / the single existing
+ * portrait) with the optional haircut / hair color references into one
+ * OpenAI-compatible image body; the prompt carries the index→role map plus
+ * the identity-preservation rules.
  */
 export function buildModelStudioRequest(
   config: ModelStudioConfig
@@ -34,6 +42,15 @@ export function buildModelStudioRequest(
         sources.push({
           src: face.src,
           role: `face reference ${index + 1} — all references show one person whose identity must be preserved`,
+        })
+      }
+    })
+  } else if (config.mode === 'existing') {
+    config.views.forEach((view, index) => {
+      if (view) {
+        sources.push({
+          src: view.src,
+          role: `${MODEL_STUDIO_VIEW_ROLES[index]} — all views show one person whose identity must be preserved`,
         })
       }
     })
@@ -56,10 +73,14 @@ export function buildModelStudioRequest(
     })
   }
 
-  const sentences =
-    config.mode === 'compose'
-      ? ['Professional e-commerce virtual model identity render.']
-      : ['Professional e-commerce model restyle render.']
+  let sentences: string[]
+  if (config.mode === 'compose') {
+    sentences = ['Professional e-commerce virtual model identity render.']
+  } else if (config.mode === 'existing') {
+    sentences = ['Professional e-commerce full-body model synthesis.']
+  } else {
+    sentences = ['Professional e-commerce model restyle render.']
+  }
   if (sources.length > 0) {
     const roles = sources.map(
       (_item, index) => `image ${index + 1}: ${sources[index].role}`
@@ -69,6 +90,10 @@ export function buildModelStudioRequest(
   if (config.mode === 'compose') {
     sentences.push(
       'Synthesize one consistent virtual model identity from the face references.'
+    )
+  } else if (config.mode === 'existing') {
+    sentences.push(
+      'Synthesize one full-body model image of the same person from the multi-view references, preserving identity, hairstyle and makeup.'
     )
   } else {
     sentences.push(
@@ -86,9 +111,18 @@ export function buildModelStudioRequest(
       'Infer a natural commercial hairstyle and hair color when unspecified.'
     )
   }
-  sentences.push(
-    'Chest-up studio portrait with shoulders fully visible, soft even lighting, clean background.'
-  )
+  if (config.mode === 'existing') {
+    sentences.push(
+      'Full-body studio shot, soft even lighting, clean background.'
+    )
+  } else {
+    sentences.push(
+      'Chest-up studio portrait with shoulders fully visible, soft even lighting, clean background.'
+    )
+  }
+  if (config.ratio !== 'smart') {
+    sentences.push(`Compose the frame in a ${config.ratio} aspect ratio.`)
+  }
 
   return {
     prompt: sentences.join(' '),

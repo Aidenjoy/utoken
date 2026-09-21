@@ -24,9 +24,7 @@ export interface TryOnImage {
   name: string
 }
 
-/** Which image set lends the atmosphere of the generated shots. */
-export type AtmosphereSource = 'reference' | 'action'
-
+/** Free try-on workbench configuration: uploaded roles plus output controls. */
 export interface TryOnConfig {
   /** Scene/composition references, optional. */
   references: TryOnImage[]
@@ -38,29 +36,16 @@ export interface TryOnConfig {
   model: TryOnImage | null
   /** Pose references, optional. */
   actions: TryOnImage[]
-  garmentName: string
+  /** Background environment (stage, indoor, etc.), optional. */
+  scene: TryOnImage | null
   /** Declares underwear/swimwear/lingerie so styling stays catalog-safe. */
   intimateApparel: boolean
-  atmosphereSource: AtmosphereSource
   /** Pose and expression must vary naturally from the references. */
   naturalVariation: boolean
   imageModel: string
   size: string
+  ratio: string
   count: number
-}
-
-/** One generation run kept in local history. */
-export interface TryOnTask {
-  id: string
-  createdAt: number
-  imageModel: string
-  size: string
-  count: number
-  prompt: string
-  results: string[]
-  garmentThumbs: string[]
-  modelThumb: string | null
-  error?: string
 }
 
 /** Display-ready single-select chip; labels are English i18n sources. */
@@ -76,21 +61,18 @@ export type OutfitStructure = 'top-bottom' | 'inner-outer' | 'three-piece'
 export type MultiGarmentSlot = 'top' | 'bottom' | 'inner' | 'outer'
 
 export interface MultiTryOnConfig {
-  garmentName: string
   structure: OutfitStructure
   /** One image per slot; slots unused by the current structure stay null. */
   slots: Record<MultiGarmentSlot, TryOnImage | null>
   gender: string
   ageGroup: string
-  description: string
   references: TryOnImage[]
   model: TryOnImage | null
-  outputMode: string
-  pose: string
-  orientation: string
-  expression: string
-  actionNote: string
+  /** Background environment (stage, indoor, etc.), optional. */
+  scene: TryOnImage | null
   actions: TryOnImage[]
+  /** Pose and expression must vary naturally from the references. */
+  naturalVariation: boolean
   resolution: string
   ratio: string
   imageModel: string
@@ -101,24 +83,17 @@ export interface MultiTryOnConfig {
 export type DuoRelation = 'couple' | 'brothers' | 'besties' | 'parent-child'
 
 export interface DuoTryOnConfig {
-  garmentName: string
   relation: DuoRelation
   /** Pair composition reference: placement, pose relation, framing, background. */
   reference: TryOnImage | null
   colorMode: 'same-color' | 'diff-color'
-  /** One colorway per image when the same design comes in different colors. */
+  /** Garment pieces or colorways; combined per the color mode. */
   garments: TryOnImage[]
-  garmentStyle: string
-  description: string
   adultModel: TryOnImage | null
   childModel: TryOnImage | null
-  outputMode: string
-  pose: string
-  orientation: string
-  expression: string
-  actionNote: string
+  /** Background environment (stage, indoor, etc.), optional. */
+  scene: TryOnImage | null
   actions: TryOnImage[]
-  naturalVariation: boolean
   resolution: string
   ratio: string
   imageModel: string
@@ -347,12 +322,16 @@ export interface ModelStudioConfig {
   mode: ModelStudioMode
   /** Three portrait slots fused into one identity in compose mode. */
   faces: (TryOnImage | null)[]
-  /** Existing portrait restyled or registered as-is. */
+  /** Multi-view slots (front/left/right required, back optional) in existing mode. */
+  views: (TryOnImage | null)[]
+  /** Existing portrait restyled in restyle mode. */
   model: TryOnImage | null
   /** Optional haircut / hair color references. */
   hairStyle: TryOnImage | null
   hairColor: TryOnImage | null
   resolution: string
+  /** 'smart' defers framing to the model; otherwise a numeric W:H ratio. */
+  ratio: string
   count: number
   imageModel: string
 }

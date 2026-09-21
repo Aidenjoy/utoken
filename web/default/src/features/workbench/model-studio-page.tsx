@@ -18,12 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Eraser, History, UserRound } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Eraser, LayoutGrid } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Badge } from '@/components/ui/badge'
+import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
@@ -31,35 +31,31 @@ import { getModelCategory } from '@/lib/model-category'
 import { generateTryOnImages } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { HistoryDialog } from './components/history-dialog'
-import { NumberedHead } from './components/numbered-head'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
+import { StudioShowcase } from './components/studio-showcase'
 import { UploadTile } from './components/upload-tile'
 import {
   createDefaultModelStudioConfig,
   MODEL_STUDIO_FACE_SLOT_IDS,
   MODEL_STUDIO_MODES,
-  MODEL_STUDIO_STORAGE_KEY,
+  MODEL_STUDIO_VIEW_SLOTS,
+  TRY_ON_RATIOS,
   TRY_ON_SIZES,
 } from './constants'
+import { buildImageSize } from './lib/image-size'
 import { buildModelStudioRequest } from './lib/prompt-model-studio'
-import {
-  clearTryOnTasks,
-  loadTryOnTasks,
-  removeTryOnTask,
-  saveTryOnTask,
-} from './lib/storage'
+import { saveGenerationToLibrary } from './lib/save-to-library'
 import type {
   ChipOption,
   ModelStudioConfig,
   ModelStudioMode,
   TryOnImage,
-  TryOnTask,
 } from './types'
 
 /**
  * Dedicated model studio: portrait slots fuse into one stable person identity
- * (or an existing portrait is restyled / registered) for repeated reuse.
+ * (or multi-view uploads synthesize a full-body model / an existing portrait
+ * is restyled) for repeated reuse.
  */
 export function ModelStudioPage() {
   const { t } = useTranslation()
@@ -69,10 +65,6 @@ export function ModelStudioPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [tasks, setTasks] = useState<TryOnTask[]>(() =>
-    loadTryOnTasks(MODEL_STUDIO_STORAGE_KEY)
-  )
   const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
@@ -105,45 +97,31 @@ export function ModelStudioPage() {
     })
   }
 
+  const setView = (index: number, image: TryOnImage | null) => {
+    setConfig((prev) => {
+      const views = [...prev.views]
+      views[index] = image
+      return { ...prev, views }
+    })
+  }
+
   const faceImages = config.faces.filter(
     (item): item is TryOnImage => item !== null
   )
-  const hasSources =
-    config.mode === 'compose' ? faceImages.length > 0 : config.model !== null
-
-  const persistTask = (prompt: string, urls: string[]) => {
-    setTasks(
-      saveTryOnTask(
-        {
-          id: `${Date.now()}`,
-          createdAt: Date.now(),
-          imageModel: config.imageModel,
-          size: config.resolution,
-          count: urls.length,
-          prompt,
-          results: urls,
-          garmentThumbs: faceImages.slice(0, 3).map((item) => item.src),
-          modelThumb:
-            config.mode === 'compose'
-              ? (faceImages[0]?.src ?? null)
-              : (config.model?.src ?? null),
-        },
-        MODEL_STUDIO_STORAGE_KEY
-      )
-    )
+  let hasSources = config.model !== null
+  if (config.mode === 'compose') {
+    hasSources = faceImages.length > 0
+  } else if (config.mode === 'existing') {
+    hasSources = config.views.every((view) => view !== null)
   }
 
   const handleGenerate = async () => {
     if (!hasSources) {
-      toast.error(t('Upload at least one portrait image'))
-      return
-    }
-    if (config.mode === 'existing' && config.model) {
-      const urls = [config.model.src]
-      setResults(urls)
-      setPhase('done')
-      persistTask('', urls)
-      toast.success(t('Model asset saved'))
+      toast.error(
+        config.mode === 'existing'
+          ? t('Upload the front, left-side and right-side images first')
+          : t('Upload at least one portrait image')
+      )
       return
     }
     if (!config.imageModel) {
@@ -157,7 +135,7 @@ export function ModelStudioPage() {
       const response = await generateTryOnImages({
         model: config.imageModel,
         prompt: request.prompt,
-        size: config.resolution,
+        size: buildImageSize(config.resolution, config.ratio),
         n: config.count,
         watermark: false,
         image: request.images.length === 1 ? request.images[0] : request.images,
@@ -178,7 +156,13 @@ export function ModelStudioPage() {
       }
       setResults(urls)
       setPhase('done')
-      persistTask(request.prompt, urls)
+      void saveGenerationToLibrary(
+        'try-on',
+        t('Dedicated Model'),
+        urls,
+        request.images,
+        t
+      )
     } catch (generateError) {
       const message =
         generateError instanceof Error
@@ -210,66 +194,112 @@ export function ModelStudioPage() {
     label: size,
     value: size,
   }))
+  const ratioOptions = TRY_ON_RATIOS.map((option) => ({
+    ...option,
+    label: option.value === 'smart' ? t('Smart') : option.label,
+  }))
   const modelOptions = imageModels.map((name) => ({ label: name, value: name }))
-  const idleSteps = [
-    t('Upload portraits'),
-    t('Pick hairstyle and hair color'),
-    t('Compose the model identity'),
-  ]
-  const studioSteps = [
-    t('Upload portraits'),
-    t('Lock the identity'),
-    t('Reuse everywhere'),
-  ]
+
+  let uploadSection: ReactNode
+  if (config.mode === 'compose') {
+    uploadSection = (
+      <>
+        <span className='text-sm font-medium'>
+          {t('Upload 3 model images')}
+        </span>
+        <p className='text-muted-foreground text-xs'>
+          {t('Portraits must be chest-up shots with shoulders fully visible.')}
+        </p>
+        <div className='grid gap-3 sm:grid-cols-3'>
+          {MODEL_STUDIO_FACE_SLOT_IDS.map((slotId, index) => {
+            const face = config.faces[index]
+            return (
+              <UploadTile
+                key={slotId}
+                label={t('Upload portrait {{index}}', {
+                  index: index + 1,
+                })}
+                badge={t('Local upload')}
+                hint={t('Click or drag an image here')}
+                max={1}
+                value={face ? [face] : []}
+                onChange={(next) => setFace(index, next[0] ?? null)}
+              />
+            )
+          })}
+        </div>
+      </>
+    )
+  } else if (config.mode === 'existing') {
+    uploadSection = (
+      <>
+        <span className='text-sm font-medium'>
+          {t('Upload three-view model images')}
+        </span>
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Upload front, left-side and right-side images in order; the next slot unlocks automatically.'
+          )}
+        </p>
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Images must be at least 1024 px and visually clear, of the same model with identical hairstyle and makeup, and the face must be clear and unobstructed.'
+          )}
+        </p>
+        <div className='grid gap-3 sm:grid-cols-3'>
+          {MODEL_STUDIO_VIEW_SLOTS.map((slot, index) => {
+            const view = config.views[index]
+            const locked = index > 0 && !config.views[index - 1]
+            return (
+              <UploadTile
+                key={slot.id}
+                label={`${index + 1}. ${t(slot.label)}`}
+                hint={
+                  locked
+                    ? t('Complete the previous angle image first')
+                    : t(slot.hint)
+                }
+                max={1}
+                disabled={locked}
+                value={view ? [view] : []}
+                onChange={(next) => setView(index, next[0] ?? null)}
+              />
+            )
+          })}
+        </div>
+      </>
+    )
+  } else {
+    uploadSection = (
+      <>
+        <span className='text-sm font-medium'>
+          {t('Upload the model image')}
+        </span>
+        <UploadTile
+          label={t('Model image')}
+          badge={t('Local upload')}
+          hint={t('Click or drag an image here')}
+          max={1}
+          value={config.model ? [config.model] : []}
+          onChange={(next) => update('model', next[0] ?? null)}
+        />
+      </>
+    )
+  }
 
   return (
-    <div className='flex flex-col gap-4 p-4 lg:p-6'>
-      <header className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex items-start gap-3'>
-          <Badge variant='outline' className='mt-1 gap-1'>
-            <UserRound className='size-3.5' />
-            {t('Dedicated Model Workbench')}
-          </Badge>
-          <div>
-            <h1 className='text-xl font-semibold'>{t('Dedicated Model')}</h1>
-            <p className='text-muted-foreground text-sm'>
-              {t('Identity assets, hairstyles and reuse')}
-            </p>
-          </div>
-        </div>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+      <header className='flex flex-wrap items-center justify-between gap-3'>
+        <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Dedicated Model')}</h1>
         <Button
           variant='outline'
           size='sm'
-          onClick={() => setHistoryOpen(true)}
+          render={<Link to='/director/assets' />}
         >
-          <History className='size-4' />
-          {t('History')}
+          <LayoutGrid className='size-4' />
+          {t('Asset Library')}
         </Button>
       </header>
-
-      <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
-        <div>
-          <p className='text-primary text-xs font-medium'>
-            {t('Model Studio')}
-          </p>
-          <h2 className='mt-1 text-lg font-semibold'>{t('Dedicated Model')}</h2>
-          <p className='text-muted-foreground text-sm'>
-            {t(
-              'Keep one stable person asset for try-on, detail pages, short videos and brand content.'
-            )}
-          </p>
-        </div>
-        <div className='grid gap-2 sm:grid-cols-3'>
-          {studioSteps.map((label, index) => (
-            <div
-              key={label}
-              className='border-border bg-muted/50 rounded-lg border p-3'
-            >
-              <NumberedHead index={index + 1} title={label} />
-            </div>
-          ))}
-        </div>
-      </section>
 
       <div className='grid gap-4 xl:grid-cols-2'>
         <div ref={uploadsRef} className='space-y-4'>
@@ -302,73 +332,11 @@ export function ModelStudioPage() {
                   'Please confirm you hold legal authorization for the portraits used.'
                 )}
               </p>
-              <Link to='/docs' className='text-primary text-xs hover:underline'>
-                {t('View usage guidelines')}
-              </Link>
             </div>
           </section>
 
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
-            {config.mode === 'compose' ? (
-              <>
-                <div className='flex items-center justify-between gap-2'>
-                  <span className='text-sm font-medium'>
-                    {t('Upload 3 model images')}
-                  </span>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    render={<Link to='/docs' />}
-                  >
-                    {t('View upload rules')}
-                  </Button>
-                </div>
-                <p className='text-muted-foreground text-xs'>
-                  {t(
-                    'Portraits must be chest-up shots with shoulders fully visible.'
-                  )}
-                </p>
-                <div className='grid gap-3 sm:grid-cols-3'>
-                  {MODEL_STUDIO_FACE_SLOT_IDS.map((slotId, index) => {
-                    const face = config.faces[index]
-                    return (
-                      <UploadTile
-                        key={slotId}
-                        label={t('Upload portrait {{index}}', {
-                          index: index + 1,
-                        })}
-                        badge={t('Local upload')}
-                        hint={t('Click or drag an image here')}
-                        max={1}
-                        value={face ? [face] : []}
-                        onChange={(next) => setFace(index, next[0] ?? null)}
-                      />
-                    )
-                  })}
-                </div>
-              </>
-            ) : (
-              <>
-                <span className='text-sm font-medium'>
-                  {config.mode === 'restyle'
-                    ? t('Upload the model image')
-                    : t('Upload existing model')}
-                </span>
-                {config.mode === 'existing' ? (
-                  <p className='text-muted-foreground text-xs'>
-                    {t('The portrait is registered as-is without generation.')}
-                  </p>
-                ) : null}
-                <UploadTile
-                  label={t('Model image')}
-                  badge={t('Local upload')}
-                  hint={t('Click or drag an image here')}
-                  max={1}
-                  value={config.model ? [config.model] : []}
-                  onChange={(next) => update('model', next[0] ?? null)}
-                />
-              </>
-            )}
+            {uploadSection}
           </section>
 
           {config.mode === 'existing' ? null : (
@@ -411,6 +379,12 @@ export function ModelStudioPage() {
               value={config.resolution}
               onChange={(value) => update('resolution', value)}
             />
+            <ChipGroup
+              label={t('Aspect ratio')}
+              options={ratioOptions}
+              value={config.ratio}
+              onChange={(value) => update('ratio', value)}
+            />
             <div className='flex justify-end'>
               <Button variant='outline' size='sm' onClick={handleClear}>
                 <Eraser className='size-4' />
@@ -428,49 +402,27 @@ export function ModelStudioPage() {
             loading={phase === 'loading'}
             disabled={!hasSources}
             generateLabel={
-              config.mode === 'existing' ? t('Save model asset') : undefined
+              config.mode === 'existing'
+                ? t('Compose full-body model')
+                : undefined
             }
             onGenerate={() => void handleGenerate()}
           />
-
-          <p className='text-muted-foreground text-center text-xs'>
-            <Link to='/docs' className='hover:underline'>
-              {t('View upload guidelines')}
-            </Link>
-            {' · '}
-            <Link to='/user-agreement' className='hover:underline'>
-              {t('Disclaimer')}
-            </Link>
-          </p>
         </div>
 
-        <ResultPanel
-          phase={phase}
-          results={results}
-          error={error}
-          count={config.count}
-          onStartUpload={focusUploads}
-          idleTitle={t('Your dedicated model appears here')}
-          idleDescription={t(
-            'Compose a stable person identity once and reuse it across try-on, detail pages and videos.'
-          )}
-          idleSteps={idleSteps}
-          loadingLabel={t('Composing the model...')}
-        />
+        {phase === 'idle' ? (
+          <StudioShowcase mode={config.mode} />
+        ) : (
+          <ResultPanel
+            phase={phase}
+            results={results}
+            error={error}
+            count={config.count}
+            onStartUpload={focusUploads}
+            loadingLabel={t('Composing the model...')}
+          />
+        )}
       </div>
-
-      <HistoryDialog
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        tasks={tasks}
-        onRemove={(taskId) =>
-          setTasks(removeTryOnTask(taskId, MODEL_STUDIO_STORAGE_KEY))
-        }
-        onClear={() => {
-          clearTryOnTasks(MODEL_STUDIO_STORAGE_KEY)
-          setTasks([])
-        }}
-      />
     </div>
   )
 }

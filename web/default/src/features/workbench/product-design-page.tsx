@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Eraser, History, LayoutGrid, Store } from 'lucide-react'
+import { Eraser, LayoutGrid } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -33,7 +34,6 @@ import { generateTryOnImages } from './api'
 import { BoardGlyph } from './components/board-glyph'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { HistoryDialog } from './components/history-dialog'
 import { ResolutionCards } from './components/resolution-cards'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
 import { UploadTile } from './components/upload-tile'
@@ -42,22 +42,12 @@ import {
   DESIGN_BOARD_TYPES,
   DESIGN_DIRECTIONS,
   DESIGN_PRESETS,
-  PRODUCT_DESIGN_STORAGE_KEY,
   TRY_ON_RATIOS,
 } from './constants'
+import { buildImageSize } from './lib/image-size'
 import { buildProductDesignRequest } from './lib/prompt-product'
-import {
-  clearTryOnTasks,
-  loadTryOnTasks,
-  removeTryOnTask,
-  saveTryOnTask,
-} from './lib/storage'
-import type {
-  ChipOption,
-  DesignDirection,
-  ProductDesignConfig,
-  TryOnTask,
-} from './types'
+import { saveGenerationToLibrary } from './lib/save-to-library'
+import type { ChipOption, DesignDirection, ProductDesignConfig } from './types'
 
 /**
  * Merchandise design workbench: one product photo plus a direction template
@@ -71,10 +61,6 @@ export function ProductDesignPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [tasks, setTasks] = useState<TryOnTask[]>(() =>
-    loadTryOnTasks(PRODUCT_DESIGN_STORAGE_KEY)
-  )
   const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
@@ -127,7 +113,7 @@ export function ProductDesignPage() {
       const response = await generateTryOnImages({
         model: config.imageModel,
         prompt,
-        size: config.resolution,
+        size: buildImageSize(config.resolution, config.ratio),
         n: config.count,
         watermark: false,
         image: images[0],
@@ -148,21 +134,12 @@ export function ProductDesignPage() {
       }
       setResults(urls)
       setPhase('done')
-      setTasks(
-        saveTryOnTask(
-          {
-            id: `${Date.now()}`,
-            createdAt: Date.now(),
-            imageModel: config.imageModel,
-            size: config.resolution,
-            count: config.count,
-            prompt,
-            results: urls,
-            garmentThumbs: [config.product.src],
-            modelThumb: null,
-          },
-          PRODUCT_DESIGN_STORAGE_KEY
-        )
+      void saveGenerationToLibrary(
+        'viral-design',
+        t('Merchandise Design'),
+        urls,
+        images,
+        t
       )
     } catch (generateError) {
       const message =
@@ -203,40 +180,17 @@ export function ProductDesignPage() {
   ]
 
   return (
-    <div className='flex flex-col gap-4 p-4 lg:p-6'>
-      <header className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex items-start gap-3'>
-          <Badge variant='outline' className='mt-1 gap-1'>
-            <Store className='size-3.5' />
-            {t('Product Visual Workbench')}
-          </Badge>
-          <div>
-            <h1 className='text-xl font-semibold'>{t('Merchandise Design')}</h1>
-            <p className='text-muted-foreground text-sm'>
-              {t(
-                'Turn one product photo into complete design boards across eight directions'
-              )}
-            </p>
-          </div>
-        </div>
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            render={<Link to='/asset-library' />}
-          >
-            <LayoutGrid className='size-4' />
-            {t('Asset Library')}
-          </Button>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => setHistoryOpen(true)}
-          >
-            <History className='size-4' />
-            {t('History')}
-          </Button>
-        </div>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+      <header className='flex flex-wrap items-center justify-between gap-3'>
+        <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Merchandise Design')}</h1>
+        <Button
+          variant='outline'
+          size='sm'
+          render={<Link to='/director/assets' />}
+        >
+          <LayoutGrid className='size-4' />
+          {t('Asset Library')}
+        </Button>
       </header>
 
       <div className='grid gap-4 xl:grid-cols-2'>
@@ -362,16 +316,6 @@ export function ProductDesignPage() {
             disabled={!config.product}
             onGenerate={() => void handleGenerate()}
           />
-
-          <p className='text-muted-foreground text-center text-xs'>
-            <Link to='/docs' className='hover:underline'>
-              {t('View upload guidelines')}
-            </Link>
-            {' · '}
-            <Link to='/user-agreement' className='hover:underline'>
-              {t('Disclaimer')}
-            </Link>
-          </p>
         </div>
 
         <ResultPanel
@@ -388,19 +332,6 @@ export function ProductDesignPage() {
           loadingLabel={t('Generating design boards...')}
         />
       </div>
-
-      <HistoryDialog
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        tasks={tasks}
-        onRemove={(taskId) =>
-          setTasks(removeTryOnTask(taskId, PRODUCT_DESIGN_STORAGE_KEY))
-        }
-        onClear={() => {
-          clearTryOnTasks(PRODUCT_DESIGN_STORAGE_KEY)
-          setTasks([])
-        }}
-      />
     </div>
   )
 }

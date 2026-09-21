@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import * as React from 'react'
 
-import { GeneralError, getHttpStatus } from './general-error'
+import { GeneralError } from './general-error'
+import { getHttpStatus } from './http-status'
 
 // 根错误组件：无 HTTP 状态的运行时崩溃（典型场景：部署新版后旧 SPA 会话懒加载已不存在的
 // 旧 chunk，或新旧混合模块图求值失败）自动刷新一次即可恢复；sessionStorage 守卫防止无限刷新，

@@ -28,7 +28,7 @@ export interface TryOnRequest {
  * Fuse the uploaded roles into one OpenAI-compatible image body. The upstream
  * model receives a flat reference list, so the prompt carries an explicit role
  * map ("image 1 = model, images 2-3 = garment...") and the order here must stay
- * in sync with it: model, garments, details, actions, scene references.
+ * in sync with it: model, garments, details, actions, references, scene.
  */
 export function buildTryOnRequest(config: TryOnConfig): TryOnRequest {
   const images: string[] = []
@@ -60,22 +60,25 @@ export function buildTryOnRequest(config: TryOnConfig): TryOnRequest {
   config.actions.forEach((action) => {
     pushRole(action.src, 'pose reference — borrow pose and action only')
   })
-  if (config.atmosphereSource === 'reference') {
-    config.references.forEach((reference) => {
-      pushRole(
-        reference.src,
-        'scene reference — borrow composition, camera angle and lighting only'
-      )
-    })
+  config.references.forEach((reference) => {
+    pushRole(
+      reference.src,
+      'composition reference — borrow composition, camera angle and lighting only'
+    )
+  })
+  if (config.scene) {
+    pushRole(
+      config.scene.src,
+      'scene background — compose the output against this environment (stage, indoor, etc.)'
+    )
   }
 
-  const garmentLabel = config.garmentName.trim() || 'the provided garment'
   const sentences = [
     'Professional e-commerce virtual try-on photography.',
     `Role map: ${roles.join('; ')}.`,
     config.model
-      ? `Dress the model in ${garmentLabel}.`
-      : `Cast a suitable commercial model and dress them in ${garmentLabel}.`,
+      ? 'Dress the model in the provided garment.'
+      : 'Cast a suitable commercial model and dress them in the provided garment.',
     'Preserve the garment fit and the model identity unchanged; photorealistic skin texture, studio-grade lighting, clean catalog framing.',
   ]
 
@@ -84,20 +87,16 @@ export function buildTryOnRequest(config: TryOnConfig): TryOnRequest {
       'The garment is intimate apparel (underwear, swimwear or lingerie): keep the styling tasteful and catalog-appropriate.'
     )
   }
-  if (config.atmosphereSource === 'action' && config.actions.length > 0) {
-    sentences.push(
-      'Borrow the atmosphere from the pose references: action and body language only, never their backgrounds.'
-    )
-  }
-  if (config.atmosphereSource === 'reference' && config.references.length > 0) {
-    sentences.push(
-      'Borrow the atmosphere from the scene references: composition, camera height and lighting mood.'
-    )
+  if (config.scene) {
+    sentences.push('Compose the shot against the provided scene background.')
   }
   if (config.naturalVariation) {
     sentences.push(
       'Pose and expression must differ naturally from every reference; never copy a reference frame verbatim.'
     )
+  }
+  if (config.ratio !== 'smart') {
+    sentences.push(`Compose the frame in a ${config.ratio} aspect ratio.`)
   }
 
   return { prompt: sentences.join(' '), images }

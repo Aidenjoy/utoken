@@ -43,21 +43,12 @@ export const TRY_ON_GENERATIONS_ENDPOINT = '/pg/images/generations'
 
 /** Garment shots plus detail close-ups share one ten-image budget. */
 export const GARMENT_PLUS_DETAIL_MAX = 10
-export const REFERENCE_MAX = 9
 export const ACTION_MAX = 9
 /** Single upload ceiling in bytes; data URLs go into the request body. */
 export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 
-export const TRY_ON_SIZES = ['1K', '2K', '4K'] as const
+export const TRY_ON_SIZES = ['2K', '4K'] as const
 export const TRY_ON_COUNTS = [1, 2, 4] as const
-
-export const TRY_ON_STORAGE_KEY = 'try-on-tasks-v1'
-export const MULTI_TRY_ON_STORAGE_KEY = 'multi-try-on-tasks-v1'
-export const DUO_TRY_ON_STORAGE_KEY = 'duo-try-on-tasks-v1'
-export const PRODUCT_DESIGN_STORAGE_KEY = 'product-design-tasks-v1'
-export const FASHION_DESIGN_STORAGE_KEY = 'fashion-design-tasks-v1'
-export const HERO_IMAGE_STORAGE_KEY = 'hero-image-tasks-v1'
-export const TRY_ON_TASK_MAX = 24
 
 export function createDefaultTryOnConfig(): TryOnConfig {
   return {
@@ -66,13 +57,13 @@ export function createDefaultTryOnConfig(): TryOnConfig {
     details: [],
     model: null,
     actions: [],
-    garmentName: '',
+    scene: null,
     intimateApparel: false,
-    atmosphereSource: 'reference',
     naturalVariation: false,
     imageModel: '',
     size: '2K',
-    count: 2,
+    ratio: 'smart',
+    count: 1,
   }
 }
 
@@ -165,24 +156,19 @@ export const MULTI_AGE_GROUPS: ChipOption[] = [
 
 export function createDefaultMultiTryOnConfig(): MultiTryOnConfig {
   return {
-    garmentName: '',
     structure: 'top-bottom',
     slots: { top: null, bottom: null, inner: null, outer: null },
     gender: 'women',
     ageGroup: 'adult',
-    description: '',
     references: [],
     model: null,
-    outputMode: 'recreate',
-    pose: 'auto',
-    orientation: 'auto',
-    expression: 'auto',
-    actionNote: '',
+    scene: null,
     actions: [],
-    resolution: '1K',
+    naturalVariation: false,
+    resolution: '2K',
     ratio: 'smart',
     imageModel: '',
-    count: 2,
+    count: 1,
   }
 }
 
@@ -198,35 +184,20 @@ export const DUO_COLOR_MODES: ChipOption[] = [
   { value: 'diff-color', label: 'Same style different colors' },
 ]
 
-export const DUO_GARMENT_STYLES: ChipOption[] = [
-  { value: 'top', label: 'Tops' },
-  { value: 'bottom', label: 'Bottoms' },
-  { value: 'dress', label: 'Dress / one-piece' },
-  { value: 'set', label: 'Set' },
-]
-
 export function createDefaultDuoTryOnConfig(): DuoTryOnConfig {
   return {
-    garmentName: '',
     relation: 'couple',
     reference: null,
     colorMode: 'same-color',
     garments: [],
-    garmentStyle: 'top',
-    description: '',
     adultModel: null,
     childModel: null,
-    outputMode: 'recreate',
-    pose: 'auto',
-    orientation: 'auto',
-    expression: 'auto',
-    actionNote: '',
+    scene: null,
     actions: [],
-    naturalVariation: false,
-    resolution: '1K',
+    resolution: '2K',
     ratio: 'smart',
     imageModel: '',
-    count: 2,
+    count: 1,
   }
 }
 
@@ -682,10 +653,10 @@ export function createDefaultProductDesignConfig(): ProductDesignConfig {
     preset: DESIGN_PRESETS.creative?.[0]?.value ?? '',
     customBrief: '',
     notes: '',
-    resolution: '1K',
+    resolution: '2K',
     ratio: 'smart',
     imageModel: '',
-    count: 2,
+    count: 1,
   }
 }
 
@@ -952,10 +923,10 @@ export function createDefaultFashionDesignConfig(): FashionDesignConfig {
     images: { garment: [], fabric: [], reference: [], lineart: [] },
     color: '#b48ead',
     description: '',
-    resolution: '1K',
+    resolution: '2K',
     ratio: 'smart',
     imageModel: '',
-    count: 2,
+    count: 1,
   }
 }
 
@@ -1013,14 +984,12 @@ export function createDefaultHeroImageConfig(): HeroImageConfig {
     expression: 'auto',
     actionNote: '',
     actions: [],
-    resolution: '1K',
+    resolution: '2K',
     ratio: 'smart',
     imageModel: '',
-    count: 2,
+    count: 1,
   }
 }
-
-export const HERO_SET_STORAGE_KEY = 'hero-set-image-tasks-v1'
 
 export const HERO_SET_MODES: ChipOption[] = [
   { value: 'model', label: 'Model set' },
@@ -1071,19 +1040,17 @@ export function createDefaultHeroSetConfig(): HeroSetConfig {
   return {
     mode: 'model',
     reference: null,
-    angles: [{ value: 'front', count: 2 }],
+    angles: [{ value: 'front', count: 1 }],
     pose: '',
     expression: '',
     outfit: '',
     scene: '',
     other: '',
-    resolution: '1K',
+    resolution: '2K',
     ratio: 'smart',
     imageModel: '',
   }
 }
-
-export const DETAIL_PAGE_STORAGE_KEY = 'detail-page-tasks-v1'
 
 /** Content modules a detail page set may carry, in reference order. */
 export const DETAIL_CONTENT_ELEMENTS: ChipOption[] = [
@@ -1123,14 +1090,12 @@ export function createDefaultDetailPageConfig(): DetailPageConfig {
     elements: [...DETAIL_DEFAULT_ELEMENTS],
     textLanguage: 'zh',
     sceneMode: 'smart',
-    pageCount: 10,
+    pageCount: 1,
     resolution: '2K',
     ratio: '3:4',
     imageModel: '',
   }
 }
-
-export const CLOSE_UP_STORAGE_KEY = 'closeup-image-tasks-v1'
 
 export const CLOSE_UP_SHOT_MODES: ChipOption[] = [
   { value: 'position', label: 'Detail position picks' },
@@ -1182,14 +1147,12 @@ export function createDefaultCloseUpConfig(): CloseUpConfig {
     genMode: 'independent',
     model: null,
     note: '',
-    resolution: '1K',
+    resolution: '2K',
     ratio: 'smart',
     imageModel: '',
     count: 1,
   }
 }
-
-export const MODEL_STUDIO_STORAGE_KEY = 'model-studio-tasks-v1'
 
 export const MODEL_STUDIO_MODES: ChipOption[] = [
   { value: 'compose', label: 'Face-composed model' },
@@ -1200,14 +1163,39 @@ export const MODEL_STUDIO_MODES: ChipOption[] = [
 /** Stable identities of the three portrait slots fused into one identity. */
 export const MODEL_STUDIO_FACE_SLOT_IDS = ['slot-1', 'slot-2', 'slot-3']
 
+/** Multi-view slots of the existing-model flow: three required angles; label/hint are i18n source keys. */
+export const MODEL_STUDIO_VIEW_SLOTS: {
+  id: string
+  label: string
+  hint: string
+}[] = [
+  {
+    id: 'view-front',
+    label: 'Front',
+    hint: '1st image: clear front face with features unobstructed',
+  },
+  {
+    id: 'view-left',
+    label: 'Left side',
+    hint: '2nd image: left profile of the same model',
+  },
+  {
+    id: 'view-right',
+    label: 'Right side',
+    hint: '3rd image: right profile of the same model',
+  },
+]
+
 export function createDefaultModelStudioConfig(): ModelStudioConfig {
   return {
     mode: 'compose',
     faces: MODEL_STUDIO_FACE_SLOT_IDS.map(() => null),
+    views: MODEL_STUDIO_VIEW_SLOTS.map(() => null),
     model: null,
     hairStyle: null,
     hairColor: null,
     resolution: '2K',
+    ratio: 'smart',
     count: 1,
     imageModel: '',
   }

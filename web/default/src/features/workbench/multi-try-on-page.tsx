@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Eraser, History, LayoutGrid, Store } from 'lucide-react'
+import { Eraser, LayoutGrid } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -19,24 +19,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Badge } from '@/components/ui/badge'
+import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
 import { generateTryOnImages } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { HistoryDialog } from './components/history-dialog'
-import { ResolutionCards } from './components/resolution-cards'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
 import { SegmentBar } from './components/segment-bar'
+import { TryOnShowcase } from './components/tryon-showcase'
 import { UploadTile } from './components/upload-tile'
 import {
   ACTION_MAX,
@@ -45,27 +43,17 @@ import {
   MULTI_GENDERS,
   MULTI_SLOT_LABELS,
   MULTI_STRUCTURES,
-  MULTI_TRY_ON_STORAGE_KEY,
-  REFERENCE_MAX,
-  TRY_ON_EXPRESSIONS,
-  TRY_ON_ORIENTATIONS,
-  TRY_ON_OUTPUT_MODES,
-  TRY_ON_POSES,
   TRY_ON_RATIOS,
+  TRY_ON_SIZES,
 } from './constants'
+import { buildImageSize } from './lib/image-size'
 import { buildMultiTryOnRequest } from './lib/prompt-multi'
-import {
-  clearTryOnTasks,
-  loadTryOnTasks,
-  removeTryOnTask,
-  saveTryOnTask,
-} from './lib/storage'
+import { saveGenerationToLibrary } from './lib/save-to-library'
 import type {
   ChipOption,
   MultiGarmentSlot,
   MultiTryOnConfig,
   TryOnImage,
-  TryOnTask,
 } from './types'
 
 /**
@@ -81,11 +69,6 @@ export function MultiTryOnPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [tasks, setTasks] = useState<TryOnTask[]>(() =>
-    loadTryOnTasks(MULTI_TRY_ON_STORAGE_KEY)
-  )
-  const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -117,7 +100,6 @@ export function MultiTryOnPage() {
     MULTI_STRUCTURES.find((item) => item.value === config.structure) ??
     MULTI_STRUCTURES[0]
   const missingSlots = structure.slots.filter((slot) => !config.slots[slot])
-  const referenceTotal = config.references.length + config.actions.length
 
   const handleGenerate = async () => {
     if (missingSlots.length > 0) {
@@ -135,7 +117,7 @@ export function MultiTryOnPage() {
       const response = await generateTryOnImages({
         model: config.imageModel,
         prompt,
-        size: config.resolution,
+        size: buildImageSize(config.resolution, config.ratio),
         n: config.count,
         watermark: false,
         image: images.length === 1 ? images[0] : images,
@@ -156,26 +138,12 @@ export function MultiTryOnPage() {
       }
       setResults(urls)
       setPhase('done')
-      setTasks(
-        saveTryOnTask(
-          {
-            id: `${Date.now()}`,
-            createdAt: Date.now(),
-            imageModel: config.imageModel,
-            size: config.resolution,
-            count: config.count,
-            prompt,
-            results: urls,
-            garmentThumbs: structure.slots
-              .flatMap((slot) => {
-                const image = config.slots[slot]
-                return image ? [image.src] : []
-              })
-              .slice(0, 3),
-            modelThumb: config.model?.src ?? null,
-          },
-          MULTI_TRY_ON_STORAGE_KEY
-        )
+      void saveGenerationToLibrary(
+        'try-on',
+        t('Multi-Item Try-On'),
+        urls,
+        images,
+        t
       )
     } catch (generateError) {
       const message =
@@ -198,76 +166,38 @@ export function MultiTryOnPage() {
     setError('')
   }
 
-  const focusUploads = () => {
-    uploadsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   const tr = (options: ChipOption[]) =>
     options.map((option) => ({ ...option, label: t(option.label) }))
   const ratioOptions = TRY_ON_RATIOS.map((option) => ({
     ...option,
     label: option.value === 'smart' ? t('Smart') : option.label,
   }))
+  const resolutionOptions = TRY_ON_SIZES.map((size) => ({
+    label: size,
+    value: size,
+  }))
   const structureOptions = tr(
     MULTI_STRUCTURES.map((item) => ({ value: item.value, label: item.label }))
   )
   const modelOptions = imageModels.map((name) => ({ label: name, value: name }))
-  const idleSteps = [
-    ...structure.slots.map((slot) => t(MULTI_SLOT_LABELS[slot])),
-    t('Pick references and model'),
-    t('Generate commercial shots'),
-  ]
 
   return (
-    <div className='flex flex-col gap-4 p-4 lg:p-6'>
-      <header className='flex flex-wrap items-start justify-between gap-3'>
-        <div className='flex items-start gap-3'>
-          <Badge variant='outline' className='mt-1 gap-1'>
-            <Store className='size-3.5' />
-            {t('Product Visual Workbench')}
-          </Badge>
-          <div>
-            <h1 className='text-xl font-semibold'>{t('Multi-Item Try-On')}</h1>
-            <p className='text-muted-foreground text-sm'>
-              {t(
-                'Combine several garment pieces into one complete styled look'
-              )}
-            </p>
-          </div>
-        </div>
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            render={<Link to='/asset-library' />}
-          >
-            <LayoutGrid className='size-4' />
-            {t('Asset Library')}
-          </Button>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => setHistoryOpen(true)}
-          >
-            <History className='size-4' />
-            {t('History')}
-          </Button>
-        </div>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+      <header className='flex flex-wrap items-center justify-between gap-3'>
+        <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Multi-Item Try-On')}</h1>
+        <Button
+          variant='outline'
+          size='sm'
+          render={<Link to='/director/assets' />}
+        >
+          <LayoutGrid className='size-4' />
+          {t('Asset Library')}
+        </Button>
       </header>
 
       <div className='grid gap-4 xl:grid-cols-2'>
-        <div ref={uploadsRef} className='space-y-4'>
+        <div className='space-y-4'>
           <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <div className='flex items-center gap-2'>
-              <span className='text-muted-foreground shrink-0 text-sm'>
-                {t('Garment name')}
-              </span>
-              <Input
-                value={config.garmentName}
-                placeholder={t('Enter a garment name (optional)')}
-                onChange={(event) => update('garmentName', event.target.value)}
-              />
-            </div>
             <SegmentBar
               label={t('Outfit structure')}
               options={structureOptions}
@@ -297,109 +227,87 @@ export function MultiTryOnPage() {
                 })}
               </div>
             </div>
-            <ChipGroup
-              label={t('Pick a category')}
-              options={tr(MULTI_GENDERS)}
-              value={config.gender}
-              onChange={(value) => update('gender', value)}
-            />
-            <ChipGroup
-              options={tr(MULTI_AGE_GROUPS)}
-              value={config.ageGroup}
-              onChange={(value) => update('ageGroup', value)}
-            />
-            <Textarea
-              rows={2}
-              value={config.description}
-              placeholder={t(
-                'Describe garment traits for more accurate length and color (optional)'
-              )}
-              onChange={(event) => update('description', event.target.value)}
-            />
-          </section>
-
-          <section className='border-border bg-card rounded-lg border p-4'>
-            <UploadTile
-              label={t('Select reference images / scene')}
-              badge={t('Optional')}
-              hint={t(
-                'Pick several at once; each reference or pose image yields one more output, matched at random. Without pose images the reference composition is used.'
-              )}
-              max={REFERENCE_MAX}
-              multiple
-              value={config.references}
-              onChange={(next) => update('references', next)}
-            />
-          </section>
-
-          <section className='border-border bg-card rounded-lg border p-4'>
-            <UploadTile
-              label={t('Select model (optional)')}
-              badge={t('Soft-light frontal photos work best')}
-              max={1}
-              value={config.model ? [config.model] : []}
-              onChange={(next) => update('model', next[0] ?? null)}
-            />
-          </section>
-
-          <section className='border-border bg-card grid gap-4 rounded-lg border p-4 md:grid-cols-2'>
-            <div className='space-y-3'>
+            <div className='grid gap-3 sm:grid-cols-2'>
               <ChipGroup
-                label={t('Output mode')}
-                options={tr(TRY_ON_OUTPUT_MODES)}
-                value={config.outputMode}
-                onChange={(value) => update('outputMode', value)}
-              />
-              <p className='text-muted-foreground text-xs'>
-                {t('Recreate action, camera and background')}
-              </p>
-              <ChipGroup
-                label={t('Body pose')}
-                options={tr(TRY_ON_POSES)}
-                value={config.pose}
-                onChange={(value) => update('pose', value)}
+                label={t('Pick a category')}
+                options={tr(MULTI_GENDERS)}
+                value={config.gender}
+                onChange={(value) => update('gender', value)}
               />
               <ChipGroup
-                label={t('Facing')}
-                options={tr(TRY_ON_ORIENTATIONS)}
-                value={config.orientation}
-                onChange={(value) => update('orientation', value)}
+                label={t('Pick an age group')}
+                options={tr(MULTI_AGE_GROUPS)}
+                value={config.ageGroup}
+                onChange={(value) => update('ageGroup', value)}
               />
-              <ChipGroup
-                label={t('Model expression')}
-                options={tr(TRY_ON_EXPRESSIONS)}
-                value={config.expression}
-                onChange={(value) => update('expression', value)}
-              />
-              <div className='space-y-1.5'>
-                <span className='text-sm font-medium'>
-                  {t('Extra action notes for the model')}
-                </span>
-                <Textarea
-                  rows={3}
-                  value={config.actionNote}
-                  placeholder={t(
-                    'e.g. hold the product naturally in the right hand, front facing the lens, eyes on the product'
-                  )}
-                  onChange={(event) => update('actionNote', event.target.value)}
-                />
-              </div>
             </div>
-            <UploadTile
-              label={t('Pose reference images')}
-              badge={t('Optional')}
-              hint={t(
-                'Borrow pose and action only; without them the reference composition is used.'
-              )}
-              max={ACTION_MAX}
-              multiple
-              value={config.actions}
-              onChange={(next) => update('actions', next)}
-            />
+          </section>
+
+          <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
+            <div className='grid gap-3 sm:grid-cols-2'>
+              <UploadTile
+                label={t('Reference images')}
+                badge={t('Optional')}
+                hint={t(
+                  'Borrows composition, camera angle and lighting from this shot.'
+                )}
+                max={1}
+                value={config.references}
+                onChange={(next) => update('references', next)}
+              />
+              <UploadTile
+                label={t('Select model (optional)')}
+                hint={t('Soft-light frontal photos work best')}
+                max={1}
+                value={config.model ? [config.model] : []}
+                onChange={(next) => update('model', next[0] ?? null)}
+              />
+            </div>
+            <div className='grid gap-3 sm:grid-cols-2'>
+              <UploadTile
+                label={t('Scene image')}
+                badge={t('Optional')}
+                hint={t('Stage, indoor or other background environment shots.')}
+                max={1}
+                value={config.scene ? [config.scene] : []}
+                onChange={(next) => update('scene', next[0] ?? null)}
+              />
+              <UploadTile
+                label={t('Pose reference images')}
+                badge={t('Optional')}
+                hint={t(
+                  'Borrow pose and action only; without them the reference composition is used.'
+                )}
+                max={ACTION_MAX}
+                multiple
+                value={config.actions}
+                onChange={(next) => update('actions', next)}
+              />
+            </div>
+            <label className='flex items-start gap-2 px-1 text-sm'>
+              <Checkbox
+                checked={config.naturalVariation}
+                onCheckedChange={(checked) =>
+                  update('naturalVariation', checked === true)
+                }
+              />
+              <span>
+                <span className='font-medium'>
+                  {t('Natural pose and expression variation')}
+                </span>
+                <span className='text-muted-foreground block text-xs'>
+                  {t(
+                    'When on, pose and expression must differ naturally from the reference images; when off, the reference framing is reproduced strictly.'
+                  )}
+                </span>
+              </span>
+            </label>
           </section>
 
           <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <ResolutionCards
+            <ChipGroup
+              label={t('Resolution')}
+              options={resolutionOptions}
               value={config.resolution}
               onChange={(value) => update('resolution', value)}
             />
@@ -409,15 +317,6 @@ export function MultiTryOnPage() {
               value={config.ratio}
               onChange={(value) => update('ratio', value)}
             />
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Selected {{total}} reference images; each run generates {{count}} shots.',
-                {
-                  total: referenceTotal,
-                  count: config.count,
-                }
-              )}
-            </p>
             <div className='flex justify-end'>
               <Button variant='outline' size='sm' onClick={handleClear}>
                 <Eraser className='size-4' />
@@ -436,46 +335,19 @@ export function MultiTryOnPage() {
             disabled={missingSlots.length > 0}
             onGenerate={() => void handleGenerate()}
           />
-
-          <p className='text-muted-foreground text-center text-xs'>
-            <Link to='/docs' className='hover:underline'>
-              {t('View upload guidelines')}
-            </Link>
-            {' · '}
-            <Link to='/user-agreement' className='hover:underline'>
-              {t('Disclaimer')}
-            </Link>
-          </p>
         </div>
 
-        <ResultPanel
-          phase={phase}
-          results={results}
-          error={error}
-          count={config.count}
-          onStartUpload={focusUploads}
-          idleTitle={t(
-            'Upload multiple garments to generate a styled model shot'
-          )}
-          idleDescription={t(
-            'Works for top + bottom, inner + outer and 3-piece set combinations.'
-          )}
-          idleSteps={idleSteps}
-        />
+        {phase === 'idle' ? (
+          <TryOnShowcase />
+        ) : (
+          <ResultPanel
+            phase={phase}
+            results={results}
+            error={error}
+            count={config.count}
+          />
+        )}
       </div>
-
-      <HistoryDialog
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        tasks={tasks}
-        onRemove={(taskId) =>
-          setTasks(removeTryOnTask(taskId, MULTI_TRY_ON_STORAGE_KEY))
-        }
-        onClear={() => {
-          clearTryOnTasks(MULTI_TRY_ON_STORAGE_KEY)
-          setTasks([])
-        }}
-      />
     </div>
   )
 }
