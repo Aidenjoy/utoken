@@ -20,6 +20,9 @@ import {
   BookOpen,
   Camera,
   Clapperboard,
+  FileText,
+  Image as ImageIcon,
+  Images,
   Layers,
   Megaphone,
   Package,
@@ -27,7 +30,9 @@ import {
   Shirt,
   ShoppingCart,
   Sparkles,
+  UserRound,
   Users,
+  ZoomIn,
 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -115,27 +120,85 @@ export function useTopNavLinks(): TopNavLink[] {
     ],
   })
 
-  // 模特穿搭 — 开发中，暂无链接
+  // 模特穿搭 — 自由/多件/双人换衣已上线
   links.push({
     title: t('Model Styling'),
     href: '',
     children: [
-      { title: t('Free Try-On'), href: '', disabled: true, icon: Shirt },
-      { title: t('Multi-Item Try-On'), href: '', disabled: true, icon: Layers },
-      { title: t('Duo Try-On'), href: '', disabled: true, icon: Users },
+      {
+        title: t('Dedicated Model'),
+        href: '/try-on/model-studio',
+        requiresAuth: !isAuthed,
+        icon: UserRound,
+      },
+      {
+        title: t('Free Try-On'),
+        href: '/try-on/free',
+        requiresAuth: !isAuthed,
+        icon: Shirt,
+      },
+      {
+        title: t('Multi-Item Try-On'),
+        href: '/try-on/multi',
+        requiresAuth: !isAuthed,
+        icon: Layers,
+      },
+      {
+        title: t('Duo Try-On'),
+        href: '/try-on/duo',
+        requiresAuth: !isAuthed,
+        icon: Users,
+      },
     ],
   })
 
-  // 爆款设计 — 开发中，暂无链接
+  // 爆款主图 — 主图设计已上线，套图/详情页/细节图开发中
+  links.push({
+    title: t('Viral Hero Image'),
+    href: '',
+    children: [
+      {
+        title: t('Hero Image Design'),
+        href: '/viral-hero/hero-design',
+        requiresAuth: !isAuthed,
+        icon: ImageIcon,
+      },
+      {
+        title: t('Hero Image Set'),
+        href: '/viral-hero/hero-set',
+        requiresAuth: !isAuthed,
+        icon: Images,
+      },
+      {
+        title: t('Detail Page Images'),
+        href: '/viral-hero/detail-page',
+        requiresAuth: !isAuthed,
+        icon: FileText,
+      },
+      {
+        title: t('Detail Images'),
+        href: '/viral-hero/detail-images',
+        requiresAuth: !isAuthed,
+        icon: ZoomIn,
+      },
+    ],
+  })
+
+  // 爆款设计 — 商品设计与服装设计均已上线
   links.push({
     title: t('Viral Design'),
     href: '',
     children: [
-      { title: t('Fashion Design'), href: '', disabled: true, icon: Scissors },
+      {
+        title: t('Fashion Design'),
+        href: '/viral-design/fashion',
+        requiresAuth: !isAuthed,
+        icon: Scissors,
+      },
       {
         title: t('Merchandise Design'),
-        href: '',
-        disabled: true,
+        href: '/viral-design/merchandise',
+        requiresAuth: !isAuthed,
         icon: Package,
       },
     ],
@@ -161,7 +224,12 @@ export function useTopNavLinks(): TopNavLink[] {
     href: '',
     children: [
       { title: t('Developer Docs'), href: '/docs', icon: BookOpen },
-      { title: t('Design awakening'), href: '', disabled: true, icon: Sparkles },
+      {
+        title: t('Design awakening'),
+        href: '',
+        disabled: true,
+        icon: Sparkles,
+      },
     ],
   })
 

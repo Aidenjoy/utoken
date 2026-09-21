@@ -60,7 +60,17 @@ import { Route as AuthenticatedCostCalculatorIndexRouteImport } from './routes/_
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedAssetSyncIndexRouteImport } from './routes/_authenticated/asset-sync/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
+import { Route as AuthenticatedViralHeroHeroSetRouteImport } from './routes/_authenticated/viral-hero/hero-set'
+import { Route as AuthenticatedViralHeroHeroDesignRouteImport } from './routes/_authenticated/viral-hero/hero-design'
+import { Route as AuthenticatedViralHeroDetailPageRouteImport } from './routes/_authenticated/viral-hero/detail-page'
+import { Route as AuthenticatedViralHeroDetailImagesRouteImport } from './routes/_authenticated/viral-hero/detail-images'
+import { Route as AuthenticatedViralDesignMerchandiseRouteImport } from './routes/_authenticated/viral-design/merchandise'
+import { Route as AuthenticatedViralDesignFashionRouteImport } from './routes/_authenticated/viral-design/fashion'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
+import { Route as AuthenticatedTryOnMultiRouteImport } from './routes/_authenticated/try-on/multi'
+import { Route as AuthenticatedTryOnModelStudioRouteImport } from './routes/_authenticated/try-on/model-studio'
+import { Route as AuthenticatedTryOnFreeRouteImport } from './routes/_authenticated/try-on/free'
+import { Route as AuthenticatedTryOnDuoRouteImport } from './routes/_authenticated/try-on/duo'
 import { Route as AuthenticatedOrganizationSectionRouteImport } from './routes/_authenticated/organization/$section'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
@@ -364,12 +374,69 @@ const AuthenticatedAssetLibraryIndexRoute =
     path: '/asset-library/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedViralHeroHeroSetRoute =
+  AuthenticatedViralHeroHeroSetRouteImport.update({
+    id: '/viral-hero/hero-set',
+    path: '/viral-hero/hero-set',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedViralHeroHeroDesignRoute =
+  AuthenticatedViralHeroHeroDesignRouteImport.update({
+    id: '/viral-hero/hero-design',
+    path: '/viral-hero/hero-design',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedViralHeroDetailPageRoute =
+  AuthenticatedViralHeroDetailPageRouteImport.update({
+    id: '/viral-hero/detail-page',
+    path: '/viral-hero/detail-page',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedViralHeroDetailImagesRoute =
+  AuthenticatedViralHeroDetailImagesRouteImport.update({
+    id: '/viral-hero/detail-images',
+    path: '/viral-hero/detail-images',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedViralDesignMerchandiseRoute =
+  AuthenticatedViralDesignMerchandiseRouteImport.update({
+    id: '/viral-design/merchandise',
+    path: '/viral-design/merchandise',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedViralDesignFashionRoute =
+  AuthenticatedViralDesignFashionRouteImport.update({
+    id: '/viral-design/fashion',
+    path: '/viral-design/fashion',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUsageLogsSectionRoute =
   AuthenticatedUsageLogsSectionRouteImport.update({
     id: '/usage-logs/$section',
     path: '/usage-logs/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTryOnMultiRoute = AuthenticatedTryOnMultiRouteImport.update({
+  id: '/try-on/multi',
+  path: '/try-on/multi',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTryOnModelStudioRoute =
+  AuthenticatedTryOnModelStudioRouteImport.update({
+    id: '/try-on/model-studio',
+    path: '/try-on/model-studio',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedTryOnFreeRoute = AuthenticatedTryOnFreeRouteImport.update({
+  id: '/try-on/free',
+  path: '/try-on/free',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTryOnDuoRoute = AuthenticatedTryOnDuoRouteImport.update({
+  id: '/try-on/duo',
+  path: '/try-on/duo',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedOrganizationSectionRoute =
   AuthenticatedOrganizationSectionRouteImport.update({
     id: '/organization/$section',
@@ -566,7 +633,17 @@ export interface FileRoutesByFullPath {
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/organization/$section': typeof AuthenticatedOrganizationSectionRoute
+  '/try-on/duo': typeof AuthenticatedTryOnDuoRoute
+  '/try-on/free': typeof AuthenticatedTryOnFreeRoute
+  '/try-on/model-studio': typeof AuthenticatedTryOnModelStudioRoute
+  '/try-on/multi': typeof AuthenticatedTryOnMultiRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/viral-design/fashion': typeof AuthenticatedViralDesignFashionRoute
+  '/viral-design/merchandise': typeof AuthenticatedViralDesignMerchandiseRoute
+  '/viral-hero/detail-images': typeof AuthenticatedViralHeroDetailImagesRoute
+  '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
+  '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
+  '/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -643,7 +720,17 @@ export interface FileRoutesByTo {
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
   '/organization/$section': typeof AuthenticatedOrganizationSectionRoute
+  '/try-on/duo': typeof AuthenticatedTryOnDuoRoute
+  '/try-on/free': typeof AuthenticatedTryOnFreeRoute
+  '/try-on/model-studio': typeof AuthenticatedTryOnModelStudioRoute
+  '/try-on/multi': typeof AuthenticatedTryOnMultiRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/viral-design/fashion': typeof AuthenticatedViralDesignFashionRoute
+  '/viral-design/merchandise': typeof AuthenticatedViralDesignMerchandiseRoute
+  '/viral-hero/detail-images': typeof AuthenticatedViralHeroDetailImagesRoute
+  '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
+  '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
+  '/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync': typeof AuthenticatedAssetSyncIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
@@ -724,7 +811,17 @@ export interface FileRoutesById {
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
   '/_authenticated/organization/$section': typeof AuthenticatedOrganizationSectionRoute
+  '/_authenticated/try-on/duo': typeof AuthenticatedTryOnDuoRoute
+  '/_authenticated/try-on/free': typeof AuthenticatedTryOnFreeRoute
+  '/_authenticated/try-on/model-studio': typeof AuthenticatedTryOnModelStudioRoute
+  '/_authenticated/try-on/multi': typeof AuthenticatedTryOnMultiRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
+  '/_authenticated/viral-design/fashion': typeof AuthenticatedViralDesignFashionRoute
+  '/_authenticated/viral-design/merchandise': typeof AuthenticatedViralDesignMerchandiseRoute
+  '/_authenticated/viral-hero/detail-images': typeof AuthenticatedViralHeroDetailImagesRoute
+  '/_authenticated/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
+  '/_authenticated/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
+  '/_authenticated/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/_authenticated/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
@@ -805,7 +902,17 @@ export interface FileRouteTypes {
     | '/errors/$error'
     | '/models/$section'
     | '/organization/$section'
+    | '/try-on/duo'
+    | '/try-on/free'
+    | '/try-on/model-studio'
+    | '/try-on/multi'
     | '/usage-logs/$section'
+    | '/viral-design/fashion'
+    | '/viral-design/merchandise'
+    | '/viral-hero/detail-images'
+    | '/viral-hero/detail-page'
+    | '/viral-hero/hero-design'
+    | '/viral-hero/hero-set'
     | '/asset-library/'
     | '/asset-sync/'
     | '/channels/'
@@ -882,7 +989,17 @@ export interface FileRouteTypes {
     | '/errors/$error'
     | '/models/$section'
     | '/organization/$section'
+    | '/try-on/duo'
+    | '/try-on/free'
+    | '/try-on/model-studio'
+    | '/try-on/multi'
     | '/usage-logs/$section'
+    | '/viral-design/fashion'
+    | '/viral-design/merchandise'
+    | '/viral-hero/detail-images'
+    | '/viral-hero/detail-page'
+    | '/viral-hero/hero-design'
+    | '/viral-hero/hero-set'
     | '/asset-library'
     | '/asset-sync'
     | '/channels'
@@ -962,7 +1079,17 @@ export interface FileRouteTypes {
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
     | '/_authenticated/organization/$section'
+    | '/_authenticated/try-on/duo'
+    | '/_authenticated/try-on/free'
+    | '/_authenticated/try-on/model-studio'
+    | '/_authenticated/try-on/multi'
     | '/_authenticated/usage-logs/$section'
+    | '/_authenticated/viral-design/fashion'
+    | '/_authenticated/viral-design/merchandise'
+    | '/_authenticated/viral-hero/detail-images'
+    | '/_authenticated/viral-hero/detail-page'
+    | '/_authenticated/viral-hero/hero-design'
+    | '/_authenticated/viral-hero/hero-set'
     | '/_authenticated/asset-library/'
     | '/_authenticated/asset-sync/'
     | '/_authenticated/channels/'
@@ -1388,11 +1515,81 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssetLibraryIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/viral-hero/hero-set': {
+      id: '/_authenticated/viral-hero/hero-set'
+      path: '/viral-hero/hero-set'
+      fullPath: '/viral-hero/hero-set'
+      preLoaderRoute: typeof AuthenticatedViralHeroHeroSetRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/viral-hero/hero-design': {
+      id: '/_authenticated/viral-hero/hero-design'
+      path: '/viral-hero/hero-design'
+      fullPath: '/viral-hero/hero-design'
+      preLoaderRoute: typeof AuthenticatedViralHeroHeroDesignRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/viral-hero/detail-page': {
+      id: '/_authenticated/viral-hero/detail-page'
+      path: '/viral-hero/detail-page'
+      fullPath: '/viral-hero/detail-page'
+      preLoaderRoute: typeof AuthenticatedViralHeroDetailPageRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/viral-hero/detail-images': {
+      id: '/_authenticated/viral-hero/detail-images'
+      path: '/viral-hero/detail-images'
+      fullPath: '/viral-hero/detail-images'
+      preLoaderRoute: typeof AuthenticatedViralHeroDetailImagesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/viral-design/merchandise': {
+      id: '/_authenticated/viral-design/merchandise'
+      path: '/viral-design/merchandise'
+      fullPath: '/viral-design/merchandise'
+      preLoaderRoute: typeof AuthenticatedViralDesignMerchandiseRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/viral-design/fashion': {
+      id: '/_authenticated/viral-design/fashion'
+      path: '/viral-design/fashion'
+      fullPath: '/viral-design/fashion'
+      preLoaderRoute: typeof AuthenticatedViralDesignFashionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/usage-logs/$section': {
       id: '/_authenticated/usage-logs/$section'
       path: '/usage-logs/$section'
       fullPath: '/usage-logs/$section'
       preLoaderRoute: typeof AuthenticatedUsageLogsSectionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/try-on/multi': {
+      id: '/_authenticated/try-on/multi'
+      path: '/try-on/multi'
+      fullPath: '/try-on/multi'
+      preLoaderRoute: typeof AuthenticatedTryOnMultiRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/try-on/model-studio': {
+      id: '/_authenticated/try-on/model-studio'
+      path: '/try-on/model-studio'
+      fullPath: '/try-on/model-studio'
+      preLoaderRoute: typeof AuthenticatedTryOnModelStudioRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/try-on/free': {
+      id: '/_authenticated/try-on/free'
+      path: '/try-on/free'
+      fullPath: '/try-on/free'
+      preLoaderRoute: typeof AuthenticatedTryOnFreeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/try-on/duo': {
+      id: '/_authenticated/try-on/duo'
+      path: '/try-on/duo'
+      fullPath: '/try-on/duo'
+      preLoaderRoute: typeof AuthenticatedTryOnDuoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/organization/$section': {
@@ -1717,7 +1914,17 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
   AuthenticatedOrganizationSectionRoute: typeof AuthenticatedOrganizationSectionRoute
+  AuthenticatedTryOnDuoRoute: typeof AuthenticatedTryOnDuoRoute
+  AuthenticatedTryOnFreeRoute: typeof AuthenticatedTryOnFreeRoute
+  AuthenticatedTryOnModelStudioRoute: typeof AuthenticatedTryOnModelStudioRoute
+  AuthenticatedTryOnMultiRoute: typeof AuthenticatedTryOnMultiRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
+  AuthenticatedViralDesignFashionRoute: typeof AuthenticatedViralDesignFashionRoute
+  AuthenticatedViralDesignMerchandiseRoute: typeof AuthenticatedViralDesignMerchandiseRoute
+  AuthenticatedViralHeroDetailImagesRoute: typeof AuthenticatedViralHeroDetailImagesRoute
+  AuthenticatedViralHeroDetailPageRoute: typeof AuthenticatedViralHeroDetailPageRoute
+  AuthenticatedViralHeroHeroDesignRoute: typeof AuthenticatedViralHeroHeroDesignRoute
+  AuthenticatedViralHeroHeroSetRoute: typeof AuthenticatedViralHeroHeroSetRoute
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
   AuthenticatedAssetSyncIndexRoute: typeof AuthenticatedAssetSyncIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
@@ -1755,7 +1962,19 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
   AuthenticatedOrganizationSectionRoute: AuthenticatedOrganizationSectionRoute,
+  AuthenticatedTryOnDuoRoute: AuthenticatedTryOnDuoRoute,
+  AuthenticatedTryOnFreeRoute: AuthenticatedTryOnFreeRoute,
+  AuthenticatedTryOnModelStudioRoute: AuthenticatedTryOnModelStudioRoute,
+  AuthenticatedTryOnMultiRoute: AuthenticatedTryOnMultiRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
+  AuthenticatedViralDesignFashionRoute: AuthenticatedViralDesignFashionRoute,
+  AuthenticatedViralDesignMerchandiseRoute:
+    AuthenticatedViralDesignMerchandiseRoute,
+  AuthenticatedViralHeroDetailImagesRoute:
+    AuthenticatedViralHeroDetailImagesRoute,
+  AuthenticatedViralHeroDetailPageRoute: AuthenticatedViralHeroDetailPageRoute,
+  AuthenticatedViralHeroHeroDesignRoute: AuthenticatedViralHeroHeroDesignRoute,
+  AuthenticatedViralHeroHeroSetRoute: AuthenticatedViralHeroHeroSetRoute,
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
   AuthenticatedAssetSyncIndexRoute: AuthenticatedAssetSyncIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
