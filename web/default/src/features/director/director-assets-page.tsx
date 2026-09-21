@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
+import { OwnerFilter } from '@/components/owner-filter'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,7 +35,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { OwnerFilter } from '@/components/owner-filter'
 import {
   Empty,
   EmptyDescription,
@@ -72,7 +72,11 @@ import {
 } from './api'
 import { AssetCard } from './components/asset-card'
 import { AssetCategoryDialog } from './components/asset-category-dialog'
-import { ASSET_TYPE_OPTIONS, BUILTIN_ASSET_CATEGORIES } from './constants'
+import {
+  ASSET_SCENE_OPTIONS,
+  ASSET_TYPE_OPTIONS,
+  BUILTIN_ASSET_CATEGORIES,
+} from './constants'
 import type { DirectorAsset } from './types'
 
 const PAGE_SIZE = 24
@@ -104,15 +108,16 @@ export function DirectorAssetsPage() {
   const [episodeId, setEpisodeId] = React.useState<number | null>(null)
   const [type, setType] = React.useState('')
   const [category, setCategory] = React.useState('')
+  // 业务场景 tab：空为全部，素材库由四大工作台共享
+  const [scene, setScene] = React.useState('')
   // 管理员归属筛选：默认自己，可选全部或指定用户（非管理员恒为 self，不下发参数）
   const [owner, setOwner] = React.useState<OwnerSelection>({ kind: 'self' })
   const ownerKey = owner.kind === 'user' ? `user:${owner.id}` : owner.kind
   const ownerUserId = ownerUserIdParam(owner, isAdmin)
   const [uploading, setUploading] = React.useState(false)
   const [catDialogOpen, setCatDialogOpen] = React.useState(false)
-  const [deletingAsset, setDeletingAsset] = React.useState<DirectorAsset | null>(
-    null
-  )
+  const [deletingAsset, setDeletingAsset] =
+    React.useState<DirectorAsset | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // 项目 / 分集 / 自定义分类选项
@@ -146,6 +151,7 @@ export function DirectorAssetsPage() {
       episodeId,
       type,
       category,
+      scene,
       page,
       isAdmin,
       ownerKey,
@@ -156,6 +162,7 @@ export function DirectorAssetsPage() {
         episodeId: episodeId ?? undefined,
         type: type || undefined,
         category: category || undefined,
+        scene: scene || undefined,
         userId: ownerUserId,
         p: page,
         page_size: PAGE_SIZE,
@@ -191,6 +198,12 @@ export function DirectorAssetsPage() {
     return hit ? hit.label : key || t('Other')
   }
 
+  // 场景徽标文案：历史素材场景为空时归属视频工厂
+  const sceneLabel = (key: string) => {
+    const hit = ASSET_SCENE_OPTIONS.find((o) => o.value === key)
+    return hit ? t(hit.label) : t('Video Factory')
+  }
+
   const projectText = (id?: number | null) => {
     const hit = projects.find((p) => p.id === id)
     return hit ? `#${hit.id} ${hit.title}` : t('Global Asset')
@@ -222,6 +235,7 @@ export function DirectorAssetsPage() {
         projectId: projectId ?? undefined,
         episodeId: episodeId ?? undefined,
         category: category || undefined,
+        scene: scene || undefined,
       })
       if (res.success) {
         toast.success(t('Uploaded'))
@@ -288,6 +302,7 @@ export function DirectorAssetsPage() {
             key={asset.id}
             asset={asset}
             categoryLabel={categoryLabel}
+            sceneLabel={sceneLabel}
             projectText={projectText}
             showOwner={isAdmin}
             onDelete={setDeletingAsset}
@@ -300,9 +315,7 @@ export function DirectorAssetsPage() {
   return (
     <>
       <SectionPageLayout>
-        <SectionPageLayout.Title>
-          {t('Asset Library')}
-        </SectionPageLayout.Title>
+        <SectionPageLayout.Title>{t('Asset Library')}</SectionPageLayout.Title>
         <SectionPageLayout.Actions>
           <Button
             variant='outline'
@@ -323,6 +336,34 @@ export function DirectorAssetsPage() {
               void handleUpload(e)
             }}
           />
+
+          {/* 场景 tab：素材库由四大工作台共享 */}
+          <div className='mb-4 flex flex-wrap items-center gap-2'>
+            {[
+              { value: '', label: t('All') },
+              ...ASSET_SCENE_OPTIONS.map((o) => ({
+                value: o.value,
+                label: t(o.label),
+              })),
+            ].map((s) => (
+              <button
+                key={s.value || ALL}
+                type='button'
+                className={cn(
+                  'rounded-full border px-3.5 py-1.5 text-sm transition-colors',
+                  scene === s.value
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-foreground/30 hover:text-foreground'
+                )}
+                onClick={() => {
+                  setScene(s.value)
+                  setPage(1)
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
 
           {/* 筛选区 */}
           <div className='mb-4 flex flex-wrap items-center gap-2'>

@@ -1,10 +1,31 @@
 package model
 
 import (
+	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // ===== 云导演：项目素材库 =====
+
+// 素材业务场景：素材库由视频工厂/模特穿搭/爆款主图/爆款设计四大工作台共享
+const (
+	AssetSceneVideoFactory = "video-factory"
+	AssetSceneTryOn        = "try-on"
+	AssetSceneViralHero    = "viral-hero"
+	AssetSceneViralDesign  = "viral-design"
+)
+
+// NormalizeAssetScene 校验场景值，空或非法值回退视频工厂
+func NormalizeAssetScene(scene string) string {
+	switch strings.TrimSpace(scene) {
+	case AssetSceneTryOn, AssetSceneViralHero, AssetSceneViralDesign:
+		return strings.TrimSpace(scene)
+	default:
+		return AssetSceneVideoFactory
+	}
+}
 
 // DirectorAsset 云导演素材（区别于渠道虚拟人像素材库 model.Asset）
 type DirectorAsset struct {
@@ -18,6 +39,7 @@ type DirectorAsset struct {
 	Name         string `json:"name" gorm:"size:128"`           // 素材名称
 	Type         string `json:"type" gorm:"size:32;index"`      // image/video/subtitle
 	Category     string `json:"category" gorm:"size:64"`        // 分类
+	Scene        string `json:"scene" gorm:"size:32;index"`     // 业务场景：video-factory/try-on/viral-hero/viral-design
 	URL          string `json:"url" gorm:"size:512"`            // 访问地址
 	FileSize     int64  `json:"fileSize"`                       // 文件大小(字节)
 	Width        int    `json:"width"`                          // 宽度
@@ -27,6 +49,14 @@ type DirectorAsset struct {
 }
 
 func (DirectorAsset) TableName() string { return "director_assets" }
+
+// BeforeCreate 未指定场景的登记路径（生成流水线等）默认归入视频工厂
+func (a *DirectorAsset) BeforeCreate(_ *gorm.DB) error {
+	if a.Scene == "" {
+		a.Scene = AssetSceneVideoFactory
+	}
+	return nil
+}
 
 func (a *DirectorAsset) Insert() error {
 	now := time.Now().Unix()
@@ -58,6 +88,7 @@ type DirectorAssetFilter struct {
 	StoryboardID *int
 	Type         string
 	Category     string
+	Scene        string
 	IsFavorite   *bool
 	Keyword      string
 	Page         int
@@ -83,6 +114,14 @@ func ListDirectorAssets(f DirectorAssetFilter) ([]*DirectorAsset, int64, error) 
 	}
 	if f.Category != "" {
 		query = query.Where("category = ?", f.Category)
+	}
+	if f.Scene != "" {
+		if f.Scene == AssetSceneVideoFactory {
+			// 历史素材场景为空，归属视频工厂
+			query = query.Where("(scene = ? OR scene = '')", f.Scene)
+		} else {
+			query = query.Where("scene = ?", f.Scene)
+		}
 	}
 	if f.IsFavorite != nil {
 		query = query.Where("is_favorite = ?", *f.IsFavorite)

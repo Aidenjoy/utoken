@@ -29,6 +29,7 @@ import type { DirectorAsset } from '../types'
 interface AssetCardProps {
   asset: DirectorAsset
   categoryLabel: (key: string) => string
+  sceneLabel: (key: string) => string
   projectText: (id?: number | null) => string
   showOwner?: boolean // 管理员视图：显示归属用户 ID 与用户名
   onDelete: (asset: DirectorAsset) => void
@@ -48,11 +49,7 @@ export function AssetCard(props: AssetCardProps) {
   const cover = () => {
     if (asset.type === 'image') {
       return (
-        <ZoomableImage
-          src={asset.url}
-          alt={asset.name}
-          className='size-full'
-        />
+        <ZoomableImage src={asset.url} alt={asset.name} className='size-full' />
       )
     }
     if (asset.type === 'video') {
@@ -85,6 +82,9 @@ export function AssetCard(props: AssetCardProps) {
         {cover()}
         <div className='absolute top-1.5 left-1.5 rounded bg-black/55 px-2 py-0.5 text-xs text-white'>
           {typeLabel()}
+        </div>
+        <div className='absolute top-1.5 right-1.5 rounded bg-black/55 px-2 py-0.5 text-xs text-white'>
+          {props.sceneLabel(asset.scene)}
         </div>
       </div>
       <div className='flex-1 space-y-1.5 p-2.5'>

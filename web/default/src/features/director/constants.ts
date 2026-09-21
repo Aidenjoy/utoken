@@ -270,3 +270,11 @@ export const ASSET_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'video', label: 'Video' },
   { value: 'audio', label: 'Audio' },
 ]
+
+// 素材业务场景选项（与后端 model.AssetScene* 对应），label 为 i18n 英文源文案
+export const ASSET_SCENE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'video-factory', label: 'Video Factory' },
+  { value: 'try-on', label: 'Model Styling' },
+  { value: 'viral-hero', label: 'Viral Hero Image' },
+  { value: 'viral-design', label: 'Viral Design' },
+]

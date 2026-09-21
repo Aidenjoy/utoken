@@ -235,6 +235,7 @@ export interface DirectorAsset {
   name: string
   type: string
   category: string
+  scene: string
   url: string
   fileSize: number
   width: number
@@ -268,6 +269,7 @@ export interface AssetListParams {
   episodeId?: number
   type?: string
   category?: string
+  scene?: string
   userId?: number // 管理员归属过滤：缺省=自己，0=全部，N=指定用户
   p?: number
   page_size?: number

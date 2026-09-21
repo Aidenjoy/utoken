@@ -28,6 +28,7 @@ func DirectorCreateAsset(c *gin.Context) {
 	}
 	a.ID = 0
 	a.UserID = userId
+	a.Scene = model.NormalizeAssetScene(a.Scene)
 	if err := a.Insert(); err != nil {
 		common.ApiError(c, err)
 		return
@@ -114,6 +115,11 @@ func DirectorDeleteAsset(c *gin.Context) {
 func DirectorGetAssetList(c *gin.Context) {
 	page, pageSize := directorPage(c)
 	ownerID, isAdmin := directorOwnerFilter(c)
+	// 场景为空表示不限；非空则归一化后过滤
+	scene := c.Query("scene")
+	if scene != "" {
+		scene = model.NormalizeAssetScene(scene)
+	}
 	f := model.DirectorAssetFilter{
 		UserID:       ownerID,
 		ProjectID:    directorQueryIntPtr(c, "projectId"),
@@ -121,6 +127,7 @@ func DirectorGetAssetList(c *gin.Context) {
 		StoryboardID: directorQueryIntPtr(c, "storyboardId"),
 		Type:         c.Query("type"),
 		Category:     c.Query("category"),
+		Scene:        scene,
 		IsFavorite:   directorQueryBoolPtr(c, "isFavorite"),
 		Page:         page,
 		PageSize:     pageSize,
@@ -146,7 +153,7 @@ func DirectorUploadAsset(c *gin.Context) {
 	if projectID > 0 && !directorOwnedProjectID(c, projectID) {
 		return
 	}
-	asset, err := directorAssetSvc.UploadAsset(header, userId, projectID, episodeID, c.PostForm("name"), c.PostForm("category"))
+	asset, err := directorAssetSvc.UploadAsset(header, userId, projectID, episodeID, c.PostForm("name"), c.PostForm("category"), c.PostForm("scene"))
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -482,12 +482,14 @@ export async function uploadDirectorAsset(params: {
   projectId?: number
   episodeId?: number
   category?: string
+  scene?: string
 }): Promise<ApiResponse<{ url: string; asset: DirectorAsset }>> {
   const form = new FormData()
   form.append('file', params.file)
   if (params.projectId) form.append('projectId', String(params.projectId))
   if (params.episodeId) form.append('episodeId', String(params.episodeId))
   if (params.category) form.append('category', params.category)
+  if (params.scene) form.append('scene', params.scene)
   const res = await api.post(`${BASE}/asset/upload`, form)
   return res.data
 }
