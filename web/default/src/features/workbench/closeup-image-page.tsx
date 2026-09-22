@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import { CloseUpShowcase } from './components/closeup-showcase'
 import { GarmentBaseFields } from './components/garment-base-fields'
@@ -120,6 +120,7 @@ export function CloseUpImagePage() {
   }
 
   const togglePart = (value: string) => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...prev,
       parts: prev.parts.includes(value)
@@ -152,47 +153,47 @@ export function CloseUpImagePage() {
     setPhase('loading')
     setError('')
     setResults([])
+    const generated: string[] = []
+    let sources: string[] = []
     try {
       const request = buildCloseUpRequest(config)
-      const response = await generateTryOnImages({
-        model: config.imageModel,
-        prompt: request.prompt,
-        size: buildImageSize(resolution, ratio),
-        n: outputCount,
-        watermark: false,
-        image: request.images.length === 1 ? request.images[0] : request.images,
-      })
-      const message = response.error?.message
-      if (message) {
-        throw new Error(message)
-      }
-      const urls = (response.data ?? [])
-        .map((item) =>
-          (item.url ?? item.b64_json)
-            ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-            : ''
-        )
-        .filter(Boolean)
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
-      setPhase('done')
-      void saveGenerationToLibrary(
-        'viral-hero',
-        isBase ? baseTitle : t('Detail Images'),
-        urls,
-        request.images,
-        t
+      sources = request.images
+      await generateImageBatch(
+        [
+          {
+            model: config.imageModel,
+            prompt: request.prompt,
+            size: buildImageSize(resolution, ratio),
+            n: outputCount,
+            watermark: false,
+            image:
+              request.images.length === 1 ? request.images[0] : request.images,
+          },
+        ],
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
+        }
       )
+      setPhase('done')
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? t(generateError.message)
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'viral-hero',
+          isBase ? baseTitle : t('Detail Images'),
+          generated,
+          sources,
+          t
+        )
+      }
     }
   }
 
@@ -511,6 +512,7 @@ export function CloseUpImagePage() {
             <CloseUpShowcase mode={config.shotMode} />
           ) : (
             <ResultPanel
+              progressive
               phase={phase}
               results={results}
               error={error}

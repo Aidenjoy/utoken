@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -40,20 +39,22 @@ interface ResultPanelProps {
   idleSteps?: string[]
   /** Loading copy override; defaults to the try-on wording. */
   loadingLabel?: string
+  /** 调用方在开始生成时清空结果，并在本轮生成过程中逐张追加。 */
+  progressive?: boolean
 }
 
 /** Right-hand canvas: empty state, loading skeletons or the result grid. */
 export function ResultPanel(props: ResultPanelProps) {
   const { t } = useTranslation()
-  // Stable skeleton ids: array-index keys would remount every pulse frame.
-  const [skeletonIds, setSkeletonIds] = useState<string[]>([])
-  useEffect(() => {
-    setSkeletonIds(
-      Array.from({ length: props.count }, () =>
-        Math.random().toString(36).slice(2)
-      )
-    )
-  }, [props.count])
+  const isLoading = props.phase === 'loading'
+  const visibleResults = isLoading && !props.progressive ? [] : props.results
+  // 结果按完成顺序追加，尚未完成的槽位保留占位，不因首张返回而消失。
+  const pendingIds = Array.from(
+    {
+      length: isLoading ? Math.max(0, props.count - visibleResults.length) : 0,
+    },
+    (_, index) => `pending-${visibleResults.length + index}`
+  )
 
   if (props.phase === 'idle') {
     return (
@@ -96,29 +97,13 @@ export function ResultPanel(props: ResultPanelProps) {
     )
   }
 
-  if (props.phase === 'loading') {
-    return (
-      <div className='border-border bg-muted/30 rounded-lg border p-4'>
-        <p className='text-muted-foreground mb-3 flex items-center gap-2 text-sm'>
-          <Loader2 className='size-4 animate-spin' />
-          {props.loadingLabel ?? t('Generating try-on shots...')}
-        </p>
-        <div className='grid grid-cols-2 gap-3'>
-          {skeletonIds.map((id) => (
-            <div
-              key={id}
-              className='bg-muted aspect-square animate-pulse rounded-md'
-            />
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   if (props.phase === 'error') {
     return (
       <div className='border-destructive/40 bg-destructive/5 flex min-h-[420px] items-center justify-center rounded-lg border p-6'>
-        <p className='text-destructive max-w-sm text-center text-sm'>
+        <p
+          role='alert'
+          className='text-destructive max-w-sm text-center text-sm'
+        >
           {props.error}
         </p>
       </div>
@@ -126,17 +111,40 @@ export function ResultPanel(props: ResultPanelProps) {
   }
 
   return (
-    <div className='border-border bg-muted/30 rounded-lg border p-4'>
+    <div
+      className='border-border bg-muted/30 rounded-lg border p-4'
+      aria-busy={isLoading}
+    >
+      {isLoading ? (
+        <p
+          role='status'
+          className='text-muted-foreground mb-3 flex items-center gap-2 text-sm'
+        >
+          <Loader2 className='size-4 animate-spin motion-reduce:animate-none' />
+          {props.loadingLabel ?? t('Generating try-on shots...')}
+          <span className='tabular-nums'>
+            {visibleResults.length}/{props.count}
+          </span>
+        </p>
+      ) : null}
+      {!isLoading && props.error ? (
+        <p role='alert' className='text-destructive mb-3 text-sm'>
+          {t('Generation stopped; completed images have been kept.')}{' '}
+          {props.error}
+        </p>
+      ) : null}
       <div className='grid grid-cols-2 gap-3'>
-        {props.results.map((src, index) => (
+        {visibleResults.map((src, index) => (
           <div
-            key={src}
+            // eslint-disable-next-line react/no-array-index-key -- 结果只追加、不重排；索引用于区分重复 URL。
+            key={`${index}-${src}`}
             className='group border-border bg-card relative overflow-hidden rounded-md border'
           >
             <ZoomableImage
               src={src}
               alt={t('Try-on result {{index}}', { index: index + 1 })}
               className='aspect-square w-full'
+              fit='contain'
             />
             <a
               href={src}
@@ -147,6 +155,13 @@ export function ResultPanel(props: ResultPanelProps) {
               <Download className='size-4' />
             </a>
           </div>
+        ))}
+        {pendingIds.map((id) => (
+          <div
+            key={id}
+            aria-hidden='true'
+            className='bg-muted aspect-square animate-pulse rounded-md motion-reduce:animate-none'
+          />
         ))}
       </div>
     </div>

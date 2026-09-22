@@ -30,7 +30,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
 import {
@@ -65,6 +65,7 @@ export function ProductDesignPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
+  const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -85,10 +86,12 @@ export function ProductDesignPage() {
     key: K,
     value: ProductDesignConfig[K]
   ) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
   const changeDirection = (value: string) => {
+    if (isLoading) return
     const direction = value as DesignDirection
     const firstPreset = DESIGN_PRESETS[direction]?.[0]?.value ?? ''
     setConfig((prev) => ({ ...prev, direction, preset: firstPreset }))
@@ -107,6 +110,7 @@ export function ProductDesignPage() {
       : null
 
   const handleGenerate = async () => {
+    if (isLoading) return
     if (!config.product) {
       toast.error(t('Upload a product photo first'))
       return
@@ -122,50 +126,49 @@ export function ProductDesignPage() {
     const { prompt, images } = buildProductDesignRequest(config)
     setPhase('loading')
     setError('')
+    setResults([])
+    const generated: string[] = []
     try {
-      const response = await generateTryOnImages({
-        model: config.imageModel,
-        prompt,
-        size: buildImageSize(config.resolution, config.ratio),
-        n: config.count,
-        watermark: false,
-        image: images[0],
-      })
-      const message = response.error?.message
-      if (message) {
-        throw new Error(message)
-      }
-      const urls = (response.data ?? [])
-        .map((item) =>
-          (item.url ?? item.b64_json)
-            ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-            : ''
-        )
-        .filter(Boolean)
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
-      setPhase('done')
-      void saveGenerationToLibrary(
-        'viral-design',
-        t('Merchandise Design'),
-        urls,
-        images,
-        t
+      await generateImageBatch(
+        [
+          {
+            model: config.imageModel,
+            prompt,
+            size: buildImageSize(config.resolution, config.ratio),
+            n: config.count,
+            watermark: false,
+            image: images[0],
+          },
+        ],
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
+        }
       )
+      setPhase('done')
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? generateError.message
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'viral-design',
+          t('Merchandise Design'),
+          generated,
+          images,
+          t
+        )
+      }
     }
   }
 
   const handleClear = () => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...createDefaultProductDesignConfig(),
       imageModel: prev.imageModel,
@@ -202,7 +205,10 @@ export function ProductDesignPage() {
       </header>
 
       <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
-        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
+        <fieldset
+          disabled={isLoading}
+          className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'
+        >
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
             <SegmentBar
               label={t('Design direction')}
@@ -322,17 +328,18 @@ export function ProductDesignPage() {
             onModelChange={(value) => update('imageModel', value)}
             count={config.count}
             onCountChange={(value) => update('count', value)}
-            loading={phase === 'loading'}
+            loading={isLoading}
             disabled={!config.product}
             onGenerate={() => void handleGenerate()}
           />
-        </div>
+        </fieldset>
 
         <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
           {phase === 'idle' ? (
             <ProductShowcase preset={showcasePreset} />
           ) : (
             <ResultPanel
+              progressive
               phase={phase}
               results={results}
               error={error}

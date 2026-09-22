@@ -50,7 +50,7 @@ export const ACTION_MAX = 9
 export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 
 export const TRY_ON_SIZES = ['2K', '4K'] as const
-export const TRY_ON_COUNTS = [1, 2, 4] as const
+export const TRY_ON_COUNTS = [1, 2, 3, 4] as const
 
 export function createDefaultTryOnConfig(): TryOnConfig {
   return {

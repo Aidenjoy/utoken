@@ -31,7 +31,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
 import { HeroShowcase } from './components/hero-showcase'
@@ -60,6 +60,7 @@ export function HeroImagePage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
+  const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -80,10 +81,12 @@ export function HeroImagePage() {
     key: K,
     value: HeroImageConfig[K]
   ) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
   const toggleElement = (value: string, checked: boolean) => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...prev,
       elements: checked
@@ -93,6 +96,7 @@ export function HeroImagePage() {
   }
 
   const handleGenerate = async () => {
+    if (isLoading) return
     if (config.products.length === 0) {
       toast.error(t('Upload at least one product image'))
       return
@@ -104,50 +108,50 @@ export function HeroImagePage() {
     const request = buildHeroImageRequest(config)
     setPhase('loading')
     setError('')
+    setResults([])
+    const generated: string[] = []
     try {
-      const response = await generateTryOnImages({
-        model: config.imageModel,
-        prompt: request.prompt,
-        size: buildImageSize(config.resolution, config.ratio),
-        n: config.count,
-        watermark: false,
-        image: request.images.length === 1 ? request.images[0] : request.images,
-      })
-      const message = response.error?.message
-      if (message) {
-        throw new Error(message)
-      }
-      const urls = (response.data ?? [])
-        .map((item) =>
-          (item.url ?? item.b64_json)
-            ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-            : ''
-        )
-        .filter(Boolean)
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
-      setPhase('done')
-      void saveGenerationToLibrary(
-        'viral-hero',
-        t('Hero Image Design'),
-        urls,
-        request.images,
-        t
+      await generateImageBatch(
+        [
+          {
+            model: config.imageModel,
+            prompt: request.prompt,
+            size: buildImageSize(config.resolution, config.ratio),
+            n: config.count,
+            watermark: false,
+            image:
+              request.images.length === 1 ? request.images[0] : request.images,
+          },
+        ],
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
+        }
       )
+      setPhase('done')
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? generateError.message
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'viral-hero',
+          t('Hero Image Design'),
+          generated,
+          request.images,
+          t
+        )
+      }
     }
   }
 
   const handleClear = () => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...createDefaultHeroImageConfig(),
       imageModel: prev.imageModel,
@@ -182,7 +186,10 @@ export function HeroImagePage() {
       </header>
 
       <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
-        <div className='flex min-w-0 flex-col gap-4 xl:min-h-0 xl:overflow-y-auto'>
+        <fieldset
+          disabled={isLoading}
+          className='flex min-w-0 flex-col gap-4 xl:min-h-0 xl:overflow-y-auto'
+        >
           <section className='border-border bg-card flex flex-col gap-3 rounded-lg border p-4'>
             <UploadTile
               label={t('Product images (up to 3)')}
@@ -275,17 +282,18 @@ export function HeroImagePage() {
             onModelChange={(value) => update('imageModel', value)}
             count={config.count}
             onCountChange={(value) => update('count', value)}
-            loading={phase === 'loading'}
+            loading={isLoading}
             disabled={config.products.length === 0}
             onGenerate={() => void handleGenerate()}
           />
-        </div>
+        </fieldset>
 
         <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
           {phase === 'idle' ? (
             <HeroShowcase />
           ) : (
             <ResultPanel
+              progressive
               phase={phase}
               results={results}
               error={error}

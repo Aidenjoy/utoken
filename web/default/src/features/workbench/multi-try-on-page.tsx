@@ -29,7 +29,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
@@ -69,6 +69,7 @@ export function MultiTryOnPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
+  const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -89,10 +90,12 @@ export function MultiTryOnPage() {
     key: K,
     value: MultiTryOnConfig[K]
   ) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
   const updateSlot = (slot: MultiGarmentSlot, image: TryOnImage | null) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, slots: { ...prev.slots, [slot]: image } }))
   }
 
@@ -102,6 +105,7 @@ export function MultiTryOnPage() {
   const missingSlots = structure.slots.filter((slot) => !config.slots[slot])
 
   const handleGenerate = async () => {
+    if (isLoading) return
     if (missingSlots.length > 0) {
       toast.error(t('Upload every garment slot for the selected structure'))
       return
@@ -113,50 +117,49 @@ export function MultiTryOnPage() {
     const { prompt, images } = buildMultiTryOnRequest(config)
     setPhase('loading')
     setError('')
+    setResults([])
+    const generated: string[] = []
     try {
-      const response = await generateTryOnImages({
-        model: config.imageModel,
-        prompt,
-        size: buildImageSize(config.resolution, config.ratio),
-        n: config.count,
-        watermark: false,
-        image: images.length === 1 ? images[0] : images,
-      })
-      const message = response.error?.message
-      if (message) {
-        throw new Error(message)
-      }
-      const urls = (response.data ?? [])
-        .map((item) =>
-          (item.url ?? item.b64_json)
-            ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-            : ''
-        )
-        .filter(Boolean)
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
-      setPhase('done')
-      void saveGenerationToLibrary(
-        'try-on',
-        t('Multi-Item Try-On'),
-        urls,
-        images,
-        t
+      await generateImageBatch(
+        [
+          {
+            model: config.imageModel,
+            prompt,
+            size: buildImageSize(config.resolution, config.ratio),
+            n: config.count,
+            watermark: false,
+            image: images.length === 1 ? images[0] : images,
+          },
+        ],
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
+        }
       )
+      setPhase('done')
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? generateError.message
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'try-on',
+          t('Multi-Item Try-On'),
+          generated,
+          images,
+          t
+        )
+      }
     }
   }
 
   const handleClear = () => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...createDefaultMultiTryOnConfig(),
       imageModel: prev.imageModel,
@@ -196,7 +199,10 @@ export function MultiTryOnPage() {
       </header>
 
       <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
-        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
+        <fieldset
+          disabled={isLoading}
+          className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'
+        >
           <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
             <SegmentBar
               label={t('Outfit structure')}
@@ -331,17 +337,18 @@ export function MultiTryOnPage() {
             onModelChange={(value) => update('imageModel', value)}
             count={config.count}
             onCountChange={(value) => update('count', value)}
-            loading={phase === 'loading'}
+            loading={isLoading}
             disabled={missingSlots.length > 0}
             onGenerate={() => void handleGenerate()}
           />
-        </div>
+        </fieldset>
 
         <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
           {phase === 'idle' ? (
             <TryOnShowcase />
           ) : (
             <ResultPanel
+              progressive
               phase={phase}
               results={results}
               error={error}

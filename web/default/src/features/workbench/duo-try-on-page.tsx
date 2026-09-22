@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import { DuoShowcase } from './components/duo-showcase'
 import { GenerateBar } from './components/generate-bar'
@@ -63,6 +63,7 @@ export function DuoTryOnPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
+  const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -83,10 +84,12 @@ export function DuoTryOnPage() {
     key: K,
     value: DuoTryOnConfig[K]
   ) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
   const handleGenerate = async () => {
+    if (isLoading) return
     if (config.garments.length === 0) {
       toast.error(t('Upload at least one garment image'))
       return
@@ -98,44 +101,49 @@ export function DuoTryOnPage() {
     const { prompt, images } = buildDuoTryOnRequest(config)
     setPhase('loading')
     setError('')
+    setResults([])
+    const generated: string[] = []
     try {
-      const response = await generateTryOnImages({
-        model: config.imageModel,
-        prompt,
-        size: buildImageSize(config.resolution, config.ratio),
-        n: config.count,
-        watermark: false,
-        image: images.length === 1 ? images[0] : images,
-      })
-      const message = response.error?.message
-      if (message) {
-        throw new Error(message)
-      }
-      const urls = (response.data ?? [])
-        .map((item) =>
-          (item.url ?? item.b64_json)
-            ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-            : ''
-        )
-        .filter(Boolean)
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
+      await generateImageBatch(
+        [
+          {
+            model: config.imageModel,
+            prompt,
+            size: buildImageSize(config.resolution, config.ratio),
+            n: config.count,
+            watermark: false,
+            image: images.length === 1 ? images[0] : images,
+          },
+        ],
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
+        }
+      )
       setPhase('done')
-      void saveGenerationToLibrary('try-on', t('Duo Try-On'), urls, images, t)
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? generateError.message
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'try-on',
+          t('Duo Try-On'),
+          generated,
+          images,
+          t
+        )
+      }
     }
   }
 
   const handleClear = () => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...createDefaultDuoTryOnConfig(),
       imageModel: prev.imageModel,
@@ -172,7 +180,10 @@ export function DuoTryOnPage() {
       </header>
 
       <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
-        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
+        <fieldset
+          disabled={isLoading}
+          className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'
+        >
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
             <SegmentBar
               label={t('Pairing relation')}
@@ -275,17 +286,18 @@ export function DuoTryOnPage() {
             onModelChange={(value) => update('imageModel', value)}
             count={config.count}
             onCountChange={(value) => update('count', value)}
-            loading={phase === 'loading'}
+            loading={isLoading}
             disabled={config.garments.length === 0}
             onGenerate={() => void handleGenerate()}
           />
-        </div>
+        </fieldset>
 
         <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
           {phase === 'idle' ? (
             <DuoShowcase />
           ) : (
             <ResultPanel
+              progressive
               phase={phase}
               results={results}
               error={error}

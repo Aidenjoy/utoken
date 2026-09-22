@@ -30,7 +30,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import {
   FashionPresetPreview,
@@ -143,55 +143,48 @@ export function FashionDesignPage() {
       toast.error(t('Select an image model'))
       return
     }
-    const requests = [buildFashionRequest(config, preset)]
+    const request = buildFashionRequest(config, preset)
     setPhase('loading')
     setError('')
     setResults([])
+    const generated: string[] = []
     try {
-      const urls: string[] = []
-      for (const request of requests) {
-        const response = await generateTryOnImages({
-          model: config.imageModel,
-          prompt: request.prompt,
-          size: buildImageSize(config.resolution, config.ratio),
-          n: config.count,
-          watermark: false,
-          image:
-            request.images.length === 1 ? request.images[0] : request.images,
-        })
-        const message = response.error?.message
-        if (message) {
-          throw new Error(message)
+      await generateImageBatch(
+        [
+          {
+            model: config.imageModel,
+            prompt: request.prompt,
+            size: buildImageSize(config.resolution, config.ratio),
+            n: config.count,
+            watermark: false,
+            image:
+              request.images.length === 1 ? request.images[0] : request.images,
+          },
+        ],
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
         }
-        const runUrls = (response.data ?? [])
-          .map((item) =>
-            (item.url ?? item.b64_json)
-              ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-              : ''
-          )
-          .filter(Boolean)
-        urls.push(...runUrls)
-      }
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
-      setPhase('done')
-      void saveGenerationToLibrary(
-        'viral-design',
-        t('Fashion Design'),
-        urls,
-        [...new Set(requests.flatMap((request) => request.images))],
-        t
       )
+      setPhase('done')
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? generateError.message
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'viral-design',
+          t('Fashion Design'),
+          generated,
+          request.images,
+          t
+        )
+      }
     }
   }
 
@@ -392,6 +385,7 @@ export function FashionDesignPage() {
             <FashionShowcase preset={preset} />
           ) : (
             <ResultPanel
+              progressive
               phase={phase}
               results={results}
               error={error}

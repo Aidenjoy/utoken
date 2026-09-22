@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { DETAIL_CONTENT_ELEMENTS } from '../constants'
+import { DETAIL_CONTENT_ELEMENTS, DETAIL_PAGE_COUNTS } from '../constants'
 import type { DetailPageConfig } from '../types'
 import type { TryOnRequest } from './prompt'
 
@@ -31,7 +31,18 @@ const LANGUAGE_LABEL: Record<string, string> = {
  * checked content modules into one OpenAI-compatible image body; the prompt
  * carries the index→role map plus the ordered page plan for the set.
  */
-export function buildDetailPageRequest(config: DetailPageConfig): TryOnRequest {
+export function buildDetailPageRequest(
+  config: DetailPageConfig,
+  pageIndex: number
+): TryOnRequest {
+  if (
+    !DETAIL_PAGE_COUNTS.some((count) => count === config.pageCount) ||
+    !Number.isInteger(pageIndex) ||
+    pageIndex < 0 ||
+    pageIndex >= config.pageCount
+  ) {
+    throw new Error('Generation failed, please retry')
+  }
   const images = config.products.map((item) => item.src)
 
   const sentences = ['Professional e-commerce detail page set render.']
@@ -71,11 +82,33 @@ export function buildDetailPageRequest(config: DetailPageConfig): TryOnRequest {
       ? 'Use one unified scene across all pages.'
       : 'Assign the best-matching scene to each page.'
   )
-  const closing = config.elements.includes('brand-ending')
-    ? ' the last page is the brand closing;'
-    : ''
+  const hasClosing =
+    config.pageCount > 1 && config.elements.includes('brand-ending')
+  const contentModules = DETAIL_CONTENT_ELEMENTS.filter(
+    (element) =>
+      element.value !== 'brand-ending' &&
+      config.elements.includes(element.value)
+  ).map((element) => element.label)
+  const contentPages = config.pageCount - 1 - Number(hasClosing)
+  let duty = 'Cover with the product hero and headline.'
+  if (pageIndex === 0 && contentPages <= 0) {
+    duty += ` Summarize the selected content modules on this page: ${contentModules.join(', ') || 'product highlights'}.`
+  } else if (hasClosing && pageIndex === config.pageCount - 1) {
+    duty =
+      'Brand closing with the product identity and a clear closing message.'
+  } else if (pageIndex > 0) {
+    const start = Math.floor(
+      ((pageIndex - 1) * contentModules.length) / contentPages
+    )
+    const end = Math.max(
+      start + 1,
+      Math.floor((pageIndex * contentModules.length) / contentPages)
+    )
+    duty = `Content page focused on: ${contentModules.slice(start, end).join(', ') || 'product highlights'}. Explore a distinct product aspect for this page, without repeating the cover.`
+  }
   sentences.push(
-    `Page plan (${config.pageCount} pages): page 1 is the cover with the product hero and headline; then one page per content module in order;${closing} split or repeat modules when pages outnumber modules.`
+    `Generate only page ${pageIndex + 1} of ${config.pageCount}. Current page duty: ${duty}`,
+    'Return exactly one standalone page image, not a contact sheet or a collage of multiple pages. The content modules describe the whole set; only render the assigned page duty in this request.'
   )
   sentences.push(
     'Conversion-focused e-commerce detail pages, clean layout, legible overlay text, studio lighting.'

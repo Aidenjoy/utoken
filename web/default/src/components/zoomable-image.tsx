@@ -9,6 +9,7 @@ export function ZoomableImage(props: {
   src: string
   alt?: string
   className?: string
+  fit?: 'cover' | 'contain'
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
@@ -24,7 +25,10 @@ export function ZoomableImage(props: {
           src={props.src}
           alt={props.alt ?? ''}
           loading='lazy'
-          className='size-full object-cover'
+          className={cn(
+            'size-full',
+            props.fit === 'contain' ? 'object-contain' : 'object-cover'
+          )}
         />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>

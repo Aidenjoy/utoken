@@ -59,6 +59,7 @@ export function GenerateBar(props: GenerateBarProps) {
     <section className='border-border bg-card flex flex-wrap items-center gap-2 rounded-lg border p-3'>
       <span className='text-sm font-medium'>{t('Image model')}</span>
       <Select
+        disabled={props.loading}
         items={props.modelOptions}
         value={props.imageModel}
         onValueChange={(value) => props.onModelChange(value ?? '')}
@@ -78,6 +79,7 @@ export function GenerateBar(props: GenerateBarProps) {
       </Select>
       {props.countHidden ? null : (
         <Select
+          disabled={props.loading}
           items={countOptions}
           value={String(props.count)}
           onValueChange={(value) =>

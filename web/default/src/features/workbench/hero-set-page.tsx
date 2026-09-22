@@ -38,7 +38,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
 import { HeroSetShowcase } from './components/hero-set-showcase'
@@ -60,7 +60,7 @@ import {
 } from './constants'
 import { buildImageSize } from './lib/image-size'
 import {
-  buildHeroSetRequest,
+  buildModelSetRequests,
   buildProductSetRequests,
   heroSetTotalCount,
 } from './lib/prompt-hero-set'
@@ -82,6 +82,7 @@ export function HeroSetPage() {
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
   const [customOpen, setCustomOpen] = useState(true)
+  const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -102,10 +103,12 @@ export function HeroSetPage() {
     key: K,
     value: HeroSetConfig[K]
   ) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
   const toggleAngle = (value: string) => {
+    if (isLoading) return
     setConfig((prev) => {
       const selected = prev.angles.some((item) => item.value === value)
       const values = selected
@@ -129,6 +132,7 @@ export function HeroSetPage() {
   }
 
   const updateAngleCount = (value: string, count: number) => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...prev,
       angles: prev.angles.map((item) =>
@@ -144,6 +148,7 @@ export function HeroSetPage() {
       : Boolean(config.reference)
 
   const handleGenerate = async () => {
+    if (isLoading) return
     if (!hasSource) {
       toast.error(
         config.mode === 'product'
@@ -169,7 +174,7 @@ export function HeroSetPage() {
       requests =
         config.mode === 'product'
           ? buildProductSetRequests(config)
-          : [{ ...buildHeroSetRequest(config), count: totalCount }]
+          : buildModelSetRequests(config)
     } catch (validationError) {
       toast.error(
         validationError instanceof Error
@@ -184,9 +189,8 @@ export function HeroSetPage() {
     const generated: string[] = []
     const usedImages = new Set<string>()
     try {
-      // 逐用途生成，防止参考图及标语串用；中途失败仍保留已完成图片。
-      for (const request of requests) {
-        const response = await generateTryOnImages({
+      await generateImageBatch(
+        requests.map((request) => ({
           model: config.imageModel,
           prompt: request.prompt,
           size: buildImageSize(config.resolution, config.ratio),
@@ -194,22 +198,16 @@ export function HeroSetPage() {
           watermark: false,
           image:
             request.images.length === 1 ? request.images[0] : request.images,
-        })
-        if (response.error?.message) throw new Error(response.error.message)
-        const urls = (response.data ?? [])
-          .map(
-            (item) =>
-              item.url ??
-              (item.b64_json ? `data:image/png;base64,${item.b64_json}` : '')
-          )
-          .filter(Boolean)
-        if (urls.length === 0) {
-          throw new Error(t('The model returned no images'))
+        })),
+        (url, request) => {
+          generated.push(url)
+          const sources = Array.isArray(request.image)
+            ? request.image
+            : [request.image]
+          sources.forEach((image) => usedImages.add(image))
+          setResults([...generated])
         }
-        generated.push(...urls)
-        request.images.forEach((image) => usedImages.add(image))
-        setResults([...generated])
-      }
+      )
       setPhase('done')
     } catch (generateError) {
       const message =
@@ -233,6 +231,7 @@ export function HeroSetPage() {
   }
 
   const handleClear = () => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...createDefaultHeroSetConfig(),
       mode: prev.mode,
@@ -311,7 +310,7 @@ export function HeroSetPage() {
               options={tr(HERO_SET_MODES)}
               value={config.mode}
               onChange={(value) => {
-                if (value === config.mode) return
+                if (isLoading || value === config.mode) return
                 if (value !== 'model' && value !== 'product') return
                 update('mode', value)
                 setPhase('idle')
@@ -328,12 +327,13 @@ export function HeroSetPage() {
             {config.mode === 'product' ? (
               <ProductSetFields
                 value={config.product}
-                onChange={(updater) =>
+                onChange={(updater) => {
+                  if (isLoading) return
                   setConfig((previous) => ({
                     ...previous,
                     product: updater(previous.product),
                   }))
-                }
+                }}
               />
             ) : (
               <>
@@ -518,12 +518,6 @@ export function HeroSetPage() {
               </div>
             </section>
           </fieldset>
-          {phase === 'done' && error && (
-            <p role='alert' className='text-destructive text-sm'>
-              {t('Generation stopped; completed images have been kept.')}{' '}
-              {error}
-            </p>
-          )}
           <GenerateBar
             modelOptions={modelOptions}
             imageModel={config.imageModel}
@@ -547,6 +541,7 @@ export function HeroSetPage() {
               error={error}
               count={Math.max(totalCount, 1)}
               loadingLabel={t('Generating image set...')}
+              progressive
             />
           )}
         </div>

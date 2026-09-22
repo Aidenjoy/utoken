@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
-import { generateTryOnImages } from './api'
+import { generateImageBatch } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
@@ -65,6 +65,7 @@ export function ModelStudioPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
+  const isLoading = phase === 'loading'
   const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
@@ -86,10 +87,12 @@ export function ModelStudioPage() {
     key: K,
     value: ModelStudioConfig[K]
   ) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
   const setFace = (index: number, image: TryOnImage | null) => {
+    if (isLoading) return
     setConfig((prev) => {
       const faces = [...prev.faces]
       faces[index] = image
@@ -98,6 +101,7 @@ export function ModelStudioPage() {
   }
 
   const setView = (index: number, image: TryOnImage | null) => {
+    if (isLoading) return
     setConfig((prev) => {
       const views = [...prev.views]
       views[index] = image
@@ -116,6 +120,7 @@ export function ModelStudioPage() {
   }
 
   const handleGenerate = async () => {
+    if (isLoading) return
     if (!hasSources) {
       toast.error(
         config.mode === 'existing'
@@ -131,50 +136,50 @@ export function ModelStudioPage() {
     const request = buildModelStudioRequest(config)
     setPhase('loading')
     setError('')
+    setResults([])
+    const generated: string[] = []
     try {
-      const response = await generateTryOnImages({
-        model: config.imageModel,
-        prompt: request.prompt,
-        size: buildImageSize(config.resolution, config.ratio),
-        n: config.count,
-        watermark: false,
-        image: request.images.length === 1 ? request.images[0] : request.images,
-      })
-      const message = response.error?.message
-      if (message) {
-        throw new Error(message)
-      }
-      const urls = (response.data ?? [])
-        .map((item) =>
-          (item.url ?? item.b64_json)
-            ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-            : ''
-        )
-        .filter(Boolean)
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
-      setPhase('done')
-      void saveGenerationToLibrary(
-        'try-on',
-        t('Dedicated Model'),
-        urls,
-        request.images,
-        t
+      await generateImageBatch(
+        [
+          {
+            model: config.imageModel,
+            prompt: request.prompt,
+            size: buildImageSize(config.resolution, config.ratio),
+            n: config.count,
+            watermark: false,
+            image:
+              request.images.length === 1 ? request.images[0] : request.images,
+          },
+        ],
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
+        }
       )
+      setPhase('done')
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? generateError.message
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'try-on',
+          t('Dedicated Model'),
+          generated,
+          request.images,
+          t
+        )
+      }
     }
   }
 
   const handleClear = () => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...createDefaultModelStudioConfig(),
       imageModel: prev.imageModel,
@@ -302,7 +307,10 @@ export function ModelStudioPage() {
       </header>
 
       <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
-        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
+        <fieldset
+          disabled={isLoading}
+          className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'
+        >
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
             <div className='bg-muted grid grid-cols-3 gap-1 rounded-lg p-1'>
               {tr(MODEL_STUDIO_MODES).map((option) => {
@@ -402,7 +410,7 @@ export function ModelStudioPage() {
             onModelChange={(value) => update('imageModel', value)}
             count={config.count}
             onCountChange={(value) => update('count', value)}
-            loading={phase === 'loading'}
+            loading={isLoading}
             disabled={!hasSources}
             generateLabel={
               config.mode === 'existing'
@@ -411,13 +419,14 @@ export function ModelStudioPage() {
             }
             onGenerate={() => void handleGenerate()}
           />
-        </div>
+        </fieldset>
 
         <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
           {phase === 'idle' ? (
             <StudioShowcase mode={config.mode} />
           ) : (
             <ResultPanel
+              progressive
               phase={phase}
               results={results}
               error={error}

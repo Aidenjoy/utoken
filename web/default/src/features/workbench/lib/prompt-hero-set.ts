@@ -17,28 +17,57 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  HERO_SET_ANGLE_COUNTS,
+  HERO_SET_ANGLES,
   HERO_SET_EXPRESSIONS,
-  HERO_SET_OTHERS,
-  HERO_SET_OUTFITS,
-  HERO_SET_POSES,
-  HERO_SET_SCENES,
   PRODUCT_SET_MAX,
   PRODUCT_SET_TYPES,
 } from '../constants'
 import type { ChipOption, HeroSetConfig } from '../types'
 import type { TryOnRequest } from './prompt'
 
-const ROLE_SENTENCE = {
-  model:
-    'model reference — keep the same person identity, outfit and scene across the whole set',
-  product:
-    'product reference — keep the product identity, shape and finish exact across the whole set',
+const ANGLE_SENTENCE: Record<string, string> = {
+  front:
+    'Front view: the torso faces the camera directly, not a side or back view.',
+  side: 'Side view: show a clear lateral profile of the body, not a front view.',
+  back: 'Back view: show the back of the body and outfit; do not turn the torso toward the camera to show the face.',
 }
 
-const ANGLE_LABEL: Record<string, string> = {
-  front: 'front',
-  side: 'side',
-  back: 'back',
+const POSE_SENTENCE: Record<string, string> = {
+  standing:
+    'Standing upright on both feet. Show the complete standing silhouette from the top of the head to both shoes, including legs and feet.',
+  sitting:
+    'Seated naturally on a suitable seat. Show the entire seated body, the seat contact, legs and feet.',
+  walking:
+    'Walking with a natural stride, visible leg movement and balanced arm motion. Include the entire body and both feet.',
+  leaning:
+    'Leaning naturally against a suitable support. Keep the complete body, support contact and feet visible.',
+  lying:
+    'Lying down naturally on a suitable surface. Frame the whole reclining body from head to feet.',
+  handheld:
+    'Hold the featured item naturally in the hands, with correct grip and unobstructed item details. Keep the model visible.',
+}
+
+const OUTFIT_SENTENCE: Record<string, string> = {
+  casual:
+    'a coordinated casual outfit with relaxed everyday separates and matching casual footwear',
+  commuter:
+    'a coordinated commuter outfit with tailored workwear and matching smart footwear',
+  sporty:
+    'a coordinated sporty outfit with an athletic top, sports bottoms and sneakers',
+  dress:
+    'an elegant dress with coordinated footwear and restrained accessories',
+}
+
+const OTHER_SENTENCE: Record<string, string> = {
+  lighting:
+    'Use consistent light direction, color temperature, exposure and soft shadow quality in every image.',
+  atmosphere:
+    'Add subtle environmental depth and atmosphere through background and lighting; keep the subject clearly readable and the environment coherent across the set.',
+  details:
+    'Make clothing texture, seams and accessories sharply legible within the requested framing; do not replace a full-body view with a cropped detail close-up.',
+  'text-space':
+    'Reserve the left 35% of the canvas as one continuous, clean, low-detail negative-space area for a large marketing headline to be added later. Place the entire subject in the right 65%, leaving clear separation from this area. No body parts, props, decorative graphics, text, letters or watermarks may occupy the reserved area. Do not render the headline itself. Keep this layout consistent across the set; scale the subject down rather than crop it.',
 }
 
 function choiceLabel(options: ChipOption[], value: string): string | null {
@@ -131,61 +160,76 @@ export function buildProductSetRequests(
   return requests
 }
 
-/**
- * Fuse the single reference shot with the per-angle output plan into one
- * OpenAI-compatible image body; the prompt carries the identity lock plus
- * the angle plan so every output stays in the same series.
- */
-export function buildHeroSetRequest(config: HeroSetConfig): TryOnRequest {
-  const sentences = ['Professional e-commerce image set studio render.']
-  if (config.reference) {
-    sentences.push(`Image 1: ${ROLE_SENTENCE[config.mode]}.`)
-  }
-  const plan = config.angles.map(
-    (angle) =>
-      `${angle.count} image(s) from the ${ANGLE_LABEL[angle.value] ?? angle.value} view`
-  )
-  sentences.push(`Angle plan: ${plan.join('; ')}.`)
-  sentences.push(
-    config.mode === 'model'
-      ? 'Keep the person, clothing and background consistent across all images in the set.'
-      : 'Keep the product, lighting and background consistent across all images in the set.'
-  )
-  const pose = choiceLabel(HERO_SET_POSES, config.pose)
-  if (pose) {
-    sentences.push(
-      config.mode === 'model'
-        ? `Change the pose to: ${pose}.`
-        : `Display pose: ${pose}.`
+/** 模特套图逐角度、逐张构建请求，不依赖模型支持批量 n 或自行分配视角。 */
+export function buildModelSetRequests(
+  config: HeroSetConfig
+): (TryOnRequest & { count: number })[] {
+  if (!config.reference?.src) throw new Error('Upload a reference image')
+  if (
+    config.angles.length === 0 ||
+    new Set(config.angles.map((angle) => angle.value)).size !==
+      config.angles.length ||
+    config.angles.some(
+      (angle) =>
+        !HERO_SET_ANGLES.some((option) => option.value === angle.value) ||
+        !HERO_SET_ANGLE_COUNTS.some((count) => count === angle.count)
     )
-  }
-  if (config.mode === 'model') {
-    const expression = choiceLabel(HERO_SET_EXPRESSIONS, config.expression)
-    if (expression) {
-      sentences.push(`Adjust the model expression: ${expression}.`)
-    }
-    const outfit = choiceLabel(HERO_SET_OUTFITS, config.outfit)
-    if (outfit) sentences.push(`Outfit: ${outfit}.`)
-  } else {
-    const scene = choiceLabel(HERO_SET_SCENES, config.scene)
-    if (scene) sentences.push(`Scene: ${scene}.`)
-  }
-  const other = choiceLabel(HERO_SET_OTHERS, config.other)
-  if (other) sentences.push(`Other requirements: ${other}.`)
-  if (config.extra.trim()) {
-    sentences.push(
-      `Additional requirements for the whole set: ${config.extra.trim()}.`
-    )
-  }
-  sentences.push(
-    'Same-series e-commerce image set, consistent identity and styling, studio lighting.'
-  )
-  if (config.ratio !== 'smart') {
-    sentences.push(`Compose every frame in a ${config.ratio} aspect ratio.`)
+  ) {
+    throw new Error('Select valid views with 1 to 4 images each')
   }
 
-  return {
-    prompt: sentences.join(' '),
-    images: config.reference ? [config.reference.src] : [],
+  const sentences = [
+    'Create exactly one standalone professional e-commerce model photograph. Never output a collage, contact sheet, split panel, or multiple views in one image.',
+    'Image 1 is the identity reference: preserve the same person, facial features, hairstyle and body proportions. Its pose, expression, outfit and crop are not mandatory when an override below is selected.',
+    'Apply all selected instructions together. Selected pose, expression, outfit and layout override conflicting details in the reference. Keep the resulting styling and environment coherent across the set, not necessarily identical to the source.',
+    'Use the reference background and lighting as the default environment unless a selected instruction or explicit requirement changes it.',
+  ]
+  const pose = POSE_SENTENCE[config.pose]
+  if (pose) {
+    sentences.push(`Required pose and framing: ${pose}`)
+    if (config.pose !== 'handheld') {
+      sentences.push(
+        'Use a full-body long shot, not a portrait, bust or waist-up crop. Leave margin above the head and below the feet. If the reference is cropped, extend the scene and complete the body naturally. Fit the whole pose inside the requested aspect ratio rather than cutting off limbs.'
+      )
+    }
   }
+  const expression = choiceLabel(HERO_SET_EXPRESSIONS, config.expression)
+  if (expression) {
+    sentences.push(
+      `Required expression: ${expression}. Replace the reference expression where the face is visible; do not change the requested body view just to expose the face.`
+    )
+  }
+  const outfit = OUTFIT_SENTENCE[config.outfit]
+  sentences.push(
+    outfit
+      ? `Required outfit override: replace the reference clothing with ${outfit}. Keep the person's identity, not the original garments. This is a clothing change, not merely a sporty or fashionable background.`
+      : 'Preserve the original outfit, including garment cut, fabric, colors and accessories.'
+  )
+  const other = OTHER_SENTENCE[config.other]
+  if (other) sentences.push(`Required additional treatment: ${other}`)
+  if (config.ratio !== 'smart') {
+    sentences.push(`Compose the frame in a ${config.ratio} aspect ratio.`)
+  }
+  if (config.extra.trim()) {
+    sentences.push(
+      'Explicit whole-set requirements below take priority over inferred defaults and conflicting preset styling. Apply every stated pose, expression, clothing and layout requirement; do not treat them as optional inspiration.',
+      `Whole-set requirements:\n${config.extra.trim()}`
+    )
+  }
+
+  const requests: (TryOnRequest & { count: number })[] = []
+  for (const angle of config.angles) {
+    for (let index = 0; index < angle.count; index++) {
+      requests.push({
+        prompt: [
+          ...sentences,
+          `Required view for this image: ${ANGLE_SENTENCE[angle.value]}`,
+          `This is variation ${index + 1} of ${angle.count} for the ${angle.value} view. Produce only this single photograph. Use subtle natural variation while obeying the selected instructions and any explicit whole-set overrides.`,
+        ].join('\n'),
+        images: [config.reference.src],
+        count: 1,
+      })
+    }
+  }
+  return requests
 }
