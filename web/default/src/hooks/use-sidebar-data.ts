@@ -133,6 +133,11 @@ export function useSidebarData(): SidebarData {
             url: '/director/daily',
             icon: Camera,
           },
+          {
+            title: t('Model Settings'),
+            url: '/director/settings',
+            icon: Settings2,
+          },
         ],
       },
       {
@@ -254,11 +259,6 @@ export function useSidebarData(): SidebarData {
             title: t('Asset Library'),
             url: '/director/assets',
             icon: Images,
-          },
-          {
-            title: t('Model Settings'),
-            url: '/director/settings',
-            icon: Settings2,
           },
         ],
       },

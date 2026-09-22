@@ -2954,6 +2954,7 @@
     "Instance": "Экземпляр",
     "Instances": "Экземпляры",
     "Insufficient balance": "Недостаточно средств",
+    "Insufficient balance, please top up to continue": "Недостаточно средств. Пополните баланс, чтобы продолжить",
     "Integrations": "Интеграции",
     "Inter-group overrides": "Переопределения между группами",
     "Inter-group ratio overrides": "Переопределения соотношений между группами",

@@ -462,14 +462,14 @@ export function ProductShowcase(props: ProductShowcaseProps) {
           {t('Example preview')}
         </span>
       </div>
-      <figure className='border-border bg-card overflow-hidden rounded-xl border shadow-sm'>
+      <figure className='flex min-h-[240px] flex-1 items-center justify-center'>
         <img
           src={preview?.src ?? freeDesignPreview}
           alt={caption}
           width={1200}
           height={1200}
           decoding='async'
-          className='h-auto w-full'
+          className='border-border max-h-full w-auto max-w-full rounded-xl border shadow-sm'
         />
       </figure>
       <ShowcaseHint

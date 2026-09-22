@@ -909,7 +909,7 @@ export function fashionInputsFor(
 
 export function createDefaultFashionDesignConfig(): FashionDesignConfig {
   return {
-    direction: 'free',
+    direction: 'redesign',
     preset: FASHION_PRESETS.redesign?.[0]?.value ?? '',
     images: { garment: [], fabric: [], reference: [], lineart: [] },
     color: '#b48ead',

@@ -2954,6 +2954,7 @@
     "Instance": "实例",
     "Instances": "实例",
     "Insufficient balance": "余额不足",
+    "Insufficient balance, please top up to continue": "余额不足请充值后使用",
     "Integrations": "集成",
     "Inter-group overrides": "分组间覆盖",
     "Inter-group ratio overrides": "分组间比例覆盖",

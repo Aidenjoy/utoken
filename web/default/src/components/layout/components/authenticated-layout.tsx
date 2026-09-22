@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { AnimatedOutlet } from '@/components/page-transition'
 import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LayoutProvider } from '@/context/layout-provider'
@@ -26,6 +25,7 @@ import { cn } from '@/lib/utils'
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
+import { QuotaGatedOutlet } from './quota-gated-outlet'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -50,7 +50,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
-              {props.children ?? <AnimatedOutlet />}
+              {props.children ?? <QuotaGatedOutlet />}
             </SidebarInset>
           </div>
         </SidebarProvider>

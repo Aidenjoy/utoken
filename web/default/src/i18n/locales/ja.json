@@ -2954,6 +2954,7 @@
     "Instance": "インスタンス",
     "Instances": "インスタンス",
     "Insufficient balance": "残高が不足しています",
+    "Insufficient balance, please top up to continue": "残高が不足しています。チャージしてからご利用ください",
     "Integrations": "統合",
     "Inter-group overrides": "グループ間上書き",
     "Inter-group ratio overrides": "グループ間比率上書き",
