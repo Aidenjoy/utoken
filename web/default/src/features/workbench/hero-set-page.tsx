@@ -19,13 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ChevronDown, ChevronUp, Eraser, LayoutGrid } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import {
   Select,
   SelectContent,
@@ -34,14 +34,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
 import { generateTryOnImages } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { ResolutionCards } from './components/resolution-cards'
+import { HeroSetShowcase } from './components/hero-set-showcase'
+import { ProductSetFields } from './components/product-set-fields'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
+import { SegmentBar } from './components/segment-bar'
 import { UploadTile } from './components/upload-tile'
 import {
   createDefaultHeroSetConfig,
@@ -52,11 +55,15 @@ import {
   HERO_SET_OTHERS,
   HERO_SET_OUTFITS,
   HERO_SET_POSES,
-  HERO_SET_SCENES,
   TRY_ON_RATIOS,
+  TRY_ON_SIZES,
 } from './constants'
 import { buildImageSize } from './lib/image-size'
-import { buildHeroSetRequest, heroSetTotalCount } from './lib/prompt-hero-set'
+import {
+  buildHeroSetRequest,
+  buildProductSetRequests,
+  heroSetTotalCount,
+} from './lib/prompt-hero-set'
 import { saveGenerationToLibrary } from './lib/save-to-library'
 import type { ChipOption, HeroSetConfig } from './types'
 
@@ -75,7 +82,6 @@ export function HeroSetPage() {
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
   const [customOpen, setCustomOpen] = useState(true)
-  const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -132,69 +138,104 @@ export function HeroSetPage() {
   }
 
   const totalCount = heroSetTotalCount(config)
+  const hasSource =
+    config.mode === 'product'
+      ? config.product.products.length > 0
+      : Boolean(config.reference)
 
   const handleGenerate = async () => {
-    if (!config.reference) {
-      toast.error(t('Upload a reference image'))
+    if (!hasSource) {
+      toast.error(
+        config.mode === 'product'
+          ? t('Upload at least one product image')
+          : t('Upload a reference image')
+      )
       return
     }
     if (totalCount === 0) {
-      toast.error(t('Select at least one view'))
+      toast.error(
+        config.mode === 'product'
+          ? t('Select between 1 and 8 product set images')
+          : t('Select at least one view')
+      )
       return
     }
     if (!config.imageModel) {
       toast.error(t('Select an image model'))
       return
     }
-    const request = buildHeroSetRequest(config)
+    let requests: ReturnType<typeof buildProductSetRequests>
+    try {
+      requests =
+        config.mode === 'product'
+          ? buildProductSetRequests(config)
+          : [{ ...buildHeroSetRequest(config), count: totalCount }]
+    } catch (validationError) {
+      toast.error(
+        validationError instanceof Error
+          ? t(validationError.message)
+          : t('Generation failed, please retry')
+      )
+      return
+    }
     setPhase('loading')
     setError('')
+    setResults([])
+    const generated: string[] = []
+    const usedImages = new Set<string>()
     try {
-      const response = await generateTryOnImages({
-        model: config.imageModel,
-        prompt: request.prompt,
-        size: buildImageSize(config.resolution, config.ratio),
-        n: totalCount,
-        watermark: false,
-        image: request.images[0],
-      })
-      const message = response.error?.message
-      if (message) {
-        throw new Error(message)
+      // 逐用途生成，防止参考图及标语串用；中途失败仍保留已完成图片。
+      for (const request of requests) {
+        const response = await generateTryOnImages({
+          model: config.imageModel,
+          prompt: request.prompt,
+          size: buildImageSize(config.resolution, config.ratio),
+          n: request.count,
+          watermark: false,
+          image:
+            request.images.length === 1 ? request.images[0] : request.images,
+        })
+        if (response.error?.message) throw new Error(response.error.message)
+        const urls = (response.data ?? [])
+          .map(
+            (item) =>
+              item.url ??
+              (item.b64_json ? `data:image/png;base64,${item.b64_json}` : '')
+          )
+          .filter(Boolean)
+        if (urls.length === 0) {
+          throw new Error(t('The model returned no images'))
+        }
+        generated.push(...urls)
+        request.images.forEach((image) => usedImages.add(image))
+        setResults([...generated])
       }
-      const urls = (response.data ?? [])
-        .map((item) =>
-          (item.url ?? item.b64_json)
-            ? (item.url ?? `data:image/png;base64,${item.b64_json}`)
-            : ''
-        )
-        .filter(Boolean)
-      if (urls.length === 0) {
-        throw new Error(t('The model returned no images'))
-      }
-      setResults(urls)
       setPhase('done')
-      void saveGenerationToLibrary(
-        'viral-hero',
-        t('Hero Image Set'),
-        urls,
-        request.images,
-        t
-      )
     } catch (generateError) {
       const message =
         generateError instanceof Error
           ? generateError.message
           : t('Generation failed, please retry')
       setError(message)
-      setPhase('error')
+      setPhase(generated.length > 0 ? 'done' : 'error')
       toast.error(message)
+    } finally {
+      if (generated.length > 0) {
+        void saveGenerationToLibrary(
+          'viral-hero',
+          t('Hero Image Set'),
+          generated,
+          [...usedImages],
+          t
+        )
+      }
     }
   }
 
   const handleClear = () => {
     setConfig((prev) => ({
       ...createDefaultHeroSetConfig(),
+      mode: prev.mode,
       imageModel: prev.imageModel,
     }))
     setPhase('idle')
@@ -202,12 +243,12 @@ export function HeroSetPage() {
     setError('')
   }
 
-  const focusUploads = () => {
-    uploadsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   const tr = (options: ChipOption[]) =>
     options.map((option) => ({ ...option, label: t(option.label) }))
+  const resolutionOptions = TRY_ON_SIZES.map((size) => ({
+    label: size,
+    value: size,
+  }))
   const ratioOptions = TRY_ON_RATIOS.map((option) => ({
     ...option,
     label: option.value === 'smart' ? t('Smart') : option.label,
@@ -222,62 +263,34 @@ export function HeroSetPage() {
     label: string
     placeholder: string
     options: ChipOption[]
-  }[] =
-    config.mode === 'model'
-      ? [
-          {
-            key: 'pose',
-            label: t('Change the pose to'),
-            placeholder: t('Describe pose'),
-            options: tr(HERO_SET_POSES),
-          },
-          {
-            key: 'expression',
-            label: t('Adjust the model expression'),
-            placeholder: t('Describe expression'),
-            options: tr(HERO_SET_EXPRESSIONS),
-          },
-          {
-            key: 'outfit',
-            label: t('Outfit'),
-            placeholder: t('Describe outfit'),
-            options: tr(HERO_SET_OUTFITS),
-          },
-          {
-            key: 'other',
-            label: t('Other'),
-            placeholder: t('Describe other needs'),
-            options: tr(HERO_SET_OTHERS),
-          },
-        ]
-      : [
-          {
-            key: 'pose',
-            label: t('Display pose'),
-            placeholder: t('Describe pose'),
-            options: tr(HERO_SET_POSES),
-          },
-          {
-            key: 'scene',
-            label: t('Scene'),
-            placeholder: t('Describe scene'),
-            options: tr(HERO_SET_SCENES),
-          },
-          {
-            key: 'other',
-            label: t('Other'),
-            placeholder: t('Describe other needs'),
-            options: tr(HERO_SET_OTHERS),
-          },
-        ]
-  const idleSteps = [
-    t('Upload one reference image'),
-    t('Pick view angles and counts'),
-    t('Generate the image set'),
+  }[] = [
+    {
+      key: 'pose',
+      label: t('Change the pose to'),
+      placeholder: t('Describe pose'),
+      options: tr(HERO_SET_POSES),
+    },
+    {
+      key: 'expression',
+      label: t('Adjust the model expression'),
+      placeholder: t('Describe expression'),
+      options: tr(HERO_SET_EXPRESSIONS),
+    },
+    {
+      key: 'outfit',
+      label: t('Outfit'),
+      placeholder: t('Describe outfit'),
+      options: tr(HERO_SET_OUTFITS),
+    },
+    {
+      key: 'other',
+      label: t('Other'),
+      placeholder: t('Describe other needs'),
+      options: tr(HERO_SET_OTHERS),
+    },
   ]
-
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 p-4 lg:p-6'>
       <header className='flex flex-wrap items-center justify-between gap-3'>
         <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Hero Image Set')}</h1>
         <Button
@@ -290,198 +303,227 @@ export function HeroSetPage() {
         </Button>
       </header>
 
-      <div className='grid gap-4 xl:grid-cols-2'>
-        <div ref={uploadsRef} className='space-y-4'>
-          <div>
-            <Badge variant='secondary' className='gap-1.5 rounded-full'>
-              <span className='bg-primary size-1.5 rounded-full' />
-              {t('Viral Hero Image')}
-            </Badge>
-            <h2 className='mt-2 text-lg font-semibold'>
-              {t('Image set generation')}
-            </h2>
-          </div>
-
-          <div className='border-border bg-card grid grid-cols-2 gap-1 rounded-lg border p-1'>
-            {tr(HERO_SET_MODES).map((option) => {
-              const selected = option.value === config.mode
-              return (
-                <button
-                  key={option.value}
-                  type='button'
-                  aria-pressed={selected}
-                  className={`rounded-md py-2 text-sm font-medium transition-colors ${
-                    selected
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() =>
-                    update('mode', option.value as HeroSetConfig['mode'])
-                  }
-                >
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
-
-          <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <UploadTile
-              label={
-                config.mode === 'model' ? t('Model image') : t('Product image')
-              }
-              badge={`${config.reference ? 1 : 0}/1`}
-              hint={t(
-                'Click, paste or drag an image here; PNG and JPG supported.'
-              )}
-              max={1}
-              value={config.reference ? [config.reference] : []}
-              onChange={(next) => update('reference', next[0] ?? null)}
+      <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
+        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
+          <fieldset disabled={phase === 'loading'}>
+            <legend className='sr-only'>{t('Hero Image Set')}</legend>
+            <SegmentBar
+              options={tr(HERO_SET_MODES)}
+              value={config.mode}
+              onChange={(value) => {
+                if (value === config.mode) return
+                if (value !== 'model' && value !== 'product') return
+                update('mode', value)
+                setPhase('idle')
+                setResults([])
+                setError('')
+              }}
             />
-          </section>
+          </fieldset>
 
-          <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
-            <div>
-              <span className='text-sm font-medium'>
-                {t('Select generation views')}
-              </span>
-              <p className='text-muted-foreground text-xs'>
-                {t(
-                  'Generated views should match the view of the uploaded reference image.'
-                )}
-              </p>
-            </div>
-            <div className='grid gap-2 sm:grid-cols-3'>
-              {HERO_SET_ANGLES.map((angle) => {
-                const selected = config.angles.find(
-                  (item) => item.value === angle.value
-                )
-                return (
-                  <div
-                    key={angle.value}
-                    className={`flex items-center justify-between gap-2 rounded-lg border p-3 transition-colors ${
-                      selected
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border hover:border-primary/40'
-                    }`}
-                  >
-                    <button
-                      type='button'
-                      aria-pressed={Boolean(selected)}
-                      className='flex-1 text-left text-sm font-medium'
-                      onClick={() => toggleAngle(angle.value)}
-                    >
-                      {t(angle.label)}
-                    </button>
-                    {selected ? (
-                      <Select
-                        items={countOptions}
-                        value={String(selected.count)}
-                        onValueChange={(value) =>
-                          updateAngleCount(
-                            angle.value,
-                            Number(value ?? selected.count)
-                          )
-                        }
-                      >
-                        <SelectTrigger className='h-8 w-16'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            {countOptions.map((option) => (
-                              <SelectItem
-                                key={option.value}
-                                value={option.value}
-                              >
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    ) : null}
+          <fieldset
+            disabled={phase === 'loading'}
+            className='min-w-0 space-y-4'
+          >
+            {config.mode === 'product' ? (
+              <ProductSetFields
+                value={config.product}
+                onChange={(updater) =>
+                  setConfig((previous) => ({
+                    ...previous,
+                    product: updater(previous.product),
+                  }))
+                }
+              />
+            ) : (
+              <>
+                <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
+                  <UploadTile
+                    label={t('Model image')}
+                    badge={`${config.reference ? 1 : 0}/1`}
+                    hint={t(
+                      'Click, paste or drag an image here; PNG and JPG supported.'
+                    )}
+                    max={1}
+                    value={config.reference ? [config.reference] : []}
+                    onChange={(next) => update('reference', next[0] ?? null)}
+                  />
+                </section>
+
+                <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
+                  <div>
+                    <span className='text-sm font-medium'>
+                      {t('Select generation views')}
+                    </span>
+                    <p className='text-muted-foreground text-xs'>
+                      {t(
+                        'Generated views should match the view of the uploaded reference image.'
+                      )}
+                    </p>
                   </div>
-                )
-              })}
-            </div>
-          </section>
+                  <div className='grid gap-2 sm:grid-cols-3'>
+                    {HERO_SET_ANGLES.map((angle) => {
+                      const selected = config.angles.find(
+                        (item) => item.value === angle.value
+                      )
+                      return (
+                        <div
+                          key={angle.value}
+                          className={`flex items-center justify-between gap-2 rounded-lg border p-3 transition-colors ${
+                            selected
+                              ? 'border-primary bg-primary/10'
+                              : 'border-border hover:border-primary/40'
+                          }`}
+                        >
+                          <button
+                            type='button'
+                            aria-pressed={Boolean(selected)}
+                            className='flex-1 text-left text-sm font-medium'
+                            onClick={() => toggleAngle(angle.value)}
+                          >
+                            {t(angle.label)}
+                          </button>
+                          {selected ? (
+                            <Select
+                              items={countOptions}
+                              value={String(selected.count)}
+                              onValueChange={(value) =>
+                                updateAngleCount(
+                                  angle.value,
+                                  Number(value ?? selected.count)
+                                )
+                              }
+                            >
+                              <SelectTrigger className='h-8 w-16'>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent alignItemWithTrigger={false}>
+                                <SelectGroup>
+                                  {countOptions.map((option) => (
+                                    <SelectItem
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
 
-          <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
-            <button
-              type='button'
-              aria-expanded={customOpen}
-              className='flex w-full items-center justify-between'
-              onClick={() => setCustomOpen((open) => !open)}
-            >
-              <span className='text-sm font-medium'>
-                {t('Custom pose, expression, outfit and more (optional)')}
-              </span>
-              {customOpen ? (
-                <ChevronUp className='text-muted-foreground size-4' />
-              ) : (
-                <ChevronDown className='text-muted-foreground size-4' />
-              )}
-            </button>
-            {customOpen ? (
-              <div className='border-border flex flex-wrap items-center gap-x-2 gap-y-3 rounded-lg border p-3'>
-                {customFields.map((field, index) => (
-                  <span
-                    key={field.key}
-                    className='flex items-center gap-2 text-sm'
+                <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
+                  <button
+                    type='button'
+                    aria-expanded={customOpen}
+                    className='flex w-full items-center justify-between'
+                    onClick={() => setCustomOpen((open) => !open)}
                   >
-                    {index > 0 ? (
-                      <span className='text-muted-foreground'>;</span>
-                    ) : null}
-                    {field.label}
-                    <Select
-                      items={field.options}
-                      value={config[field.key]}
-                      onValueChange={(value) => update(field.key, value ?? '')}
-                    >
-                      <SelectTrigger className='w-36'>
-                        <SelectValue placeholder={field.placeholder} />
-                      </SelectTrigger>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectGroup>
-                          {field.options.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </span>
-                ))}
+                    <span className='text-sm font-medium'>
+                      {t('Custom pose, expression, outfit and more (optional)')}
+                    </span>
+                    {customOpen ? (
+                      <ChevronUp className='text-muted-foreground size-4' />
+                    ) : (
+                      <ChevronDown className='text-muted-foreground size-4' />
+                    )}
+                  </button>
+                  {customOpen ? (
+                    <div className='border-border flex flex-wrap items-center gap-x-2 gap-y-3 rounded-lg border p-3'>
+                      {customFields.map((field) => (
+                        <span
+                          key={field.key}
+                          className='flex items-center gap-2 text-sm'
+                        >
+                          {field.label}
+                          <Select
+                            items={field.options}
+                            value={config[field.key]}
+                            onValueChange={(value) =>
+                              update(field.key, value ?? '')
+                            }
+                          >
+                            <SelectTrigger className='w-36'>
+                              <SelectValue placeholder={field.placeholder} />
+                            </SelectTrigger>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                {field.options.map((option) => (
+                                  <SelectItem
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className='border-border bg-card rounded-lg border p-4'>
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor='hero-set-extra'>
+                        {t('Requirements for the whole set')}
+                      </FieldLabel>
+                      <Textarea
+                        id='hero-set-extra'
+                        rows={3}
+                        value={config.extra}
+                        placeholder={t(
+                          'e.g. Keep the same studio background; natural expressions.'
+                        )}
+                        onChange={(event) =>
+                          update('extra', event.target.value)
+                        }
+                      />
+                    </Field>
+                  </FieldGroup>
+                </section>
+              </>
+            )}
+            <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
+              <ChipGroup
+                label={t('Resolution')}
+                options={resolutionOptions}
+                value={config.resolution}
+                onChange={(value) => update('resolution', value)}
+              />
+              <ChipGroup
+                label={t('Aspect ratio')}
+                options={ratioOptions}
+                value={config.ratio}
+                onChange={(value) => update('ratio', value)}
+              />
+              <p className='text-muted-foreground text-xs'>
+                {t('Each run generates {{count}} images.', {
+                  count: totalCount,
+                })}
+              </p>
+              <div className='flex justify-end'>
+                <Button variant='outline' size='sm' onClick={handleClear}>
+                  <Eraser className='size-4' />
+                  {t('Clear')}
+                </Button>
               </div>
-            ) : null}
-          </section>
-
-          <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <ResolutionCards
-              value={config.resolution}
-              onChange={(value) => update('resolution', value)}
-            />
-            <ChipGroup
-              label={t('Aspect ratio')}
-              options={ratioOptions}
-              value={config.ratio}
-              onChange={(value) => update('ratio', value)}
-            />
-            <p className='text-muted-foreground text-xs'>
-              {t('Each run generates {{count}} images.', {
-                count: totalCount,
-              })}
+            </section>
+          </fieldset>
+          {phase === 'done' && error && (
+            <p role='alert' className='text-destructive text-sm'>
+              {t('Generation stopped; completed images have been kept.')}{' '}
+              {error}
             </p>
-            <div className='flex justify-end'>
-              <Button variant='outline' size='sm' onClick={handleClear}>
-                <Eraser className='size-4' />
-                {t('Clear')}
-              </Button>
-            </div>
-          </section>
-
+          )}
           <GenerateBar
             modelOptions={modelOptions}
             imageModel={config.imageModel}
@@ -489,25 +531,25 @@ export function HeroSetPage() {
             count={totalCount}
             onCountChange={() => {}}
             loading={phase === 'loading'}
-            disabled={!config.reference || totalCount === 0}
+            disabled={!hasSource || totalCount === 0}
             countHidden
             onGenerate={() => void handleGenerate()}
           />
         </div>
 
-        <ResultPanel
-          phase={phase}
-          results={results}
-          error={error}
-          count={Math.max(totalCount, 1)}
-          onStartUpload={focusUploads}
-          idleTitle={t('One reference, a whole consistent set')}
-          idleDescription={t(
-            'Upload one reference image and pick the view plan; the finished set appears here.'
+        <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
+          {phase === 'idle' ? (
+            <HeroSetShowcase mode={config.mode} />
+          ) : (
+            <ResultPanel
+              phase={phase}
+              results={results}
+              error={error}
+              count={Math.max(totalCount, 1)}
+              loadingLabel={t('Generating image set...')}
+            />
           )}
-          idleSteps={idleSteps}
-          loadingLabel={t('Generating image set...')}
-        />
+        </div>
       </div>
     </div>
   )

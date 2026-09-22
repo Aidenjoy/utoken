@@ -28,6 +28,7 @@ import type {
   FashionDirection,
   FashionPreset,
   FashionPresetInput,
+  GarmentBaseConfig,
   HeroImageConfig,
   HeroSetConfig,
   ModelStudioConfig,
@@ -35,6 +36,7 @@ import type {
   MultiTryOnConfig,
   OutfitStructure,
   ProductDesignConfig,
+  ProductSetShotType,
   TryOnConfig,
 } from './types'
 
@@ -201,7 +203,7 @@ export function createDefaultDuoTryOnConfig(): DuoTryOnConfig {
   }
 }
 
-/** Eight design direction tabs; custom replaces the template gallery. */
+/** Eight design direction tabs; the last free-design tab keeps the brief. */
 export const DESIGN_DIRECTIONS: ChipOption[] = [
   { value: 'creative', label: 'Creative extension' },
   { value: 'redesign', label: 'Redesign' },
@@ -210,7 +212,7 @@ export const DESIGN_DIRECTIONS: ChipOption[] = [
   { value: 'visual', label: 'Visual style' },
   { value: 'series', label: 'Series extension' },
   { value: 'proposal', label: 'Design proposal' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'custom', label: 'Free design' },
 ]
 
 /** Board layouts shared by presets; board sentences stay English-only. */
@@ -597,7 +599,7 @@ export const DESIGN_PRESETS: Partial<Record<DesignDirection, DesignPreset[]>> =
       {
         value: 'family-nine-grid',
         label: 'Nine-grid product family',
-        boardType: 'series-matrix',
+        boardType: 'nine-grid',
         focus: 'arrange the whole product family as a nine-grid series matrix',
       },
       {
@@ -660,21 +662,16 @@ export function createDefaultProductDesignConfig(): ProductDesignConfig {
   }
 }
 
-/** Nine fashion direction tabs; free/custom/batch have no template gallery. */
+/** Seven fashion direction tabs; free design has no template gallery. */
 export const FASHION_DIRECTIONS: ChipOption[] = [
-  { value: 'free', label: 'Free design' },
   { value: 'redesign', label: 'Garment redesign' },
   { value: 'new', label: 'New style creation' },
   { value: 'series', label: 'Series extension' },
   { value: 'pattern', label: 'Pattern design' },
   { value: 'fabric', label: 'Fabric design' },
   { value: 'lineart', label: 'Line art tools' },
-  { value: 'custom', label: 'Custom' },
-  { value: 'batch', label: 'Batch' },
+  { value: 'free', label: 'Free design' },
 ]
-
-/** Batch mode consumes several garments and generates one run per image. */
-export const FASHION_BATCH_MAX = 8
 
 const FASHION_INPUT_LABELS = {
   garment: 'Garment image',
@@ -906,12 +903,6 @@ export function fashionInputsFor(
   if (direction === 'free') {
     return [fashionInput('garment', false), fashionInput('fabric', false)]
   }
-  if (direction === 'custom') {
-    return [fashionInput('garment', false)]
-  }
-  if (direction === 'batch') {
-    return [fashionInput('garment', true, FASHION_BATCH_MAX)]
-  }
   const presets = FASHION_PRESETS[direction] ?? []
   return presets.find((item) => item.value === preset)?.inputs ?? []
 }
@@ -959,31 +950,12 @@ const HERO_DEFAULT_ELEMENTS = [
   'with-model',
 ]
 
-export const HERO_PERSON_MODES: ChipOption[] = [
-  { value: 'keep', label: 'Keep original model' },
-  { value: 'replace', label: 'Replace model' },
-]
-
-export const HERO_OUTPUT_MODES: ChipOption[] = [
-  { value: 'full-new', label: 'Full new creation' },
-  { value: 'optimize', label: 'Optimize original action and background' },
-]
-
 export function createDefaultHeroImageConfig(): HeroImageConfig {
   return {
     products: [],
-    templates: [],
-    description: '',
+    template: null,
     extra: '',
     elements: [...HERO_DEFAULT_ELEMENTS],
-    personMode: 'replace',
-    model: null,
-    outputMode: 'full-new',
-    pose: 'auto',
-    orientation: 'auto',
-    expression: 'auto',
-    actionNote: '',
-    actions: [],
     resolution: '2K',
     ratio: 'smart',
     imageModel: '',
@@ -1004,6 +976,73 @@ export const HERO_SET_ANGLES: ChipOption[] = [
 ]
 
 export const HERO_SET_ANGLE_COUNTS = [1, 2, 3, 4] as const
+
+export const PRODUCT_SET_MAX = 8
+
+/** 商品套图用途；前五类是默认方案，其余按需启用。 */
+export const PRODUCT_SET_TYPES: {
+  value: ProductSetShotType
+  label: string
+  defaultCount: number
+  purpose: string
+}[] = [
+  {
+    value: 'hero',
+    label: 'Traffic-driving hero image',
+    defaultCount: 1,
+    purpose:
+      'an attention-grabbing e-commerce hero image with the product as the main subject',
+  },
+  {
+    value: 'selling',
+    label: 'Core selling point image',
+    defaultCount: 1,
+    purpose:
+      'highlight visible product benefits and key selling points without inventing claims',
+  },
+  {
+    value: 'scene',
+    label: 'Usage scene image',
+    defaultCount: 1,
+    purpose:
+      'show the product in a realistic, suitable use environment without people',
+  },
+  {
+    value: 'detail',
+    label: 'Product detail image',
+    defaultCount: 1,
+    purpose:
+      'show close-up product material, texture and craftsmanship details',
+  },
+  {
+    value: 'white',
+    label: 'White background image',
+    defaultCount: 1,
+    purpose:
+      'isolate the complete product on a pure white background with no scene props',
+  },
+  {
+    value: 'angle',
+    label: 'Multi-angle product image',
+    defaultCount: 0,
+    purpose:
+      'show a different useful product viewing angle while preserving its exact shape',
+  },
+  {
+    value: 'effect',
+    label: 'Product effect image',
+    defaultCount: 0,
+    purpose:
+      'use tasteful visual effects to emphasize the product without implying unverified capabilities',
+  },
+  {
+    value: 'structure',
+    label: 'Product structure close-up',
+    defaultCount: 0,
+    purpose:
+      'show visible product construction and structural details; do not invent internal components',
+  },
+]
 
 /** Preset overrides for the set; auto is meaningless once explicitly picked. */
 export const HERO_SET_POSES: ChipOption[] = TRY_ON_POSES.filter(
@@ -1039,6 +1078,18 @@ export const HERO_SET_OTHERS: ChipOption[] = [
 export function createDefaultHeroSetConfig(): HeroSetConfig {
   return {
     mode: 'model',
+    product: {
+      products: [],
+      withCopy: true,
+      withScene: true,
+      shots: PRODUCT_SET_TYPES.map((type) => ({
+        type: type.value,
+        count: type.defaultCount,
+        references: [],
+        extra: '',
+      })),
+      extra: '',
+    },
     reference: null,
     angles: [{ value: 'front', count: 1 }],
     pose: '',
@@ -1046,6 +1097,7 @@ export function createDefaultHeroSetConfig(): HeroSetConfig {
     outfit: '',
     scene: '',
     other: '',
+    extra: '',
     resolution: '2K',
     ratio: 'smart',
     imageModel: '',
@@ -1134,13 +1186,42 @@ export const CLOSE_UP_GEN_MODES: ChipOption[] = [
   { value: 'merged', label: 'Merge into one' },
 ]
 
+export const GARMENT_BASE_TYPES = [
+  'Garment top',
+  'Garment bottom',
+  'Matching set',
+  'Dress',
+  'Sweatshirt',
+  'Jacket',
+  'Shirt',
+  'Camisole',
+  'Down jacket',
+  'Coat',
+  'Skirt',
+  'Trousers',
+] as const
+
+export function createDefaultGarmentBaseConfig(): GarmentBaseConfig {
+  return {
+    front: null,
+    supplement: null,
+    generationMode: 'smart',
+    reference: null,
+    garmentType: '',
+    note: '',
+    resolution: '2K',
+    ratio: '1:1',
+  }
+}
+
 export function createDefaultCloseUpConfig(): CloseUpConfig {
   return {
     shotMode: 'position',
+    flat: createDefaultGarmentBaseConfig(),
+    threed: createDefaultGarmentBaseConfig(),
     front: null,
     side: null,
     back: null,
-    garment: null,
     references: [],
     parts: [],
     outputMode: 'white',

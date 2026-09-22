@@ -19,14 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Eraser, LayoutGrid } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
@@ -34,23 +34,19 @@ import { getModelCategory } from '@/lib/model-category'
 import { generateTryOnImages } from './api'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { ResolutionCards } from './components/resolution-cards'
+import { HeroShowcase } from './components/hero-showcase'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
 import { UploadTile } from './components/upload-tile'
 import {
   createDefaultHeroImageConfig,
   HERO_CONTENT_ELEMENTS,
-  HERO_OUTPUT_MODES,
-  HERO_PERSON_MODES,
-  TRY_ON_EXPRESSIONS,
-  TRY_ON_ORIENTATIONS,
-  TRY_ON_POSES,
   TRY_ON_RATIOS,
+  TRY_ON_SIZES,
 } from './constants'
 import { buildImageSize } from './lib/image-size'
 import { buildHeroImageRequest } from './lib/prompt-hero'
 import { saveGenerationToLibrary } from './lib/save-to-library'
-import type { ChipOption, HeroImageConfig } from './types'
+import type { HeroImageConfig } from './types'
 
 /**
  * Viral hero image workbench: product shots plus a hero content checklist
@@ -64,7 +60,6 @@ export function HeroImagePage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -136,7 +131,7 @@ export function HeroImagePage() {
       setPhase('done')
       void saveGenerationToLibrary(
         'viral-hero',
-        t('Viral Hero Image'),
+        t('Hero Image Design'),
         urls,
         request.images,
         t
@@ -162,27 +157,20 @@ export function HeroImagePage() {
     setError('')
   }
 
-  const focusUploads = () => {
-    uploadsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  const tr = (options: ChipOption[]) =>
-    options.map((option) => ({ ...option, label: t(option.label) }))
+  const resolutionOptions = TRY_ON_SIZES.map((size) => ({
+    label: size,
+    value: size,
+  }))
   const ratioOptions = TRY_ON_RATIOS.map((option) => ({
     ...option,
     label: option.value === 'smart' ? t('Smart') : option.label,
   }))
   const modelOptions = imageModels.map((name) => ({ label: name, value: name }))
-  const idleSteps = [
-    t('Upload product images'),
-    t('Describe the product and pick hero elements'),
-    t('Generate the hero image'),
-  ]
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 p-4 lg:p-6'>
       <header className='flex flex-wrap items-center justify-between gap-3'>
-        <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Viral Hero Image')}</h1>
+        <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Hero Image Design')}</h1>
         <Button
           variant='outline'
           size='sm'
@@ -193,19 +181,9 @@ export function HeroImagePage() {
         </Button>
       </header>
 
-      <div className='grid gap-4 xl:grid-cols-2'>
-        <div ref={uploadsRef} className='space-y-4'>
-          <div>
-            <Badge variant='secondary' className='gap-1.5 rounded-full'>
-              <span className='bg-primary size-1.5 rounded-full' />
-              {t('Viral Hero Image')}
-            </Badge>
-            <h2 className='mt-2 text-lg font-semibold'>
-              {t('Product visual')}
-            </h2>
-          </div>
-
-          <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
+      <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
+        <div className='flex min-w-0 flex-col gap-4 xl:min-h-0 xl:overflow-y-auto'>
+          <section className='border-border bg-card flex flex-col gap-3 rounded-lg border p-4'>
             <UploadTile
               label={t('Product images (up to 3)')}
               badge={`${config.products.length}/3`}
@@ -217,52 +195,33 @@ export function HeroImagePage() {
             />
             <UploadTile
               label={t('Hero template reference (optional)')}
-              badge={`${config.templates.length}/4`}
+              badge={t('Optional')}
               hint={t(
-                'Optional; multiple allowed. Only layout, composition, background and text zones are referenced.'
+                'Only layout, composition, background and text zones are referenced.'
               )}
-              max={4}
-              multiple
-              value={config.templates}
-              onChange={(next) => update('templates', next)}
+              max={1}
+              value={config.template ? [config.template] : []}
+              onChange={(next) => update('template', next[0] ?? null)}
             />
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor='hero-extra-requirements'>
+                  {t('Extra requirements')}
+                </FieldLabel>
+                <Textarea
+                  id='hero-extra-requirements'
+                  rows={3}
+                  value={config.extra}
+                  placeholder={t(
+                    'e.g. Slogan: Travel light; Price: ¥99; Keep the product logo visible.'
+                  )}
+                  onChange={(event) => update('extra', event.target.value)}
+                />
+              </Field>
+            </FieldGroup>
           </section>
 
-          <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <div className='space-y-1.5'>
-              <span className='text-sm font-medium'>
-                {t('Product description')}
-              </span>
-              <Textarea
-                rows={3}
-                value={config.description}
-                placeholder={t(
-                  'e.g. Black glossy cup body with white letter logo and signature pattern on the front, shown with its box'
-                )}
-                onChange={(event) => update('description', event.target.value)}
-              />
-              <p className='text-muted-foreground text-xs'>
-                {t(
-                  'The generation uses this description as the hero copy basis; edit it freely before generating.'
-                )}
-              </p>
-            </div>
-            <div className='space-y-1.5'>
-              <span className='text-sm font-medium'>
-                {t('Extra requirements')}
-              </span>
-              <Textarea
-                rows={2}
-                value={config.extra}
-                placeholder={t(
-                  'e.g. Keep the lid complete, do not cover the front logo, use a light tech-feel background'
-                )}
-                onChange={(event) => update('extra', event.target.value)}
-              />
-            </div>
-          </section>
-
-          <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
+          <section className='border-border bg-card flex flex-col gap-3 rounded-lg border p-4'>
             <div>
               <span className='text-sm font-medium'>
                 {t('Hero content elements')}
@@ -289,81 +248,10 @@ export function HeroImagePage() {
             </div>
           </section>
 
-          <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
+          <section className='border-border bg-card flex flex-col gap-4 rounded-lg border p-4'>
             <ChipGroup
-              label={t('Person handling')}
-              options={tr(HERO_PERSON_MODES)}
-              value={config.personMode}
-              onChange={(value) =>
-                update('personMode', value as HeroImageConfig['personMode'])
-              }
-            />
-            {config.personMode === 'replace' ? (
-              <UploadTile
-                label={t('Model image')}
-                badge={t('Optional')}
-                hint={t(
-                  'When no model is uploaded, AI generates one automatically.'
-                )}
-                max={1}
-                value={config.model ? [config.model] : []}
-                onChange={(next) => update('model', next[0] ?? null)}
-              />
-            ) : null}
-            <ChipGroup
-              label={t('Output mode')}
-              options={tr(HERO_OUTPUT_MODES)}
-              value={config.outputMode}
-              onChange={(value) => update('outputMode', value)}
-            />
-            <div className='grid gap-3 sm:grid-cols-2'>
-              <ChipGroup
-                label={t('Body pose')}
-                options={tr(TRY_ON_POSES)}
-                value={config.pose}
-                onChange={(value) => update('pose', value)}
-              />
-              <ChipGroup
-                label={t('Facing')}
-                options={tr(TRY_ON_ORIENTATIONS)}
-                value={config.orientation}
-                onChange={(value) => update('orientation', value)}
-              />
-            </div>
-            <ChipGroup
-              label={t('Model expression')}
-              options={tr(TRY_ON_EXPRESSIONS)}
-              value={config.expression}
-              onChange={(value) => update('expression', value)}
-            />
-            <div className='space-y-1.5'>
-              <span className='text-sm font-medium'>
-                {t('Extra action notes for the model')}
-              </span>
-              <Textarea
-                rows={2}
-                value={config.actionNote}
-                placeholder={t(
-                  'e.g. Right hand naturally holds the product, product front faces the lens, eyes on the product'
-                )}
-                onChange={(event) => update('actionNote', event.target.value)}
-              />
-            </div>
-            <UploadTile
-              label={t('Pose reference images')}
-              badge={t('Optional')}
-              hint={t(
-                'Optional; multiple allowed. Actions and framing are matched randomly; without them AI composes freely.'
-              )}
-              max={4}
-              multiple
-              value={config.actions}
-              onChange={(next) => update('actions', next)}
-            />
-          </section>
-
-          <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <ResolutionCards
+              label={t('Resolution')}
+              options={resolutionOptions}
               value={config.resolution}
               onChange={(value) => update('resolution', value)}
             />
@@ -373,11 +261,6 @@ export function HeroImagePage() {
               value={config.ratio}
               onChange={(value) => update('ratio', value)}
             />
-            <p className='text-muted-foreground text-xs'>
-              {t('Each run generates {{count}} images.', {
-                count: config.count,
-              })}
-            </p>
             <div className='flex justify-end'>
               <Button variant='outline' size='sm' onClick={handleClear}>
                 <Eraser className='size-4' />
@@ -398,19 +281,19 @@ export function HeroImagePage() {
           />
         </div>
 
-        <ResultPanel
-          phase={phase}
-          results={results}
-          error={error}
-          count={config.count}
-          onStartUpload={focusUploads}
-          idleTitle={t('Turn product shots into high-click hero images')}
-          idleDescription={t(
-            'Upload product images and describe the product; the finished hero visual appears here.'
+        <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
+          {phase === 'idle' ? (
+            <HeroShowcase />
+          ) : (
+            <ResultPanel
+              phase={phase}
+              results={results}
+              error={error}
+              count={config.count}
+              loadingLabel={t('Generating hero images...')}
+            />
           )}
-          idleSteps={idleSteps}
-          loadingLabel={t('Generating hero images...')}
-        />
+        </div>
       </div>
     </div>
   )

@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { ZoomableImage } from '@/components/zoomable-image'
+import { cn } from '@/lib/utils'
 
 import { UPLOAD_MAX_BYTES } from '../constants'
 import type { TryOnImage } from '../types'
@@ -34,6 +35,11 @@ interface UploadTileProps {
   hint?: string
   max: number
   multiple?: boolean
+  /** 紧凑模式省略外框和可见标题，便于与补充要求并排。 */
+  compact?: boolean
+  /** 按需启用拖拽上传和历史素材选择。 */
+  allowDrop?: boolean
+  onSelectHistory?: () => void
   /** Hides the upload affordance, e.g. sequential slots still locked. */
   disabled?: boolean
   value: TryOnImage[]
@@ -68,7 +74,7 @@ export function UploadTile(props: UploadTileProps) {
   const remaining = props.max - props.value.length
 
   const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+    if (props.disabled || !files || files.length === 0) return
     const accepted = [...files].slice(0, Math.max(remaining, 0))
     if (accepted.length < files.length) {
       toast.error(t('Up to {{max}} images per role', { max: props.max }))
@@ -96,8 +102,30 @@ export function UploadTile(props: UploadTileProps) {
   }
 
   return (
-    <div className='border-border rounded-lg border border-dashed p-3'>
-      <div className='mb-2 flex items-center justify-between gap-2'>
+    <div
+      className={cn(
+        'min-w-0',
+        !props.compact && 'border-border rounded-lg border border-dashed p-3'
+      )}
+      onDragOver={
+        props.allowDrop ? (event) => event.preventDefault() : undefined
+      }
+      onDrop={
+        props.allowDrop
+          ? (event) => {
+              event.preventDefault()
+              void handleFiles(event.dataTransfer.files)
+            }
+          : undefined
+      }
+    >
+      <div
+        className={cn(
+          'mb-2 flex items-center justify-between gap-2',
+          props.onSelectHistory && 'flex-wrap',
+          props.compact && 'sr-only'
+        )}
+      >
         <span className='text-sm font-medium'>{props.label}</span>
         {props.badge ? (
           <span className='border-border text-muted-foreground rounded-full border px-2 py-0.5 text-xs'>
@@ -124,6 +152,7 @@ export function UploadTile(props: UploadTileProps) {
               variant='ghost'
               size='icon'
               aria-label={t('Remove')}
+              disabled={props.disabled}
               className='absolute top-0.5 right-0.5 size-6 bg-black/50 text-white hover:bg-black/70 hover:text-white'
               onClick={() =>
                 props.onChange(
@@ -139,6 +168,7 @@ export function UploadTile(props: UploadTileProps) {
           <button
             type='button'
             className='border-border text-muted-foreground hover:border-primary hover:text-primary flex size-20 flex-col items-center justify-center gap-1 rounded-md border border-dashed text-xs'
+            aria-label={props.compact ? props.label : undefined}
             onClick={() => inputRef.current?.click()}
           >
             <Plus className='size-4' />
@@ -151,8 +181,21 @@ export function UploadTile(props: UploadTileProps) {
       {props.hint ? (
         <p className='text-muted-foreground mt-2 text-xs'>{props.hint}</p>
       ) : null}
+      {props.onSelectHistory ? (
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='mt-2 h-auto min-h-7 max-w-full py-1 whitespace-normal'
+          disabled={props.disabled}
+          onClick={props.onSelectHistory}
+        >
+          {t('Select from history')}
+        </Button>
+      ) : null}
       <input
         ref={inputRef}
+        disabled={props.disabled}
         type='file'
         accept='image/*'
         multiple={props.multiple}

@@ -16,10 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import duoResult from '@/assets/tryon/duo-result.webp'
 import duoSources from '@/assets/tryon/duo-sources.webp'
+
+import { ShowcaseHint } from './showcase-hint'
 
 /**
  * Idle-state showcase for the duo try-on page: illustrates the two-model
@@ -30,7 +33,7 @@ export function DuoShowcase() {
   const { t } = useTranslation()
 
   return (
-    <div className='dark:bg-muted/30 border-border relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-xl border bg-[#edf3f0] p-6'>
+    <div className='dark:bg-muted/30 border-border relative flex min-h-[420px] flex-1 flex-col items-center justify-center overflow-hidden rounded-xl border bg-[#edf3f0] p-6'>
       <div className='flex flex-wrap items-center justify-center gap-4 sm:gap-6'>
         <div className='relative'>
           <img
@@ -63,11 +66,15 @@ export function DuoShowcase() {
         </div>
       </div>
 
-      <p className='text-foreground mt-5 max-w-md text-center text-sm font-medium'>
-        {t(
+      <ShowcaseHint
+        className='mt-6'
+        icon={Users}
+        title={t('Duo Try-On')}
+        description={t(
           'Upload matching garments, pick two models, then generate a paired commercial shot.'
         )}
-      </p>
+        badges={[t('Garment'), t('Model'), t('Scene')]}
+      />
     </div>
   )
 }

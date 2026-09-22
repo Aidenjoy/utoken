@@ -16,10 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Shirt } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import freeResult from '@/assets/tryon/free-result.webp'
 import freeSources from '@/assets/tryon/free-sources.webp'
+
+import { ShowcaseHint } from './showcase-hint'
 
 /**
  * Idle-state showcase for the free try-on page: a real example upload set
@@ -30,7 +33,7 @@ export function FreeShowcase() {
   const { t } = useTranslation()
 
   return (
-    <div className='dark:bg-muted/30 border-border relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-xl border bg-[#edf3f0] p-6'>
+    <div className='dark:bg-muted/30 border-border relative flex min-h-[420px] flex-1 flex-col items-center justify-center overflow-hidden rounded-xl border bg-[#edf3f0] p-6'>
       <div className='flex flex-wrap items-center justify-center gap-4 sm:gap-6'>
         <div className='relative'>
           <img
@@ -63,11 +66,15 @@ export function FreeShowcase() {
         </div>
       </div>
 
-      <p className='text-foreground mt-5 max-w-md text-center text-sm font-medium'>
-        {t(
+      <ShowcaseHint
+        className='mt-6'
+        icon={Shirt}
+        title={t('Free Try-On')}
+        description={t(
           'Upload garments, add model, scene or detail shots as needed, then generate a styled commercial shot.'
         )}
-      </p>
+        badges={[t('Garment'), t('Model'), t('Scene')]}
+      />
     </div>
   )
 }

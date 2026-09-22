@@ -19,6 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // 平铺服装类型与请求校验。
+  'Garment top',
+  'Garment bottom',
+  'Matching set',
+  'Dress',
+  'Sweatshirt',
+  'Jacket',
+  'Shirt',
+  'Camisole',
+  'Down jacket',
+  'Coat',
+  'Skirt',
+  'Trousers',
+  'Upload a flat-lay layout reference',
+  'Upload a 3D style reference',
   // Header navigation
   'Home',
   'Console',

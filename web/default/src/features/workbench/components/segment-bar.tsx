@@ -38,7 +38,9 @@ export function SegmentBar(props: SegmentBarProps) {
         <span className='text-sm font-medium'>{props.label}</span>
       ) : null}
       <div
-        className='bg-muted grid gap-1 rounded-lg p-1'
+        className={`bg-muted grid gap-1 rounded-lg p-1 ${
+          props.options.length > 4 ? 'max-sm:grid-cols-4!' : ''
+        }`}
         style={{
           gridTemplateColumns: `repeat(${props.options.length}, minmax(0, 1fr))`,
         }}
@@ -50,7 +52,7 @@ export function SegmentBar(props: SegmentBarProps) {
               key={option.value}
               type='button'
               aria-pressed={selected}
-              className={`truncate rounded-md py-2 text-sm transition-colors ${
+              className={`rounded-md py-2 text-sm transition-colors disabled:opacity-50 ${
                 selected
                   ? 'bg-primary text-primary-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground'

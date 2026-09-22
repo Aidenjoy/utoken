@@ -69,7 +69,7 @@ export function buildFashionRequest(
   if (roles.length > 0) {
     sentences.push(`Role map: ${roles.join('; ')}.`)
   }
-  if (config.direction === 'free' || config.direction === 'custom') {
+  if (config.direction === 'free') {
     sentences.push(`Task: ${config.description.trim()}.`)
   } else if (preset) {
     sentences.push(`Task: ${preset.focus}.`)
@@ -77,11 +77,7 @@ export function buildFashionRequest(
   if (preset?.usesColor) {
     sentences.push(`Target color: ${config.color}.`)
   }
-  if (
-    config.description.trim() &&
-    config.direction !== 'free' &&
-    config.direction !== 'custom'
-  ) {
+  if (config.description.trim() && config.direction !== 'free') {
     sentences.push(`Instruction: ${config.description.trim()}.`)
   }
   sentences.push(
@@ -91,27 +87,4 @@ export function buildFashionRequest(
   if (ratio) sentences.push(ratio)
 
   return { prompt: sentences.join(' '), images }
-}
-
-/**
- * Batch mode: one request per garment image so every upload gets its own
- * run while sharing the same instruction.
- */
-export function buildFashionBatchRequests(
-  config: FashionDesignConfig
-): TryOnRequest[] {
-  const instruction = config.description.trim()
-  return config.images.garment.map((garment) => {
-    const sentences = [
-      'Professional fashion design studio render.',
-      `Role map: image 1: ${ROLE_SENTENCE.garment}.`,
-      instruction
-        ? `Task: ${instruction}.`
-        : 'Task: produce a clean commercial catalog render of the garment.',
-      'Photorealistic fabric rendering, clean studio lighting, e-commerce catalog quality.',
-    ]
-    const ratio = ratioSentence(config)
-    if (ratio) sentences.push(ratio)
-    return { prompt: sentences.join(' '), images: [garment.src] }
-  })
 }

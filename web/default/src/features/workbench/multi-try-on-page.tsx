@@ -182,7 +182,7 @@ export function MultiTryOnPage() {
   const modelOptions = imageModels.map((name) => ({ label: name, value: name }))
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 p-4 lg:p-6'>
       <header className='flex flex-wrap items-center justify-between gap-3'>
         <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Multi-Item Try-On')}</h1>
         <Button
@@ -195,8 +195,8 @@ export function MultiTryOnPage() {
         </Button>
       </header>
 
-      <div className='grid gap-4 xl:grid-cols-2'>
-        <div className='space-y-4'>
+      <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
+        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
           <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
             <SegmentBar
               label={t('Outfit structure')}
@@ -337,16 +337,18 @@ export function MultiTryOnPage() {
           />
         </div>
 
-        {phase === 'idle' ? (
-          <TryOnShowcase />
-        ) : (
-          <ResultPanel
-            phase={phase}
-            results={results}
-            error={error}
-            count={config.count}
-          />
-        )}
+        <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
+          {phase === 'idle' ? (
+            <TryOnShowcase />
+          ) : (
+            <ResultPanel
+              phase={phase}
+              results={results}
+              error={error}
+              count={config.count}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

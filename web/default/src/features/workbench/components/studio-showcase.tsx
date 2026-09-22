@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react'
+import { Plus, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 /*
@@ -27,6 +27,7 @@ import restyleResult from '@/assets/studio/restyle-result.webp'
 import restyleSource from '@/assets/studio/restyle-source.webp'
 
 import type { ModelStudioMode } from '../types'
+import { ShowcaseHint } from './showcase-hint'
 
 interface StudioShowcaseProps {
   mode: ModelStudioMode
@@ -196,7 +197,7 @@ export function StudioShowcase(props: StudioShowcaseProps) {
   }
 
   return (
-    <div className='dark:bg-muted/30 border-border relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-xl border bg-[#edf3f0] p-6'>
+    <div className='dark:bg-muted/30 border-border relative flex min-h-[420px] flex-1 flex-col items-center justify-center overflow-hidden rounded-xl border bg-[#edf3f0] p-6'>
       <div className='flex flex-wrap items-center justify-center gap-4 sm:gap-6'>
         {sources}
         <FlowArrow />
@@ -209,9 +210,17 @@ export function StudioShowcase(props: StudioShowcaseProps) {
         </span>
       ) : null}
 
-      <p className='text-foreground mt-5 max-w-md text-center text-sm font-medium'>
-        {caption}
-      </p>
+      <ShowcaseHint
+        className='mt-5'
+        icon={UserRound}
+        title={t('Dedicated Model')}
+        description={caption}
+        badges={[
+          t('Face-composed model'),
+          t('Model restyle'),
+          t('Upload existing model'),
+        ]}
+      />
     </div>
   )
 }

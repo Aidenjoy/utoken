@@ -165,8 +165,6 @@ export type FashionDirection =
   | 'pattern'
   | 'fabric'
   | 'lineart'
-  | 'custom'
-  | 'batch'
 
 /** Upload slot identity a fashion template consumes. */
 export type FashionInputKey = 'garment' | 'fabric' | 'reference' | 'lineart'
@@ -212,30 +210,15 @@ export interface FashionDesignConfig {
   count: number
 }
 
-/** Person handling for hero images whose product shots contain a person. */
-export type HeroPersonMode = 'keep' | 'replace'
-
 export interface HeroImageConfig {
   /** Product shots; at least one required, up to three. */
   products: TryOnImage[]
-  /** Hero layout templates; only composition and text zones are borrowed. */
-  templates: TryOnImage[]
-  /** Visible product features; drives hero copy and composition. */
-  description: string
-  /** Hard constraints such as logo safety or background tone. */
+  /** 单张主图模板，仅借鉴构图和文案布局。 */
+  template: TryOnImage | null
+  /** 标语、价格、指定文案及其他主图补充要求。 */
   extra: string
   /** Values of HERO_CONTENT_ELEMENTS that appear on the hero image. */
   elements: string[]
-  personMode: HeroPersonMode
-  /** Replacement model; null lets AI generate one. */
-  model: TryOnImage | null
-  outputMode: string
-  pose: string
-  orientation: string
-  expression: string
-  actionNote: string
-  /** Pose/framing references matched randomly across outputs. */
-  actions: TryOnImage[]
   resolution: string
   ratio: string
   imageModel: string
@@ -251,8 +234,35 @@ export interface HeroSetAngle {
   count: number
 }
 
+export type ProductSetShotType =
+  | 'hero'
+  | 'selling'
+  | 'scene'
+  | 'detail'
+  | 'white'
+  | 'angle'
+  | 'effect'
+  | 'structure'
+
+export interface ProductSetShot {
+  type: ProductSetShotType
+  count: number
+  references: TryOnImage[]
+  extra: string
+}
+
+/** 商品套图独立配置，切换模特套图时保留上传和用途设置。 */
+export interface ProductSetConfig {
+  products: TryOnImage[]
+  withCopy: boolean
+  withScene: boolean
+  shots: ProductSetShot[]
+  extra: string
+}
+
 export interface HeroSetConfig {
   mode: HeroSetMode
+  product: ProductSetConfig
   /** Single reference shot; its view should match the selected angles. */
   reference: TryOnImage | null
   /** Selected view angles with per-angle output counts. */
@@ -263,6 +273,8 @@ export interface HeroSetConfig {
   outfit: string
   scene: string
   other: string
+  /** Free-text requirements applied to every image of the model set. */
+  extra: string
   resolution: string
   ratio: string
   imageModel: string
@@ -289,14 +301,27 @@ export interface DetailPageConfig {
 /** Which garment shot set the close-up workbench starts from. */
 export type CloseUpShotMode = 'position' | 'flat' | 'threed'
 
+export interface GarmentBaseConfig {
+  front: TryOnImage | null
+  supplement: TryOnImage | null
+  generationMode: 'smart' | 'reference'
+  reference: TryOnImage | null
+  garmentType: string
+  note: string
+  resolution: string
+  ratio: string
+}
+
 export interface CloseUpConfig {
   shotMode: CloseUpShotMode
+  /** 平铺底图配置独立保存，不复用局部特写或 3D 模式的素材。 */
+  flat: GarmentBaseConfig
+  /** 3D 底图独立保存素材、出图模式与输出参数。 */
+  threed: GarmentBaseConfig
   /** Per-view garment shots used in position mode. */
   front: TryOnImage | null
   side: TryOnImage | null
   back: TryOnImage | null
-  /** Single garment shot used in flat / threed mode. */
-  garment: TryOnImage | null
   /** Detail references lending framing and close-up style. */
   references: TryOnImage[]
   /** Values of CLOSE_UP_PARTS to prioritize; empty means auto-picked. */

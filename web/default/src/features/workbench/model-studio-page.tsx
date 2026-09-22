@@ -288,7 +288,7 @@ export function ModelStudioPage() {
   }
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 p-4 lg:p-6'>
       <header className='flex flex-wrap items-center justify-between gap-3'>
         <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Dedicated Model')}</h1>
         <Button
@@ -301,8 +301,8 @@ export function ModelStudioPage() {
         </Button>
       </header>
 
-      <div className='grid gap-4 xl:grid-cols-2'>
-        <div ref={uploadsRef} className='space-y-4'>
+      <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
+        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
             <div className='bg-muted grid grid-cols-3 gap-1 rounded-lg p-1'>
               {tr(MODEL_STUDIO_MODES).map((option) => {
@@ -335,7 +335,10 @@ export function ModelStudioPage() {
             </div>
           </section>
 
-          <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
+          <section
+            ref={uploadsRef}
+            className='border-border bg-card space-y-3 rounded-lg border p-4'
+          >
             {uploadSection}
           </section>
 
@@ -410,18 +413,20 @@ export function ModelStudioPage() {
           />
         </div>
 
-        {phase === 'idle' ? (
-          <StudioShowcase mode={config.mode} />
-        ) : (
-          <ResultPanel
-            phase={phase}
-            results={results}
-            error={error}
-            count={config.count}
-            onStartUpload={focusUploads}
-            loadingLabel={t('Composing the model...')}
-          />
-        )}
+        <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
+          {phase === 'idle' ? (
+            <StudioShowcase mode={config.mode} />
+          ) : (
+            <ResultPanel
+              phase={phase}
+              results={results}
+              error={error}
+              count={config.count}
+              onStartUpload={focusUploads}
+              loadingLabel={t('Composing the model...')}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

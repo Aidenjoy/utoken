@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Eraser, LayoutGrid } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -31,11 +31,14 @@ import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
 import { generateTryOnImages } from './api'
-import { BoardGlyph } from './components/board-glyph'
 import { ChipGroup } from './components/chip-group'
+import {
+  FashionPresetPreview,
+  FashionShowcase,
+} from './components/fashion-showcase'
 import { GenerateBar } from './components/generate-bar'
-import { ResolutionCards } from './components/resolution-cards'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
+import { SegmentBar } from './components/segment-bar'
 import { UploadTile } from './components/upload-tile'
 import {
   createDefaultFashionDesignConfig,
@@ -43,12 +46,10 @@ import {
   FASHION_PRESETS,
   fashionInputsFor,
   TRY_ON_RATIOS,
+  TRY_ON_SIZES,
 } from './constants'
 import { buildImageSize } from './lib/image-size'
-import {
-  buildFashionBatchRequests,
-  buildFashionRequest,
-} from './lib/prompt-fashion'
+import { buildFashionRequest } from './lib/prompt-fashion'
 import { saveGenerationToLibrary } from './lib/save-to-library'
 import type {
   ChipOption,
@@ -59,8 +60,7 @@ import type {
 
 /**
  * Fashion design workbench: garment, fabric, reference and line-art materials
- * plus a direction template become studio-grade fashion renders; batch mode
- * runs one generation per garment image.
+ * plus a direction template become studio-grade fashion renders.
  */
 export function FashionDesignPage() {
   const { t } = useTranslation()
@@ -70,7 +70,7 @@ export function FashionDesignPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const uploadsRef = useRef<HTMLDivElement>(null)
+  const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -91,10 +91,17 @@ export function FashionDesignPage() {
     key: K,
     value: FashionDesignConfig[K]
   ) => {
+    if (isLoading) return
     setConfig((prev) => ({ ...prev, [key]: value }))
+    if (key === 'preset' && value !== config.preset) {
+      setPhase('idle')
+      setResults([])
+      setError('')
+    }
   }
 
   const updateSlot = (key: string, next: TryOnImage[]) => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...prev,
       images: { ...prev.images, [key]: next },
@@ -102,14 +109,16 @@ export function FashionDesignPage() {
   }
 
   const changeDirection = (value: string) => {
+    if (isLoading || value === config.direction) return
     const direction = value as FashionDirection
     const firstPreset = FASHION_PRESETS[direction]?.[0]?.value ?? ''
     setConfig((prev) => ({ ...prev, direction, preset: firstPreset }))
+    setPhase('idle')
+    setResults([])
+    setError('')
   }
 
-  const isBatch = config.direction === 'batch'
-  const isFreeText =
-    config.direction === 'free' || config.direction === 'custom'
+  const isFreeText = config.direction === 'free'
   const presets = FASHION_PRESETS[config.direction] ?? []
   const preset = isFreeText
     ? null
@@ -121,6 +130,7 @@ export function FashionDesignPage() {
   const needsDescription = isFreeText || (preset?.needsDescription ?? false)
 
   const handleGenerate = async () => {
+    if (isLoading) return
     if (missingRequired.length > 0) {
       toast.error(t('Upload the required images for this template'))
       return
@@ -133,11 +143,10 @@ export function FashionDesignPage() {
       toast.error(t('Select an image model'))
       return
     }
-    const requests = isBatch
-      ? buildFashionBatchRequests(config)
-      : [buildFashionRequest(config, preset)]
+    const requests = [buildFashionRequest(config, preset)]
     setPhase('loading')
     setError('')
+    setResults([])
     try {
       const urls: string[] = []
       for (const request of requests) {
@@ -145,7 +154,7 @@ export function FashionDesignPage() {
           model: config.imageModel,
           prompt: request.prompt,
           size: buildImageSize(config.resolution, config.ratio),
-          n: isBatch ? 1 : config.count,
+          n: config.count,
           watermark: false,
           image:
             request.images.length === 1 ? request.images[0] : request.images,
@@ -187,6 +196,7 @@ export function FashionDesignPage() {
   }
 
   const handleClear = () => {
+    if (isLoading) return
     setConfig((prev) => ({
       ...createDefaultFashionDesignConfig(),
       imageModel: prev.imageModel,
@@ -196,28 +206,23 @@ export function FashionDesignPage() {
     setError('')
   }
 
-  const focusUploads = () => {
-    uploadsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   const tr = (options: ChipOption[]) =>
     options.map((option) => ({ ...option, label: t(option.label) }))
+  const resolutionOptions = TRY_ON_SIZES.map((size) => ({
+    label: size,
+    value: size,
+  }))
   const ratioOptions = TRY_ON_RATIOS.map((option) => ({
     ...option,
     label: option.value === 'smart' ? t('Smart') : option.label,
   }))
+  const modeHint = t(
+    'No template: the design description below drives the run.'
+  )
   const modelOptions = imageModels.map((name) => ({ label: name, value: name }))
-  const modeHint = isFreeText
-    ? t('No template: the design description below drives the run.')
-    : t('Batch mode generates one board per garment image, in order.')
-  const idleSteps = [
-    t('Pick a direction and template'),
-    t('Upload the required materials'),
-    t('Generate fashion designs'),
-  ]
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 p-4 lg:p-6'>
       <header className='flex flex-wrap items-center justify-between gap-3'>
         <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Fashion Design')}</h1>
         <Button
@@ -230,19 +235,31 @@ export function FashionDesignPage() {
         </Button>
       </header>
 
-      <div className='grid gap-4 xl:grid-cols-2'>
-        <div ref={uploadsRef} className='space-y-4'>
+      <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
+        <fieldset
+          disabled={isLoading}
+          className='min-w-0 space-y-3 xl:min-h-0 xl:overflow-y-auto'
+        >
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
-            <ChipGroup
+            <SegmentBar
               label={t('Design direction')}
               options={tr(FASHION_DIRECTIONS)}
               value={config.direction}
               onChange={changeDirection}
             />
-            {isFreeText || isBatch ? (
+            {isFreeText ? (
               <p className='text-muted-foreground text-xs'>{modeHint}</p>
             ) : (
-              <div className='grid gap-3 sm:grid-cols-2'>
+              <div
+                className={
+                  config.direction === 'redesign' ||
+                  config.direction === 'new' ||
+                  config.direction === 'series' ||
+                  config.direction === 'pattern'
+                    ? 'grid gap-2 min-[360px]:grid-cols-2 sm:grid-cols-3'
+                    : 'grid gap-2 sm:grid-cols-2'
+                }
+              >
                 {presets.map((item) => {
                   const selected = item.value === config.preset
                   return (
@@ -250,15 +267,15 @@ export function FashionDesignPage() {
                       key={item.value}
                       type='button'
                       aria-pressed={selected}
-                      className={`rounded-lg border p-3 text-left transition-colors ${
+                      className={`focus-visible:ring-ring min-w-0 rounded-lg border p-2 text-left transition-colors outline-none focus-visible:ring-2 disabled:opacity-50 ${
                         selected
                           ? 'border-primary bg-primary/5 ring-primary/30 ring-1'
                           : 'border-border hover:border-primary/40'
                       }`}
                       onClick={() => update('preset', item.value)}
                     >
-                      <div className='mb-2 flex items-start justify-between gap-2'>
-                        <span className='text-sm font-medium'>
+                      <div className='mb-2 flex flex-wrap items-start justify-between gap-1.5'>
+                        <span className='text-xs leading-5 font-medium sm:text-sm'>
                           {t(item.label)}
                         </span>
                         {item.tag ? (
@@ -270,7 +287,7 @@ export function FashionDesignPage() {
                           </Badge>
                         ) : null}
                       </div>
-                      <BoardGlyph kind={item.glyph} />
+                      <FashionPresetPreview preset={item} />
                     </button>
                   )
                 })}
@@ -280,17 +297,24 @@ export function FashionDesignPage() {
 
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
             <span className='text-sm font-medium'>{t('Materials')}</span>
-            {inputs.map((input) => (
-              <UploadTile
-                key={input.key}
-                label={t(input.label)}
-                badge={input.required ? t('Required') : t('Optional')}
-                max={input.max}
-                multiple={input.max > 1}
-                value={config.images[input.key]}
-                onChange={(next) => updateSlot(input.key, next)}
-              />
-            ))}
+            <div
+              className={
+                inputs.length > 1 ? 'grid gap-3 sm:grid-cols-2' : 'grid gap-3'
+              }
+            >
+              {inputs.map((input) => (
+                <UploadTile
+                  key={input.key}
+                  label={t(input.label)}
+                  badge={input.required ? t('Required') : t('Optional')}
+                  max={input.max}
+                  multiple={input.max > 1}
+                  disabled={isLoading}
+                  value={config.images[input.key]}
+                  onChange={(next) => updateSlot(input.key, next)}
+                />
+              ))}
+            </div>
             {preset?.usesColor ? (
               <div className='flex items-center gap-2'>
                 <span className='text-sm font-medium'>{t('Target color')}</span>
@@ -307,15 +331,19 @@ export function FashionDesignPage() {
               </div>
             ) : null}
             <div className='space-y-1.5'>
-              <span className='text-sm font-medium'>
+              <label
+                htmlFor='fashion-design-description'
+                className='text-sm font-medium'
+              >
                 {t('Design description')}
                 {needsDescription ? null : (
                   <span className='text-muted-foreground ml-1 text-xs'>
                     {t('Optional')}
                   </span>
                 )}
-              </span>
+              </label>
               <Textarea
+                id='fashion-design-description'
                 rows={3}
                 value={config.description}
                 placeholder={t(
@@ -326,8 +354,10 @@ export function FashionDesignPage() {
             </div>
           </section>
 
-          <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <ResolutionCards
+          <section className='border-border bg-card flex flex-col gap-4 rounded-lg border p-4'>
+            <ChipGroup
+              label={t('Resolution')}
+              options={resolutionOptions}
               value={config.resolution}
               onChange={(value) => update('resolution', value)}
             />
@@ -337,15 +367,6 @@ export function FashionDesignPage() {
               value={config.ratio}
               onChange={(value) => update('ratio', value)}
             />
-            <p className='text-muted-foreground text-xs'>
-              {isBatch
-                ? t(
-                    'Batch mode generates one board per garment image, in order.'
-                  )
-                : t('Each run generates {{count}} images.', {
-                    count: config.count,
-                  })}
-            </p>
             <div className='flex justify-end'>
               <Button variant='outline' size='sm' onClick={handleClear}>
                 <Eraser className='size-4' />
@@ -360,26 +381,25 @@ export function FashionDesignPage() {
             onModelChange={(value) => update('imageModel', value)}
             count={config.count}
             onCountChange={(value) => update('count', value)}
-            loading={phase === 'loading'}
+            loading={isLoading}
             disabled={missingRequired.length > 0}
-            countHidden={isBatch}
             onGenerate={() => void handleGenerate()}
           />
-        </div>
+        </fieldset>
 
-        <ResultPanel
-          phase={phase}
-          results={results}
-          error={error}
-          count={config.count}
-          onStartUpload={focusUploads}
-          idleTitle={t('Turn garment photos into studio-grade fashion designs')}
-          idleDescription={t(
-            'Pick a direction and template; the finished designs appear here.'
+        <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
+          {phase === 'idle' ? (
+            <FashionShowcase preset={preset} />
+          ) : (
+            <ResultPanel
+              phase={phase}
+              results={results}
+              error={error}
+              count={config.count}
+              loadingLabel={t('Generating fashion designs...')}
+            />
           )}
-          idleSteps={idleSteps}
-          loadingLabel={t('Generating fashion designs...')}
-        />
+        </div>
       </div>
     </div>
   )

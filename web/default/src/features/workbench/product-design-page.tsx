@@ -19,7 +19,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -31,11 +31,14 @@ import { getUserModels } from '@/lib/api'
 import { getModelCategory } from '@/lib/model-category'
 
 import { generateTryOnImages } from './api'
-import { BoardGlyph } from './components/board-glyph'
 import { ChipGroup } from './components/chip-group'
 import { GenerateBar } from './components/generate-bar'
-import { ResolutionCards } from './components/resolution-cards'
+import {
+  ProductPresetCase,
+  ProductShowcase,
+} from './components/product-showcase'
 import { ResultPanel, type ResultPhase } from './components/result-panel'
+import { SegmentBar } from './components/segment-bar'
 import { UploadTile } from './components/upload-tile'
 import {
   createDefaultProductDesignConfig,
@@ -43,6 +46,7 @@ import {
   DESIGN_DIRECTIONS,
   DESIGN_PRESETS,
   TRY_ON_RATIOS,
+  TRY_ON_SIZES,
 } from './constants'
 import { buildImageSize } from './lib/image-size'
 import { buildProductDesignRequest } from './lib/prompt-product'
@@ -61,7 +65,6 @@ export function ProductDesignPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const uploadsRef = useRef<HTMLDivElement>(null)
 
   const { data: modelsData } = useQuery({
     queryKey: ['try-on-models'],
@@ -92,6 +95,16 @@ export function ProductDesignPage() {
   }
 
   const presets = DESIGN_PRESETS[config.direction] ?? []
+  const showcasePreset =
+    config.direction === 'creative' ||
+    config.direction === 'redesign' ||
+    config.direction === 'function' ||
+    config.direction === 'material' ||
+    config.direction === 'visual' ||
+    config.direction === 'series' ||
+    config.direction === 'proposal'
+      ? (presets.find((item) => item.value === config.preset) ?? null)
+      : null
 
   const handleGenerate = async () => {
     if (!config.product) {
@@ -162,25 +175,20 @@ export function ProductDesignPage() {
     setError('')
   }
 
-  const focusUploads = () => {
-    uploadsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   const tr = (options: ChipOption[]) =>
     options.map((option) => ({ ...option, label: t(option.label) }))
   const ratioOptions = TRY_ON_RATIOS.map((option) => ({
     ...option,
     label: option.value === 'smart' ? t('Smart') : option.label,
   }))
+  const resolutionOptions = TRY_ON_SIZES.map((size) => ({
+    label: size,
+    value: size,
+  }))
   const modelOptions = imageModels.map((name) => ({ label: name, value: name }))
-  const idleSteps = [
-    t('Upload a product photo'),
-    t('Pick a direction and template'),
-    t('Generate the design board'),
-  ]
 
   return (
-    <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6'>
+    <div className='flex min-h-0 flex-1 flex-col gap-4 p-4 lg:p-6'>
       <header className='flex flex-wrap items-center justify-between gap-3'>
         <h1 className={SECTION_PAGE_TITLE_CLASS}>{t('Merchandise Design')}</h1>
         <Button
@@ -193,22 +201,10 @@ export function ProductDesignPage() {
         </Button>
       </header>
 
-      <div className='grid gap-4 xl:grid-cols-2'>
-        <div ref={uploadsRef} className='space-y-4'>
-          <section className='border-border bg-card rounded-lg border p-4'>
-            <UploadTile
-              label={t('Upload product photo')}
-              hint={t(
-                'One clean product shot on a plain background works best.'
-              )}
-              max={1}
-              value={config.product ? [config.product] : []}
-              onChange={(next) => update('product', next[0] ?? null)}
-            />
-          </section>
-
+      <div className='grid min-h-0 flex-1 gap-4 overflow-y-auto xl:grid-cols-2 xl:grid-rows-1 xl:overflow-hidden'>
+        <div className='min-w-0 space-y-4 xl:min-h-0 xl:overflow-y-auto'>
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
-            <ChipGroup
+            <SegmentBar
               label={t('Design direction')}
               options={tr(DESIGN_DIRECTIONS)}
               value={config.direction}
@@ -231,7 +227,7 @@ export function ProductDesignPage() {
                 />
               </div>
             ) : (
-              <div className='grid gap-3 sm:grid-cols-2'>
+              <div className='grid gap-3 sm:grid-cols-3'>
                 {presets.map((preset) => {
                   const board = DESIGN_BOARD_TYPES[preset.boardType]
                   const selected = preset.value === config.preset
@@ -260,12 +256,24 @@ export function ProductDesignPage() {
                           </Badge>
                         ) : null}
                       </div>
-                      <BoardGlyph kind={board?.glyph ?? 'collage'} />
+                      <ProductPresetCase preset={preset} />
                     </button>
                   )
                 })}
               </div>
             )}
+          </section>
+
+          <section className='border-border bg-card rounded-lg border p-4'>
+            <UploadTile
+              label={t('Upload product photo')}
+              hint={t(
+                'One clean product shot on a plain background works best.'
+              )}
+              max={1}
+              value={config.product ? [config.product] : []}
+              onChange={(next) => update('product', next[0] ?? null)}
+            />
           </section>
 
           <section className='border-border bg-card space-y-1.5 rounded-lg border p-4'>
@@ -283,7 +291,9 @@ export function ProductDesignPage() {
           </section>
 
           <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
-            <ResolutionCards
+            <ChipGroup
+              label={t('Resolution')}
+              options={resolutionOptions}
               value={config.resolution}
               onChange={(value) => update('resolution', value)}
             />
@@ -318,19 +328,19 @@ export function ProductDesignPage() {
           />
         </div>
 
-        <ResultPanel
-          phase={phase}
-          results={results}
-          error={error}
-          count={config.count}
-          onStartUpload={focusUploads}
-          idleTitle={t('Turn one product into a whole design board')}
-          idleDescription={t(
-            'Pick a direction and template; the finished board appears here.'
+        <div className='flex min-w-0 flex-col xl:min-h-0 xl:overflow-y-auto'>
+          {phase === 'idle' ? (
+            <ProductShowcase preset={showcasePreset} />
+          ) : (
+            <ResultPanel
+              phase={phase}
+              results={results}
+              error={error}
+              count={config.count}
+              loadingLabel={t('Generating design boards...')}
+            />
           )}
-          idleSteps={idleSteps}
-          loadingLabel={t('Generating design boards...')}
-        />
+        </div>
       </div>
     </div>
   )
