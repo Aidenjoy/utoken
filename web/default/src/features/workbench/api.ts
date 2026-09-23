@@ -21,7 +21,10 @@ import { t } from 'i18next'
 
 import { api } from '@/lib/api'
 
-import { DETAIL_PAGE_COUNTS, TRY_ON_GENERATIONS_ENDPOINT } from './constants'
+import {
+  TRY_ON_GENERATIONS_ENDPOINT,
+  WORKBENCH_MAX_GENERATION_COUNT,
+} from './constants'
 
 export interface TryOnGenerationBody {
   model: string
@@ -65,16 +68,16 @@ export async function generateImageBatch(
   requests: TryOnGenerationBody[],
   onImage: (url: string, request: TryOnGenerationBody) => void,
   signal?: AbortSignal,
-  setMode?: 'model' | 'product'
+  setMode?: 'model' | 'product' | 'detail'
 ): Promise<void> {
-  // 发起任何请求前校验完整计划；详情页是工作台单项张数上限。
+  // 发起任何计费请求前校验完整计划，保留工作台原有单项张数上限。
   if (
     requests.length === 0 ||
     requests.some(
       (request) =>
         !Number.isInteger(request.n) ||
         request.n < 1 ||
-        request.n > Math.max(...DETAIL_PAGE_COUNTS)
+        request.n > WORKBENCH_MAX_GENERATION_COUNT
     )
   ) {
     throw new Error(t('Generation failed, please retry'))
@@ -91,13 +94,24 @@ export async function generateImageBatch(
           : [request.image]
         images.push(setReference)
         body.image = images
+        let referenceRole = `Image ${images.length} is the first finished photograph of this same set, supplied as the fixed visual continuity reference, not a new subject or a layout template. Keep the original source images authoritative for identity and factual details; never propagate mistakes from the generated reference.`
+        let continuity =
+          'Continue the same product photo shoot: match product identity, true colors, materials and photographic treatment. Reuse the established background, surfaces, props and lighting for scene-enabled images, honoring any uploaded shared scene. The current required purpose, scene/copy policy and prohibitions always take priority: white-background images must stay uniform #FFFFFF without scene or text, scene-disabled images must not inherit scenery, and detail images must remain close-ups. Do not copy the reference headline, claims, framing or image purpose. If the reference has no usage environment, follow the shared scene instructions instead.'
+        if (setMode === 'model') {
+          continuity =
+            'Continue the exact same photo shoot: match this finished reference in person identity, the specific outfit and accessories, physical background, fixed props, lighting, colors, photographic style and framing scale. Do not choose another outfit or scene. Change only the requested pose, expression and body view; do not duplicate its pose or override the current view. Preserve the uploaded shared scene and explicit whole-set requirements.'
+        } else if (setMode === 'detail') {
+          referenceRole = `Image ${images.length} is the first finished detail-page segment, supplied as the fixed visual continuity reference. Original product sources remain authoritative for identity and verified facts; never propagate mistakes from this generated reference.`
+          continuity =
+            'Continue this same editorial detail-page sequence: match the established palette, light direction, background materials, typography hierarchy and horizontal margins. Environmental backgrounds are allowed for every module. If the first segment is a tight close-up, extend its palette, material and light into a suitable environment rather than enlarging it into a fake scene. Preserve shared visual requirements, use current-module references for composition, and prioritize the current module over copying the first segment. Do not duplicate its headline, labels, claims, people, framing or content; adapt the layout to the current task. Use compatible edge tones for vertical assembly without an outer card frame.'
+        }
         body.prompt = [
           request.prompt,
-          `Image ${images.length} is the first finished photograph of this same set, supplied as the fixed visual continuity reference, not a new subject or a layout template. Keep the original source images authoritative for identity and factual details; never propagate mistakes from the generated reference.`,
-          setMode === 'model'
-            ? 'Continue the exact same photo shoot: match this finished reference in person identity, the specific outfit and accessories, physical background, fixed props, lighting, colors, photographic style and framing scale. Do not choose another outfit or scene. Change only the requested pose, expression and body view; do not duplicate its pose or override the current view. Preserve the uploaded shared scene and explicit whole-set requirements.'
-            : 'Continue the same product photo shoot: match product identity, true colors, materials and photographic treatment. Reuse the established background, surfaces, props and lighting for scene-enabled images, honoring any uploaded shared scene. The current required purpose, scene/copy policy and prohibitions always take priority: white-background images must stay uniform #FFFFFF without scene or text, scene-disabled images must not inherit scenery, and detail images must remain close-ups. Do not copy the reference headline, claims, framing or image purpose. If the reference has no usage environment, follow the shared scene instructions instead.',
-          'Return only the single requested image, not a collage or a copy of the continuity reference.',
+          referenceRole,
+          continuity,
+          setMode === 'detail'
+            ? 'Return only the current finished segment, not a multi-page contact sheet or a copy of the continuity reference. Relevant detail insets within this segment are allowed.'
+            : 'Return only the single requested image, not a collage or a copy of the continuity reference.',
         ].join('\n')
       }
       let response: TryOnGenerationResponse

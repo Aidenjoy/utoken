@@ -1110,7 +1110,7 @@ export function createDefaultHeroSetConfig(): HeroSetConfig {
 
 /** Content modules a detail page set may carry, in reference order. */
 export const DETAIL_CONTENT_ELEMENTS: ChipOption[] = [
-  { value: 'copy', label: 'Selling point copy' },
+  { value: 'copy', label: 'Selling point overview' },
   { value: 'model', label: 'With model' },
   { value: 'scene', label: 'Use scenes' },
   { value: 'closeup', label: 'Local close-up' },
@@ -1131,12 +1131,8 @@ const DETAIL_DEFAULT_ELEMENTS: ReadonlySet<DetailPageElementValue> = new Set([
 /** 单个模块参考图上限，保持与商品套图逐用途参考图量级一致。 */
 export const DETAIL_ELEMENT_REFERENCE_MAX = 3
 
-export const DETAIL_SCENE_MODES: ChipOption[] = [
-  { value: 'unified', label: 'Unified scene' },
-  { value: 'smart', label: 'Smart assignment' },
-]
-
-export const DETAIL_PAGE_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const
+/** 工作台单项批量生成上限，与详情页模块数量解耦。 */
+export const WORKBENCH_MAX_GENERATION_COUNT = 10
 
 /** 依 DETAIL_CONTENT_ELEMENTS 顺序创建常驻模块列表，默认勾选基础四项。 */
 export function createDefaultDetailElements(): DetailPageElement[] {
@@ -1156,9 +1152,6 @@ export function createDefaultDetailPageConfig(): DetailPageConfig {
     products: [],
     extra: '',
     elements: createDefaultDetailElements(),
-    sceneImage: null,
-    sceneMode: 'smart',
-    pageCount: 1,
     resolution: '2K',
     ratio: '3:4',
     imageModel: '',

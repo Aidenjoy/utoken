@@ -300,9 +300,9 @@ export interface DetailPageElement {
   value: DetailPageElementValue
   /** 未勾选的模块保留 references/extra，方便来回切换。 */
   enabled: boolean
-  /** 该模块专属参考图，进入分配了此模块的页面提示词。 */
+  /** 该模块专属参考图，仅进入该模块对应的分段。 */
   references: TryOnImage[]
-  /** 该模块专属补充要求，仅在此模块被分配到的页面注入。 */
+  /** 该模块专属补充要求，不影响其他分段。 */
   extra: string
 }
 
@@ -313,10 +313,6 @@ export interface DetailPageConfig {
   extra: string
   /** 全部内容模块，按 DETAIL_CONTENT_ELEMENTS 顺序常驻，勾选状态由 enabled 决定。 */
   elements: DetailPageElement[]
-  /** 整套详情页共用的可选场景，仅作用于分配了场景模块的页面。 */
-  sceneImage: TryOnImage | null
-  sceneMode: string
-  pageCount: number
   resolution: string
   ratio: string
   imageModel: string

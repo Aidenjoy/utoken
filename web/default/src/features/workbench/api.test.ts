@@ -25,6 +25,12 @@ import i18next from 'i18next'
 import { api } from '@/lib/api'
 
 import { generateImageBatch, type TryOnGenerationBody } from './api'
+import { createDefaultDetailPageConfig } from './constants'
+import { buildImageSize } from './lib/image-size'
+import {
+  buildDetailPageRequest,
+  getSelectedDetailElements,
+} from './lib/prompt-detail'
 
 const originalAdapter = api.defaults.adapter
 before(async () => {
@@ -234,4 +240,124 @@ test('商品套图锚点提示词保留白底与用途优先级，非套图模�
     { ...request(2), n: 1 },
   ])
   assert.doesNotMatch(calls[1].prompt, /continuity reference/)
+})
+
+for (const firstImage of [
+  { data: { url: 'first-segment' }, expected: 'first-segment' },
+  {
+    data: { b64_json: 'aW1hZ2U=' },
+    expected: 'data:image/png;base64,aW1hZ2U=',
+  },
+]) {
+  test(`详情页三项对应三次请求，固定首张视觉参考：${firstImage.expected}`, async () => {
+    const config = createDefaultDetailPageConfig()
+    config.products = [{ id: 'p', name: 'product', src: 'product.png' }]
+    config.elements = config.elements.map((element) => ({
+      ...element,
+      enabled: ['copy', 'scene', 'closeup'].includes(element.value),
+      references: [
+        { id: element.value, name: element.value, src: `${element.value}.png` },
+      ],
+    }))
+    const selected = getSelectedDetailElements(config.elements)
+    const plans = selected.map((_element, index) => {
+      const built = buildDetailPageRequest(config, index)
+      return {
+        ...request(1, built.prompt),
+        size: buildImageSize(config.resolution, config.ratio),
+        image: built.images,
+      }
+    })
+    const original = structuredClone(plans)
+    const calls: TryOnGenerationBody[] = []
+    const delivered: string[] = []
+    api.defaults.adapter = async (config) => {
+      assert.equal(delivered.length, calls.length)
+      calls.push(JSON.parse(config.data as string) as TryOnGenerationBody)
+      return {
+        config,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        data: {
+          data: [
+            calls.length === 1
+              ? firstImage.data
+              : { url: `segment-${calls.length}` },
+          ],
+        },
+      }
+    }
+    await generateImageBatch(
+      plans,
+      (url) => delivered.push(url),
+      undefined,
+      'detail'
+    )
+    assert.equal(calls.length, 3)
+    assert.deepEqual(calls[0], plans[0])
+    assert.deepEqual(calls[1].image, [
+      'product.png',
+      'scene.png',
+      firstImage.expected,
+    ])
+    assert.deepEqual(calls[2].image, [
+      'product.png',
+      'closeup.png',
+      firstImage.expected,
+    ])
+    assert.deepEqual(plans, original)
+    assert.deepEqual(delivered, [firstImage.expected, 'segment-2', 'segment-3'])
+    for (const [index, call] of calls.entries()) {
+      assert.equal(call.n, 1)
+      assert.equal(call.size, plans[0].size)
+      assert.ok(call.prompt.startsWith(plans[index].prompt))
+      assert.doesNotMatch(
+        call.prompt,
+        /scene-disabled images|must stay uniform #FFFFFF|not a collage or a copy/
+      )
+      if (index > 0) {
+        assert.match(
+          call.prompt,
+          /Image 3 is the first finished detail-page segment/
+        )
+        assert.match(
+          call.prompt,
+          /Environmental backgrounds are allowed for every module/
+        )
+        assert.match(call.prompt, /typography hierarchy and horizontal margins/)
+        assert.match(call.prompt, /never propagate mistakes/)
+        assert.match(call.prompt, /Do not duplicate its headline/)
+      }
+    }
+  })
+}
+
+test('详情分段失败保留已完成成片，停止后续请求且不重试', async () => {
+  const delivered: string[] = []
+  let calls = 0
+  api.defaults.adapter = async (config) => {
+    calls++
+    return {
+      config,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      data:
+        calls === 1
+          ? { data: [{ url: 'first' }] }
+          : { error: { message: 'quota exhausted' } },
+    }
+  }
+  await assert.rejects(
+    generateImageBatch(
+      [request(1), request(1), request(1)],
+      (url) => delivered.push(url),
+      undefined,
+      'detail'
+    ),
+    { message: 'quota exhausted' }
+  )
+  assert.equal(calls, 2)
+  assert.deepEqual(delivered, ['first'])
 })

@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { DETAIL_CONTENT_ELEMENTS, DETAIL_PAGE_COUNTS } from '../constants'
-import type { DetailPageConfig, DetailPageElement } from '../types'
+import { DETAIL_CONTENT_ELEMENTS } from '../constants'
+import type {
+  DetailPageConfig,
+  DetailPageElement,
+  DetailPageElementValue,
+} from '../types'
 import type { TryOnRequest } from './prompt'
 
-const MODULE_DUTIES: Record<string, string> = {
+const MODULE_DUTIES: Record<DetailPageElementValue, string> = {
   copy: 'Demonstrate a few visible or explicitly confirmed selling points, with short factual captions beside the matching product features. Do not replace the product demonstration with a wall of text.',
   model:
     'Show a model wearing, holding or using the actual product in a physically plausible way. Keep the product unobscured, correctly scaled and recognizable. For wearable products, show the full relevant garment or accessory rather than cropping it out.',
@@ -35,200 +39,87 @@ const MODULE_DUTIES: Record<string, string> = {
   steps:
     'Illustrate a short, physically plausible usage sequence supported by the sources or confirmed instructions, ordered clearly within this single page. Do not invent controls, assembly steps or product functions. If the operation is not supported, show the observable ready-to-use state instead of guessing a procedure.',
   'brand-ending':
-    'Close the set with a clean product identity composition. Use only the real on-product branding or an explicitly supplied brand name; never invent a brand, logo, certification or slogan. Keep the closing compact when integrated into a single-page design.',
+    'Close the story with a memorable product-in-context composition and one short closing line grounded in the product. Continue the established environment and palette rather than switching to an empty logo card. Use only the real on-product branding or an explicitly supplied brand name; never invent a brand, logo, certification or promise.',
 }
 
-/**
- * Fuse the product sample group with the confirmed selling facts and the
- * checked content modules into one OpenAI-compatible image body; the prompt
- * carries the index→role map plus the ordered page plan for the set.
- */
+/** 勾选列表与出图顺序的共同来源：仅保留已知、启用的模块，每项一次。 */
+export function getSelectedDetailElements(
+  elements: DetailPageElement[]
+): Array<DetailPageElement & { label: string }> {
+  return DETAIL_CONTENT_ELEMENTS.flatMap((option) => {
+    const element = elements.find((item) => item.value === option.value)
+    return element?.enabled ? [{ ...element, label: option.label }] : []
+  })
+}
+
+/** 每个已选模块对应一张可纵向拼接的详情页分段，不额外插入封面。 */
 export function buildDetailPageRequest(
   config: DetailPageConfig,
   pageIndex: number
 ): TryOnRequest {
+  const selected = getSelectedDetailElements(config.elements)
+  if (selected.length === 0) {
+    throw new Error('Select at least one content module')
+  }
   if (
-    !DETAIL_PAGE_COUNTS.some((count) => count === config.pageCount) ||
     !Number.isInteger(pageIndex) ||
     pageIndex < 0 ||
-    pageIndex >= config.pageCount
+    pageIndex >= selected.length
   ) {
     throw new Error('Generation failed, please retry')
   }
+  const current = selected[pageIndex]
   const images = config.products.map((item) => item.src)
-  const enabledMap = new Map<string, DetailPageElement>(
-    config.elements
-      .filter((element) => element.enabled)
-      .map((element) => [element.value, element])
-  )
-  const selected = DETAIL_CONTENT_ELEMENTS.filter((element) =>
-    enabledMap.has(element.value)
-  ).map((element) => ({
-    label: element.label,
-    value: element.value,
-    config: enabledMap.get(element.value) as DetailPageElement,
-  }))
-  const closing = selected.filter((element) => element.value === 'brand-ending')
-  const content = selected.filter((element) => element.value !== 'brand-ending')
-  const hasClosing = config.pageCount > 1 && closing.length > 0
-  const contentPages = config.pageCount - 1 - Number(hasClosing)
-
-  // 先确定整套职责，短套图合并模块，长套图按顺序轮换，避免漏掉已选内容。
-  const plan = Array.from({ length: config.pageCount }, (_, index) => {
-    if (index === 0) {
-      let modules: typeof selected = []
-      if (contentPages === 0) modules = content
-      if (config.pageCount === 1) modules = selected
-      return {
-        duty: 'Cover with the complete product as the visual anchor',
-        modules,
-      }
-    }
-    if (hasClosing && index === config.pageCount - 1) {
-      return { duty: 'Brand closing', modules: closing }
-    }
-    const position = index - 1
-    let modules: typeof selected = []
-    if (content.length > 0 && content.length < contentPages) {
-      modules = [content[position % content.length]]
-    } else if (content.length > 0) {
-      const start = Math.floor((position * content.length) / contentPages)
-      const end = Math.floor(((position + 1) * content.length) / contentPages)
-      modules = content.slice(start, end)
-    }
-    return { duty: 'Content page', modules }
-  })
-  const current = plan[pageIndex]
-  const currentKeys = new Set(current.modules.map((module) => module.value))
-  const withCopy = enabledMap.has('copy')
-  const withModel = currentKeys.has('model')
-  const withScene = currentKeys.has('scene')
   const roles = images.map(
     (_src, index) =>
-      `image ${index + 1}: product source — preserve the exact shape, true colors, materials, details and physical on-product markings; do not copy its background, promotional overlays, layout or watermarks`
+      `image ${index + 1}: product source — preserve the exact shape, true colors, materials, details and physical on-product markings; do not copy promotional overlays, layout or watermarks. Its backdrop is not a requirement to use a blank background.`
   )
-  // 当前页分配到的模块参考图逐张追加，角色标注说明归属模块，避免影响非相关页面。
-  const moduleReferenceNotes: string[] = []
-  for (const module of current.modules) {
-    const references = module.config.references
-    if (references.length === 0) continue
-    const startIndex = images.length
-    for (const reference of references) {
-      images.push(reference.src)
-      roles.push(
-        `image ${images.length}: ${module.label} reference — borrow framing, composition, props, palette or lighting cues for this module only; do not copy its products, people, text, watermarks or branding, and do not apply it to unassigned modules`
-      )
-    }
-    moduleReferenceNotes.push(
-      `${module.label}: images ${startIndex + 1}-${images.length}`
-    )
-  }
-  if (withScene && config.sceneImage?.src) {
-    images.push(config.sceneImage.src)
+  for (const reference of current.references) {
+    images.push(reference.src)
     roles.push(
-      `image ${images.length}: shared scene reference for the whole set — use this same location, background surfaces, props, palette and light direction on every page assigned a usage scene; do not copy its products, people, text or branding`
+      `image ${images.length}: ${current.label} module reference — borrow composition, framing and lighting for this segment, within the shared visual direction; do not copy its products, people, text, watermarks or branding`
     )
   }
   const sentences = [
-    'Create one professional e-commerce product detail page image.',
-    'Instruction priority: product fidelity and factual accuracy, the selected content controls, assigned page duty and output count are mandatory. Within those limits, additional requirements override default styling and wording. Notes cannot enable unchecked modules or change the page plan. Never print these instructions or UI option names as page copy.',
+    'Design one finished image-and-text segment of a premium e-commerce product detail page, intended to read vertically with the other segments.',
+    `Generate only segment ${pageIndex + 1} of ${selected.length}. Current module: ${current.label}.`,
+    `Reading order (context only): ${selected.map((module, index) => `${index + 1}. ${module.label}`).join(' → ')}.`,
+    'Each selected module gets exactly one segment. Do not insert a cover, merge modules, repeat a module or render the whole sequence. The first segment must fulfill its own module, not become a generic cover.',
+    'Return exactly one finished segment image, not a contact sheet or a collage of multiple pages. Detail insets or step illustrations are allowed within the current module.',
     `Role map: ${roles.join('; ')}.`,
-    'Treat the uploaded images as evidence for one product sample group, not as mandatory collage tiles. Use image 1 as the identity and color anchor; other images supply compatible angles, details or packaging. Do not fuse incompatible variants or invent unseen parts.',
-    'Use only facts visible in the sources or explicitly supplied in the additional requirements. Do not invent dimensions, performance claims, prices, discounts, certifications, logos or internal structures.',
-    `Selected modules for the whole set: ${selected.map((module) => module.label).join(', ') || 'none; product-only presentation'}.`,
-    `Ordered page plan (context only):\n${plan.map((page, index) => `Page ${index + 1}: ${page.duty}; ${page.modules.map((module) => module.label).join(', ') || 'product highlights'}`).join('\n')}`,
-    `Generate only page ${pageIndex + 1} of ${config.pageCount}. Current page duty: ${current.duty}.`,
-    `Assigned modules on this page: ${current.modules.map((module) => module.label).join(', ') || 'product highlights'}.`,
-    'Return exactly one standalone page image, not a contact sheet or a collage of multiple pages. Render only this page of the plan. When several modules share a page, combine them into one readable design with a dominant product visual and supporting sections or detail insets; do not omit a module or shrink the whole set into thumbnails.',
-    'Keep the same product, restrained palette and visual quality across the set. Default styling: light neutral palette, soft directional light and generous spacing. Adapt framing and lighting to the assigned content rather than forcing every page into the same poster or studio scene.',
+    'Product identity and verified facts are authoritative. Treat the product sources as one sample group, not mandatory collage tiles. Image 1 anchors identity and color; other product sources supply compatible angles and details. Do not fuse incompatible variants or invent unseen parts.',
+    'Use only facts visible in the product sources or explicitly supplied in the requirements. Do not invent dimensions, performance claims, prices, discounts, certifications, logos or internal structures. Decorative props must not be presented as included accessories.',
+    `Module task: ${MODULE_DUTIES[current.value]}`,
+    'Art direction: build an immersive product-appropriate environment with tactile surfaces, believable contact shadows, directional light and a coherent palette drawn from the product. Fill the composition with intentional photography, material detail and integrated text, not an isolated cutout floating on a large blank white canvas.',
+    'Every module may use environmental backgrounds, contextual props, material textures and coordinated color fields, even when the usage-scene module is not selected. A usage-scene segment specifically explains where and how the product is used; it is not a background permission switch.',
+    'Choose a setting suitable for this product, not a stock setting imposed on every category. Close-ups can fill the frame with real material; specifications can use a coordinated textured surface and readable callouts. Preserve breathing room for text without turning most of the image into empty background.',
+    'Across the sequence, keep the same palette, light direction, background material language, typographic hierarchy and horizontal text margins. Vary full-product views, close-ups and information layouts to serve each module; do not repeat the same poster composition.',
+    'Design edge-to-edge for vertical assembly: no screenshot frame, outer card border, rounded outer corners, oversized white margins or printed page numbers. Keep text and essential product features inside safe margins and away from the top and bottom cut edges; use compatible tones at the joins. Do not draw connectors that require exact alignment with another segment.',
+    'Text is allowed on every segment, independently of the selling-point overview module. By default, write one specific headline of about 6–14 Chinese characters, optionally one short subtitle, and only a few brief labels beside relevant details. Confirmed specification values and supplied exact copy are not subject to this headline length guideline. Honor an explicit request for a text-free design.',
+    'Write about the actual product and the current module, not generic superlatives. Do not print UI option names, module names, instructions, placeholder text or repeated slogans. Integrate text with the image rather than placing a long paragraph above a tiny product.',
+    'Follow an explicit language requirement in the notes; otherwise preserve the language of supplied copy, and use Simplified Chinese when neither is given. Preserve supplied titles, slogans, values, units, currency symbols and punctuation exactly. Never translate or rewrite real product branding.',
+    'Typography: use clean, legible Chinese letterforms, a clear headline/subtitle/label size hierarchy, consistent alignment and strong contrast against calm parts of the background. Keep all characters complete and readable; no fake glyphs, decorative pseudo-text, tiny dense copy or words over busy product details.',
+    'Priority: product fidelity and facts, current module and one-image output come first. Shared requirements set the visual direction; current-module notes refine only this segment. Module references guide its composition; a supplied first finished segment guides continuity, never new facts or repeated content. Do not inherit errors from generated references.',
+    current.value === 'model'
+      ? 'People are permitted as part of this model demonstration. Keep the actual product recognizable, unobscured and correctly scaled.'
+      : 'Do not add a model or people as the subject of this segment. For verified usage steps, a supporting hand is allowed only if needed to demonstrate the real action.',
   ]
-
-  if (pageIndex > 0 && current.duty === 'Content page') {
-    sentences.push(
-      `This is content page ${pageIndex} of ${contentPages}. When a module recurs, choose a different supported detail, angle or usage moment, not a duplicate cover or invented product feature.`
-    )
-  }
-  for (const module of current.modules) {
-    sentences.push(`${module.label}: ${MODULE_DUTIES[module.value]}`)
-  }
-  if (moduleReferenceNotes.length > 0) {
-    sentences.push(
-      `Module reference images on this page — ${moduleReferenceNotes.join('; ')}. Each block only informs its own module; do not reuse those references for other modules or copy their products, people, text or branding.`
-    )
-  }
-  const moduleExtras = current.modules
-    .map((module) => ({
-      label: module.label,
-      text: module.config.extra.trim(),
-    }))
-    .filter((entry) => entry.text.length > 0)
-  if (moduleExtras.length > 0) {
-    sentences.push(
-      'Per-module requirements below refine only their own module on this page; they cannot enable unchecked modules, alter the page plan or invent product facts.',
-      ...moduleExtras.map(
-        (entry) => `${entry.label} requirements:\n${entry.text}`
-      )
-    )
-  }
-  if (current.modules.length === 0) {
-    sentences.push(
-      'Focus on faithful product photography and visible features without adding unselected content modules.'
-    )
-  }
-
-  sentences.push(
-    withCopy
-      ? 'Selling-point copy is enabled. Add concise factual headlines or captions only where they support the current page; do not repeat every selling point on every page.'
-      : 'Selling-point copy is disabled. No added headlines, slogans, prices, promotional captions or calls to action, including on the cover and brand closing. Preserve physical product markings. Minimal factual labels, units or step numbers are allowed only for an assigned specifications or usage-steps module.',
-    'For permitted added text, follow an explicit language requirement in the notes; otherwise preserve the language of supplied copy, and use Simplified Chinese only when no language or copy is supplied. Preserve supplied slogans, values, currency symbols and punctuation exactly when their content is permitted. Do not translate or rewrite real product branding.',
-    withModel
-      ? 'People are permitted on this page only as part of its assigned model demonstration. Do not let the model obscure the selected close-ups or specifications.'
-      : 'No added models, people, hands or body parts on this page. Demonstrate any assigned usage steps with the product and clear positioning alone.'
-  )
-  if (withScene && config.sceneImage?.src) {
-    sentences.push(
-      'Uploaded shared scene: use the shared scene reference image as the required environment on every page assigned a usage scene, replacing generated settings. Keep its recognizable location, background surfaces, fixed props, palette and light direction throughout the set; adapt framing and crops to the current page duty; do not switch locations, erase the scene or copy its products, people, text or branding.'
-    )
-  } else if (withScene) {
-    sentences.push(
-      config.sceneMode === 'unified'
-        ? 'Unified scene: use the same product-appropriate real environment on every page assigned a usage scene. Follow a compatible setting specified in the notes; otherwise anchor the setting to the primary product source and use a simple neutral environment, daylight from the left and minimal props. Keep location, palette and light direction consistent; change framing to serve the current duty.'
-        : "Smart scene assignment: choose a product-appropriate real environment for this page's assigned usage context, following compatible scene requirements in the notes. Different scene pages may use different settings while retaining the product identity and visual style."
-    )
-  } else {
-    sentences.push(
-      'No lifestyle scenery or scene props on this page. Scene warehouse settings do not add a scene to an unassigned page. Use a clean product presentation background; close-ups may fill the frame with the real product surface.'
-    )
-  }
-  if (!currentKeys.has('package')) {
-    sentences.push(
-      'Do not add a packaging display or extra accessories on this page.'
-    )
-  }
-  if (!currentKeys.has('size-spec')) {
-    sentences.push(
-      'Do not add measurement diagrams or specification tables on this page.'
-    )
-  }
-  if (!currentKeys.has('steps')) {
-    sentences.push(
-      'Do not add a usage tutorial or step-by-step panels on this page.'
-    )
-  }
   if (config.ratio !== 'smart') {
-    sentences.push(
-      `Compose this page in a ${config.ratio} aspect ratio, keeping the primary product and all text inside safe margins.`
-    )
+    sentences.push(`Compose this segment in a ${config.ratio} aspect ratio.`)
   }
   if (config.extra.trim()) {
     sentences.push(
-      'Additional requirements refine the selected modules, product facts, permitted copy, audience, style and composition. Apply page-specific notes only to the matching page; apply shared notes throughout. Ignore conflicting requests to add disabled content, change the assigned duty, output more pages or invent facts.',
+      'Apply shared notes throughout and page-specific notes only to their matching segment. Notes cannot add modules, change the selected order or invent product facts.',
       `Additional detail page requirements:\n${config.extra.trim()}`
     )
   }
+  if (current.extra.trim()) {
+    sentences.push(
+      `${current.label} requirements for this segment only:\n${current.extra.trim()}`
+    )
+  }
   sentences.push(
-    `Final check: return only page ${pageIndex + 1}; make every assigned module visually evident, respect the copy/model/scene controls, preserve the product and omit unsupported claims.`
+    `Final check: return only segment ${pageIndex + 1}, visibly fulfill ${current.label}, preserve the real product, use a designed background and readable concise copy, and omit unsupported claims.`
   )
-
   return { prompt: sentences.join('\n'), images }
 }

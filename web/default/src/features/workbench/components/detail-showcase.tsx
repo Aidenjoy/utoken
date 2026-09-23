@@ -52,10 +52,10 @@ export function DetailShowcase() {
         icon={LayoutList}
         title={t('Product detail page examples')}
         description={t(
-          'Upload product images, add selling points and choose modules to create a consistent detail page set.'
+          'Choose modules to generate one image each, in order, with a shared visual style. Download the images to assemble a long detail page.'
         )}
         badges={[
-          t('Selling point copy'),
+          t('Selling point overview'),
           t('Use scenes'),
           t('Local close-up'),
           t('Brand ending'),

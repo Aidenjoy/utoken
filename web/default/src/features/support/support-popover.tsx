@@ -68,9 +68,7 @@ export function SupportPopover({
           <p className='text-sm font-medium'>{t('Contact Support')}</p>
           {hasContent ? (
             <p className='text-muted-foreground mt-1 text-xs leading-relaxed'>
-              {t(
-                'Scan the QR code to add our support contact, or reach us via the information below.'
-              )}
+              {t('Scan the QR code to add us and get in touch.')}
             </p>
           ) : null}
         </div>
@@ -81,7 +79,7 @@ export function SupportPopover({
               <figure className='flex flex-col items-center gap-2'>
                 <img
                   src={qrCode}
-                  alt={t('Support QR Code')}
+                  alt={t('QQ QR Code')}
                   width={176}
                   height={176}
                   decoding='async'
@@ -89,14 +87,14 @@ export function SupportPopover({
                 />
                 <figcaption className='text-muted-foreground flex items-center gap-1.5 text-xs'>
                   <QrCode className='size-3.5' aria-hidden='true' />
-                  {t('Support QR Code')}
+                  {t('QQ QR Code')}
                 </figcaption>
               </figure>
             ) : null}
             {contact ? (
               <div className='text-center'>
                 <span className='text-muted-foreground mb-1.5 block text-xs'>
-                  {t('Contact information')}
+                  {t('Or email us')}
                 </span>
                 {isEmail ? (
                   <a

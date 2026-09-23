@@ -197,9 +197,7 @@ export function DeveloperDocs() {
                   {t('Contact Support')}
                 </h3>
                 <p className='text-muted-foreground mx-auto mt-2 max-w-md text-sm leading-relaxed sm:mx-0'>
-                  {t(
-                    'Scan the QR code to add our support contact, or reach us via the information below.'
-                  )}
+                  {t('Scan the QR code to add us and get in touch.')}
                 </p>
                 {supportContact ? (
                   <div className='mt-3 flex items-center justify-center gap-2 sm:justify-start'>

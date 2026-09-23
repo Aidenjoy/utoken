@@ -41,16 +41,16 @@ import {
   createDefaultDetailPageConfig,
   DETAIL_CONTENT_ELEMENTS,
   DETAIL_ELEMENT_REFERENCE_MAX,
-  DETAIL_PAGE_COUNTS,
-  DETAIL_SCENE_MODES,
   TRY_ON_RATIOS,
   TRY_ON_SIZES,
 } from './constants'
 import { buildImageSize } from './lib/image-size'
-import { buildDetailPageRequest } from './lib/prompt-detail'
+import {
+  buildDetailPageRequest,
+  getSelectedDetailElements,
+} from './lib/prompt-detail'
 import { saveGenerationToLibrary } from './lib/save-to-library'
 import type {
-  ChipOption,
   DetailPageConfig,
   DetailPageElement,
   DetailPageElementValue,
@@ -69,6 +69,8 @@ export function DetailPagePage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
+  const [generationCount, setGenerationCount] = useState(0)
+  const selectedElements = getSelectedDetailElements(config.elements)
   const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
@@ -121,29 +123,38 @@ export function DetailPagePage() {
       toast.error(t('Select an image model'))
       return
     }
+    if (selectedElements.length === 0) {
+      toast.error(t('Select at least one content module'))
+      return
+    }
+    setGenerationCount(selectedElements.length)
     setPhase('loading')
     setError('')
     setResults([])
     const generated: string[] = []
     try {
-      const requests = DETAIL_PAGE_COUNTS.filter(
-        (page) => page <= config.pageCount
-      ).map((page) => {
-        const request = buildDetailPageRequest(config, page - 1)
+      const size = buildImageSize(config.resolution, config.ratio)
+      const requests = selectedElements.map((_element, index) => {
+        const request = buildDetailPageRequest(config, index)
         return {
           model: config.imageModel,
           prompt: request.prompt,
-          size: buildImageSize(config.resolution, config.ratio),
+          size,
           n: 1,
           watermark: false,
           image:
             request.images.length === 1 ? request.images[0] : request.images,
         }
       })
-      await generateImageBatch(requests, (url) => {
-        generated.push(url)
-        setResults([...generated])
-      })
+      await generateImageBatch(
+        requests,
+        (url) => {
+          generated.push(url)
+          setResults([...generated])
+        },
+        undefined,
+        'detail'
+      )
       setPhase('done')
     } catch (generateError) {
       const message =
@@ -173,12 +184,11 @@ export function DetailPagePage() {
       imageModel: prev.imageModel,
     }))
     setPhase('idle')
+    setGenerationCount(0)
     setResults([])
     setError('')
   }
 
-  const tr = (options: ChipOption[]) =>
-    options.map((option) => ({ ...option, label: t(option.label) }))
   const ratioOptions = TRY_ON_RATIOS.map((option) => ({
     ...option,
     label: option.value === 'smart' ? t('Smart') : option.label,
@@ -187,10 +197,6 @@ export function DetailPagePage() {
   const resolutionOptions = TRY_ON_SIZES.map((size) => ({
     label: size,
     value: size,
-  }))
-  const pageCountOptions = DETAIL_PAGE_COUNTS.map((count) => ({
-    label: String(count),
-    value: String(count),
   }))
 
   return (
@@ -229,16 +235,6 @@ export function DetailPagePage() {
               value={config.products}
               onChange={(next) => update('products', next)}
             />
-            <div className='space-y-1'>
-              <h2 className='text-sm font-medium'>
-                {t('Product relationship modeling')}
-              </h2>
-              <p className='text-muted-foreground text-xs'>
-                {t(
-                  'The feature relation model is built automatically after product images are uploaded.'
-                )}
-              </p>
-            </div>
           </section>
 
           <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
@@ -250,14 +246,14 @@ export function DetailPagePage() {
                 </span>
               </h2>
               <span className='text-muted-foreground text-xs'>
-                {t('{{count}} modules selected', {
-                  count: config.elements.filter((item) => item.enabled).length,
+                {t('{{count}} selected · {{count}} images', {
+                  count: selectedElements.length,
                 })}
               </span>
             </div>
             <p className='text-muted-foreground text-xs'>
               {t(
-                'Each module keeps its own reference images and requirements; they apply only to pages assigned that module.'
+                'One selected module creates one image, in the order below. References and notes apply only to that image.'
               )}
             </p>
             <div className='@container grid gap-3 sm:grid-cols-2'>
@@ -337,44 +333,6 @@ export function DetailPagePage() {
                 )
               })}
             </div>
-            <ChipGroup
-              label={t('Scene warehouse')}
-              options={tr(DETAIL_SCENE_MODES)}
-              value={config.sceneMode}
-              onChange={(value) => update('sceneMode', value)}
-            />
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Unified scene shares one environment across every page with the scene module; smart assignment matches each scene page with its own fitting environment. Pages without the scene module are not affected.'
-              )}
-            </p>
-            <UploadTile
-              label={t('Scene image')}
-              badge={t('Optional')}
-              hint={t(
-                'Use this scene on every page assigned a usage scene; pages without a scene module keep clean backgrounds.'
-              )}
-              max={1}
-              value={config.sceneImage ? [config.sceneImage] : []}
-              onChange={(next) => update('sceneImage', next[0] ?? null)}
-            />
-            <ChipGroup
-              label={t('Detail page planning')}
-              options={pageCountOptions}
-              value={String(config.pageCount)}
-              onChange={(value) => update('pageCount', Number(value))}
-            />
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Selected modules are distributed in order; fewer pages combine modules, and extra pages explore different details.'
-              )}
-            </p>
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Total {{count}} independent detail pages, generated page by page with live results.',
-                { count: config.pageCount }
-              )}
-            </p>
           </section>
 
           <section className='border-border bg-card rounded-lg border p-4'>
@@ -387,13 +345,13 @@ export function DetailPagePage() {
                 rows={3}
                 value={config.extra}
                 placeholder={t(
-                  'e.g. Use a clean, light style and highlight the stitching; slogan: Travel light. Add confirmed dimensions or packaging details here.'
+                  'e.g. Warm wood surfaces and side lighting throughout; headline: Travel light. Add verified dimensions, materials or packaging details.'
                 )}
                 onChange={(event) => update('extra', event.target.value)}
               />
               <p className='text-muted-foreground text-xs'>
                 {t(
-                  'Requirements refine selected modules. Enable the matching options for copy, models or scenes; supply confirmed facts for packaging, specifications and usage steps.'
+                  'Set the shared style and exact copy here. Every image can include backgrounds and text; provide verified facts for specifications, packaging and usage steps.'
                 )}
               </p>
             </Field>
@@ -424,10 +382,15 @@ export function DetailPagePage() {
             modelOptions={modelOptions}
             imageModel={config.imageModel}
             onModelChange={(value) => update('imageModel', value)}
-            count={config.pageCount}
+            count={selectedElements.length}
+            generateLabel={t('Generate {{count}} images', {
+              count: selectedElements.length,
+            })}
             onCountChange={() => {}}
             loading={isLoading}
-            disabled={config.products.length === 0}
+            disabled={
+              config.products.length === 0 || selectedElements.length === 0
+            }
             countHidden
             onGenerate={() => void handleGenerate()}
           />
@@ -438,11 +401,12 @@ export function DetailPagePage() {
             <DetailShowcase />
           ) : (
             <ResultPanel
+              layout='continuous'
               progressive
               phase={phase}
               results={results}
               error={error}
-              count={config.pageCount}
+              count={generationCount}
               loadingLabel={t('Generating detail pages...')}
             />
           )}

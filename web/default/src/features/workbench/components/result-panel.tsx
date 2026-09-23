@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { ZoomableImage } from '@/components/zoomable-image'
+import { cn } from '@/lib/utils'
 
 export type ResultPhase = 'idle' | 'loading' | 'error' | 'done'
 
@@ -41,12 +42,15 @@ interface ResultPanelProps {
   loadingLabel?: string
   /** 调用方在开始生成时清空结果，并在本轮生成过程中逐张追加。 */
   progressive?: boolean
+  /** 详情页按原图比例、同宽无间隔纵向预览，其他工作台仍使用网格。 */
+  layout?: 'grid' | 'continuous'
 }
 
 /** Right-hand canvas: empty state, loading skeletons or the result grid. */
 export function ResultPanel(props: ResultPanelProps) {
   const { t } = useTranslation()
   const isLoading = props.phase === 'loading'
+  const continuous = props.layout === 'continuous'
   const visibleResults = isLoading && !props.progressive ? [] : props.results
   // 结果按完成顺序追加，尚未完成的槽位保留占位，不因首张返回而消失。
   const pendingIds = Array.from(
@@ -115,6 +119,13 @@ export function ResultPanel(props: ResultPanelProps) {
       className='border-border bg-muted/30 rounded-lg border p-4'
       aria-busy={isLoading}
     >
+      {continuous ? (
+        <p className='text-muted-foreground mb-3 text-xs'>
+          {t(
+            'Continuous preview. Download each image to assemble your detail page.'
+          )}
+        </p>
+      ) : null}
       {isLoading ? (
         <p
           role='status'
@@ -133,24 +144,46 @@ export function ResultPanel(props: ResultPanelProps) {
           {props.error}
         </p>
       ) : null}
-      <div className='grid grid-cols-2 gap-3'>
+      <div className={continuous ? 'flex flex-col' : 'grid grid-cols-2 gap-3'}>
         {visibleResults.map((src, index) => (
           <div
             // eslint-disable-next-line react/no-array-index-key -- 结果只追加、不重排；索引用于区分重复 URL。
             key={`${index}-${src}`}
-            className='group border-border bg-card relative overflow-hidden rounded-md border'
+            className={cn(
+              'group relative',
+              continuous
+                ? 'w-full'
+                : 'border-border bg-card overflow-hidden rounded-md border'
+            )}
           >
             <ZoomableImage
               src={src}
-              alt={t('Try-on result {{index}}', { index: index + 1 })}
-              className='aspect-square w-full'
+              alt={
+                continuous
+                  ? t('Detail page segment {{index}}', { index: index + 1 })
+                  : t('Try-on result {{index}}', { index: index + 1 })
+              }
+              className={
+                continuous
+                  ? 'focus-visible:outline-primary w-full focus-visible:relative focus-visible:z-10 focus-visible:outline-2 [&>img]:h-auto'
+                  : 'aspect-square w-full'
+              }
               fit='contain'
             />
             <a
               href={src}
-              download={`try-on-${index + 1}.png`}
-              aria-label={t('Download')}
-              className='absolute top-2 right-2 flex size-8 items-center justify-center rounded-md bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/70'
+              download={`${continuous ? 'detail' : 'try-on'}-${index + 1}.png`}
+              aria-label={
+                continuous
+                  ? t('Download image {{index}}', { index: index + 1 })
+                  : t('Download')
+              }
+              className={cn(
+                'absolute top-2 right-2 flex size-8 items-center justify-center rounded-md bg-black/50 text-white transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-primary',
+                continuous
+                  ? 'opacity-100'
+                  : 'opacity-100 md:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+              )}
             >
               <Download className='size-4' />
             </a>
@@ -160,7 +193,10 @@ export function ResultPanel(props: ResultPanelProps) {
           <div
             key={id}
             aria-hidden='true'
-            className='bg-muted aspect-square animate-pulse rounded-md motion-reduce:animate-none'
+            className={cn(
+              'bg-muted animate-pulse motion-reduce:animate-none',
+              continuous ? 'aspect-[3/4] w-full' : 'aspect-square rounded-md'
+            )}
           />
         ))}
       </div>
