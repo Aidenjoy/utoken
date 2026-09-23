@@ -82,8 +82,9 @@ export function ProjectDialog(props: ProjectDialogProps) {
   const isEdit = Boolean(props.project?.id)
 
   const [title, setTitle] = React.useState('')
-  const [category, setCategory] =
-    React.useState<DirectorCategory>(props.category)
+  const [category, setCategory] = React.useState<DirectorCategory>(
+    props.category
+  )
   const [genre, setGenre] = React.useState('')
   const [style, setStyle] = React.useState('realistic')
   const [totalEpisodes, setTotalEpisodes] = React.useState(1)

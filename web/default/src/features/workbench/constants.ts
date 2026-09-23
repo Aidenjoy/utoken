@@ -23,6 +23,8 @@ import type {
   DesignDirection,
   DesignPreset,
   DetailPageConfig,
+  DetailPageElement,
+  DetailPageElementValue,
   DuoTryOnConfig,
   FashionDesignConfig,
   FashionDirection,
@@ -991,56 +993,56 @@ export const PRODUCT_SET_TYPES: {
     label: 'Traffic-driving hero image',
     defaultCount: 1,
     purpose:
-      'an attention-grabbing e-commerce hero image with the product as the main subject',
+      'An attention-grabbing e-commerce hero image. Make the complete product the dominant, sharply readable subject with clear margins. Use a strong focal point and a clear headline hierarchy only when copy is permitted; do not turn every image in the set into this advertising layout.',
   },
   {
     value: 'selling',
     label: 'Core selling point image',
     defaultCount: 1,
     purpose:
-      'highlight visible product benefits and key selling points without inventing claims',
+      'A core selling-point image. Visually demonstrate one or a few verifiable product benefits using the relevant product features, not just a generic full-product poster. When copy is permitted, place short factual captions beside the matching features; otherwise communicate the benefits through framing and lighting alone.',
   },
   {
     value: 'scene',
     label: 'Usage scene image',
     defaultCount: 1,
     purpose:
-      'show the product in a realistic, suitable use environment without people',
+      'A usage scene image. Show the product in a recognizable, realistic environment where it would actually be used, with physically plausible placement, scale and context. The environment must explain its use, not merely add a decorative plinth. Do not substitute an isolated studio packshot or a generic text poster. No people, hands or body parts.',
   },
   {
     value: 'detail',
     label: 'Product detail image',
     defaultCount: 1,
     purpose:
-      'show close-up product material, texture and craftsmanship details',
+      'A product detail photograph. Use a close-up or macro crop that makes a visible material, texture, seam, finish or craftsmanship detail the main subject. Preserve real surface detail. Do not substitute a full-product hero poster or invent hidden details.',
   },
   {
     value: 'white',
     label: 'White background image',
     defaultCount: 1,
     purpose:
-      'isolate the complete product on a pure white background with no scene props',
+      "A catalog packshot: isolate the complete product on a pure white background. Use a uniform solid #FFFFFF (RGB 255, 255, 255) background all the way to every canvas edge. Keep the full silhouette, handles and included parts inside the frame with clean margins and sharp edges. Preserve the product's real colors, texture and on-product logo. No gray, cream, colored or gradient background, vignette, horizon, floor texture, backdrop shadow, reflection, pedestal or scene props. No added text, headlines, selling points, prices, captions, badges, borders or watermarks, even when whole-set copy or scene options are enabled. This is a product-only cutout, never a marketing poster.",
   },
   {
     value: 'angle',
     label: 'Multi-angle product image',
     defaultCount: 0,
     purpose:
-      'show a different useful product viewing angle while preserving its exact shape',
+      'A single alternative product view. Show one useful side, rear or three-quarter angle supported by the product sources, keeping its exact shape and complete silhouette. Do not repeat the front hero composition, combine multiple views into a contact sheet or invent unseen construction.',
   },
   {
     value: 'effect',
     label: 'Product effect image',
     defaultCount: 0,
     purpose:
-      'use tasteful visual effects to emphasize the product without implying unverified capabilities',
+      'A product effect image. Use restrained lighting or abstract decorative effects around the clearly recognizable product. Keep effects separate from factual product claims; do not imply unverified capabilities, change the product material or obscure its silhouette.',
   },
   {
     value: 'structure',
     label: 'Product structure close-up',
     defaultCount: 0,
     purpose:
-      'show visible product construction and structural details; do not invent internal components',
+      'A product structure close-up. Focus on a visible joint, closure, component connection or construction detail supported by the source images. Show how those visible parts relate. Do not invent internal components, transparent shells, X-ray views, exploded diagrams or unsupported technical measurements.',
   },
 ]
 
@@ -1080,6 +1082,7 @@ export function createDefaultHeroSetConfig(): HeroSetConfig {
     mode: 'model',
     product: {
       products: [],
+      sceneImage: null,
       withCopy: true,
       withScene: true,
       shots: PRODUCT_SET_TYPES.map((type) => ({
@@ -1091,6 +1094,7 @@ export function createDefaultHeroSetConfig(): HeroSetConfig {
       extra: '',
     },
     reference: null,
+    sceneImage: null,
     angles: [{ value: 'front', count: 1 }],
     pose: '',
     expression: '',
@@ -1117,13 +1121,15 @@ export const DETAIL_CONTENT_ELEMENTS: ChipOption[] = [
 ]
 
 /** Modules enabled before any product-specific analysis. */
-const DETAIL_DEFAULT_ELEMENTS = ['copy', 'scene', 'closeup', 'brand-ending']
+const DETAIL_DEFAULT_ELEMENTS: ReadonlySet<DetailPageElementValue> = new Set([
+  'copy',
+  'scene',
+  'closeup',
+  'brand-ending',
+])
 
-export const DETAIL_TEXT_LANGUAGES: ChipOption[] = [
-  { value: 'zh', label: 'Chinese' },
-  { value: 'en', label: 'English' },
-  { value: 'ja', label: 'Japanese' },
-]
+/** 单个模块参考图上限，保持与商品套图逐用途参考图量级一致。 */
+export const DETAIL_ELEMENT_REFERENCE_MAX = 3
 
 export const DETAIL_SCENE_MODES: ChipOption[] = [
   { value: 'unified', label: 'Unified scene' },
@@ -1132,15 +1138,25 @@ export const DETAIL_SCENE_MODES: ChipOption[] = [
 
 export const DETAIL_PAGE_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const
 
+/** 依 DETAIL_CONTENT_ELEMENTS 顺序创建常驻模块列表，默认勾选基础四项。 */
+export function createDefaultDetailElements(): DetailPageElement[] {
+  return DETAIL_CONTENT_ELEMENTS.map((element) => {
+    const value = element.value as DetailPageElementValue
+    return {
+      value,
+      enabled: DETAIL_DEFAULT_ELEMENTS.has(value),
+      references: [],
+      extra: '',
+    }
+  })
+}
+
 export function createDefaultDetailPageConfig(): DetailPageConfig {
   return {
     products: [],
-    name: '',
-    selling: '',
-    audience: '',
-    scene: '',
-    elements: [...DETAIL_DEFAULT_ELEMENTS],
-    textLanguage: 'zh',
+    extra: '',
+    elements: createDefaultDetailElements(),
+    sceneImage: null,
     sceneMode: 'smart',
     pageCount: 1,
     resolution: '2K',

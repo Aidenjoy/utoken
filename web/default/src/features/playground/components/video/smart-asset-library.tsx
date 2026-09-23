@@ -264,7 +264,7 @@ export function SmartAssetsPanel({ className }: SmartAssetsPanelProps) {
           assets.map((asset) => (
             <div
               key={asset.id}
-              className='group border-border/60 hover:border-foreground/25 relative overflow-hidden rounded-xl border bg-background transition-all hover:shadow-md'
+              className='group border-border/60 hover:border-foreground/25 bg-background relative overflow-hidden rounded-xl border transition-all hover:shadow-md'
             >
               <div className='bg-muted relative aspect-square w-full overflow-hidden'>
                 <div className='size-full transition-transform duration-300 ease-out group-hover:scale-[1.04]'>
@@ -303,7 +303,7 @@ export function SmartAssetsPanel({ className }: SmartAssetsPanelProps) {
                 </div>
                 {/* Reference id + copy */}
                 <div className='flex items-start gap-0.5'>
-                  <span className='text-muted-foreground/90 min-w-0 flex-1 break-all font-mono text-[10px] leading-4'>
+                  <span className='text-muted-foreground/90 min-w-0 flex-1 font-mono text-[10px] leading-4 break-all'>
                     {`${SMART_ASSET_REF_PREFIX}${asset.id}`}
                   </span>
                   <button

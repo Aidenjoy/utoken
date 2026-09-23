@@ -105,9 +105,8 @@ export function MentionEditor(props: MentionEditorProps) {
 
   const [popupOpen, setPopupOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
-  const [activeKind, setActiveKind] = React.useState<MentionAsset['kind']>(
-    'char'
-  )
+  const [activeKind, setActiveKind] =
+    React.useState<MentionAsset['kind']>('char')
 
   const groups = React.useMemo(
     () =>
@@ -127,11 +126,14 @@ export function MentionEditor(props: MentionEditorProps) {
     const kindLabel = (kind: MentionAsset['kind']) =>
       t(MENTION_KIND_LABEL[kind])
     let html = escapeHtml(valueRef.current || '')
-    html = html.replaceAll(MENTION_TOKEN_RE, (token, kind: string, id: string) => {
-      const asset = assetMap.get(`${kind}:${id}`)
-      if (!asset) return ''
-      return chipHtml(token, asset, kindLabel)
-    })
+    html = html.replaceAll(
+      MENTION_TOKEN_RE,
+      (token, kind: string, id: string) => {
+        const asset = assetMap.get(`${kind}:${id}`)
+        if (!asset) return ''
+        return chipHtml(token, asset, kindLabel)
+      }
+    )
     editor.innerHTML = html.split('\n').join('<br>')
   }, [props.assets, t])
 
@@ -238,8 +240,7 @@ export function MentionEditor(props: MentionEditorProps) {
     return () => document.removeEventListener('mousedown', onDocMouseDown)
   }, [popupOpen])
 
-  const currentGroup =
-    groups.find((g) => g.kind === activeKind) ?? groups[0]
+  const currentGroup = groups.find((g) => g.kind === activeKind) ?? groups[0]
   const filteredItems = React.useMemo(() => {
     const items = currentGroup?.items ?? []
     const q = query.trim()

@@ -70,7 +70,6 @@ export async function deleteChannelAsset(
   }
 }
 
-
 export async function syncChannelAssets(payload: {
   source_channel_id: number
   target_channel_id: number

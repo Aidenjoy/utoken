@@ -16,18 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { KeyRound } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { KeyRound } from 'lucide-react'
 
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   Select,
   SelectContent,
@@ -43,16 +43,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import {
-  formatUseTime,
-  formatLogQuota,
-  formatTimestampToDate,
-  formatNumber,
-} from '@/lib/format'
 import { getAllLogs, getLogStats } from '@/features/usage-logs/api'
-import type { UsageLog } from '@/features/usage-logs/data/schema'
 import { ModelBadge } from '@/features/usage-logs/components/model-badge'
+import {
+  LOG_TYPE_FILTERS,
+  LOG_TYPE_ALL_VALUE,
+} from '@/features/usage-logs/constants'
+import type { UsageLog } from '@/features/usage-logs/data/schema'
 import {
   formatModelName,
   parseLogOther,
@@ -63,10 +60,13 @@ import {
   isDisplayableLogType,
   isTimingLogType,
 } from '@/features/usage-logs/lib/utils'
+import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import {
-  LOG_TYPE_FILTERS,
-  LOG_TYPE_ALL_VALUE,
-} from '@/features/usage-logs/constants'
+  formatUseTime,
+  formatLogQuota,
+  formatTimestampToDate,
+  formatNumber,
+} from '@/lib/format'
 
 const route = getRouteApi('/_authenticated/statistics-logs/')
 
@@ -195,15 +195,13 @@ export function StatisticsLogs() {
 
   return (
     <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>
-        {t('Statistics Logs')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Statistics Logs')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='flex h-full min-h-0 flex-col gap-4'>
           {/* Filter Bar */}
           <div className='flex flex-wrap items-end gap-3'>
             <div className='flex flex-col gap-1'>
-              <label className='text-xs text-muted-foreground'>
+              <label className='text-muted-foreground text-xs'>
                 {t('User')}
               </label>
               <Input
@@ -217,7 +215,7 @@ export function StatisticsLogs() {
               />
             </div>
             <div className='flex flex-col gap-1'>
-              <label className='text-xs text-muted-foreground'>
+              <label className='text-muted-foreground text-xs'>
                 {t('Model')}
               </label>
               <Input
@@ -231,7 +229,7 @@ export function StatisticsLogs() {
               />
             </div>
             <div className='flex flex-col gap-1'>
-              <label className='text-xs text-muted-foreground'>
+              <label className='text-muted-foreground text-xs'>
                 {t('Token')}
               </label>
               <Input
@@ -245,7 +243,7 @@ export function StatisticsLogs() {
               />
             </div>
             <div className='flex flex-col gap-1'>
-              <label className='text-xs text-muted-foreground'>
+              <label className='text-muted-foreground text-xs'>
                 {t('Type')}
               </label>
               <Select
@@ -272,7 +270,7 @@ export function StatisticsLogs() {
           {/* Stat Tags */}
           <div className='flex flex-wrap gap-3'>
             <div className='flex items-center gap-2 rounded-lg border px-4 py-2'>
-              <span className='text-xs text-muted-foreground'>
+              <span className='text-muted-foreground text-xs'>
                 {t('Quota')}:
               </span>
               <span className='font-semibold tabular-nums'>
@@ -280,13 +278,13 @@ export function StatisticsLogs() {
               </span>
             </div>
             <div className='flex items-center gap-2 rounded-lg border px-4 py-2'>
-              <span className='text-xs text-muted-foreground'>RPM:</span>
+              <span className='text-muted-foreground text-xs'>RPM:</span>
               <span className='font-semibold tabular-nums'>
                 {formatNumber(stat?.rpm ?? 0)}
               </span>
             </div>
             <div className='flex items-center gap-2 rounded-lg border px-4 py-2'>
-              <span className='text-xs text-muted-foreground'>TPM:</span>
+              <span className='text-muted-foreground text-xs'>TPM:</span>
               <span className='font-semibold tabular-nums'>
                 {formatNumber(stat?.tpm ?? 0)}
               </span>
@@ -315,7 +313,7 @@ export function StatisticsLogs() {
                     <TableRow key={`skeleton-${i}`}>
                       {Array.from({ length: colCount }).map((_, j) => (
                         <TableCell key={j}>
-                          <div className='h-4 animate-pulse rounded bg-muted' />
+                          <div className='bg-muted h-4 animate-pulse rounded' />
                         </TableCell>
                       ))}
                     </TableRow>
@@ -324,7 +322,7 @@ export function StatisticsLogs() {
                   <TableRow>
                     <TableCell
                       colSpan={colCount}
-                      className='py-12 text-center text-muted-foreground'
+                      className='text-muted-foreground py-12 text-center'
                     >
                       {t('No Logs Found')}
                     </TableCell>
@@ -408,8 +406,7 @@ export function StatisticsLogs() {
                                 showDot={false}
                                 className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
                               />
-                              {(log.group ||
-                                (other?.group ?? '')) && (
+                              {(log.group || (other?.group ?? '')) && (
                                 <span className='text-muted-foreground/60 truncate [font-family:var(--font-body)] !text-xs'>
                                   {log.group || other?.group}
                                 </span>
@@ -498,7 +495,7 @@ export function StatisticsLogs() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className='flex items-center justify-between'>
-              <span className='text-sm text-muted-foreground'>
+              <span className='text-muted-foreground text-sm'>
                 {t('Total')}: {formatNumber(total)}
               </span>
               <div className='flex items-center gap-2'>

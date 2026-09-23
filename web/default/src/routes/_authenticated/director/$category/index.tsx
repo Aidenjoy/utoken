@@ -22,9 +22,7 @@ import { Main } from '@/components/layout'
 import { isDirectorCategory } from '@/features/director/constants'
 import { DirectorListPage } from '@/features/director/director-list-page'
 
-export const Route = createFileRoute(
-  '/_authenticated/director/$category/'
-)({
+export const Route = createFileRoute('/_authenticated/director/$category/')({
   component: DirectorCategoryIndexRoutePage,
 })
 

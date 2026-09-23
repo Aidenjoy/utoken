@@ -111,9 +111,7 @@ export function DirectorStudio(props: DirectorStudioProps) {
           />
         )
       case 'props':
-        return (
-          <EntityStep key='prop' type='prop' projectId={props.projectId} />
-        )
+        return <EntityStep key='prop' type='prop' projectId={props.projectId} />
       case 'scenes':
         return (
           <EntityStep key='scene' type='scene' projectId={props.projectId} />

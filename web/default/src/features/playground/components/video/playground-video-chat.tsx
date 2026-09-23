@@ -17,7 +17,10 @@ interface PlaygroundVideoChatProps {
   onClear?: () => void
 }
 
-export function PlaygroundVideoChat({ tasks, onClear }: PlaygroundVideoChatProps) {
+export function PlaygroundVideoChat({
+  tasks,
+  onClear,
+}: PlaygroundVideoChatProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -43,7 +46,10 @@ export function PlaygroundVideoChat({ tasks, onClear }: PlaygroundVideoChatProps
   }
 
   return (
-    <div ref={scrollRef} className='mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-4 py-6'>
+    <div
+      ref={scrollRef}
+      className='mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-4 py-6'
+    >
       <div className='mb-3 flex items-center justify-between'>
         <span className='text-muted-foreground text-sm'>
           {tasks.length} {t('task(s)')}
@@ -94,7 +100,7 @@ function VideoTaskCard({ task }: { task: VideoTask }) {
 
       {/* Prompt */}
       <div className='px-4 py-2'>
-        <p className='text-sm leading-relaxed line-clamp-2'>{task.prompt}</p>
+        <p className='line-clamp-2 text-sm leading-relaxed'>{task.prompt}</p>
         {task.images.length > 0 && (
           <div className='mt-2 flex gap-1.5'>
             {task.images.map((img, i) => (
@@ -169,9 +175,7 @@ function VideoTaskCard({ task }: { task: VideoTask }) {
               </div>
             </div>
             <span className='text-muted-foreground text-xs tabular-nums'>
-              {task.status === 'queued'
-                ? t('Queued...')
-                : `${task.progress}%`}
+              {task.status === 'queued' ? t('Queued...') : `${task.progress}%`}
             </span>
           </div>
         </div>
@@ -199,7 +203,7 @@ function TaskStatusBadge({
       )
     case 'failed':
       return (
-        <span className='flex items-center gap-1 text-xs font-medium text-destructive'>
+        <span className='text-destructive flex items-center gap-1 text-xs font-medium'>
           <AlertCircleIcon size={14} />
           {t('Failed')}
         </span>
@@ -219,9 +223,7 @@ function TaskStatusBadge({
       )
     default:
       return (
-        <span className='text-primary text-xs font-medium'>
-          {progress}%
-        </span>
+        <span className='text-primary text-xs font-medium'>{progress}%</span>
       )
   }
 }

@@ -44,8 +44,7 @@ export function handleServerError(error: unknown) {
     const data = error.response.data as
       | { title?: string; message?: string }
       | undefined
-    errMsg =
-      data?.title || data?.message || error.message || errMsg
+    errMsg = data?.title || data?.message || error.message || errMsg
   }
 
   toast.error(errMsg)

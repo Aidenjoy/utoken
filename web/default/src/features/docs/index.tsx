@@ -21,6 +21,8 @@ import {
   Globe,
   Image as ImageIcon,
   KeyRound,
+  LifeBuoy,
+  Mail,
   MessageSquareText,
   ShieldCheck,
   type LucideIcon,
@@ -39,6 +41,8 @@ import {
   resolveDocsSiteUrl,
   type DocsTabId,
 } from './content'
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const TABS: { id: DocsTabId; label: string; icon: LucideIcon }[] = [
   { id: 'language', label: '语言模型', icon: MessageSquareText },
@@ -89,6 +93,12 @@ function GettingStartedCard(props: {
 export function DeveloperDocs() {
   const { t } = useTranslation()
   const { status } = useStatus()
+  const supportRecord = status as Record<string, unknown> | null
+  const supportQr =
+    (supportRecord?.support_qrcode as string | undefined)?.trim() ?? ''
+  const supportContact =
+    (supportRecord?.support_contact as string | undefined)?.trim() ?? ''
+  const isSupportEmail = EMAIL_PATTERN.test(supportContact)
   const [activeTab, setActiveTab] = useState<DocsTabId>('language')
   const [activeSection, setActiveSection] = useState('')
   const siteUrl = useMemo(() => resolveDocsSiteUrl(status), [status])
@@ -167,6 +177,50 @@ export function DeveloperDocs() {
               steps={gettingStarted.apiKey.steps}
             />
           </div>
+
+          {/* 联系技术支持 — 展示管理员在系统设置「系统信息」中维护的客服二维码与联系方式 */}
+          {supportQr || supportContact ? (
+            <div className='border-border/60 bg-card/60 mb-12 flex flex-col items-center gap-5 rounded-2xl border p-6 backdrop-blur-sm sm:mb-16 sm:flex-row sm:gap-7'>
+              {supportQr ? (
+                <img
+                  src={supportQr}
+                  alt={t('Support QR Code')}
+                  width={132}
+                  height={132}
+                  decoding='async'
+                  className='border-border bg-card size-[132px] shrink-0 rounded-xl border object-contain p-1.5'
+                />
+              ) : null}
+              <div className='min-w-0 text-center sm:text-left'>
+                <h3 className='flex items-center justify-center gap-2 font-semibold sm:justify-start'>
+                  <LifeBuoy className='text-muted-foreground size-4' />
+                  {t('Contact Support')}
+                </h3>
+                <p className='text-muted-foreground mx-auto mt-2 max-w-md text-sm leading-relaxed sm:mx-0'>
+                  {t(
+                    'Scan the QR code to add our support contact, or reach us via the information below.'
+                  )}
+                </p>
+                {supportContact ? (
+                  <div className='mt-3 flex items-center justify-center gap-2 sm:justify-start'>
+                    <Mail className='text-muted-foreground size-4 shrink-0' />
+                    {isSupportEmail ? (
+                      <a
+                        href={`mailto:${supportContact}`}
+                        className='text-primary text-sm font-medium break-all hover:underline'
+                      >
+                        {supportContact}
+                      </a>
+                    ) : (
+                      <span className='text-foreground text-sm font-medium break-all'>
+                        {supportContact}
+                      </span>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {/* 模型类型页签 */}
           <div className='mb-8 flex flex-wrap items-center gap-2'>

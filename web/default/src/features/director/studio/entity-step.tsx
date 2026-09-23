@@ -104,21 +104,23 @@ const ENTITY_TITLE: Record<DirectorEntityType, string> = {
 }
 
 // 页头标题与描述（标题键与流水线步骤名一致）
-const ENTITY_HEADER: Record<DirectorEntityType, { title: string; desc: string }> =
-  {
-    character: {
-      title: 'Character Images',
-      desc: 'Generate multi-angle character reference images as consistency references for storyboards and videos',
-    },
-    prop: {
-      title: 'Prop Images',
-      desc: 'Generate prop images from prompts as consistency references for storyboard images',
-    },
-    scene: {
-      title: 'Scene Images',
-      desc: 'Generate scene images from prompts as background references for storyboard images',
-    },
-  }
+const ENTITY_HEADER: Record<
+  DirectorEntityType,
+  { title: string; desc: string }
+> = {
+  character: {
+    title: 'Character Images',
+    desc: 'Generate multi-angle character reference images as consistency references for storyboards and videos',
+  },
+  prop: {
+    title: 'Prop Images',
+    desc: 'Generate prop images from prompts as consistency references for storyboard images',
+  },
+  scene: {
+    title: 'Scene Images',
+    desc: 'Generate scene images from prompts as background references for storyboard images',
+  },
+}
 
 function entityName(type: DirectorEntityType, item: EntityItem): string {
   if (type === 'scene') return (item as DirectorScene).location
@@ -435,7 +437,8 @@ function EntityCard(props: EntityCardProps) {
 
   let promptLabel: string
   if (promptMutation.isPending) promptLabel = t('Generating...')
-  else if ((item as DirectorCharacter).prompt) promptLabel = t('Regenerate Prompt')
+  else if ((item as DirectorCharacter).prompt)
+    promptLabel = t('Regenerate Prompt')
   else promptLabel = t('Generate Prompt')
 
   let imageLabel: string

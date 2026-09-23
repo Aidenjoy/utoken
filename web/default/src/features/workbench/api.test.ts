@@ -174,3 +174,64 @@ for (const count of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 11]) {
     assert.equal(calls, 0)
   })
 }
+
+test('套图模式将首张成片固定为后续请求的视觉锚点，不改动首张请求', async () => {
+  const calls: TryOnGenerationBody[] = []
+  let seq = 0
+  api.defaults.adapter = async (config) => {
+    calls.push(JSON.parse(config.data as string) as TryOnGenerationBody)
+    seq++
+    return {
+      config,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      data: { data: [{ url: `shot-${seq}` }] },
+    }
+  }
+  const plans = [
+    request(2, 'front view'),
+    { ...request(1, 'side'), image: 'side-source' },
+  ]
+  await generateImageBatch(plans, () => {}, undefined, 'model')
+  assert.equal(calls.length, 3)
+  assert.deepEqual(calls[0].image, ['source-a', 'source-b'])
+  assert.doesNotMatch(calls[0].prompt, /continuity reference/)
+  assert.deepEqual(calls[1].image, ['source-a', 'source-b', 'shot-1'])
+  assert.match(calls[1].prompt, /Image 3 is the first finished photograph/)
+  assert.match(calls[1].prompt, /Continue the exact same photo shoot/)
+  assert.deepEqual(calls[2].image, ['side-source', 'shot-1'])
+  assert.match(calls[2].prompt, /Continue the exact same photo shoot/)
+  assert.equal(calls[1].prompt.startsWith('front view\n'), true)
+  assert.equal(calls[2].prompt.startsWith('side\n'), true)
+})
+
+test('商品套图锚点提示词保留白底与用途优先级，非套图模式不注入锚点', async () => {
+  const calls: TryOnGenerationBody[] = []
+  let seq = 0
+  api.defaults.adapter = async (config) => {
+    calls.push(JSON.parse(config.data as string) as TryOnGenerationBody)
+    seq++
+    return {
+      config,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      data: { data: [{ url: `shot-${seq}` }] },
+    }
+  }
+  await generateImageBatch([request(2)], () => {}, undefined, 'product')
+  assert.match(
+    calls[1].prompt,
+    /white-background images must stay uniform #FFFFFF/
+  )
+  assert.match(calls[1].prompt, /Continue the same product photo shoot/)
+  calls.length = 0
+  seq = 0
+  await generateImageBatch([request(2)], () => {})
+  assert.deepEqual(calls, [
+    { ...request(2), n: 1 },
+    { ...request(2), n: 1 },
+  ])
+  assert.doesNotMatch(calls[1].prompt, /continuity reference/)
+})

@@ -70,7 +70,9 @@ export function AssetCategoryDialog(props: AssetCategoryDialogProps) {
   )
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['director', 'asset-categories'] })
+    queryClient.invalidateQueries({
+      queryKey: ['director', 'asset-categories'],
+    })
     props.onChanged()
   }
 
@@ -153,10 +155,7 @@ export function AssetCategoryDialog(props: AssetCategoryDialogProps) {
                 if (e.key === 'Enter') submitCreate()
               }}
             />
-            <Button
-              disabled={createMutation.isPending}
-              onClick={submitCreate}
-            >
+            <Button disabled={createMutation.isPending} onClick={submitCreate}>
               {t('Add')}
             </Button>
           </div>
@@ -223,10 +222,7 @@ export function AssetCategoryDialog(props: AssetCategoryDialogProps) {
             <Button variant='outline' onClick={() => setRenaming(null)}>
               {t('Cancel')}
             </Button>
-            <Button
-              disabled={renameMutation.isPending}
-              onClick={submitRename}
-            >
+            <Button disabled={renameMutation.isPending} onClick={submitRename}>
               {t('Confirm')}
             </Button>
           </DialogFooter>

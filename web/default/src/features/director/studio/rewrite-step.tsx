@@ -53,7 +53,11 @@ export function RewriteStep(props: RewriteStepProps) {
     onSuccess: (res) => {
       if (res.success) {
         // 后端异步执行：立即返回，结果由流水线轮询回填 scriptContent
-        toast.info(t('AI rewrite started. It may take about a minute; the script will update automatically when done.'))
+        toast.info(
+          t(
+            'AI rewrite started. It may take about a minute; the script will update automatically when done.'
+          )
+        )
         props.onSaved()
       }
     },
@@ -99,7 +103,9 @@ export function RewriteStep(props: RewriteStepProps) {
         <div>
           <div className='text-base font-semibold'>{t('AI Rewrite')}</div>
           <div className='text-muted-foreground mt-1 text-[13px]'>
-            {t('Rewrite the original content into a vertical short drama script')}
+            {t(
+              'Rewrite the original content into a vertical short drama script'
+            )}
           </div>
         </div>
         <div className='flex flex-wrap items-center gap-2'>

@@ -80,6 +80,8 @@ func GetStatus(c *gin.Context) {
 		"theme":                       system_setting.GetThemeSettings().Frontend,
 		"system_name":                 common.SystemName,
 		"logo":                        common.Logo,
+		"support_qrcode":              common.OptionMap["SupportQRCode"],
+		"support_contact":             common.OptionMap["SupportContact"],
 		"footer_html":                 common.Footer,
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,

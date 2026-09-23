@@ -1,7 +1,4 @@
-import {
-  DEFAULT_VIDEO_CONFIG,
-  VIDEO_STORAGE_KEYS,
-} from '../../constants'
+import { DEFAULT_VIDEO_CONFIG, VIDEO_STORAGE_KEYS } from '../../constants'
 import type { VideoConfig, VideoTask } from '../../types'
 
 const MAX_STORED_VIDEO_TASKS = 50

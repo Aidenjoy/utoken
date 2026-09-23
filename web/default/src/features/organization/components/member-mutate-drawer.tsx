@@ -204,7 +204,8 @@ export function MemberMutateDrawer({
   // 展示上限与池余额卡片同舍入口径；池余额在 quota 单位下不一定整分
   // （如实际 85.69997 展示为 85.7），提交时一分以内的超出按展示舍入误差
   // 夹紧到池实际余量，保证"照着显示的值输"一定能保存。
-  const maxAllocLabel = maxAllocUnits == null ? null : formatQuota(maxAllocUnits)
+  const maxAllocLabel =
+    maxAllocUnits == null ? null : formatQuota(maxAllocUnits)
   const centUnits = parseQuotaFromDollars(0.01)
 
   const onSubmit = async (values: MemberFormValues) => {
@@ -213,9 +214,12 @@ export function MemberMutateDrawer({
       if (quotaLimit - maxAllocUnits >= centUnits) {
         form.setError('quota_amount', {
           type: 'manual',
-          message: t('Sub-quota exceeds the allocatable pool balance ({{amount}})', {
-            amount: maxAllocLabel ?? '',
-          }),
+          message: t(
+            'Sub-quota exceeds the allocatable pool balance ({{amount}})',
+            {
+              amount: maxAllocLabel ?? '',
+            }
+          ),
         })
         return
       }

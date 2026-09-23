@@ -115,33 +115,70 @@ export function buildProductSetRequests(
       const images = product.products.map((image) => image.src)
       const roles = images.map(
         (_image, index) =>
-          `image ${index + 1}: product source — preserve the exact identity, shape, materials, colors and visible logo`
+          `image ${index + 1}: product source — preserve the exact identity, shape, materials, colors and physical on-product logo; do not copy its background, layout, promotional text, price labels or watermarks`
       )
+      const withScene =
+        shot.type !== 'white' && (product.withScene || shot.type === 'scene')
+      if (withScene && product.sceneImage?.src) {
+        images.push(product.sceneImage.src)
+        roles.push(
+          `image ${images.length}: shared scene reference for the whole set — use this same location, background surfaces, props, palette and light direction; do not copy its products, people, text or branding`
+        )
+      }
       if (reference) {
         images.push(reference.src)
         roles.push(
-          `image ${images.length}: layout reference for this purpose only — borrow composition, camera angle and lighting, not its product, people, prices or claims`
+          `image ${images.length}: layout reference for this purpose only — borrow composition and camera angle only where compatible with the required purpose and shared scene; never replace the shared background, lighting or palette, or copy its product, people, branding, text, prices or claims`
         )
+        if (shot.type === 'white') {
+          roles.push(
+            'For this white-background packshot, the layout reference may guide only product orientation and framing. Discard its background, scenery, lighting gradients, shadows, props, typography and graphics'
+          )
+        }
       }
       const sentences = [
-        'Create a professional e-commerce product image belonging to one coherent product set.',
-        `Purpose: ${type.purpose}.`,
+        'Create exactly one standalone professional e-commerce product image for the assigned purpose. Output only this image, never a collage, contact sheet or a sheet of the whole set.',
+        `Required image type: ${type.label}.`,
+        'Instruction priority: the required image purpose and its prohibitions are mandatory. Within those limits, purpose-specific requirements override whole-set requirements, which override default content options. References guide only compatible visual details. Do not blend other image purposes into this request.',
+        `Purpose: ${type.purpose}`,
         `Role map: ${roles.join('; ')}.`,
-        'Keep the product identity, color palette, typography and lighting coherent across the set. Output separate full images, not a collage or contact sheet. Do not add people, models, hands or body parts.',
-        'Only use product facts visible in the source images or explicitly supplied below. Do not invent prices, certifications, performance data or internal structures.',
-        product.withCopy
-          ? 'Include concise, legible selling-point copy.'
-          : 'Do not add selling-point copy or promotional text; retain existing product logos.',
-        product.withScene && shot.type !== 'white'
-          ? 'Use a plausible product-appropriate environment when it serves this image purpose.'
-          : 'Use a clean studio background without lifestyle scenery or scene props.',
+        'This image belongs to one coordinated product photo shoot, not an independent design. Lock the exact same product identity, materials, true colors, lighting direction, color temperature, palette and retouching across the set. All scene-enabled images share one physical location, backdrop, surfaces and props; only purpose-specific framing, camera angle and close-up scale may change. Keep typography consistent wherever copy is permitted, without copying another image purpose or its text. White-background packshots are the explicit background exception. Do not add people, models, hands or body parts.',
+        'Only use product facts visible in the source images or explicitly supplied below. Do not invent brand names, slogans, prices, certifications, performance data or internal structures. Instructions describe what to draw; do not print the instructions themselves.',
       ]
+      if (shot.type === 'white') {
+        sentences.push(
+          'Copy and scene policy for this image: disabled regardless of whole-set options. Ignore any conflicting request for a slogan, price, promotional overlay, lifestyle scene or colored background, including requests in the notes below. Retain only markings physically present on the product.'
+        )
+      } else {
+        sentences.push(
+          product.withCopy
+            ? 'Include concise, legible selling-point copy only where it supports this image purpose. Keep supplied copy in its original language and spelling; do not invent a new brand or slogan.'
+            : 'Do not add selling-point copy or promotional text unless explicitly supplied in compatible requirements below; retain existing product logos.'
+        )
+        if (withScene) {
+          sentences.push(
+            product.sceneImage?.src
+              ? 'Use the uploaded shared scene as the required environment, not optional inspiration. Keep its recognizable background and lighting throughout the set. Adapt product placement and crop to the assigned purpose; do not switch locations or erase the scene.'
+              : 'Establish one realistic product-appropriate usage environment for the whole set, with neutral surfaces, soft daylight from the left and minimal fixed props. Reuse that same location and lighting in every scene-enabled image; never invent a new setting per image.',
+            'Keep the shared environment subordinate to the assigned product framing. For detail and structure images show a close-up within the same setting, not a distant lifestyle shot.'
+          )
+          if (shot.type === 'scene') {
+            sentences.push(
+              'A recognizable product-appropriate usage environment is required for this scene image, not optional; the product must remain the focal point.'
+            )
+          }
+        } else {
+          sentences.push(
+            'Use a clean studio background without lifestyle scenery or scene props unless compatible explicit requirements specify otherwise. Reuse the same studio backdrop and lighting across these images.'
+          )
+        }
+      }
       if (config.ratio !== 'smart') {
         sentences.push(`Compose the frame in a ${config.ratio} aspect ratio.`)
       }
       if (product.extra.trim() || shot.extra.trim()) {
         sentences.push(
-          'Explicit requirements below take priority over inferred copy and default content options. Preserve specified slogans, prices, currency symbols and punctuation exactly. Purpose-specific requirements take priority over whole-set requirements. Keep the output product-only.'
+          'Apply the requirements below only where compatible with the mandatory image purpose and its prohibitions. Purpose-specific requirements take priority over whole-set requirements and default content options, but cannot change the assigned image type. When added copy is permitted, preserve specified slogans, prices, currency symbols and punctuation exactly. Keep the output product-only.'
         )
         if (product.extra.trim()) {
           sentences.push(`Whole-set requirements:\n${product.extra.trim()}`)
@@ -150,6 +187,12 @@ export function buildProductSetRequests(
           sentences.push(`Purpose-specific requirements:\n${shot.extra.trim()}`)
         }
       }
+      sentences.push(
+        `Final image check: deliver only the ${type.label.toLowerCase()} described above.`,
+        shot.type === 'white'
+          ? 'The finished image must show only the complete product on uniform #FFFFFF, with no added text or scenery. Remove any conflicting background, overlay or decoration before returning the image.'
+          : 'Check that the assigned purpose is visually evident, product identity is unchanged and no unsupported claims or content from another purpose have been added.'
+      )
       requests.push({
         prompt: sentences.join('\n'),
         images,
@@ -178,12 +221,26 @@ export function buildModelSetRequests(
     throw new Error('Select valid views with 1 to 4 images each')
   }
 
+  const images = [config.reference.src]
   const sentences = [
-    'Create exactly one standalone professional e-commerce model photograph. Never output a collage, contact sheet, split panel, or multiple views in one image.',
-    'Image 1 is the identity reference: preserve the same person, facial features, hairstyle and body proportions. Its pose, expression, outfit and crop are not mandatory when an override below is selected.',
-    'Apply all selected instructions together. Selected pose, expression, outfit and layout override conflicting details in the reference. Keep the resulting styling and environment coherent across the set, not necessarily identical to the source.',
-    'Use the reference background and lighting as the default environment unless a selected instruction or explicit requirement changes it.',
+    'Create exactly one standalone professional e-commerce model photograph belonging to one continuous photo shoot. Never output a collage, contact sheet, split panel, or multiple views in one image.',
+    'Image 1 is the identity reference: preserve the same person, facial features, hairstyle, skin tone and body proportions. Its pose, expression, outfit and crop are not mandatory when an override below is selected.',
+    'Set consistency is mandatory: every image must show the exact same person wearing the exact same outfit and accessories in the same physical scene, with identical background elements, light direction, color temperature, exposure, palette and photographic treatment. Keep camera height, lens perspective and framing scale consistent. Only the requested body view and natural pose or expression may vary; do not redesign the scene or restyle the model for each image.',
+    'Apply selected styling and explicit whole-set requirements once to establish the shared look, then preserve it throughout the set. An outfit preset means one specific outfit reused in every image, not different outfits of the same style.',
   ]
+  if (config.sceneImage?.src) {
+    images.push(config.sceneImage.src)
+    sentences.push(
+      'Image 2 is the shared scene reference: use its location, background surfaces, fixed props, depth and lighting for every image, replacing the background of image 1. Borrow only the environment, never its people, clothing, products, text or branding. Keep this background recognizable and place the model naturally in it with correct scale and contact shadows.'
+    )
+  } else {
+    sentences.push(
+      'Use the reference background and lighting as the shared environment unless explicit whole-set requirements change it. If the reference is a cutout, transparent or has no usable environment, establish one light-gray photographic studio with a visible floor, subtle backdrop depth and soft light from the left, and reuse it in every image.'
+    )
+  }
+  sentences.push(
+    'Always render a complete background with natural subject contact and depth; never return a transparent cutout, an isolated floating person or remove the environment. Any requested background adjustment applies identically to the whole set.'
+  )
   const pose = POSE_SENTENCE[config.pose]
   if (pose) {
     sentences.push(`Required pose and framing: ${pose}`)
@@ -224,9 +281,10 @@ export function buildModelSetRequests(
         prompt: [
           ...sentences,
           `Required view for this image: ${ANGLE_SENTENCE[angle.value]}`,
-          `This is variation ${index + 1} of ${angle.count} for the ${angle.value} view. Produce only this single photograph. Use subtle natural variation while obeying the selected instructions and any explicit whole-set overrides.`,
+          `This is variation ${index + 1} of ${angle.count} for the ${angle.value} view. Produce only this single photograph from the same shoot. Vary only a natural hand position, weight shift or expression within the selected pose and view; keep clothing, accessories, background, lighting and framing scale unchanged. Obey all explicit whole-set requirements.`,
+          `Pose variation cue: ${['relaxed hands and balanced posture', 'a subtle weight shift and a different relaxed hand position', 'a small natural arm adjustment', 'a gentle head tilt with relaxed shoulders'][index]}. Adapt this cue to the required pose and view without overriding them.`,
         ].join('\n'),
-        images: [config.reference.src],
+        images: [...images],
         count: 1,
       })
     }

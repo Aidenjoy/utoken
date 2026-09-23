@@ -961,9 +961,9 @@ export function ChannelMutateDrawer({
     [45, 60].includes(currentType) && !doubaoApiEditUnlocked
   // Types that render a dedicated API-address field; the generic Base URL
   // input must stay hidden for them so the two never conflict.
-  const hasDedicatedBaseUrlField = [
-    3, 8, 22, 36, 45, 59, 60,
-  ].includes(currentType)
+  const hasDedicatedBaseUrlField = [3, 8, 22, 36, 45, 59, 60].includes(
+    currentType
+  )
   const identityComplete = Boolean(currentName?.trim() && currentType > 0)
   const credentialsComplete = Boolean(
     (isEditing || currentKey?.trim()) &&

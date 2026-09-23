@@ -22,7 +22,12 @@
         display: none;
         background: #7c3aed;
         color: #fff;
-        font: 13px/1.6 system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        font:
+          13px/1.6 system-ui,
+          -apple-system,
+          'PingFang SC',
+          'Microsoft YaHei',
+          sans-serif;
         padding: 10px 14px;
         text-align: center;
       }
@@ -31,34 +36,36 @@
       }
     </style>
     <script>
-      (function () {
+      ;(function () {
         try {
           var modern =
             window.CSS &&
             CSS.supports &&
             CSS.supports('color', 'oklch(50% 0.1 260)') &&
-            CSS.supports('height', '100svh');
+            CSS.supports('height', '100svh')
           if (!modern) {
-            document.documentElement.className += ' legacy-browser';
+            document.documentElement.className += ' legacy-browser'
           }
         } catch (e) {}
-      })();
+      })()
     </script>
     <!--Baidu Analytics-->
     <script>
-      var _hmt = _hmt || [];
-      (function() {
-        var hm = document.createElement("script");
-        hm.src = "https://hm.baidu.com/hm.js?96de375ddc55f28c9bec2cda74941ba8";
-        var s = document.getElementsByTagName("script")[0];
-        s.parentNode.insertBefore(hm, s);
-      })();
+      var _hmt = _hmt || []
+      ;(function () {
+        var hm = document.createElement('script')
+        hm.src = 'https://hm.baidu.com/hm.js?96de375ddc55f28c9bec2cda74941ba8'
+        var s = document.getElementsByTagName('script')[0]
+        s.parentNode.insertBefore(hm, s)
+      })()
     </script>
   </head>
 
   <body>
     <div class="legacy-browser-banner" role="alert">
-      当前浏览器内核过旧，页面样式可能显示异常，建议改用微信内置浏览器、Chrome 或更新系统浏览器。 / Your browser kernel is too old for this site's styles; please open in WeChat, Chrome, or an updated system browser.
+      当前浏览器内核过旧，页面样式可能显示异常，建议改用微信内置浏览器、Chrome
+      或更新系统浏览器。 / Your browser kernel is too old for this site's
+      styles; please open in WeChat, Chrome, or an updated system browser.
     </div>
     <div id="root" translate="no" class="notranslate"></div>
   </body>

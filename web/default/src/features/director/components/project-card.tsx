@@ -144,7 +144,7 @@ export function ProjectCard(props: ProjectCardProps) {
         <p className='text-muted-foreground line-clamp-1 text-xs leading-relaxed'>
           {project.description}
         </p>
-        <div className='text-muted-foreground mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-xs tabular-nums'>
+        <div className='text-muted-foreground border-border/60 mt-auto flex items-center justify-between gap-2 border-t pt-2 text-xs tabular-nums'>
           <span className='truncate'>
             {project.episodeCount} {t('Episodes')} · {project.characterCount}{' '}
             {t('Characters')} · {project.sceneCount} {t('Scenes')}

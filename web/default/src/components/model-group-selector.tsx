@@ -25,12 +25,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-} from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -588,8 +583,8 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<ModelCategory>(
-    () => categorizeModel(selectedModel)
+  const [selectedCategory, setSelectedCategory] = useState<ModelCategory>(() =>
+    categorizeModel(selectedModel)
   )
   const isMobile = useIsMobile()
 

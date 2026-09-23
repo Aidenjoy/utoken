@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
-  BookOpen,
   Camera,
   Clapperboard,
   FileText,
@@ -29,7 +28,6 @@ import {
   Scissors,
   Shirt,
   ShoppingCart,
-  Sparkles,
   UserRound,
   Users,
   ZoomIn,
@@ -218,28 +216,13 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
-  // 教程 — 开发者文档移至二级，设计觉醒开发中
-  links.push({
-    title: t('Tutorials'),
-    href: '',
-    children: [
-      { title: t('Developer Docs'), href: '/docs', icon: BookOpen },
-      {
-        title: t('Design awakening'),
-        href: '',
-        disabled: true,
-        icon: Sparkles,
-      },
-    ],
-  })
+  // 开发者中心 — 原「教程」一级菜单提升为直链，统一命名为「开发者中心」。
+  // 联系客服不在此列，改由各页头/页脚独立渲染的 SupportPopover 弹窗承载。
+  links.push({ title: t('Developer Center'), href: '/docs' })
 
-  // Docs (supports external links) — hidden by default, enable via backend config
-  if (modules?.docs === true) {
-    if (docsLink) {
-      links.push({ title: t('Docs'), href: docsLink, external: true })
-    } else {
-      links.push({ title: t('Docs'), href: '/docs' })
-    }
+  // Docs — 内部 /docs 已由「开发者中心」承载，此处仅在后台配置了外部文档链接时追加，避免出现重复的 /docs 菜单。
+  if (modules?.docs === true && docsLink) {
+    links.push({ title: t('Docs'), href: docsLink, external: true })
   }
 
   // About — hidden by default, enable via backend config

@@ -94,7 +94,11 @@ export async function copyPromptTemplate(
   id: number,
   data: { title?: string; visibility?: string } = {}
 ): Promise<ApiResponse<PromptTemplate>> {
-  const res = await api.post(`/api/prompt/${id}/copy`, data, promptRequestConfig)
+  const res = await api.post(
+    `/api/prompt/${id}/copy`,
+    data,
+    promptRequestConfig
+  )
   return res.data
 }
 

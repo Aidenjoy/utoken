@@ -182,9 +182,7 @@ export function EpisodeDialog(props: EpisodeDialogProps) {
           </div>
           <div className='grid grid-cols-3 gap-4'>
             <div className='grid gap-2'>
-              <Label htmlFor='director-episode-duration'>
-                {t('Duration')}
-              </Label>
+              <Label htmlFor='director-episode-duration'>{t('Duration')}</Label>
               <Select
                 items={DURATION_OPTIONS.map((d) => ({
                   value: String(d),

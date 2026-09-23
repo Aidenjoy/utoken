@@ -268,9 +268,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
     seedreamConfig,
   ])
 
-  const existingNames = useMemo(() => models.map((model) => model.name), [
-    models,
-  ])
+  const existingNames = useMemo(
+    () => models.map((model) => model.name),
+    [models]
+  )
 
   const modeCounts = useMemo(
     () =>
@@ -293,11 +294,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           seedance: 0,
           seedream: 0,
         } as Record<
-          | 'per-token'
-          | 'per-request'
-          | 'tiered_expr'
-          | 'seedance'
-          | 'seedream',
+          'per-token' | 'per-request' | 'tiered_expr' | 'seedance' | 'seedream',
           number
         >
       ),

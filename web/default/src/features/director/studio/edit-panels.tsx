@@ -24,10 +24,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -74,7 +71,8 @@ export function EditPanels(props: EditPanelsProps) {
     setActiveTab(selected.type)
   }, [selected.type])
 
-  const clip = selected.type === 'clip' ? (tl.clips[selected.index] ?? null) : null
+  const clip =
+    selected.type === 'clip' ? (tl.clips[selected.index] ?? null) : null
   const subtitle =
     selected.type === 'subtitle' ? (tl.subtitles[selected.index] ?? null) : null
   const sticker =
@@ -308,11 +306,14 @@ export function EditPanels(props: EditPanelsProps) {
                   />
                 </Row>
                 <p className='text-muted-foreground text-xs'>
-                  {t('Timeline duration {{dur}}s (source {{src}}s ÷ {{speed}}x)', {
-                    dur: clipDuration(clip).toFixed(1),
-                    src: (clip.end - clip.start).toFixed(1),
-                    speed: clip.speed,
-                  })}
+                  {t(
+                    'Timeline duration {{dur}}s (source {{src}}s ÷ {{speed}}x)',
+                    {
+                      dur: clipDuration(clip).toFixed(1),
+                      src: (clip.end - clip.start).toFixed(1),
+                      speed: clip.speed,
+                    }
+                  )}
                 </p>
                 <Row>
                   <RowLabel>{t('Speed')}</RowLabel>
@@ -687,7 +688,12 @@ export function EditPanels(props: EditPanelsProps) {
               )}
 
               <PanelBlock title={t('Replace Source')}>
-                <input ref={replaceInputRef} type='file' accept='video/*' className='hidden' />
+                <input
+                  ref={replaceInputRef}
+                  type='file'
+                  accept='video/*'
+                  className='hidden'
+                />
                 <Button
                   size='sm'
                   variant='outline'
@@ -731,7 +737,9 @@ export function EditPanels(props: EditPanelsProps) {
                 onClick={() => correctMutation.mutate()}
               >
                 <Sparkles aria-hidden='true' />
-                {correctMutation.isPending ? t('Correcting...') : t('AI Correct')}
+                {correctMutation.isPending
+                  ? t('Correcting...')
+                  : t('AI Correct')}
               </Button>
             </Row>
             <div className='max-h-50 space-y-1 overflow-y-auto'>
@@ -892,7 +900,12 @@ export function EditPanels(props: EditPanelsProps) {
         <TabsContent value='audio'>
           <div className='flex flex-col gap-3 py-3'>
             <PanelBlock title={t('Background Music')}>
-              <input ref={bgmInputRef} type='file' accept='audio/*' className='hidden' />
+              <input
+                ref={bgmInputRef}
+                type='file'
+                accept='audio/*'
+                className='hidden'
+              />
               <Row>
                 <Button
                   size='sm'
@@ -972,7 +985,12 @@ export function EditPanels(props: EditPanelsProps) {
         {/* ============ 贴纸 ============ */}
         <TabsContent value='sticker'>
           <div className='flex flex-col gap-3 py-3'>
-            <input ref={stickerInputRef} type='file' accept='image/*' className='hidden' />
+            <input
+              ref={stickerInputRef}
+              type='file'
+              accept='image/*'
+              className='hidden'
+            />
             <Button
               size='sm'
               variant='outline'
@@ -1148,7 +1166,9 @@ function PanelBlock(props: { title: string; children: React.ReactNode }) {
 
 function Row(props: { className?: string; children: React.ReactNode }) {
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${props.className ?? ''}`}>
+    <div
+      className={`flex flex-wrap items-center gap-2 ${props.className ?? ''}`}
+    >
       {props.children}
     </div>
   )
@@ -1172,6 +1192,8 @@ function RowValue(props: { children: React.ReactNode }) {
 
 function cnRow(active: boolean) {
   return `flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 ${
-    active ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-muted'
+    active
+      ? 'border-primary bg-primary/10'
+      : 'border-transparent hover:bg-muted'
   }`
 }

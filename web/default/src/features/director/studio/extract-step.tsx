@@ -97,7 +97,9 @@ export function ExtractStep(props: ExtractStepProps) {
   })
 
   const listsLoaded =
-    !charactersQuery.isPending && !scenesQuery.isPending && !propsQuery.isPending
+    !charactersQuery.isPending &&
+    !scenesQuery.isPending &&
+    !propsQuery.isPending
   const characters = charactersQuery.data?.data?.list ?? []
   const scenes = scenesQuery.data?.data?.list ?? []
   const propItems = propsQuery.data?.data?.list ?? []

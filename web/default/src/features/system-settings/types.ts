@@ -111,6 +111,8 @@ export type SiteSettings = {
   Notice: string
   SystemName: string
   Logo: string
+  SupportQRCode: string
+  SupportContact: string
   Footer: string
   About: string
   HomePageContent: string

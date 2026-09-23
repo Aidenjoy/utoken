@@ -231,7 +231,8 @@ export function EditTimeline(props: EditTimelineProps) {
     if (from < 0 || from === targetIndex) return
     // 鼠标落在目标块右半则插到其后
     const rect = e.currentTarget.getBoundingClientRect()
-    let to = e.clientX > rect.left + rect.width / 2 ? targetIndex + 1 : targetIndex
+    let to =
+      e.clientX > rect.left + rect.width / 2 ? targetIndex + 1 : targetIndex
     if (from < to) to--
     props.onChange((data) => {
       const [moved] = data.clips.splice(from, 1)
@@ -245,7 +246,12 @@ export function EditTimeline(props: EditTimelineProps) {
     <div className='flex flex-col gap-2'>
       {/* 工具行：分割/删除/加字幕/缩放 */}
       <div className='flex items-center gap-2'>
-        <Button size='sm' variant='outline' disabled={!canSplit} onClick={splitAtPlayhead}>
+        <Button
+          size='sm'
+          variant='outline'
+          disabled={!canSplit}
+          onClick={splitAtPlayhead}
+        >
           <Scissors aria-hidden='true' />
           {t('Split')}
         </Button>
@@ -309,7 +315,10 @@ export function EditTimeline(props: EditTimelineProps) {
 
           {/* 片段轨 */}
           <TrackRow label={t('Clips')}>
-            <div className='relative h-11 flex-1 cursor-pointer overflow-hidden rounded-r-md border border-l-0 bg-background' onMouseDown={onSeekMouseDown}>
+            <div
+              className='bg-background relative h-11 flex-1 cursor-pointer overflow-hidden rounded-r-md border border-l-0'
+              onMouseDown={onSeekMouseDown}
+            >
               {spans.map((span) => (
                 <div
                   key={span.index}
@@ -345,7 +354,7 @@ export function EditTimeline(props: EditTimelineProps) {
                   }}
                 >
                   <div
-                    className='absolute top-0 bottom-0 left-0 z-2 w-2 cursor-ew-resize rounded-l-md hover:bg-primary/50'
+                    className='hover:bg-primary/50 absolute top-0 bottom-0 left-0 z-2 w-2 cursor-ew-resize rounded-l-md'
                     onMouseDown={(e) => onTrimStart(e, span, 'left')}
                   />
                   <div className='text-primary pointer-events-none flex items-center gap-1 px-2.5 text-[11px] whitespace-nowrap'>
@@ -371,14 +380,14 @@ export function EditTimeline(props: EditTimelineProps) {
                   {span.clip.transition.type &&
                     span.index < tl.clips.length - 1 && (
                       <div
-                        className='bg-amber-500 absolute top-1/2 -right-px z-1 flex size-3.5 -translate-y-1/2 items-center justify-center rounded-full text-white'
+                        className='absolute top-1/2 -right-px z-1 flex size-3.5 -translate-y-1/2 items-center justify-center rounded-full bg-amber-500 text-white'
                         title={`${t('Transition')} ${span.clip.transition.duration}s`}
                       >
                         <Repeat aria-hidden='true' className='size-2.5' />
                       </div>
                     )}
                   <div
-                    className='absolute top-0 right-0 bottom-0 z-2 w-2 cursor-ew-resize rounded-r-md hover:bg-primary/50'
+                    className='hover:bg-primary/50 absolute top-0 right-0 bottom-0 z-2 w-2 cursor-ew-resize rounded-r-md'
                     onMouseDown={(e) => onTrimStart(e, span, 'right')}
                   />
                 </div>
@@ -393,7 +402,10 @@ export function EditTimeline(props: EditTimelineProps) {
 
           {/* 字幕轨 */}
           <TrackRow label={t('Subtitles')}>
-            <div className='relative h-11 flex-1 cursor-pointer overflow-hidden rounded-r-md border border-l-0 bg-background' onMouseDown={onSeekMouseDown}>
+            <div
+              className='bg-background relative h-11 flex-1 cursor-pointer overflow-hidden rounded-r-md border border-l-0'
+              onMouseDown={onSeekMouseDown}
+            >
               {tl.subtitles.map((sub, i) => (
                 <div
                   key={`sub-${sub.start}-${sub.end}-${sub.text}`}
@@ -419,7 +431,10 @@ export function EditTimeline(props: EditTimelineProps) {
 
           {/* 贴纸轨 */}
           <TrackRow label={t('Stickers')}>
-            <div className='relative h-11 flex-1 cursor-pointer overflow-hidden rounded-r-md border border-l-0 bg-background' onMouseDown={onSeekMouseDown}>
+            <div
+              className='bg-background relative h-11 flex-1 cursor-pointer overflow-hidden rounded-r-md border border-l-0'
+              onMouseDown={onSeekMouseDown}
+            >
               {tl.stickers.map((sticker, i) => (
                 <div
                   key={`stk-${sticker.url}-${sticker.start}-${sticker.end}`}
@@ -429,11 +444,15 @@ export function EditTimeline(props: EditTimelineProps) {
                   }}
                   className={cn(
                     'border-amber-300 bg-amber-100 text-amber-900 absolute top-1.5 bottom-1.5 flex items-center overflow-hidden rounded-md border px-2 text-[11px] whitespace-nowrap text-ellipsis',
-                    isSelected('sticker', i) && 'border-amber-500 ring-amber-500 ring-1'
+                    isSelected('sticker', i) &&
+                      'border-amber-500 ring-amber-500 ring-1'
                   )}
                   style={{
                     left: sticker.start * pxPerSec,
-                    width: Math.max((sticker.end - sticker.start) * pxPerSec, 14),
+                    width: Math.max(
+                      (sticker.end - sticker.start) * pxPerSec,
+                      14
+                    ),
                   }}
                 >
                   {t('Sticker')} {i + 1}
@@ -448,7 +467,7 @@ export function EditTimeline(props: EditTimelineProps) {
             style={{ left: `${TL_OFFSET + currentTime * pxPerSec}px` }}
           >
             <div
-              className='bg-destructive absolute top-0 -left-1.5 h-4 w-3.5 cursor-ew-resize rounded-b-md pointer-events-auto'
+              className='bg-destructive pointer-events-auto absolute top-0 -left-1.5 h-4 w-3.5 cursor-ew-resize rounded-b-md'
               onMouseDown={onSeekMouseDown}
             />
           </div>

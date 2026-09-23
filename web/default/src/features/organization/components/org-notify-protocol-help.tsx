@@ -45,7 +45,7 @@ export function OrgNotifyProtocolHelp() {
             type='button'
             variant='ghost'
             size='icon'
-            className='shrink-0 text-muted-foreground'
+            className='text-muted-foreground shrink-0'
           />
         }
       >

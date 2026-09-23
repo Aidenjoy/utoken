@@ -41,6 +41,8 @@ const SITE_SECTIONS = [
           },
           SystemName: settings.SystemName,
           Logo: settings.Logo,
+          SupportQRCode: settings.SupportQRCode,
+          SupportContact: settings.SupportContact,
           Footer: settings.Footer,
           About: settings.About,
           HomePageContent: settings.HomePageContent,

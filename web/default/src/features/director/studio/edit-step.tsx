@@ -24,10 +24,7 @@ import { toast } from 'sonner'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
@@ -68,7 +65,8 @@ export function EditStep(props: EditStepProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
-  const [timeline, setTimeline] = React.useState<EditTimelineData>(emptyTimeline)
+  const [timeline, setTimeline] =
+    React.useState<EditTimelineData>(emptyTimeline)
   const [loaded, setLoaded] = React.useState(false)
   const [selected, setSelected] = React.useState<EditSelection>({
     type: '',
@@ -104,7 +102,8 @@ export function EditStep(props: EditStepProps) {
 
   const editProject = projectQuery.data?.data ?? null
   const rendering = editProject?.status === 'rendering'
-  const hasOutput = editProject?.status === 'done' && Boolean(editProject.outputUrl)
+  const hasOutput =
+    editProject?.status === 'done' && Boolean(editProject.outputUrl)
 
   // 探测到源视频真实时长后：校正片段出点并记录源时长（供右缘裁剪上限）
   const patchClipSource = React.useCallback(
@@ -404,7 +403,14 @@ export function EditStep(props: EditStepProps) {
     const span = findSpanAt(spans, currentTime)
     await ensureClipLoaded(span, true)
     syncBgm()
-  }, [timeline.clips.length, currentTime, total, spans, ensureClipLoaded, syncBgm])
+  }, [
+    timeline.clips.length,
+    currentTime,
+    total,
+    spans,
+    ensureClipLoaded,
+    syncBgm,
+  ])
 
   const seek = React.useCallback(
     (time: number) => {
@@ -445,9 +451,16 @@ export function EditStep(props: EditStepProps) {
     if (!v || !currentClip) return
     v.playbackRate = currentClip.speed > 0 ? currentClip.speed : 1
     applyVoiceVolume()
-  }, [currentClip?.speed, currentClip?.volume, currentClip?.muted, applyVoiceVolume, currentClip])
+  }, [
+    currentClip?.speed,
+    currentClip?.volume,
+    currentClip?.muted,
+    applyVoiceVolume,
+    currentClip,
+  ])
   React.useEffect(() => {
-    if (bgmRef.current) bgmRef.current.volume = Math.min(timeline.audio.bgmVolume, 1)
+    if (bgmRef.current)
+      bgmRef.current.volume = Math.min(timeline.audio.bgmVolume, 1)
   }, [timeline.audio.bgmVolume])
   React.useEffect(() => {
     applyVoiceVolume()
@@ -473,7 +486,8 @@ export function EditStep(props: EditStepProps) {
 
   // ---------- 预览样式 ----------
 
-  const effectiveRatio = timeline.aspectRatio || props.episode.aspectRatio || '9:16'
+  const effectiveRatio =
+    timeline.aspectRatio || props.episode.aspectRatio || '9:16'
   const outSize = outputSize(effectiveRatio, props.episode.resolution)
   const stageStyle: React.CSSProperties =
     outSize.height >= outSize.width
@@ -693,7 +707,9 @@ export function EditStep(props: EditStepProps) {
                     />
                     {outputStale && (
                       <div className='absolute right-0 bottom-0 left-0 z-6 bg-amber-500/90 p-1.5 text-center text-xs text-white'>
-                        {t('Timeline changed; this output is stale. Re-render after editing')}
+                        {t(
+                          'Timeline changed; this output is stale. Re-render after editing'
+                        )}
                       </div>
                     )}
                   </>

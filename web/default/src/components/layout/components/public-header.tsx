@@ -29,6 +29,7 @@ import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SupportPopover } from '@/features/support/support-popover'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
@@ -396,6 +397,14 @@ export function PublicHeader(props: PublicHeaderProps) {
                 )
               })}
 
+              <SupportPopover
+                align='center'
+                triggerClassName={cn(
+                  'rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200',
+                  navLinkIdleClass
+                )}
+              />
+
               {(showLanguageSwitcher ||
                 showThemeSwitch ||
                 showNotifications) && (
@@ -579,6 +588,17 @@ export function PublicHeader(props: PublicHeaderProps) {
                 </Link>
               )
             })}
+
+            <SupportPopover
+              align='center'
+              triggerClassName={cn(
+                'flex items-center py-3 text-left text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                mobileOpen
+                  ? 'translate-y-0 opacity-100'
+                  : 'translate-y-4 opacity-0',
+                'text-muted-foreground'
+              )}
+            />
           </nav>
 
           <div

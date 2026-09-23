@@ -279,10 +279,13 @@ export function VideosStep(props: VideosStepProps) {
       if (res.success) {
         markGenerating(params.id)
         toast.success(
-          t('Submitted {{count}} video generation task(s) for shot #{{number}}', {
-            count: params.count,
-            number: genDialog?.storyboardNumber,
-          })
+          t(
+            'Submitted {{count}} video generation task(s) for shot #{{number}}',
+            {
+              count: params.count,
+              number: genDialog?.storyboardNumber,
+            }
+          )
         )
         setGenDialog(null)
         refresh()
@@ -624,7 +627,7 @@ export function VideosStep(props: VideosStepProps) {
                     <div className='min-w-0'>
                       <div className='text-[13px] font-semibold'>
                         {t('Reference Generation')}
-                        <span className='bg-primary/10 text-primary ml-1.5 rounded-sm border border-primary/30 px-1.5 py-0 text-[10px] font-medium'>
+                        <span className='bg-primary/10 text-primary border-primary/30 ml-1.5 rounded-sm border px-1.5 py-0 text-[10px] font-medium'>
                           {t('Default')}
                         </span>
                       </div>

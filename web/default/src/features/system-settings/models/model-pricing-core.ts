@@ -64,13 +64,10 @@ export type SeedreamPriceForm = {
 }
 
 export const emptySeedancePrices = (): SeedancePriceForm =>
-  SEEDANCE_RESOLUTIONS.reduce(
-    (acc, res) => {
-      acc[res] = { withVideo: '', withoutVideo: '' }
-      return acc
-    },
-    {} as SeedancePriceForm
-  )
+  SEEDANCE_RESOLUTIONS.reduce((acc, res) => {
+    acc[res] = { withVideo: '', withoutVideo: '' }
+    return acc
+  }, {} as SeedancePriceForm)
 
 export const emptySeedreamPrices = (): SeedreamPriceForm => ({
   inputImagePrice: '',

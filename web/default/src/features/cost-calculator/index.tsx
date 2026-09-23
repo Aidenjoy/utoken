@@ -44,9 +44,7 @@ export function CostCalculator() {
           </p>
           <Tabs defaultValue='language' className='gap-4'>
             <TabsList>
-              <TabsTrigger value='language'>
-                {t('Language Model')}
-              </TabsTrigger>
+              <TabsTrigger value='language'>{t('Language Model')}</TabsTrigger>
               <TabsTrigger value='image'>{t('Image Model')}</TabsTrigger>
               <TabsTrigger value='video'>
                 {t('Video Generation Model')}

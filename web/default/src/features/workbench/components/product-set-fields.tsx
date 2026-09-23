@@ -89,7 +89,7 @@ export function ProductSetFields(props: ProductSetFieldsProps) {
 
   return (
     <>
-      <section className='border-border bg-card rounded-lg border p-4'>
+      <section className='border-border bg-card space-y-4 rounded-lg border p-4'>
         <UploadTile
           label={t('Upload product images')}
           badge={`${props.value.products.length}/3`}
@@ -101,6 +101,22 @@ export function ProductSetFields(props: ProductSetFieldsProps) {
           value={props.value.products}
           onChange={(products) =>
             props.onChange((previous) => ({ ...previous, products }))
+          }
+        />
+        <UploadTile
+          label={t('Scene image')}
+          badge={t('Optional')}
+          hint={t(
+            'Share this background across scene-enabled images. Uploading enables scenes; white background images stay white.'
+          )}
+          max={1}
+          value={props.value.sceneImage ? [props.value.sceneImage] : []}
+          onChange={(next) =>
+            props.onChange((previous) => ({
+              ...previous,
+              sceneImage: next[0] ?? null,
+              withScene: next.length > 0 || previous.withScene,
+            }))
           }
         />
       </section>

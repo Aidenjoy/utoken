@@ -439,13 +439,16 @@ function ChannelAssetsPanel({
               </div>
               <div className='space-y-1 p-2'>
                 {asset.name && (
-                  <div className='truncate text-xs font-medium' title={asset.name}>
+                  <div
+                    className='truncate text-xs font-medium'
+                    title={asset.name}
+                  >
                     {asset.name}
                   </div>
                 )}
                 {asset.asset_id && (
                   <div className='flex items-start gap-0.5'>
-                    <span className='text-muted-foreground/90 min-w-0 flex-1 break-all font-mono text-[10px] leading-4'>
+                    <span className='text-muted-foreground/90 min-w-0 flex-1 font-mono text-[10px] leading-4 break-all'>
                       {asset.asset_id}
                     </span>
                     <button

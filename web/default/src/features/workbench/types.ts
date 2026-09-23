@@ -254,6 +254,8 @@ export interface ProductSetShot {
 /** 商品套图独立配置，切换模特套图时保留上传和用途设置。 */
 export interface ProductSetConfig {
   products: TryOnImage[]
+  /** 整套商品图共用的可选场景，白底图除外。 */
+  sceneImage: TryOnImage | null
   withCopy: boolean
   withScene: boolean
   shots: ProductSetShot[]
@@ -265,6 +267,8 @@ export interface HeroSetConfig {
   product: ProductSetConfig
   /** Single reference shot; its view should match the selected angles. */
   reference: TryOnImage | null
+  /** 整套模特图共用的可选场景。 */
+  sceneImage: TryOnImage | null
   /** Selected view angles with per-angle output counts. */
   angles: HeroSetAngle[]
   /** Preset overrides for the whole set; empty string means untouched. */
@@ -280,17 +284,37 @@ export interface HeroSetConfig {
   imageModel: string
 }
 
+/** Detail page content module identifier; one entry per DETAIL_CONTENT_ELEMENTS. */
+export type DetailPageElementValue =
+  | 'copy'
+  | 'model'
+  | 'scene'
+  | 'closeup'
+  | 'package'
+  | 'size-spec'
+  | 'steps'
+  | 'brand-ending'
+
+/** 详情页单个内容模块的独立配置，仿商品套图逐用途结构。 */
+export interface DetailPageElement {
+  value: DetailPageElementValue
+  /** 未勾选的模块保留 references/extra，方便来回切换。 */
+  enabled: boolean
+  /** 该模块专属参考图，进入分配了此模块的页面提示词。 */
+  references: TryOnImage[]
+  /** 该模块专属补充要求，仅在此模块被分配到的页面注入。 */
+  extra: string
+}
+
 export interface DetailPageConfig {
   /** Product shots of one sample group; one to five. */
   products: TryOnImage[]
-  /** Recognized or hand-filled product facts driving the page copy. */
-  name: string
-  selling: string
-  audience: string
-  scene: string
-  /** Values of DETAIL_CONTENT_ELEMENTS that become detail page modules. */
-  elements: string[]
-  textLanguage: string
+  /** 补充已选内容的商品事实、文案、风格与构图要求。 */
+  extra: string
+  /** 全部内容模块，按 DETAIL_CONTENT_ELEMENTS 顺序常驻，勾选状态由 enabled 决定。 */
+  elements: DetailPageElement[]
+  /** 整套详情页共用的可选场景，仅作用于分配了场景模块的页面。 */
+  sceneImage: TryOnImage | null
   sceneMode: string
   pageCount: number
   resolution: string

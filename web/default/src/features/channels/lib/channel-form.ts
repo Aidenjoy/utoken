@@ -211,7 +211,14 @@ export const channelFormSchema = z
     upstream_model_update_ignored_models: z.string().optional(),
     // Asset library settings (Volcengine Ark Native type 59; stored in settings JSON)
     asset_upload_protocol: z
-      .enum(['', 'relay', 'ark_official', 'ecloud', 'bit_official', 'xswj_official'])
+      .enum([
+        '',
+        'relay',
+        'ark_official',
+        'ecloud',
+        'bit_official',
+        'xswj_official',
+      ])
       .optional(),
     asset_upload_path: z.string().optional(),
     asset_query_path: z.string().optional(),

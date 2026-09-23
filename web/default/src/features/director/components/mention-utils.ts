@@ -43,8 +43,11 @@ export function formatMentions(
 ): string {
   if (!text) return ''
   const map = new Map(assets.map((a) => [`${a.kind}:${a.id}`, a]))
-  return text.replaceAll(MENTION_TOKEN_RE, (_token, kind: string, id: string) => {
-    const asset = map.get(`${kind}:${id}`)
-    return asset ? `@${kindLabel(asset.kind)}·${asset.name}` : ''
-  })
+  return text.replaceAll(
+    MENTION_TOKEN_RE,
+    (_token, kind: string, id: string) => {
+      const asset = map.get(`${kind}:${id}`)
+      return asset ? `@${kindLabel(asset.kind)}·${asset.name}` : ''
+    }
+  )
 }

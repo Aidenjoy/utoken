@@ -64,7 +64,8 @@ export async function generateTryOnImages(
 export async function generateImageBatch(
   requests: TryOnGenerationBody[],
   onImage: (url: string, request: TryOnGenerationBody) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  setMode?: 'model' | 'product'
 ): Promise<void> {
   // 发起任何请求前校验完整计划；详情页是工作台单项张数上限。
   if (
@@ -79,11 +80,29 @@ export async function generateImageBatch(
     throw new Error(t('Generation failed, please retry'))
   }
 
+  // 首张成片作为本次套图固定的视觉锚点，不逐张替换，以免累积偏差。
+  let setReference: string | undefined
   for (const request of requests) {
     for (let index = 0; index < request.n; index++) {
+      const body = { ...request, n: 1 }
+      if (setMode && setReference) {
+        const images = Array.isArray(request.image)
+          ? [...request.image]
+          : [request.image]
+        images.push(setReference)
+        body.image = images
+        body.prompt = [
+          request.prompt,
+          `Image ${images.length} is the first finished photograph of this same set, supplied as the fixed visual continuity reference, not a new subject or a layout template. Keep the original source images authoritative for identity and factual details; never propagate mistakes from the generated reference.`,
+          setMode === 'model'
+            ? 'Continue the exact same photo shoot: match this finished reference in person identity, the specific outfit and accessories, physical background, fixed props, lighting, colors, photographic style and framing scale. Do not choose another outfit or scene. Change only the requested pose, expression and body view; do not duplicate its pose or override the current view. Preserve the uploaded shared scene and explicit whole-set requirements.'
+            : 'Continue the same product photo shoot: match product identity, true colors, materials and photographic treatment. Reuse the established background, surfaces, props and lighting for scene-enabled images, honoring any uploaded shared scene. The current required purpose, scene/copy policy and prohibitions always take priority: white-background images must stay uniform #FFFFFF without scene or text, scene-disabled images must not inherit scenery, and detail images must remain close-ups. Do not copy the reference headline, claims, framing or image purpose. If the reference has no usage environment, follow the shared scene instructions instead.',
+          'Return only the single requested image, not a collage or a copy of the continuity reference.',
+        ].join('\n')
+      }
       let response: TryOnGenerationResponse
       try {
-        response = await generateTryOnImages({ ...request, n: 1 }, signal)
+        response = await generateTryOnImages(body, signal)
       } catch (error) {
         if (
           isAxiosError<TryOnGenerationResponse & { message?: string }>(error)
@@ -113,6 +132,7 @@ export async function generateImageBatch(
           t('The model must return exactly one image per request')
         )
       }
+      if (setMode && !setReference) setReference = urls[0]
       onImage(urls[0], request)
     }
   }

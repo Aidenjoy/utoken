@@ -107,17 +107,18 @@ export const ORG_NOTIFY_TYPE_LABELS: Record<OrgNotifyChannel, string> = {
  * Placeholder for the notify target field: the email channel takes a
  * semicolon-separated address list, the webhook channel a single URL.
  */
-export const ORG_NOTIFY_TARGET_PLACEHOLDERS: Record<OrgNotifyChannel, string> = {
-  email: 'alert@example.com;ops@example.com',
-  webhook: 'https://example.com/webhook',
-}
+export const ORG_NOTIFY_TARGET_PLACEHOLDERS: Record<OrgNotifyChannel, string> =
+  {
+    email: 'alert@example.com;ops@example.com',
+    webhook: 'https://example.com/webhook',
+  }
 
 /**
  * Organizations saved before a channel was retired can still carry its value;
  * fall back to unconfigured so the select never shows an unusable option.
  */
 export function normalizeOrgNotifyType(
-  value: string | null | undefined,
+  value: string | null | undefined
 ): OrgNotifyType {
   return (ORG_NOTIFY_TYPES as readonly string[]).includes(value ?? '')
     ? (value as OrgNotifyChannel)

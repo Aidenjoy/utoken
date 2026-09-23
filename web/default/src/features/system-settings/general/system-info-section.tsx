@@ -17,10 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useRef, useState } from 'react'
 import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -40,6 +43,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { uploadDirectorFile } from '@/features/director/api'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -60,6 +64,8 @@ const _systemInfoSchema = z.object({
   SystemName: z.string().min(1),
   ServerAddress: z.string().optional(),
   Logo: z.string().url().optional().or(z.literal('')),
+  SupportQRCode: z.string().url().optional().or(z.literal('')),
+  SupportContact: z.string().optional(),
   Footer: z.string().optional(),
   About: z.string().optional(),
   HomePageContent: z.string().optional(),
@@ -92,6 +98,8 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     SystemName: normalizeValue(defaultValues.SystemName),
     ServerAddress: normalizeValue(defaultValues.ServerAddress),
     Logo: normalizeValue(defaultValues.Logo),
+    SupportQRCode: normalizeValue(defaultValues.SupportQRCode),
+    SupportContact: normalizeValue(defaultValues.SupportContact),
     Footer: normalizeValue(defaultValues.Footer),
     About: normalizeValue(defaultValues.About),
     HomePageContent: normalizeValue(defaultValues.HomePageContent),
@@ -110,6 +118,8 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     }),
     ServerAddress: z.string().optional(),
     Logo: z.string().url().optional().or(z.literal('')),
+    SupportQRCode: z.string().url().optional().or(z.literal('')),
+    SupportContact: z.string().optional(),
     Footer: z.string().optional(),
     About: z.string().optional(),
     HomePageContent: z.string().optional(),
@@ -173,6 +183,28 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
         }
       },
     })
+
+  const qrInputRef = useRef<HTMLInputElement>(null)
+  const [qrUploading, setQrUploading] = useState(false)
+
+  // 二维码上传复用云导演的纯文件上传：存 TOS 返回 URL，不登记素材库。
+  async function handleQrFileChange(file: File | undefined) {
+    if (!file) return
+    setQrUploading(true)
+    try {
+      const res = await uploadDirectorFile({ file })
+      if (res.success && res.data?.url) {
+        form.setValue('SupportQRCode', res.data.url, { shouldDirty: true })
+      } else {
+        toast.error(res.message || t('Failed to upload image'))
+      }
+    } catch {
+      toast.error(t('Failed to upload image'))
+    } finally {
+      setQrUploading(false)
+      if (qrInputRef.current) qrInputRef.current.value = ''
+    }
+  }
 
   return (
     <>
@@ -285,6 +317,99 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t('URL to your logo image (optional)')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SupportQRCode'
+                render={({ field }) => {
+                  let qrButtonLabel = t('Upload')
+                  if (qrUploading) {
+                    qrButtonLabel = t('Uploading...')
+                  } else if (field.value) {
+                    qrButtonLabel = t('Replace')
+                  }
+                  return (
+                    <FormItem>
+                      <FormLabel>{t('Support QR Code')}</FormLabel>
+                      <FormControl>
+                        <div className='flex items-start gap-3'>
+                          {field.value ? (
+                            <img
+                              src={field.value}
+                              alt={t('Support QR Code')}
+                              className='border-border bg-card size-20 shrink-0 rounded-lg border object-contain'
+                            />
+                          ) : null}
+                          <div className='flex min-w-0 flex-1 flex-col gap-2'>
+                            <div className='flex gap-2'>
+                              <Button
+                                type='button'
+                                size='sm'
+                                variant='outline'
+                                disabled={qrUploading}
+                                onClick={() => qrInputRef.current?.click()}
+                              >
+                                {qrButtonLabel}
+                              </Button>
+                              {field.value ? (
+                                <Button
+                                  type='button'
+                                  size='sm'
+                                  variant='ghost'
+                                  onClick={() => field.onChange('')}
+                                >
+                                  {t('Remove')}
+                                </Button>
+                              ) : null}
+                            </div>
+                            <Input
+                              placeholder={t('https://example.com/qrcode.png')}
+                              {...field}
+                            />
+                          </div>
+                          <input
+                            ref={qrInputRef}
+                            type='file'
+                            accept='image/*'
+                            className='hidden'
+                            onChange={(event) =>
+                              void handleQrFileChange(event.target.files?.[0])
+                            }
+                          />
+                        </div>
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Upload a QR code image displayed on the Contact Support page.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )
+                }}
+              />
+
+              <FormField
+                control={form.control}
+                name='SupportContact'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Support Contact')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('support@example.com')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Email or other contact information displayed on the Contact Support page.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

@@ -42,12 +42,12 @@ import {
 
 import { getOrgLogs, getOrgMembers } from '../api'
 import { ORG_ERROR_MESSAGES } from '../constants'
+import type { OrgLog, OrgMemberDetail } from '../types'
 import {
   defaultOrgDateRange,
   OrgDateRangePicker,
   type OrgDateRange,
 } from './org-date-range-picker'
-import type { OrgLog, OrgMemberDetail } from '../types'
 
 const ALL_MEMBERS = '0'
 

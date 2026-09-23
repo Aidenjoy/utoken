@@ -21,6 +21,7 @@ import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
+import { SupportPopover } from '@/features/support/support-popover'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 
@@ -105,9 +106,10 @@ export function AppHeader({
 }: AppHeaderProps) {
   // Prioritize dynamically generated links from backend
   const dynamicLinks = useTopNavLinks()
-  // 控制台顶栏仅保留“首页”，其余导航项由侧边栏承担
+  // 控制台顶栏仅保留「首页」「开发者中心」，联系客服以弹窗形式单独渲染，其余导航项由侧边栏承担
+  const consoleNavHrefs = new Set(['/', '/docs'])
   const links = (dynamicLinks.length > 0 ? dynamicLinks : navLinks).filter(
-    (link) => link.href === '/'
+    (link) => consoleNavHrefs.has(link.href)
   )
 
   // Notifications hook
@@ -124,8 +126,12 @@ export function AppHeader({
       {rightContent ?? (
         <div className='ms-auto flex items-center gap-2 sm:gap-3'>
           {showTopNav && (
-            <div className='me-4 hidden lg:block xl:me-8'>
+            <div className='me-4 hidden items-center gap-4 lg:flex xl:me-8'>
               <TopNav links={links} />
+              <SupportPopover
+                align='end'
+                triggerClassName='hover:text-primary text-muted-foreground text-sm font-medium transition-colors'
+              />
             </div>
           )}
           {showSearch && <Search />}

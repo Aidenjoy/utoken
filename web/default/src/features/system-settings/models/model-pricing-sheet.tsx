@@ -538,7 +538,10 @@ export const ModelPricingEditorPanel = forwardRef<
         if (!isValid || !validatePricingValues()) return null
         const data = buildSubmitData(form.getValues())
         // 改名（或新增）撞上已有模型名时拒绝提交，避免覆盖另一模型的定价。
-        if (existingNames?.includes(data.name) && data.name !== editData?.name) {
+        if (
+          existingNames?.includes(data.name) &&
+          data.name !== editData?.name
+        ) {
           form.setError('name', {
             message: t('A model with this name already exists.'),
           })

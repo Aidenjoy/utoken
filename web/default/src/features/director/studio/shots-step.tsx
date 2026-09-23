@@ -44,10 +44,7 @@ import {
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  NativeSelect,
-  NativeSelectOption,
-} from '@/components/ui/native-select'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ZoomableImage } from '@/components/zoomable-image'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -168,7 +165,9 @@ export function ShotsStep(props: ShotsStepProps) {
     onSuccess: (res, id) => {
       if (res.success) {
         const num = storyboards.find((s) => s.id === id)?.storyboardNumber
-        toast.success(t('Prompt generated for shot #{{number}}', { number: num }))
+        toast.success(
+          t('Prompt generated for shot #{{number}}', { number: num })
+        )
         refresh()
       }
     },
@@ -548,10 +547,7 @@ export function ShotsStep(props: ShotsStepProps) {
             <Button variant='outline' onClick={() => setGenDialog(null)}>
               {t('Cancel')}
             </Button>
-            <Button
-              disabled={submittingId !== 0}
-              onClick={submitOne}
-            >
+            <Button disabled={submittingId !== 0} onClick={submitOne}>
               {submittingId !== 0 ? t('Submitting...') : t('Start Generation')}
             </Button>
           </DialogFooter>
@@ -618,7 +614,9 @@ export function ShotsStep(props: ShotsStepProps) {
               {addOpen && (
                 <MentionEditor
                   value={addForm.imagePrompt}
-                  onChange={(v) => setAddForm((f) => ({ ...f, imagePrompt: v }))}
+                  onChange={(v) =>
+                    setAddForm((f) => ({ ...f, imagePrompt: v }))
+                  }
                   assets={mentionAssets}
                   rows={3}
                   placeholder={t(

@@ -841,9 +841,7 @@ export function PlaygroundVideoInput({
     const activeRefs = new Set(
       config.mediaItems
         .map((item) => item.assetId)
-        .filter(
-          (id): id is string => !!id?.startsWith(SMART_ASSET_REF_PREFIX)
-        )
+        .filter((id): id is string => !!id?.startsWith(SMART_ASSET_REF_PREFIX))
     )
     for (const refId of Object.keys(smartPollTimersRef.current)) {
       if (!activeRefs.has(refId)) stopSmartPoll(refId)
@@ -971,7 +969,9 @@ export function PlaygroundVideoInput({
                     disabled={disabled}
                     className='border-border/60 text-muted-foreground hover:border-primary hover:text-primary flex size-16 items-center justify-center rounded-lg border-2 border-dashed text-[10px] transition-colors'
                   >
-                    {config.images.length === 0 ? t('First Frame') : t('Last Frame')}
+                    {config.images.length === 0
+                      ? t('First Frame')
+                      : t('Last Frame')}
                   </button>
                 )}
               </div>
@@ -1314,7 +1314,7 @@ export function PlaygroundVideoInput({
           {/* Soft-block hint while a referenced smart asset is under review */}
           {hasPendingSmartAsset && (
             <div className='text-muted-foreground bg-muted/30 flex items-center gap-1.5 border-t px-3 py-1.5 text-[11px]'>
-              <SparklesIcon className='text-violet-500 shrink-0' size={12} />
+              <SparklesIcon className='shrink-0 text-violet-500' size={12} />
               <span>
                 {t(
                   'Smart asset is under channel review and usually takes 1-2 minutes. You can generate once approved.'
@@ -1546,7 +1546,7 @@ export function PlaygroundVideoInput({
                       </div>
                       <SparklesIcon
                         size={13}
-                        className='text-violet-500 shrink-0'
+                        className='shrink-0 text-violet-500'
                       />
                     </button>
                   ))}

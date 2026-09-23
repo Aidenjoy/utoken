@@ -41,7 +41,10 @@ export interface OrgDateRange {
 // 必须落到当日 23:59:59（而不是次日 0 点），否则结束日整天会漏算。
 export function defaultOrgDateRange(): OrgDateRange {
   const now = dayjs()
-  return { start: now.startOf('month').toDate(), end: now.endOf('day').toDate() }
+  return {
+    start: now.startOf('month').toDate(),
+    end: now.endOf('day').toDate(),
+  }
 }
 
 function toInputValue(date: Date): string {

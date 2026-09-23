@@ -155,21 +155,15 @@ export function StoryboardStep(props: StoryboardStepProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className='w-14 text-center'>
-                {t('Shot No')}
-              </TableHead>
+              <TableHead className='w-14 text-center'>{t('Shot No')}</TableHead>
               <TableHead className='w-36'>{t('Scene')}</TableHead>
               <TableHead className='w-20'>{t('Shot Type')}</TableHead>
-              <TableHead className='w-24'>
-                {t('Camera Movement')}
-              </TableHead>
+              <TableHead className='w-24'>{t('Camera Movement')}</TableHead>
               <TableHead>{t('Image Prompt')}</TableHead>
               <TableHead className='w-16 text-center'>
                 {t('Duration')}
               </TableHead>
-              <TableHead className='w-24 text-center'>
-                {t('Actions')}
-              </TableHead>
+              <TableHead className='w-24 text-center'>{t('Actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -194,7 +188,10 @@ export function StoryboardStep(props: StoryboardStepProps) {
                   <TableCell>{storyboard.shotType || '—'}</TableCell>
                   <TableCell>{storyboard.movement || '—'}</TableCell>
                   <TableCell className='max-w-64'>
-                    <span className='line-clamp-2' title={storyboard.imagePrompt}>
+                    <span
+                      className='line-clamp-2'
+                      title={storyboard.imagePrompt}
+                    >
                       {storyboard.imagePrompt || t('Not generated')}
                     </span>
                   </TableCell>
@@ -241,9 +238,7 @@ export function StoryboardStep(props: StoryboardStepProps) {
       {/* 顶部：标题 + 操作 */}
       <div className='flex flex-wrap items-start justify-between gap-2'>
         <div>
-          <div className='text-base font-semibold'>
-            {t('Storyboard Split')}
-          </div>
+          <div className='text-base font-semibold'>{t('Storyboard Split')}</div>
           <div className='text-muted-foreground mt-1 text-[13px]'>
             {t(
               'Split the script into storyboards (shot type, camera movement, image prompts); each storyboard can be edited individually'

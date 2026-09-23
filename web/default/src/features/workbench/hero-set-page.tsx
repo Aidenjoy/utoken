@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ChevronDown, ChevronUp, Eraser, LayoutGrid } from 'lucide-react'
+import { Eraser, LayoutGrid } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -81,7 +81,6 @@ export function HeroSetPage() {
   const [phase, setPhase] = useState<ResultPhase>('idle')
   const [results, setResults] = useState<string[]>([])
   const [error, setError] = useState('')
-  const [customOpen, setCustomOpen] = useState(true)
   const isLoading = phase === 'loading'
 
   const { data: modelsData } = useQuery({
@@ -206,7 +205,9 @@ export function HeroSetPage() {
             : [request.image]
           sources.forEach((image) => usedImages.add(image))
           setResults([...generated])
-        }
+        },
+        undefined,
+        config.mode
       )
       setPhase('done')
     } catch (generateError) {
@@ -348,6 +349,16 @@ export function HeroSetPage() {
                     value={config.reference ? [config.reference] : []}
                     onChange={(next) => update('reference', next[0] ?? null)}
                   />
+                  <UploadTile
+                    label={t('Scene image')}
+                    badge={t('Optional')}
+                    hint={t(
+                      'Use one background for the whole set. Without a scene image, the model background is used or a shared studio scene is created.'
+                    )}
+                    max={1}
+                    value={config.sceneImage ? [config.sceneImage] : []}
+                    onChange={(next) => update('sceneImage', next[0] ?? null)}
+                  />
                 </section>
 
                 <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
@@ -357,7 +368,7 @@ export function HeroSetPage() {
                     </span>
                     <p className='text-muted-foreground text-xs'>
                       {t(
-                        'Generated views should match the view of the uploaded reference image.'
+                        'The set shares the same model, outfit, background and lighting; only poses and selected views change.'
                       )}
                     </p>
                   </div>
@@ -418,56 +429,42 @@ export function HeroSetPage() {
                 </section>
 
                 <section className='border-border bg-card space-y-3 rounded-lg border p-4'>
-                  <button
-                    type='button'
-                    aria-expanded={customOpen}
-                    className='flex w-full items-center justify-between'
-                    onClick={() => setCustomOpen((open) => !open)}
-                  >
-                    <span className='text-sm font-medium'>
-                      {t('Custom pose, expression, outfit and more (optional)')}
-                    </span>
-                    {customOpen ? (
-                      <ChevronUp className='text-muted-foreground size-4' />
-                    ) : (
-                      <ChevronDown className='text-muted-foreground size-4' />
-                    )}
-                  </button>
-                  {customOpen ? (
-                    <div className='border-border flex flex-wrap items-center gap-x-2 gap-y-3 rounded-lg border p-3'>
-                      {customFields.map((field) => (
-                        <span
-                          key={field.key}
-                          className='flex items-center gap-2 text-sm'
+                  <h2 className='text-sm font-medium'>
+                    {t('Custom pose, expression, outfit and more (optional)')}
+                  </h2>
+                  <div className='border-border flex flex-wrap items-center gap-x-2 gap-y-3 rounded-lg border p-3'>
+                    {customFields.map((field) => (
+                      <span
+                        key={field.key}
+                        className='flex items-center gap-2 text-sm'
+                      >
+                        {field.label}
+                        <Select
+                          items={field.options}
+                          value={config[field.key]}
+                          onValueChange={(value) =>
+                            update(field.key, value ?? '')
+                          }
                         >
-                          {field.label}
-                          <Select
-                            items={field.options}
-                            value={config[field.key]}
-                            onValueChange={(value) =>
-                              update(field.key, value ?? '')
-                            }
-                          >
-                            <SelectTrigger className='w-36'>
-                              <SelectValue placeholder={field.placeholder} />
-                            </SelectTrigger>
-                            <SelectContent alignItemWithTrigger={false}>
-                              <SelectGroup>
-                                {field.options.map((option) => (
-                                  <SelectItem
-                                    key={option.value}
-                                    value={option.value}
-                                  >
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
+                          <SelectTrigger className='w-36'>
+                            <SelectValue placeholder={field.placeholder} />
+                          </SelectTrigger>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              {field.options.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </span>
+                    ))}
+                  </div>
                 </section>
 
                 <section className='border-border bg-card rounded-lg border p-4'>

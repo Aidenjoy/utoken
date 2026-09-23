@@ -47,11 +47,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Empty,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
+import { Empty, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ZoomableImage } from '@/components/zoomable-image'
 import dayjs from '@/lib/dayjs'
@@ -65,10 +61,7 @@ import {
 } from './api'
 import { EpisodeDialog } from './components/episode-dialog'
 import { ProjectDialog } from './components/project-dialog'
-import {
-  DIRECTOR_CATEGORY_CONFIG,
-  PROJECT_STATUS_LABEL,
-} from './constants'
+import { DIRECTOR_CATEGORY_CONFIG, PROJECT_STATUS_LABEL } from './constants'
 import type { DirectorCategory, DirectorEpisode } from './types'
 
 interface ProjectDetailPageProps {
@@ -176,7 +169,7 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
     return (
       <Card className='gap-0 rounded-2xl py-0'>
         <CardContent className='flex flex-col gap-5 p-5 md:flex-row'>
-          <div className='bg-muted relative aspect-[3/4] w-36 shrink-0 overflow-hidden rounded-xl ring-1 ring-foreground/10 md:w-44'>
+          <div className='bg-muted ring-foreground/10 relative aspect-[3/4] w-36 shrink-0 overflow-hidden rounded-xl ring-1 md:w-44'>
             {project.thumbnail ? (
               <ZoomableImage
                 src={project.thumbnail}
@@ -264,11 +257,11 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
       )
     }
     return (
-      <div className='divide-y divide-border/60'>
+      <div className='divide-border/60 divide-y'>
         {episodes.map((episode) => (
           <div
             key={episode.id}
-            className='flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/50'
+            className='hover:bg-muted/50 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors'
           >
             <div className='bg-muted flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold tabular-nums'>
               {episode.episodeNumber}
@@ -374,7 +367,7 @@ export function ProjectDetailPage(props: ProjectDetailPageProps) {
           <div className='space-y-6'>
             {renderOverview()}
             <Card className='gap-0 rounded-2xl py-0'>
-              <div className='flex items-center justify-between border-b border-border/60 px-4 py-3.5'>
+              <div className='border-border/60 flex items-center justify-between border-b px-4 py-3.5'>
                 <h2 className='font-semibold tracking-tight'>
                   {t('Episode List')}
                 </h2>

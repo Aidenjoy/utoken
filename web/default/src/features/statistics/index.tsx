@@ -16,11 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
+import { Activity, Coins, Hash, TrendingUp } from 'lucide-react'
 import { useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, Coins, Hash, TrendingUp } from 'lucide-react'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
@@ -111,11 +111,11 @@ function StatCard({
         className
       )}
     >
-      <div className='flex size-10 items-center justify-center rounded-lg bg-primary/10'>
-        <Icon className='size-5 text-primary' />
+      <div className='bg-primary/10 flex size-10 items-center justify-center rounded-lg'>
+        <Icon className='text-primary size-5' />
       </div>
       <div className='flex flex-col'>
-        <span className='text-xs text-muted-foreground'>{label}</span>
+        <span className='text-muted-foreground text-xs'>{label}</span>
         <span className='text-lg font-semibold tabular-nums'>{value}</span>
       </div>
     </div>
@@ -157,10 +157,7 @@ export function Statistics() {
     },
   })
 
-  const stats = useMemo(
-    () => calculateStats(quotaData ?? []),
-    [quotaData]
-  )
+  const stats = useMemo(() => calculateStats(quotaData ?? []), [quotaData])
 
   const modelSummaries = useMemo(
     () => aggregateByModel(quotaData ?? []),
@@ -187,15 +184,13 @@ export function Statistics() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('Statistics Data')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Statistics Data')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-4'>
           {/* Filter Bar */}
           <div className='flex flex-wrap items-end gap-3'>
             <div className='flex flex-col gap-1'>
-              <label className='text-xs text-muted-foreground'>
+              <label className='text-muted-foreground text-xs'>
                 {t('User')}
               </label>
               <Input
@@ -209,13 +204,10 @@ export function Statistics() {
               />
             </div>
             <div className='flex flex-col gap-1'>
-              <label className='text-xs text-muted-foreground'>
+              <label className='text-muted-foreground text-xs'>
                 {t('Time Range')}
               </label>
-              <Select
-                value={String(days)}
-                onValueChange={handleDaysChange}
-              >
+              <Select value={String(days)} onValueChange={handleDaysChange}>
                 <SelectTrigger className='w-32'>
                   <SelectValue />
                 </SelectTrigger>
@@ -278,7 +270,7 @@ export function Statistics() {
                     <TableRow key={`skeleton-${i}`}>
                       {Array.from({ length: 5 }).map((_, j) => (
                         <TableCell key={j}>
-                          <div className='h-4 animate-pulse rounded bg-muted' />
+                          <div className='bg-muted h-4 animate-pulse rounded' />
                         </TableCell>
                       ))}
                     </TableRow>
@@ -287,7 +279,7 @@ export function Statistics() {
                   <TableRow>
                     <TableCell
                       colSpan={5}
-                      className='py-12 text-center text-muted-foreground'
+                      className='text-muted-foreground py-12 text-center'
                     >
                       {t('No data available for the selected period')}
                     </TableCell>
@@ -309,10 +301,9 @@ export function Statistics() {
                       </TableCell>
                       <TableCell className='text-right tabular-nums'>
                         {stats.totalQuota > 0
-                          ? (
-                              (model.quota / stats.totalQuota) *
-                              100
-                            ).toFixed(1) + '%'
+                          ? ((model.quota / stats.totalQuota) * 100).toFixed(
+                              1
+                            ) + '%'
                           : '-'}
                       </TableCell>
                     </TableRow>
@@ -324,7 +315,7 @@ export function Statistics() {
 
           {/* Info Note */}
           {!isLoading && modelSummaries.length > 0 && (
-            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
+            <div className='text-muted-foreground flex items-center gap-2 text-sm'>
               <Activity className='size-4' />
               <span>
                 {t('{{count}} models in the last {{days}} days', {

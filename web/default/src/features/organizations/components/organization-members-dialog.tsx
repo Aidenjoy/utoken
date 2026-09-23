@@ -39,6 +39,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  MemberMutateDrawer,
+  type MemberDrawerMode,
+} from '@/features/organization/components/member-mutate-drawer'
+import {
   ORG_MEMBER_STATUSES,
   ORG_ROLES,
 } from '@/features/organization/constants'
@@ -47,11 +51,6 @@ import type {
   OrgMemberDetail,
 } from '@/features/organization/types'
 import { formatQuota, formatTimestamp } from '@/lib/format'
-
-import {
-  MemberMutateDrawer,
-  type MemberDrawerMode,
-} from '@/features/organization/components/member-mutate-drawer'
 
 import { getAdminOrganization, getAdminOrganizationMembers } from '../api'
 import { ORG_ADMIN_ERROR_MESSAGES } from '../constants'

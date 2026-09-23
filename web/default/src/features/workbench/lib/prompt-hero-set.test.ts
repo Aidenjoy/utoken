@@ -83,7 +83,7 @@ describe('商品套图生成计划', () => {
     ])
     assert.match(requests[0].prompt, /image 4: layout reference/)
     assert.ok(
-      requests[0].prompt.endsWith(
+      requests[0].prompt.includes(
         'Purpose-specific requirements:\n仅主图：标题放左上方'
       )
     )
@@ -97,6 +97,150 @@ describe('商品套图生成计划', () => {
     config.product.extra = '价格 ¥79'
     assert.ok(buildProductSetRequests(config)[0].prompt.includes('价格 ¥79'))
     assert.ok(!buildProductSetRequests(config)[0].prompt.includes('99.90'))
+  })
+
+  test('关闭细节图后第四张仍是独立白底图，不继承营销海报文案', () => {
+    const config = productFixture()
+    config.product.shots[3].count = 0
+    config.product.shots[0].extra = '标题字要大一些'
+    config.product.shots[1].extra = '总结核心卖点并放在图片内'
+    const requests = buildProductSetRequests(config)
+    assert.equal(heroSetTotalCount(config), 4)
+    assert.equal(requests.length, 4)
+    assert.match(
+      requests[0].prompt,
+      /Required image type: Traffic-driving hero image/
+    )
+    assert.match(
+      requests[1].prompt,
+      /Required image type: Core selling point image/
+    )
+    assert.match(requests[2].prompt, /Required image type: Usage scene image/)
+    const white = requests[3].prompt
+    assert.match(white, /Required image type: White background image/)
+    assert.match(white, /uniform solid #FFFFFF \(RGB 255, 255, 255\)/)
+    assert.match(white, /No added text, headlines, selling points, prices/)
+    assert.match(white, /full silhouette, handles and included parts/)
+    assert.doesNotMatch(white, /Include concise|标题字要大|总结核心卖点/)
+  })
+
+  for (const withCopy of [false, true]) {
+    for (const withScene of [false, true]) {
+      test(`白底用途优先于文案=${withCopy}、场景=${withScene}及冲突的参考图和补充要求`, () => {
+        const config = productFixture()
+        config.product.withCopy = withCopy
+        config.product.withScene = withScene
+        config.product.extra = '整套米黄色渐变背景，标语：轻装出发，价格 ¥99'
+        config.product.shots = [
+          {
+            type: 'white',
+            count: 1,
+            references: [
+              { id: 'scene', name: 'scene.png', src: 'colored-poster' },
+            ],
+            extra: '保留提手，在大理石台面加促销标签',
+          },
+        ]
+        const [request] = buildProductSetRequests(config)
+        assert.equal(request.images.at(-1), 'colored-poster')
+        assert.match(request.prompt, /only product orientation and framing/)
+        assert.match(request.prompt, /Discard its background, scenery/)
+        assert.match(request.prompt, /disabled regardless of whole-set options/)
+        assert.match(request.prompt, /including requests in the notes below/)
+        assert.match(
+          request.prompt,
+          /only where compatible with the mandatory image purpose/
+        )
+        assert.match(request.prompt, /cannot change the assigned image type/)
+        assert.match(
+          request.prompt,
+          /No gray, cream, colored or gradient background/
+        )
+        assert.match(
+          request.prompt,
+          /backdrop shadow, reflection, pedestal or scene props/
+        )
+        assert.match(request.prompt, /physical on-product logo/)
+        assert.ok(request.prompt.includes(config.product.extra))
+        assert.ok(request.prompt.includes(config.product.shots[0].extra))
+        assert.doesNotMatch(
+          request.prompt,
+          /Include concise|Use a clean studio|environment is optional/
+        )
+        assert.match(
+          request.prompt,
+          /Final image check:[\s\S]*uniform #FFFFFF, with no added text or scenery/
+        )
+      })
+    }
+  }
+
+  test('八种用途各自约束画面，不把场景、细节、角度和结构图都做成主图海报', () => {
+    const config = productFixture()
+    config.product.withScene = false
+    config.product.withCopy = false
+    config.product.shots = config.product.shots.map((shot) => ({
+      ...shot,
+      count: 1,
+    }))
+    const requests = buildProductSetRequests(config)
+    assert.equal(requests.length, 8)
+    const expected = [
+      /complete product the dominant, sharply readable subject/,
+      /Visually demonstrate one or a few verifiable product benefits/,
+      /recognizable, realistic environment where it would actually be used/,
+      /close-up or macro crop/,
+      /uniform solid #FFFFFF/,
+      /one useful side, rear or three-quarter angle/,
+      /restrained lighting or abstract decorative effects/,
+      /visible joint, closure, component connection/,
+    ]
+    requests.forEach((request, index) => {
+      assert.match(request.prompt, expected[index])
+      assert.match(request.prompt, /exactly one standalone/)
+      assert.match(
+        request.prompt,
+        /one coordinated product photo shoot, not an independent design/
+      )
+      assert.match(
+        request.prompt,
+        /do not copy its background, layout, promotional text/
+      )
+      assert.doesNotMatch(request.prompt, /Include concise/)
+    })
+    assert.match(requests[2].prompt, /usage environment is required/)
+    assert.doesNotMatch(requests[2].prompt, /Use a clean studio background/)
+    assert.match(
+      requests[3].prompt,
+      /Do not substitute a full-product hero poster/
+    )
+    assert.match(requests[7].prompt, /Do not invent internal components/)
+  })
+
+  test('共享场景图只进入启用场景的用途，白底图保持纯白且不携带场景', () => {
+    const config = productFixture()
+    config.product.sceneImage = {
+      id: 'scene',
+      name: 'scene.png',
+      src: 'shared-scene',
+    }
+    const requests = buildProductSetRequests(config)
+    for (const request of requests.slice(0, 4)) {
+      assert.ok(request.images.includes('shared-scene'))
+      assert.match(request.prompt, /shared scene reference for the whole set/)
+      assert.match(
+        request.prompt,
+        /Use the uploaded shared scene as the required environment/
+      )
+      assert.match(
+        request.prompt,
+        /do not copy its products, people, text or branding/
+      )
+    }
+    const white = requests[4]
+    assert.ok(!white.images.includes('shared-scene'))
+    assert.doesNotMatch(white.prompt, /shared scene reference/)
+    assert.match(white.prompt, /uniform solid #FFFFFF/)
   })
 
   test('多张参考图逐张生成，零张用途保留配置但不参与请求', () => {
@@ -242,6 +386,33 @@ describe('商品套图生成计划', () => {
     assert.match(requests[0].prompt, /variation 1 of 2 for the front view/)
     assert.match(requests[1].prompt, /variation 2 of 2 for the front view/)
     assert.match(requests[2].prompt, /variation 1 of 1 for the side view/)
+  })
+
+  test('模特套图共享场景图进入每张请求并替换默认背景指令', () => {
+    const config = modelFixture()
+    config.angles = [{ value: 'front', count: 2 }]
+    config.sceneImage = { id: 'scene', name: 'scene.png', src: 'shared-scene' }
+    const requests = buildModelSetRequests(config)
+    for (const request of requests) {
+      assert.deepEqual(request.images, ['model-reference', 'shared-scene'])
+      assert.match(request.prompt, /Image 2 is the shared scene reference/)
+      assert.match(request.prompt, /never return a transparent cutout/)
+      assert.match(
+        request.prompt,
+        /Only the requested body view and natural pose or expression may vary/
+      )
+    }
+    assert.match(requests[0].prompt, /Pose variation cue: relaxed hands/)
+    assert.match(requests[1].prompt, /Pose variation cue: a subtle weight/)
+  })
+
+  test('无场景图时模特套图要求共用环境并禁止透明抠图背景', () => {
+    const config = modelFixture()
+    const [request] = buildModelSetRequests(config)
+    assert.deepEqual(request.images, ['model-reference'])
+    assert.match(request.prompt, /light-gray photographic studio/)
+    assert.match(request.prompt, /Always render a complete background/)
+    assert.doesNotMatch(request.prompt, /shared scene reference/)
   })
 })
 

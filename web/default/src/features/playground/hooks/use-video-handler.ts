@@ -8,10 +8,7 @@ import {
   VIDEO_MAX_DURATION,
   VIDEO_POLL_INTERVAL_MS,
 } from '../constants'
-import {
-  loadVideoTasks,
-  saveVideoTasks,
-} from '../lib/storage/video-storage'
+import { loadVideoTasks, saveVideoTasks } from '../lib/storage/video-storage'
 import type {
   ArkContentItem,
   MediaItem,
@@ -74,7 +71,10 @@ function getMediaDuration(
  * crypto.randomUUID() is only available in secure contexts (HTTPS or localhost).
  */
 function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID()
   }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -112,11 +112,23 @@ function buildSubmitPayload(
         continue
       }
       if (item.type === 'image') {
-        content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+        content.push({
+          type: 'image_url',
+          image_url: { url },
+          role: 'reference_image',
+        })
       } else if (item.type === 'video') {
-        content.push({ type: 'video_url', video_url: { url }, role: 'reference_video' })
+        content.push({
+          type: 'video_url',
+          video_url: { url },
+          role: 'reference_video',
+        })
       } else if (item.type === 'audio') {
-        content.push({ type: 'audio_url', audio_url: { url }, role: 'reference_audio' })
+        content.push({
+          type: 'audio_url',
+          audio_url: { url },
+          role: 'reference_audio',
+        })
       }
     }
   }
@@ -154,7 +166,9 @@ export function useVideoHandler(config: VideoConfig) {
   const [videoTasks, setVideoTasks] = useState<VideoTask[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   // Track upload progress: { [localUrl]: percent }
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>(
+    {}
+  )
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeTaskIdRef = useRef<string | null>(null)
   // A shared ID that groups all files uploaded for the same video task.
@@ -187,9 +201,7 @@ export function useVideoHandler(config: VideoConfig) {
   const updateTask = useCallback(
     (taskId: string, updater: (task: VideoTask) => VideoTask) => {
       setVideoTasks((prev) => {
-        const next = prev.map((t) =>
-          t.taskId === taskId ? updater(t) : t
-        )
+        const next = prev.map((t) => (t.taskId === taskId ? updater(t) : t))
         persistTasks(next)
         return next
       })
@@ -301,14 +313,19 @@ export function useVideoHandler(config: VideoConfig) {
         // Ensure all media items are uploaded
         const pendingUploads = config.mediaItems.filter(
           (item) =>
-            (item.type === 'image' || item.type === 'video' || item.type === 'audio') &&
+            (item.type === 'image' ||
+              item.type === 'video' ||
+              item.type === 'audio') &&
             !item.remoteUrl
         )
         if (pendingUploads.length > 0) {
           toast.error(t('Please wait for all media uploads to complete'))
           return
         }
-      } else if (config.mode === 'first_last_frame' || config.mode === 'first_frame') {
+      } else if (
+        config.mode === 'first_last_frame' ||
+        config.mode === 'first_frame'
+      ) {
         // First/last frame and first frame modes: must have at least 1 image
         if (config.images.length === 0) {
           toast.error(t('Please upload at least one image'))
@@ -332,7 +349,9 @@ export function useVideoHandler(config: VideoConfig) {
           for (const key of ['image_url', 'video_url', 'audio_url'] as const) {
             const media = truncated[key]
             if (media && media.url.length > 100) {
-              truncated[key] = { url: media.url.substring(0, 80) + '...(truncated)' }
+              truncated[key] = {
+                url: media.url.substring(0, 80) + '...(truncated)',
+              }
             }
           }
           return truncated

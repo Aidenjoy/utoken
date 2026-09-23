@@ -29,7 +29,12 @@ import type { PricingModel } from '../types'
 // ----------------------------------------------------------------------------
 
 // 分辨率档固定顺序（与系统设置编辑器一致）；其余自定义档按名称附后
-export const SEEDANCE_RESOLUTION_ORDER = ['480p', '720p', '1080p', '4k'] as const
+export const SEEDANCE_RESOLUTION_ORDER = [
+  '480p',
+  '720p',
+  '1080p',
+  '4k',
+] as const
 
 export type SeedreamPrices = {
   inputImage: number
@@ -82,7 +87,9 @@ export function getSeedreamPrices(model: PricingModel): SeedreamPrices | null {
  * Parse seedance per-resolution prices, ordered by the fixed resolution list.
  * Returns null when the model is not in seedance mode or config is invalid.
  */
-export function getSeedanceTiers(model: PricingModel): SeedanceTierPrice[] | null {
+export function getSeedanceTiers(
+  model: PricingModel
+): SeedanceTierPrice[] | null {
   if (!isSeedanceBillingModel(model)) return null
   let parsed: Record<string, { with_video?: number; without_video?: number }>
   try {
