@@ -230,11 +230,11 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
   }
 
-  // 开发者中心 — 原「教程」一级菜单提升为直链，统一命名为「开发者中心」。
+  // 文档 — 原「教程」一级菜单提升为直链，统一命名为「文档」。
   // 联系客服不在此列，改由各页头/页脚独立渲染的 SupportPopover 弹窗承载。
-  links.push({ title: t('Developer Center'), href: '/docs' })
+  links.push({ title: t('Docs'), href: '/docs' })
 
-  // Docs — 内部 /docs 已由「开发者中心」承载，此处仅在后台配置了外部文档链接时追加，避免出现重复的 /docs 菜单。
+  // 外部文档链接 — 仅在后台配置了外部 docsLink 时追加，避免出现重复的 /docs 菜单。
   if (modules?.docs === true && docsLink) {
     links.push({ title: t('Docs'), href: docsLink, external: true })
   }

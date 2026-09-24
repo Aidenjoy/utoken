@@ -137,7 +137,7 @@ export function DeveloperDocs() {
           {/* 页头 */}
           <header className='mx-auto mb-10 max-w-3xl text-center sm:mb-14'>
             <h1 className='text-[clamp(1.9rem,5vw,3rem)] leading-[1.15] font-bold tracking-tight'>
-              {t('Developer Docs')}
+              {t('Docs')}
             </h1>
             <div className='mt-5 flex flex-wrap items-center justify-center gap-2.5'>
               <span className='border-border/70 bg-card/70 inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 font-mono text-xs backdrop-blur-sm'>
