@@ -16,15 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export { TryOnPage } from './try-on-page'
-export { MultiTryOnPage } from './multi-try-on-page'
-export { DuoTryOnPage } from './duo-try-on-page'
-export { ProductDesignPage } from './product-design-page'
-export { FashionDesignPage } from './fashion-design-page'
-export { FoodDesignPage } from './food-design-page'
-export { PackagingDesignPage } from './packaging-design-page'
-export { HeroImagePage } from './hero-image-page'
-export { HeroSetPage } from './hero-set-page'
-export { DetailPagePage } from './detail-page-page'
-export { CloseUpImagePage } from './closeup-image-page'
-export { ModelStudioPage } from './model-studio-page'
+import { createFileRoute } from '@tanstack/react-router'
+
+import { PackagingDesignPage } from '@/features/workbench/packaging-design-page'
+
+export const Route = createFileRoute('/_authenticated/viral-design/packaging')({
+  component: PackagingDesignPage,
+})

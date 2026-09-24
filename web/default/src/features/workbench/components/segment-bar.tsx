@@ -24,6 +24,8 @@ interface SegmentBarProps {
   options: ChipOption[]
   value: string
   onChange: (value: string) => void
+  /** 保持单行，窄屏或长翻译可横向滚动，不改变旧页面默认布局。 */
+  singleRow?: boolean
 }
 
 /**
@@ -32,18 +34,21 @@ interface SegmentBarProps {
  * inside their cell instead of overflowing.
  */
 export function SegmentBar(props: SegmentBarProps) {
+  const columns = props.options.length > 4 ? 'max-sm:grid-cols-4!' : ''
   return (
     <div className='space-y-1.5'>
       {props.label ? (
         <span className='text-sm font-medium'>{props.label}</span>
       ) : null}
       <div
-        className={`bg-muted grid gap-1 rounded-lg p-1 ${
-          props.options.length > 4 ? 'max-sm:grid-cols-4!' : ''
-        }`}
-        style={{
-          gridTemplateColumns: `repeat(${props.options.length}, minmax(0, 1fr))`,
-        }}
+        className={`bg-muted gap-1 rounded-lg p-1 ${props.singleRow ? 'flex overflow-x-auto' : `grid ${columns}`}`}
+        style={
+          props.singleRow
+            ? undefined
+            : {
+                gridTemplateColumns: `repeat(${props.options.length}, minmax(0, 1fr))`,
+              }
+        }
       >
         {props.options.map((option) => {
           const selected = option.value === props.value
@@ -52,7 +57,7 @@ export function SegmentBar(props: SegmentBarProps) {
               key={option.value}
               type='button'
               aria-pressed={selected}
-              className={`rounded-md py-2 text-sm transition-colors disabled:opacity-50 ${
+              className={`rounded-md py-2 text-sm transition-colors disabled:opacity-50 ${props.singleRow ? 'focus-visible:outline-ring min-w-max flex-1 px-2 whitespace-nowrap focus-visible:outline-2 focus-visible:-outline-offset-2' : ''} ${
                 selected
                   ? 'bg-primary text-primary-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground'

@@ -64,7 +64,9 @@ import { Route as AuthenticatedViralHeroHeroSetRouteImport } from './routes/_aut
 import { Route as AuthenticatedViralHeroHeroDesignRouteImport } from './routes/_authenticated/viral-hero/hero-design'
 import { Route as AuthenticatedViralHeroDetailPageRouteImport } from './routes/_authenticated/viral-hero/detail-page'
 import { Route as AuthenticatedViralHeroDetailImagesRouteImport } from './routes/_authenticated/viral-hero/detail-images'
+import { Route as AuthenticatedViralDesignPackagingRouteImport } from './routes/_authenticated/viral-design/packaging'
 import { Route as AuthenticatedViralDesignMerchandiseRouteImport } from './routes/_authenticated/viral-design/merchandise'
+import { Route as AuthenticatedViralDesignFoodRouteImport } from './routes/_authenticated/viral-design/food'
 import { Route as AuthenticatedViralDesignFashionRouteImport } from './routes/_authenticated/viral-design/fashion'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedTryOnMultiRouteImport } from './routes/_authenticated/try-on/multi'
@@ -398,10 +400,22 @@ const AuthenticatedViralHeroDetailImagesRoute =
     path: '/viral-hero/detail-images',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedViralDesignPackagingRoute =
+  AuthenticatedViralDesignPackagingRouteImport.update({
+    id: '/viral-design/packaging',
+    path: '/viral-design/packaging',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedViralDesignMerchandiseRoute =
   AuthenticatedViralDesignMerchandiseRouteImport.update({
     id: '/viral-design/merchandise',
     path: '/viral-design/merchandise',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedViralDesignFoodRoute =
+  AuthenticatedViralDesignFoodRouteImport.update({
+    id: '/viral-design/food',
+    path: '/viral-design/food',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedViralDesignFashionRoute =
@@ -639,7 +653,9 @@ export interface FileRoutesByFullPath {
   '/try-on/multi': typeof AuthenticatedTryOnMultiRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/viral-design/fashion': typeof AuthenticatedViralDesignFashionRoute
+  '/viral-design/food': typeof AuthenticatedViralDesignFoodRoute
   '/viral-design/merchandise': typeof AuthenticatedViralDesignMerchandiseRoute
+  '/viral-design/packaging': typeof AuthenticatedViralDesignPackagingRoute
   '/viral-hero/detail-images': typeof AuthenticatedViralHeroDetailImagesRoute
   '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
@@ -726,7 +742,9 @@ export interface FileRoutesByTo {
   '/try-on/multi': typeof AuthenticatedTryOnMultiRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/viral-design/fashion': typeof AuthenticatedViralDesignFashionRoute
+  '/viral-design/food': typeof AuthenticatedViralDesignFoodRoute
   '/viral-design/merchandise': typeof AuthenticatedViralDesignMerchandiseRoute
+  '/viral-design/packaging': typeof AuthenticatedViralDesignPackagingRoute
   '/viral-hero/detail-images': typeof AuthenticatedViralHeroDetailImagesRoute
   '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
@@ -817,7 +835,9 @@ export interface FileRoutesById {
   '/_authenticated/try-on/multi': typeof AuthenticatedTryOnMultiRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
   '/_authenticated/viral-design/fashion': typeof AuthenticatedViralDesignFashionRoute
+  '/_authenticated/viral-design/food': typeof AuthenticatedViralDesignFoodRoute
   '/_authenticated/viral-design/merchandise': typeof AuthenticatedViralDesignMerchandiseRoute
+  '/_authenticated/viral-design/packaging': typeof AuthenticatedViralDesignPackagingRoute
   '/_authenticated/viral-hero/detail-images': typeof AuthenticatedViralHeroDetailImagesRoute
   '/_authenticated/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/_authenticated/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
@@ -908,7 +928,9 @@ export interface FileRouteTypes {
     | '/try-on/multi'
     | '/usage-logs/$section'
     | '/viral-design/fashion'
+    | '/viral-design/food'
     | '/viral-design/merchandise'
+    | '/viral-design/packaging'
     | '/viral-hero/detail-images'
     | '/viral-hero/detail-page'
     | '/viral-hero/hero-design'
@@ -995,7 +1017,9 @@ export interface FileRouteTypes {
     | '/try-on/multi'
     | '/usage-logs/$section'
     | '/viral-design/fashion'
+    | '/viral-design/food'
     | '/viral-design/merchandise'
+    | '/viral-design/packaging'
     | '/viral-hero/detail-images'
     | '/viral-hero/detail-page'
     | '/viral-hero/hero-design'
@@ -1085,7 +1109,9 @@ export interface FileRouteTypes {
     | '/_authenticated/try-on/multi'
     | '/_authenticated/usage-logs/$section'
     | '/_authenticated/viral-design/fashion'
+    | '/_authenticated/viral-design/food'
     | '/_authenticated/viral-design/merchandise'
+    | '/_authenticated/viral-design/packaging'
     | '/_authenticated/viral-hero/detail-images'
     | '/_authenticated/viral-hero/detail-page'
     | '/_authenticated/viral-hero/hero-design'
@@ -1543,11 +1569,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedViralHeroDetailImagesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/viral-design/packaging': {
+      id: '/_authenticated/viral-design/packaging'
+      path: '/viral-design/packaging'
+      fullPath: '/viral-design/packaging'
+      preLoaderRoute: typeof AuthenticatedViralDesignPackagingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/viral-design/merchandise': {
       id: '/_authenticated/viral-design/merchandise'
       path: '/viral-design/merchandise'
       fullPath: '/viral-design/merchandise'
       preLoaderRoute: typeof AuthenticatedViralDesignMerchandiseRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/viral-design/food': {
+      id: '/_authenticated/viral-design/food'
+      path: '/viral-design/food'
+      fullPath: '/viral-design/food'
+      preLoaderRoute: typeof AuthenticatedViralDesignFoodRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/viral-design/fashion': {
@@ -1920,7 +1960,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTryOnMultiRoute: typeof AuthenticatedTryOnMultiRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
   AuthenticatedViralDesignFashionRoute: typeof AuthenticatedViralDesignFashionRoute
+  AuthenticatedViralDesignFoodRoute: typeof AuthenticatedViralDesignFoodRoute
   AuthenticatedViralDesignMerchandiseRoute: typeof AuthenticatedViralDesignMerchandiseRoute
+  AuthenticatedViralDesignPackagingRoute: typeof AuthenticatedViralDesignPackagingRoute
   AuthenticatedViralHeroDetailImagesRoute: typeof AuthenticatedViralHeroDetailImagesRoute
   AuthenticatedViralHeroDetailPageRoute: typeof AuthenticatedViralHeroDetailPageRoute
   AuthenticatedViralHeroHeroDesignRoute: typeof AuthenticatedViralHeroHeroDesignRoute
@@ -1968,8 +2010,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTryOnMultiRoute: AuthenticatedTryOnMultiRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,
   AuthenticatedViralDesignFashionRoute: AuthenticatedViralDesignFashionRoute,
+  AuthenticatedViralDesignFoodRoute: AuthenticatedViralDesignFoodRoute,
   AuthenticatedViralDesignMerchandiseRoute:
     AuthenticatedViralDesignMerchandiseRoute,
+  AuthenticatedViralDesignPackagingRoute:
+    AuthenticatedViralDesignPackagingRoute,
   AuthenticatedViralHeroDetailImagesRoute:
     AuthenticatedViralHeroDetailImagesRoute,
   AuthenticatedViralHeroDetailPageRoute: AuthenticatedViralHeroDetailPageRoute,

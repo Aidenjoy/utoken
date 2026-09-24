@@ -203,7 +203,9 @@ export function HeroSetPage() {
           const sources = Array.isArray(request.image)
             ? request.image
             : [request.image]
-          sources.forEach((image) => usedImages.add(image))
+          sources.forEach((image) => {
+            if (image) usedImages.add(image)
+          })
           setResults([...generated])
         },
         undefined,

@@ -17,7 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { ZoomableImage } from '@/components/zoomable-image'
@@ -44,13 +46,26 @@ interface ResultPanelProps {
   progressive?: boolean
   /** 详情页按原图比例、同宽无间隔纵向预览，其他工作台仍使用网格。 */
   layout?: 'grid' | 'continuous'
+  /** 新行业页面传入冻结标签；旧页面保持默认显示及下载命名。 */
+  resultLabels?: string[]
+  downloadPrefix?: string
+  notice?: string
+  preserveAspect?: boolean
+  renderResultActions?: (src: string, index: number) => ReactNode
 }
 
 /** Right-hand canvas: empty state, loading skeletons or the result grid. */
 export function ResultPanel(props: ResultPanelProps) {
   const { t } = useTranslation()
+  const [downloading, setDownloading] = useState<number | null>(null)
   const isLoading = props.phase === 'loading'
   const continuous = props.layout === 'continuous'
+  let resultLayout = 'grid grid-cols-2 gap-3'
+  if (continuous) {
+    resultLayout = 'flex flex-col'
+  } else if (props.preserveAspect) {
+    resultLayout = 'grid grid-cols-1 gap-3 sm:grid-cols-2'
+  }
   const visibleResults = isLoading && !props.progressive ? [] : props.results
   // 结果按完成顺序追加，尚未完成的槽位保留占位，不因首张返回而消失。
   const pendingIds = Array.from(
@@ -119,6 +134,9 @@ export function ResultPanel(props: ResultPanelProps) {
       className='border-border bg-muted/30 rounded-lg border p-4'
       aria-busy={isLoading}
     >
+      {props.notice ? (
+        <p className='text-muted-foreground mb-3 text-xs'>{props.notice}</p>
+      ) : null}
       {continuous ? (
         <p className='text-muted-foreground mb-3 text-xs'>
           {t(
@@ -144,7 +162,7 @@ export function ResultPanel(props: ResultPanelProps) {
           {props.error}
         </p>
       ) : null}
-      <div className={continuous ? 'flex flex-col' : 'grid grid-cols-2 gap-3'}>
+      <div className={resultLayout}>
         {visibleResults.map((src, index) => (
           <div
             // eslint-disable-next-line react/no-array-index-key -- 结果只追加、不重排；索引用于区分重复 URL。
@@ -159,12 +177,13 @@ export function ResultPanel(props: ResultPanelProps) {
             <ZoomableImage
               src={src}
               alt={
-                continuous
+                props.resultLabels?.[index] ??
+                (continuous
                   ? t('Detail page segment {{index}}', { index: index + 1 })
-                  : t('Try-on result {{index}}', { index: index + 1 })
+                  : t('Try-on result {{index}}', { index: index + 1 }))
               }
               className={
-                continuous
+                continuous || props.preserveAspect
                   ? 'focus-visible:outline-primary w-full focus-visible:relative focus-visible:z-10 focus-visible:outline-2 [&>img]:h-auto'
                   : 'aspect-square w-full'
               }
@@ -172,7 +191,33 @@ export function ResultPanel(props: ResultPanelProps) {
             />
             <a
               href={src}
-              download={`${continuous ? 'detail' : 'try-on'}-${index + 1}.png`}
+              download={`${props.downloadPrefix ?? (continuous ? 'detail' : 'try-on')}-${index + 1}.png`}
+              aria-disabled={downloading !== null}
+              onClick={async (event) => {
+                if (!props.downloadPrefix) return
+                event.preventDefault()
+                if (downloading !== null) return
+                setDownloading(index)
+                try {
+                  // 跨域图片的原生 download 会变成页面跳转，先读取为本地 Blob。
+                  const response = await fetch(src, { credentials: 'omit' })
+                  if (!response.ok) throw new Error('Image download failed')
+                  const url = URL.createObjectURL(await response.blob())
+                  const link = document.createElement('a')
+                  link.href = url
+                  link.download = `${props.downloadPrefix}-${index + 1}.png`
+                  link.click()
+                  setTimeout(() => URL.revokeObjectURL(url), 1000)
+                } catch {
+                  toast.error(
+                    t(
+                      'Download failed. Open the image preview and save it manually.'
+                    )
+                  )
+                } finally {
+                  setDownloading(null)
+                }
+              }}
               aria-label={
                 continuous
                   ? t('Download image {{index}}', { index: index + 1 })
@@ -185,8 +230,25 @@ export function ResultPanel(props: ResultPanelProps) {
                   : 'opacity-100 md:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
               )}
             >
-              <Download className='size-4' />
+              {downloading === index ? (
+                <Loader2 className='size-4 animate-spin motion-reduce:animate-none' />
+              ) : (
+                <Download className='size-4' />
+              )}
             </a>
+            {props.resultLabels?.[index] ? (
+              <p className='px-3 pt-2 text-sm font-medium break-words'>
+                {props.resultLabels[index]}
+              </p>
+            ) : null}
+            {props.notice ? (
+              <p className='text-muted-foreground px-3 py-2 text-xs'>
+                {props.notice}
+              </p>
+            ) : null}
+            {props.renderResultActions ? (
+              <div className='p-3'>{props.renderResultActions(src, index)}</div>
+            ) : null}
           </div>
         ))}
         {pendingIds.map((id) => (

@@ -29,6 +29,7 @@ import {
   FileText,
   FlaskConical,
   FolderSync,
+  Gift,
   Image as ImageIcon,
   Images,
   Key,
@@ -51,6 +52,7 @@ import {
   User,
   UserRound,
   Users,
+  Utensils,
   Wallet,
   ZoomIn,
 } from 'lucide-react'
@@ -91,16 +93,6 @@ export function useSidebarData(): SidebarData {
             title: t('Virtual Human Library'),
             url: '/asset-library',
             icon: Images,
-          },
-          {
-            title: t('Prompt Library'),
-            url: '/prompts',
-            icon: BookOpen,
-          },
-          {
-            title: t('Cost Calculator'),
-            url: '/cost-calculator',
-            icon: Calculator,
           },
           {
             title: t('Chat'),
@@ -206,6 +198,16 @@ export function useSidebarData(): SidebarData {
             url: '/viral-design/merchandise',
             icon: Package,
           },
+          {
+            title: t('Food Design'),
+            url: '/viral-design/food',
+            icon: Utensils,
+          },
+          {
+            title: t('Packaging Design'),
+            url: '/viral-design/packaging',
+            icon: Gift,
+          },
         ],
       },
       {
@@ -259,6 +261,11 @@ export function useSidebarData(): SidebarData {
             title: t('Asset Library'),
             url: '/director/assets',
             icon: Images,
+          },
+          {
+            title: t('Prompt Library'),
+            url: '/prompts',
+            icon: BookOpen,
           },
         ],
       },
@@ -355,6 +362,11 @@ export function useSidebarData(): SidebarData {
             url: '/statistics-logs',
             icon: ScrollText,
             requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Cost Calculator'),
+            url: '/cost-calculator',
+            icon: Calculator,
           },
           {
             title: t('Redemption Codes'),

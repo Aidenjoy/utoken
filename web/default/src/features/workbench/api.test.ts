@@ -40,6 +40,92 @@ afterEach(() => {
   api.defaults.adapter = originalAdapter
 })
 
+for (const mode of ['food', 'packaging'] as const) {
+  for (const base64 of [false, true]) {
+    test(`${mode}固定首图参考兼容URL/base64且不修改源计划：${base64}`, async () => {
+      const calls: TryOnGenerationBody[] = []
+      const delivered: string[] = []
+      const plans = [
+        { ...request(1, 'first'), image: undefined },
+        { ...request(1, 'second'), image: ['current-second'] },
+        { ...request(1, 'third'), image: ['current-third'] },
+      ]
+      const original = structuredClone(plans)
+      const first = base64 ? 'data:image/png;base64,aW1hZ2U=' : 'first-url'
+      api.defaults.adapter = async (config) => {
+        assert.equal(delivered.length, calls.length)
+        assert.equal(config.url, '/pg/images/generations')
+        calls.push(JSON.parse(config.data as string))
+        let image = { url: `result-${calls.length}`, b64_json: '' }
+        if (calls.length === 1) {
+          image = base64
+            ? { url: '', b64_json: 'aW1hZ2U=' }
+            : { url: first, b64_json: '' }
+        }
+        return {
+          config,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          data: { data: [image] },
+        }
+      }
+      await generateImageBatch(
+        plans,
+        (url) => delivered.push(url),
+        undefined,
+        mode
+      )
+      assert.ok(!Object.hasOwn(calls[0], 'image'))
+      assert.deepEqual(calls[1].image, ['current-second', first])
+      assert.deepEqual(calls[2].image, ['current-third', first])
+      assert.deepEqual(plans, original)
+      assert.equal(calls.length, 3)
+      assert.match(calls[1].prompt, /never propagate generated mistakes/)
+      assert.doesNotMatch(
+        calls[1].prompt,
+        /scene-disabled images|uniform #FFFFFF/
+      )
+      if (mode === 'food') {
+        assert.match(calls[1].prompt, /Do not copy the first dish/)
+      } else {
+        assert.match(
+          calls[1].prompt,
+          /current SKU name, colors and product identity override/
+        )
+      }
+    })
+  }
+  test(`${mode}第二张失败立即停止，不重试、不发第三张`, async () => {
+    let count = 0
+    const delivered: string[] = []
+    api.defaults.adapter = async (config) => {
+      count++
+      return {
+        config,
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        data:
+          count === 1
+            ? { data: [{ url: 'done' }] }
+            : { error: { message: 'stop' } },
+      }
+    }
+    await assert.rejects(
+      generateImageBatch(
+        [request(1), request(1), request(1)],
+        (url) => delivered.push(url),
+        undefined,
+        mode
+      ),
+      { message: 'stop' }
+    )
+    assert.equal(count, 2)
+    assert.deepEqual(delivered, ['done'])
+  })
+}
+
 function request(n: number, prompt = 'one design board'): TryOnGenerationBody {
   return {
     model: 'test-image',

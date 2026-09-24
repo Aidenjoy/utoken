@@ -33,7 +33,7 @@ export interface TryOnGenerationBody {
   n: number
   watermark: boolean
   /** Flat reference list; the prompt carries the index→role map. */
-  image: string | string[]
+  image?: string | string[]
 }
 
 export interface TryOnGenerationResultItem {
@@ -68,7 +68,7 @@ export async function generateImageBatch(
   requests: TryOnGenerationBody[],
   onImage: (url: string, request: TryOnGenerationBody) => void,
   signal?: AbortSignal,
-  setMode?: 'model' | 'product' | 'detail'
+  setMode?: 'model' | 'product' | 'detail' | 'food' | 'packaging'
 ): Promise<void> {
   // 发起任何计费请求前校验完整计划，保留工作台原有单项张数上限。
   if (
@@ -89,9 +89,9 @@ export async function generateImageBatch(
     for (let index = 0; index < request.n; index++) {
       const body = { ...request, n: 1 }
       if (setMode && setReference) {
-        const images = Array.isArray(request.image)
-          ? [...request.image]
-          : [request.image]
+        const images: string[] = []
+        if (Array.isArray(request.image)) images.push(...request.image)
+        else if (request.image) images.push(request.image)
         images.push(setReference)
         body.image = images
         let referenceRole = `Image ${images.length} is the first finished photograph of this same set, supplied as the fixed visual continuity reference, not a new subject or a layout template. Keep the original source images authoritative for identity and factual details; never propagate mistakes from the generated reference.`
@@ -100,6 +100,14 @@ export async function generateImageBatch(
         if (setMode === 'model') {
           continuity =
             'Continue the exact same photo shoot: match this finished reference in person identity, the specific outfit and accessories, physical background, fixed props, lighting, colors, photographic style and framing scale. Do not choose another outfit or scene. Change only the requested pose, expression and body view; do not duplicate its pose or override the current view. Preserve the uploaded shared scene and explicit whole-set requirements.'
+        } else if (setMode === 'food') {
+          referenceRole = `Image ${images.length} is the first finished food image, a fixed style reference ONLY. Current original dish photographs remain authoritative; never propagate generated mistakes.`
+          continuity =
+            'Match lighting, palette, background treatment and applicable typography hierarchy. Do not copy the first dish, ingredients, portion, container branding, text or prices. The current dish or confirmed meal composition and current text policy always take priority. Recompose for the current aspect ratio without mechanical cropping; preserve original dish angles and visible facts.'
+        } else if (setMode === 'packaging') {
+          referenceRole = `Image ${images.length} is the first finished packaging image, a fixed visual style reference ONLY. The selected original master and current SKU or material instructions remain authoritative; never propagate generated mistakes.`
+          continuity =
+            'Match light, scale, viewing angle and graphic hierarchy. Preserve the selected master form and layout. Current material and surface effects override the anchor material; current SKU name, colors and product identity override the anchor SKU. Never copy another SKU text, ingredients, claims or internal product. Return only the current variant.'
         } else if (setMode === 'detail') {
           referenceRole = `Image ${images.length} is the first finished detail-page segment, supplied as the fixed visual continuity reference. Original product sources remain authoritative for identity and verified facts; never propagate mistakes from this generated reference.`
           continuity =

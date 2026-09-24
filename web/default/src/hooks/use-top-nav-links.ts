@@ -20,6 +20,7 @@ import {
   Camera,
   Clapperboard,
   FileText,
+  Gift,
   Image as ImageIcon,
   Images,
   Layers,
@@ -30,6 +31,7 @@ import {
   ShoppingCart,
   UserRound,
   Users,
+  Utensils,
   ZoomIn,
 } from 'lucide-react'
 import { useMemo } from 'react'
@@ -198,6 +200,18 @@ export function useTopNavLinks(): TopNavLink[] {
         href: '/viral-design/merchandise',
         requiresAuth: !isAuthed,
         icon: Package,
+      },
+      {
+        title: t('Food Design'),
+        href: '/viral-design/food',
+        requiresAuth: !isAuthed,
+        icon: Utensils,
+      },
+      {
+        title: t('Packaging Design'),
+        href: '/viral-design/packaging',
+        requiresAuth: !isAuthed,
+        icon: Gift,
       },
     ],
   })
