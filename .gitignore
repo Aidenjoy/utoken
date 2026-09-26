@@ -56,3 +56,6 @@ docs/yun/
 # Python 字节码缓存（tests/ 运维脚本产物）
 __pycache__/
 *.pyc
+
+# 小程序（本地开发，不提交）
+app/
