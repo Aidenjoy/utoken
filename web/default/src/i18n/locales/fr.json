@@ -6838,6 +6838,9 @@
     "最多上传2张图片（首帧和尾帧）": "Télécharger jusqu'à 2 images (première et dernière image)",
     "图片": "Image",
     "视频": "Vidéo",
-    "音频": "Audio"
+    "音频": "Audio",
+    "Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.": "Effacer le taux token de {{name}} ? Tous les membres de cette organisation reviennent au multiplicateur par défaut de 1,0x.",
+    "Saving overwrites the personal token rate of every member in this organization.": "L'enregistrement écrasera le taux token personnel de tous les membres de cette organisation.",
+    "Select an organization to set the token consumption rate.": "Sélectionnez une organisation pour définir le taux de consommation de tokens."
   }
 }

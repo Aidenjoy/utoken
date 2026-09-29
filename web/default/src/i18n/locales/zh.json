@@ -6838,6 +6838,9 @@
     "最多上传2张图片（首帧和尾帧）": "最多上传2张图片（首帧和尾帧）",
     "图片": "图片",
     "视频": "视频",
-    "音频": "音频"
+    "音频": "音频",
+    "Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.": "确定清除 {{name}} 的企业费率吗？该企业下所有成员将恢复默认的 1.0 倍。",
+    "Saving overwrites the personal token rate of every member in this organization.": "保存后会覆盖该企业下所有成员的个人费率。",
+    "Select an organization to set the token consumption rate.": "选择企业以设置 token 消耗费率。"
   }
 }

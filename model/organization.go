@@ -84,10 +84,11 @@ type Organization struct {
 	LastAlertAt      int64  `json:"last_alert_at" gorm:"bigint;default:0"`
 	LastDailyAlertAt int64  `json:"last_daily_alert_at" gorm:"bigint;default:0"`
 
-	CacheEnabled        bool `json:"cache_enabled" gorm:"type:bool"` // 企业级响应缓存开关
-	CacheTTL            int  `json:"cache_ttl" gorm:"type:int;default:300"`
-	AllowWalletFallback bool `json:"allow_wallet_fallback" gorm:"type:bool"` // 企业池不足时是否回落成员个人钱包
-	HidePoolQuota       bool `json:"hide_pool_quota" gorm:"type:bool"`       // 对成员隐藏企业池余额
+	CacheEnabled        bool    `json:"cache_enabled" gorm:"type:bool"` // 企业级响应缓存开关
+	CacheTTL            int     `json:"cache_ttl" gorm:"type:int;default:300"`
+	AllowWalletFallback bool    `json:"allow_wallet_fallback" gorm:"type:bool"`        // 企业池不足时是否回落成员个人钱包
+	HidePoolQuota       bool    `json:"hide_pool_quota" gorm:"type:bool"`              // 对成员隐藏企业池余额
+	TokenRate           float64 `json:"token_rate" gorm:"default:0;column:token_rate"` // 企业 token 消耗费率，0=未设置；保存时覆盖全部成员个人费率
 
 	CreatedAt int64 `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	UpdatedAt int64 `json:"updated_at" gorm:"autoUpdateTime;column:updated_at"`
@@ -454,6 +455,40 @@ func UpdateOrganizationGroup(orgId int, group string) error {
 	return invalidateOrgMembersUserCache(orgId)
 }
 
+// SetOrganizationTokenRate 设置企业 token 消耗费率并覆盖全部成员的个人费率
+// （最后设置即覆盖先前设置；0 表示清除，成员一并回到默认 1.0 倍）。
+// 与分组同步同一模式：成员费率必须与企业一致，否则后加入或曾单独设置过的成员会与企业费率倒挂。
+// 费率缓存是独立的进程内写穿缓存，事务提交后逐成员同步，计费读路径无需感知企业维度。
+func SetOrganizationTokenRate(orgId int, rate float64) error {
+	if orgId <= 0 {
+		return ErrOrgNotFound
+	}
+	var userIds []int
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := getOrganizationByIdTx(tx, orgId); err != nil {
+			return err
+		}
+		if err := tx.Model(&Organization{}).Where("id = ?", orgId).
+			Update("token_rate", rate).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&OrgMember{}).Where("org_id = ?", orgId).
+			Pluck("user_id", &userIds).Error; err != nil {
+			return err
+		}
+		if len(userIds) == 0 {
+			return nil
+		}
+		return tx.Model(&User{}).Where("id IN ?", userIds).Update("token_rate", rate).Error
+	}); err != nil {
+		return err
+	}
+	for _, userId := range userIds {
+		updateUserTokenRateCache(userId, rate)
+	}
+	return nil
+}
+
 // DeleteOrganization 删除企业。仅允许删除已清空成员的企业，
 // 避免批量解绑用户并重置其分组；调用方应先逐个移出成员。
 func DeleteOrganization(orgId int) error {
@@ -646,7 +681,8 @@ func AddOrgMember(member *OrgMember) error {
 	if member.JoinedAt == 0 {
 		member.JoinedAt = common.GetTimestamp()
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	var joinedRate float64
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		var org Organization
 		if err := lockForUpdate(tx).Where("id = ?", member.OrgId).First(&org).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -674,12 +710,25 @@ func AddOrgMember(member *OrgMember) error {
 		if err := tx.Create(member).Error; err != nil {
 			return err
 		}
+		updates := map[string]interface{}{"org_id": org.Id, "group": org.Group}
+		// 新成员默认继承企业费率：与企业费率倒挂的旧个人费率在加入时被覆盖
+		if org.TokenRate > 0 {
+			updates["token_rate"] = org.TokenRate
+			joinedRate = org.TokenRate
+		}
 		if err := tx.Model(&User{}).Where("id = ?", member.UserId).
-			Updates(map[string]interface{}{"org_id": org.Id, "group": org.Group}).Error; err != nil {
+			Updates(updates).Error; err != nil {
 			return err
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if joinedRate > 0 {
+		updateUserTokenRateCache(member.UserId, joinedRate)
+	}
+	return nil
 }
 
 // CreateOrgMemberUser 在企业内新建成员账号：一个事务里创建用户并写入成员记录，
@@ -722,6 +771,8 @@ func CreateOrgMemberUser(user *User, member *OrgMember) error {
 		}
 		user.OrgId = org.Id
 		user.Group = org.Group
+		// 企业内新建的账号直接以企业费率为默认费率
+		user.TokenRate = org.TokenRate
 		if err := user.InsertWithTx(tx, 0); err != nil {
 			return err
 		}

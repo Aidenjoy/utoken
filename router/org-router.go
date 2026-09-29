@@ -49,6 +49,7 @@ func registerOrgRoutes(apiRouter *gin.RouterGroup) {
 			sysAdminRoute.PUT("/:id", controller.AdminUpdateOrganization)
 			sysAdminRoute.DELETE("/:id", controller.AdminDeleteOrganization)
 			sysAdminRoute.POST("/:id/quota", controller.AdminAdjustOrgQuota)
+			sysAdminRoute.PUT("/:id/token_rate", controller.AdminUpdateOrgTokenRate)
 			sysAdminRoute.PATCH("/:id/status", controller.AdminUpdateOrgStatus)
 			sysAdminRoute.GET("/:id/members", middleware.SearchRateLimit(), controller.AdminGetOrgMembers)
 		}

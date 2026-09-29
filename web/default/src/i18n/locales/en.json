@@ -6838,6 +6838,9 @@
     "最多上传2张图片（首帧和尾帧）": "Upload up to 2 images (first and last frame)",
     "图片": "Image",
     "视频": "Video",
-    "音频": "Audio"
+    "音频": "Audio",
+    "Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.": "Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.",
+    "Saving overwrites the personal token rate of every member in this organization.": "Saving overwrites the personal token rate of every member in this organization.",
+    "Select an organization to set the token consumption rate.": "Select an organization to set the token consumption rate."
   }
 }

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -1203,6 +1204,40 @@ func AdminUpdateOrgStatus(c *gin.Context) {
 		"id":     org.Id,
 		"name":   orgAuditName(org),
 		"status": statusText,
+	})
+	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
+}
+
+// AdminUpdateOrgTokenRate 设置企业 token 消耗费率（0-100，0 表示清除恢复默认 1.0 倍）。
+// 保存即覆盖：企业费率同步写入全部成员的个人费率，最后设置覆盖先前设置。
+func AdminUpdateOrgTokenRate(c *gin.Context) {
+	org, ok := loadOrganizationByIdParam(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		TokenRate float64 `json:"token_rate"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if math.IsNaN(req.TokenRate) || math.IsInf(req.TokenRate, 0) || req.TokenRate < 0 || req.TokenRate > 100 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if err := model.SetOrganizationTokenRate(org.Id, req.TokenRate); err != nil {
+		if errors.Is(err, model.ErrOrgNotFound) {
+			common.ApiErrorI18n(c, i18n.MsgOrgNotFound)
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "org.token_rate", map[string]interface{}{
+		"id":         org.Id,
+		"name":       orgAuditName(org),
+		"token_rate": req.TokenRate,
 	})
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 }

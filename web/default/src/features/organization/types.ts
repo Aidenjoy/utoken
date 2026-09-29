@@ -76,6 +76,9 @@ export interface Organization {
   cache_ttl: number
   allow_wallet_fallback: boolean
   hide_pool_quota: boolean
+  /** Enterprise token consumption rate; 0 = unset (default 1.0x). Saving an
+   *  enterprise rate overwrites the personal rate of every member. */
+  token_rate: number
   created_at: number
   updated_at: number
 }

@@ -134,6 +134,23 @@ export async function updateAdminOrganizationStatus(
   return res.data
 }
 
+/**
+ * Enterprise token rate. `tokenRate` is 0-100 (0 clears the rate and restores
+ * the default 1.0x); saving overwrites the personal rate of every member —
+ * the last setting wins.
+ */
+export async function updateAdminOrganizationTokenRate(
+  id: number,
+  tokenRate: number
+): Promise<ApiResponse<null>> {
+  const res = await api.put(
+    `/api/org/admin/${id}/token_rate`,
+    { token_rate: tokenRate },
+    orgRequestConfig
+  )
+  return res.data
+}
+
 /** Only organizations without members can be deleted. */
 export async function deleteAdminOrganization(
   id: number

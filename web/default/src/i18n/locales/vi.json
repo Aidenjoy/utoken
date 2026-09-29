@@ -6838,6 +6838,9 @@
     "最多上传2张图片（首帧和尾帧）": "Tải lên tối đa 2 hình ảnh (khung đầu và khung cuối)",
     "图片": "Hình ảnh",
     "视频": "Video",
-    "音频": "Âm thanh"
+    "音频": "Âm thanh",
+    "Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.": "Xóa mức phí token của {{name}}? Tất cả thành viên trong tổ chức này sẽ trở về hệ số mặc định 1.0x.",
+    "Saving overwrites the personal token rate of every member in this organization.": "Lưu sẽ ghi đè mức phí token cá nhân của mọi thành viên trong tổ chức này.",
+    "Select an organization to set the token consumption rate.": "Chọn một tổ chức để đặt mức phí tiêu thụ token."
   }
 }

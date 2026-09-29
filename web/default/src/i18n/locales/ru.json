@@ -6838,6 +6838,9 @@
     "最多上传2张图片（首帧和尾帧）": "Загрузите до 2 изображений (первый и последний кадр)",
     "图片": "Изображение",
     "视频": "Видео",
-    "音频": "Аудио"
+    "音频": "Аудио",
+    "Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.": "Очистить ставку token для {{name}}? Для всех участников организации вернётся множитель 1.0 по умолчанию.",
+    "Saving overwrites the personal token rate of every member in this organization.": "Сохранение перезапишет индивидуальную ставку token для всех участников этой организации.",
+    "Select an organization to set the token consumption rate.": "Выберите организацию, чтобы задать ставку потребления token."
   }
 }

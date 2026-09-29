@@ -6838,6 +6838,9 @@
     "最多上传2张图片（首帧和尾帧）": "画像は2枚まで（先頭・最終フレーム）",
     "图片": "画像",
     "视频": "動画",
-    "音频": "音声"
+    "音频": "音声",
+    "Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.": "{{name}} の組織料金をクリアしますか？この組織のすべてのメンバーがデフォルトの 1.0 倍に戻ります。",
+    "Saving overwrites the personal token rate of every member in this organization.": "保存すると、この組織のすべてのメンバーの個別 token 料金が上書きされます。",
+    "Select an organization to set the token consumption rate.": "組織を選択して token 消費料金を設定します。"
   }
 }
