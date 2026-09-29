@@ -28,6 +28,8 @@ import {
   ShieldAlert,
   Link2,
   CreditCard,
+  CirclePlus,
+  KeySquare,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -57,6 +59,8 @@ import {
 } from '../constants'
 import { getUserActionMessage } from '../lib'
 import type { User, ManageUserAction } from '../types'
+import { UserApiKeyCreateDialog } from './dialogs/user-api-key-create-dialog'
+import { UserApiKeysDialog } from './dialogs/user-api-keys-dialog'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
 import { useUsers } from './users-provider'
 
@@ -72,6 +76,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
+  const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false)
+  const [apiKeysDialogOpen, setApiKeysDialogOpen] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -222,6 +228,30 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuShortcut>
         </DropdownMenuItem>
 
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault()
+            setCreateApiKeyOpen(true)
+          }}
+        >
+          {t('Create API Key')}
+          <DropdownMenuShortcut>
+            <CirclePlus size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault()
+            setApiKeysDialogOpen(true)
+          }}
+        >
+          {t('API Keys')}
+          <DropdownMenuShortcut>
+            <KeySquare size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
@@ -300,6 +330,18 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         onOpenChange={setSubscriptionsDialogOpen}
         user={{ id: user.id, username: user.username }}
         onSuccess={triggerRefresh}
+      />
+
+      <UserApiKeyCreateDialog
+        open={createApiKeyOpen}
+        onOpenChange={setCreateApiKeyOpen}
+        user={{ id: user.id, username: user.username }}
+      />
+
+      <UserApiKeysDialog
+        open={apiKeysDialogOpen}
+        onOpenChange={setApiKeysDialogOpen}
+        user={{ id: user.id, username: user.username }}
       />
     </div>
   )

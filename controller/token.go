@@ -251,6 +251,19 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	// 管理员可通过 body 的 user_id 代指定用户创建令牌；普通用户该字段被忽略，只能为自己创建
+	ownerId := c.GetInt("id")
+	if token.UserId != 0 && token.UserId != ownerId {
+		if !model.IsAdmin(ownerId) {
+			common.ApiErrorI18n(c, i18n.MsgForbidden)
+			return
+		}
+		if _, err := model.GetUserById(token.UserId, false); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		ownerId = token.UserId
+	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -265,7 +278,7 @@ func AddToken(c *gin.Context) {
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
-	count, err := model.CountUserTokens(c.GetInt("id"))
+	count, err := model.CountUserTokens(ownerId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -284,7 +297,7 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
-		UserId:             c.GetInt("id"),
+		UserId:             ownerId,
 		Name:               token.Name,
 		Key:                key,
 		CreatedTime:        common.GetTimestamp(),
@@ -303,10 +316,8 @@ func AddToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-	})
+	// 返回脱敏令牌（含 ID），创建方可据此经 /api/token/:id/key 换取完整密钥
+	common.ApiSuccess(c, buildMaskedTokenResponse(&cleanToken))
 }
 
 func DeleteToken(c *gin.Context) {
