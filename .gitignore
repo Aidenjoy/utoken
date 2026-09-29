@@ -58,4 +58,4 @@ __pycache__/
 *.pyc
 
 # 小程序（本地开发，不提交）
-app/
+utoken-app/
