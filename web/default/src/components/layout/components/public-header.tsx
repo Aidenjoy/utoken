@@ -483,8 +483,8 @@ export function PublicHeader(props: PublicHeaderProps) {
             : 'pointer-events-none opacity-0'
         )}
       >
-        <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
-          <nav className='flex flex-col gap-1'>
+        <div className='flex h-full flex-col px-8 pt-20 pb-10'>
+          <nav className='flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain pb-6'>
             {links.map((link, i) => {
               const isActive = pathname === link.href
               const linkClassName = cn(
@@ -603,7 +603,7 @@ export function PublicHeader(props: PublicHeaderProps) {
 
           <div
             className={cn(
-              'flex flex-col gap-3 transition-all duration-500',
+              'flex shrink-0 flex-col gap-3 transition-all duration-500',
               mobileOpen
                 ? 'translate-y-0 opacity-100'
                 : 'translate-y-4 opacity-0'
