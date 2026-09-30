@@ -245,3 +245,145 @@ func TestUpdateWithStatus_ConcurrentWinner(t *testing.T) {
 	}
 	assert.Equal(t, 1, winCount, "exactly one goroutine should win the CAS")
 }
+
+// ---------------------------------------------------------------------------
+// ClaimRefundQuota — 退款额度认领（失败退款"恰好一次"的唯一保证）
+// ---------------------------------------------------------------------------
+
+func TestClaimRefundQuota_ExactlyOnce(t *testing.T) {
+	truncateTables(t)
+
+	task := &Task{TaskID: "task_claim_once", Status: TaskStatusFailure, Quota: 8750000, Data: json.RawMessage(`{}`)}
+	insertTask(t, task)
+
+	claimed, err := task.ClaimRefundQuota()
+	require.NoError(t, err)
+	assert.Equal(t, 8750000, claimed)
+	assert.Equal(t, 0, task.Quota, "认领后内存额度同步置零")
+
+	// 另一个仍持有旧副本的调用方（并发节点 / 客户端重复查询）必须认领失败
+	stale := &Task{ID: task.ID, TaskID: task.TaskID, Status: TaskStatusFailure, Quota: 8750000}
+	claimed, err = stale.ClaimRefundQuota()
+	require.NoError(t, err)
+	assert.Equal(t, 0, claimed)
+
+	var reloaded Task
+	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, 0, reloaded.Quota)
+}
+
+func TestClaimRefundQuota_ConcurrentSingleWinner(t *testing.T) {
+	truncateTables(t)
+
+	const quota = 8750000
+	task := &Task{TaskID: "task_claim_race", Status: TaskStatusFailure, Quota: quota, Data: json.RawMessage(`{}`)}
+	insertTask(t, task)
+
+	const goroutines = 5
+	claims := make([]int, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			stale := &Task{ID: task.ID, TaskID: task.TaskID, Status: TaskStatusFailure, Quota: quota}
+			claimed, err := stale.ClaimRefundQuota()
+			if err == nil {
+				claims[idx] = claimed
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	total := 0
+	winners := 0
+	for _, c := range claims {
+		total += c
+		if c > 0 {
+			winners++
+		}
+	}
+	assert.Equal(t, 1, winners, "并发认领只能有一个赢家")
+	assert.Equal(t, quota, total, "认领总额不得超过预扣额度")
+}
+
+func TestClaimRefundQuota_ZeroQuota(t *testing.T) {
+	truncateTables(t)
+
+	task := &Task{TaskID: "task_claim_zero", Status: TaskStatusFailure, Quota: 0, Data: json.RawMessage(`{}`)}
+	insertTask(t, task)
+
+	claimed, err := task.ClaimRefundQuota()
+	require.NoError(t, err)
+	assert.Equal(t, 0, claimed)
+}
+
+// TestRestoreRefundQuota 锁定退款失败后的额度归还：不归还就会把一次瞬时 DB 故障
+// 变成用户永久少退款。
+func TestRestoreRefundQuota(t *testing.T) {
+	truncateTables(t)
+
+	task := &Task{TaskID: "task_restore", Status: TaskStatusFailure, Quota: 6000, Data: json.RawMessage(`{}`)}
+	insertTask(t, task)
+
+	claimed, err := task.ClaimRefundQuota()
+	require.NoError(t, err)
+	require.Equal(t, 6000, claimed)
+
+	require.NoError(t, task.RestoreRefundQuota(claimed))
+	var reloaded Task
+	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, 6000, reloaded.Quota)
+
+	// 归还后可以再次认领，退款得以重试
+	claimed, err = task.ClaimRefundQuota()
+	require.NoError(t, err)
+	assert.Equal(t, 6000, claimed)
+}
+
+// 状态/进度同步不得复活已退款的预扣额度：并发副本内存里的旧 quota 一旦写回，
+// 同一笔预扣就会被再次认领并再次退款。
+func TestUpdateWithStatus_DoesNotResurrectRefundedQuota(t *testing.T) {
+	truncateTables(t)
+
+	task := &Task{TaskID: "task_no_resurrect_cas", Status: TaskStatusFailure, Quota: 5000, Data: json.RawMessage(`{}`)}
+	insertTask(t, task)
+	_, err := task.ClaimRefundQuota()
+	require.NoError(t, err)
+
+	stale := &Task{
+		ID:       task.ID,
+		TaskID:   task.TaskID,
+		Status:   TaskStatusFailure,
+		Progress: "100%",
+		Quota:    5000,
+		Data:     json.RawMessage(`{"poll":"again"}`),
+	}
+	won, err := stale.UpdateWithStatus(TaskStatusFailure)
+	require.NoError(t, err)
+	assert.True(t, won)
+
+	var reloaded Task
+	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, 0, reloaded.Quota, "quota 只能由 UpdateQuota/ClaimRefundQuota 写入")
+	assert.Equal(t, "100%", reloaded.Progress, "其余字段照常同步")
+	assert.JSONEq(t, `{"poll":"again"}`, string(reloaded.Data))
+}
+
+func TestUpdate_DoesNotResurrectRefundedQuota(t *testing.T) {
+	truncateTables(t)
+
+	task := &Task{TaskID: "task_no_resurrect_save", Status: TaskStatusFailure, Quota: 5000, Data: json.RawMessage(`{}`)}
+	insertTask(t, task)
+	_, err := task.ClaimRefundQuota()
+	require.NoError(t, err)
+
+	stale := &Task{ID: task.ID, TaskID: task.TaskID, Status: TaskStatusFailure, Progress: "100%", Quota: 5000, Data: json.RawMessage(`{}`)}
+	stale.CreatedAt = task.CreatedAt
+	require.NoError(t, stale.Update())
+
+	var reloaded Task
+	require.NoError(t, DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, 0, reloaded.Quota)
+	assert.Equal(t, "100%", reloaded.Progress)
+}

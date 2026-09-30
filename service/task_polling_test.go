@@ -412,6 +412,55 @@ func TestApplyUpstreamTaskResultSettlesMissedTerminalTask(t *testing.T) {
 	assert.Equal(t, initQuota+(preConsumed-actualQuota), getUserQuota(t, userID))
 }
 
+// TestApplyUpstreamTaskResultRefundsFailedTaskOnce 锁定失败退款"恰好一次"：
+// 客户端每次查询任务详情都会实时拉取上游并重新应用结果，而失败任务已不再被后台
+// 轮询捞起。历史版本对已终态任务每次查询都全额退一遍预扣额度（企业池/钱包余额
+// 越退越多），修复后退款额度先被原子认领（quota 置零），重复查询不得再次退款。
+func TestApplyUpstreamTaskResultRefundsFailedTaskOnce(t *testing.T) {
+	truncate(t)
+
+	const (
+		userID      = 9201
+		tokenID     = 9202
+		channelID   = 9203
+		initQuota   = 20000
+		preConsumed = 8750
+		tokenRemain = 9000
+	)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-ark-refund", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	require.NoError(t, model.DB.Create(task).Error)
+	// 预扣费已扣走钱包与令牌额度
+	require.NoError(t, model.DecreaseUserQuota(userID, preConsumed, false))
+	require.NoError(t, model.DecreaseTokenQuota(tokenID, "sk-ark-refund", preConsumed))
+
+	adaptor := &fixedSettleAdaptor{quota: 0}
+	failedResult := &relaycommon.TaskInfo{Status: model.TaskStatusFailure, Reason: "upstream rejected"}
+	body := []byte(`{"id":"upstream_1","status":"failed"}`)
+
+	// 客户端连续查询 3 次，每次都像实时查询路径一样从库里重新加载任务
+	for i := 0; i < 3; i++ {
+		var fresh model.Task
+		require.NoError(t, model.DB.First(&fresh, task.ID).Error)
+		require.NoError(t, ApplyUpstreamTaskResult(context.Background(), adaptor, &fresh, failedResult, body))
+	}
+
+	assert.Equal(t, initQuota, getUserQuota(t, userID), "只退一次款")
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID), "令牌额度只退一次")
+	var refundLogs int64
+	require.NoError(t, model.DB.Model(&model.Log{}).Where("type = ?", model.LogTypeRefund).Count(&refundLogs).Error)
+	assert.Equal(t, int64(1), refundLogs)
+
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
+	assert.Equal(t, "upstream rejected", reloaded.FailReason)
+	assert.Equal(t, 0, reloaded.Quota, "预扣额度已被退款认领置零")
+}
+
 // TestSplitTaskUsageTokens 锁定结算日志 token 拆分语义：方舟视频 completion=total
 // 全记 completion；有独立 completion 时 prompt=total-completion；异常输入归零。
 func TestSplitTaskUsageTokens(t *testing.T) {

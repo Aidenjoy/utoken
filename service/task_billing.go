@@ -222,15 +222,31 @@ func taskModelName(task *model.Task) string {
 
 // RefundTaskQuota 统一的任务失败退款逻辑。
 // 当异步任务失败时，将预扣的 quota 退还给用户（支持钱包和订阅），并退还令牌额度。
+//
+// 退款必须恰好执行一次：后台轮询、超时清扫与客户端实时查询（GET 任务详情）都会对
+// 同一个失败任务调用本函数，而资金退还是 quota += N 的非幂等操作。因此先原子认领
+// 预扣额度（CAS 置零，见 model.Task.ClaimRefundQuota），认领失败即已退过，直接跳过。
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
-	quota := task.Quota
+	quota, err := task.ClaimRefundQuota()
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("认领退款额度失败 task %s: %s", task.TaskID, err.Error()))
+		return
+	}
 	if quota == 0 {
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 的预扣额度已被退款，跳过重复退款", task.TaskID))
 		return
 	}
 
-	// 1. 退还资金来源（钱包或订阅）
+	// 1. 退还资金来源（钱包、订阅或企业池）
 	if err := taskAdjustFunding(task, -quota); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
+		// 归还认领，让后续重试仍能退款；归还失败则登记待人工对账
+		if restoreErr := task.RestoreRefundQuota(quota); restoreErr != nil {
+			logger.LogError(ctx, fmt.Sprintf(
+				"[BILLING_RECOVERY] 退款失败且额度认领归还未成功，需人工对账: task_id=%s user_id=%d quota=%d billing_source=%s err=%s",
+				task.TaskID, task.UserId, quota, task.PrivateData.BillingSource, restoreErr.Error(),
+			))
+		}
 		return
 	}
 

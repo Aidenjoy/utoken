@@ -357,6 +357,7 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	seedChannel(t, channelID)
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	require.NoError(t, model.DB.Create(task).Error)
 
 	// Simulate the pre-consume step that increases used_quota
 	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Update("used_quota", preConsumed).Error)
@@ -396,6 +397,7 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	seedSubscription(t, subID, userID, subTotal, subUsed)
 
 	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceSubscription, subID)
+	require.NoError(t, model.DB.Create(task).Error)
 
 	RefundTaskQuota(ctx, task, "subscription task failed")
 
@@ -427,6 +429,7 @@ func TestRefundTaskQuota_Organization(t *testing.T) {
 
 	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceOrganization, 0)
 	task.PrivateData.OrgId = org.Id
+	require.NoError(t, model.DB.Create(task).Error)
 
 	RefundTaskQuota(ctx, task, "org task failed")
 
@@ -451,6 +454,7 @@ func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
 	seedUser(t, userID, 5000)
 
 	task := makeTask(userID, 0, 0, 0, BillingSourceWallet, 0)
+	require.NoError(t, model.DB.Create(task).Error)
 
 	RefundTaskQuota(ctx, task, "zero quota task")
 
@@ -472,6 +476,7 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	seedChannel(t, channelID)
 
 	task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0) // TokenId=0
+	require.NoError(t, model.DB.Create(task).Error)
 
 	RefundTaskQuota(ctx, task, "no token task failed")
 

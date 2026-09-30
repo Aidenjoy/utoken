@@ -414,14 +414,53 @@ func (t *Task) Snapshot() taskSnapshot {
 	}
 }
 
+// Update 保存任务的全部字段，但排除 quota。
+// quota 只能由 UpdateQuota（差额结算）和 ClaimRefundQuota（失败退款）显式写入：
+// 轮询与客户端实时查询各自持有任务副本，若整体覆盖 quota，内存里的旧预扣额度会把
+// 已退款（quota=0）的行改回去，让同一笔预扣被重复退款。
 func (Task *Task) Update() error {
 	var err error
-	err = DB.Save(Task).Error
+	err = DB.Omit("quota").Save(Task).Error
 	return err
 }
 
 func (t *Task) UpdateQuota() error {
 	return DB.Model(t).Update("quota", t.Quota).Error
+}
+
+// ClaimRefundQuota 原子认领任务的预扣额度用于失败退款（CAS 把 quota 置零）。
+// 返回认领到的额度；返回 0 表示无可退额度或已被其他调用方认领，调用方必须跳过退款。
+// 退款的资金调整不是幂等操作，"恰好退一次"完全依赖这里的认领。
+func (t *Task) ClaimRefundQuota() (int, error) {
+	if t.Quota <= 0 {
+		return 0, nil
+	}
+	claimed := t.Quota
+	result := DB.Model(t).Where("quota = ?", claimed).Update("quota", 0)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return 0, nil
+	}
+	t.Quota = 0
+	return claimed, nil
+}
+
+// RestoreRefundQuota 归还认领后退款失败的额度（CAS：仅当 quota 仍为 0），
+// 使下一次重试还能认领；否则一次瞬时 DB 故障会变成用户永久少退。
+func (t *Task) RestoreRefundQuota(amount int) error {
+	if amount <= 0 {
+		return nil
+	}
+	result := DB.Model(t).Where("quota = ?", 0).Update("quota", amount)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		t.Quota = amount
+	}
+	return nil
 }
 
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).
@@ -431,8 +470,10 @@ func (t *Task) UpdateQuota() error {
 // Uses Model().Select("*").Updates() instead of Save() because GORM's Save
 // falls back to INSERT ON CONFLICT when the WHERE-guarded UPDATE matches
 // zero rows, which silently bypasses the CAS guard.
+//
+// quota 被排除（同 Update）：状态/进度同步不得覆盖退款认领写入的 quota=0。
 func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
-	result := DB.Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
+	result := DB.Model(t).Where("status = ?", fromStatus).Select("*").Omit("quota").Updates(t)
 	if result.Error != nil {
 		return false, result.Error
 	}
