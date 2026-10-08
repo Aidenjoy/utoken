@@ -106,6 +106,7 @@ var EmailDomainWhitelist = []string{
 	"yahoo.com",
 	"foxmail.com",
 }
+var EmailDomainBlacklist []string // 邮箱域名黑名单，命中则拒绝发送验证码
 var EmailLoginAuthServerList = []string{
 	"smtp.sendcloud.net",
 	"smtp.azurecomm.net",

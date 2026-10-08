@@ -1989,6 +1989,8 @@
     "Email bound successfully!": "Email успешно привязан!",
     "Email Domain Restriction": "Ограничение по домену Email",
     "Email Domain Whitelist": "Белый список доменов Email",
+    "Email Domain Blacklist": "Черный список доменов Email",
+    "One domain per line. Emails from these domains will be blocked from registration": "По одному домену в строке. Email с этих доменов будут заблокированы для регистрации",
     "Email Field": "Поле email",
     "Email or other contact information displayed on the Contact Support page.": "Электронная почта или другие контакты, отображаемые на странице поддержки.",
     "Email Verification": "Верификация Email",

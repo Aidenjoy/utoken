@@ -281,6 +281,15 @@ func SendEmailVerification(c *gin.Context) {
 			return
 		}
 	}
+	for _, domain := range common.EmailDomainBlacklist {
+		if domainPart == domain {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "该邮箱域名不允许注册",
+			})
+			return
+		}
+	}
 	if common.EmailAliasRestrictionEnabled {
 		containsSpecialSymbols := strings.Contains(localPart, "+") || strings.Contains(localPart, ".")
 		if containsSpecialSymbols {

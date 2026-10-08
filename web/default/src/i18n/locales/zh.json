@@ -1989,6 +1989,8 @@
     "Email bound successfully!": "邮箱绑定成功！",
     "Email Domain Restriction": "电子邮件域限制",
     "Email Domain Whitelist": "电子邮件域白名单",
+    "Email Domain Blacklist": "电子邮件域黑名单",
+    "One domain per line. Emails from these domains will be blocked from registration": "每行一个域名，这些域名的邮箱将被禁止注册",
     "Email Field": "邮箱字段",
     "Email or other contact information displayed on the Contact Support page.": "展示在「联系客服」页面的邮箱或其他联系方式。",
     "Email Verification": "电子邮件验证",

@@ -1989,6 +1989,8 @@
     "Email bound successfully!": "E-mail lié avec succès !",
     "Email Domain Restriction": "Restriction de domaine d'e-mail",
     "Email Domain Whitelist": "Liste blanche de domaines d'e-mail",
+    "Email Domain Blacklist": "Liste noire de domaines d'e-mail",
+    "One domain per line. Emails from these domains will be blocked from registration": "Un domaine par ligne. Les e-mails de ces domaines seront bloqués pour l'inscription",
     "Email Field": "Champ d'e-mail",
     "Email or other contact information displayed on the Contact Support page.": "E-mail ou autres coordonnées affichés sur la page Contacter le support.",
     "Email Verification": "Vérification d'e-mail",

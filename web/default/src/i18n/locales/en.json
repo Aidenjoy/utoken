@@ -1989,6 +1989,8 @@
     "Email bound successfully!": "Email bound successfully!",
     "Email Domain Restriction": "Email Domain Restriction",
     "Email Domain Whitelist": "Email Domain Whitelist",
+    "Email Domain Blacklist": "Email Domain Blacklist",
+    "One domain per line. Emails from these domains will be blocked from registration": "One domain per line. Emails from these domains will be blocked from registration",
     "Email Field": "Email Field",
     "Email or other contact information displayed on the Contact Support page.": "Email or other contact information displayed on the Contact Support page.",
     "Email Verification": "Email Verification",

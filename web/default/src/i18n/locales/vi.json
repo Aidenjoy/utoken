@@ -1989,6 +1989,8 @@
     "Email bound successfully!": "Email đã được liên kết thành công!",
     "Email Domain Restriction": "Hạn chế Tên miền Email",
     "Email Domain Whitelist": "Danh sách trắng tên miền email",
+    "Email Domain Blacklist": "Danh sách đen tên miền email",
+    "One domain per line. Emails from these domains will be blocked from registration": "Mỗi dòng một tên miền. Email từ các tên miền này sẽ bị chặn đăng ký",
     "Email Field": "Trường Email",
     "Email or other contact information displayed on the Contact Support page.": "Email hoặc thông tin liên hệ khác hiển thị trên trang Liên hệ hỗ trợ.",
     "Email Verification": "Xác minh Email",

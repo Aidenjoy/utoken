@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
@@ -34,6 +35,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 import {
   SettingsForm,
@@ -64,6 +66,7 @@ const createEmailSchema = (t: (key: string) => string) =>
     SMTPStartTLSEnabled: z.boolean(),
     SMTPInsecureSkipVerify: z.boolean(),
     SMTPForceAuthLogin: z.boolean(),
+    EmailDomainBlacklist: z.string(),
   })
 
 type EmailFormValues = z.infer<ReturnType<typeof createEmailSchema>>
@@ -90,12 +93,23 @@ export function EmailSettingsSection({
   const updateOption = useUpdateOption()
   const emailSchema = createEmailSchema(t)
 
+  const formDefaults = useMemo<EmailFormValues>(
+    () => ({
+      ...defaultValues,
+      EmailDomainBlacklist: defaultValues.EmailDomainBlacklist.split(',')
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .join('\n'),
+    }),
+    [defaultValues]
+  )
+
   const form = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
-    defaultValues,
+    defaultValues: formDefaults,
   })
 
-  useResetForm(form, defaultValues)
+  useResetForm(form, formDefaults)
 
   const onSubmit = async (values: EmailFormValues) => {
     const securityMode = getSmtpSecurityMode(values)
@@ -171,6 +185,14 @@ export function EmailSettingsSection({
         key: 'SMTPForceAuthLogin',
         value: sanitized.SMTPForceAuthLogin,
       })
+    }
+
+    const blacklist = values.EmailDomainBlacklist.split('\n')
+      .map((d) => d.trim())
+      .filter(Boolean)
+      .join(',')
+    if (blacklist !== defaultValues.EmailDomainBlacklist) {
+      updates.push({ key: 'EmailDomainBlacklist', value: blacklist })
     }
 
     for (const update of updates) {
@@ -400,6 +422,29 @@ export function EmailSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t('Leave blank to keep the existing credential')}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='EmailDomainBlacklist'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Email Domain Blacklist')}</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder={t('temp-mail.org&#10;guerrillamail.com')}
+                    rows={5}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'One domain per line. Emails from these domains will be blocked from registration'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
