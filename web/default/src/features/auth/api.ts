@@ -119,6 +119,9 @@ export async function sendEmailVerification(
 ): Promise<ApiResponse> {
   const res = await api.get('/api/verification', {
     params: { email, turnstile },
+    // Caller (useEmailVerification) surfaces the message itself; avoid a
+    // duplicate toast from the global business-error interceptor.
+    skipBusinessError: true,
   })
   return res.data
 }
