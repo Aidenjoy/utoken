@@ -22,10 +22,12 @@ import { useTranslation } from 'react-i18next'
 
 import { AnimatedOutlet } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
 // 视频工厂、模特穿搭、爆款主图与爆款设计四个创作分组属于付费体验：
-// 余额不大于 0 的账号只看到充值提示，不渲染页面内容，避免功能外泄。
+// 没有任何资金来源的账号只看到充值提示，不渲染页面内容，避免功能外泄。
+// 资金来源包括个人余额与企业代付：企业成员的个人余额可以为 0，
+// 只要子额度不限（org_quota_limit<=0）或仍有剩余就放行。
 // 素材库挂在个人分组下，不在门禁范围内。
 const QUOTA_GATED_PREFIXES = [
   '/director',
@@ -42,15 +44,27 @@ function isQuotaGatedPath(pathname: string): boolean {
   return QUOTA_GATED_PREFIXES.some(matches)
 }
 
+/** 企业代付是否可用：活跃企业成员且子额度不限或仍有剩余。 */
+function hasOrgFunding(user: AuthUser | null): boolean {
+  if ((user?.org_id ?? 0) <= 0) return false
+  const limit = user?.org_quota_limit ?? 0
+  if (limit <= 0) return true
+  return limit - (user?.org_quota_used ?? 0) > 0
+}
+
 /** Renders the routed page, or a top-up notice when the quota gate blocks it. */
 export function QuotaGatedOutlet() {
   const { t } = useTranslation()
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
-  const quota = useAuthStore((state) => state.auth.user?.quota ?? 0)
+  const user = useAuthStore((state) => state.auth.user)
 
-  if (!isQuotaGatedPath(pathname) || quota > 0) {
+  if (
+    !isQuotaGatedPath(pathname) ||
+    (user?.quota ?? 0) > 0 ||
+    hasOrgFunding(user)
+  ) {
     return <AnimatedOutlet />
   }
 

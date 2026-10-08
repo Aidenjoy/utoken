@@ -506,6 +506,10 @@ func GetSelf(c *gin.Context) {
 	orgId := 0
 	orgName := ""
 	orgRole := ""
+	// 成员子额度随 self 下发：前端创作功能门禁据此判断企业代付来源，
+	// 个人余额为 0 但子额度不限（limit<=0）或仍有剩余时不应拦截。
+	orgQuotaLimit := 0
+	orgQuotaUsed := 0
 	if org, member, orgErr := model.GetActiveOrganizationForUser(id); orgErr != nil {
 		common.SysLog(fmt.Sprintf("failed to load organization context for user %d: %s", id, orgErr.Error()))
 	} else if org != nil && member != nil {
@@ -515,6 +519,8 @@ func GetSelf(c *gin.Context) {
 			orgName = org.Name
 		}
 		orgRole = member.OrgRole
+		orgQuotaLimit = member.QuotaLimit
+		orgQuotaUsed = member.QuotaUsed
 	}
 
 	// 构建响应数据，包含用户信息和权限
@@ -547,6 +553,8 @@ func GetSelf(c *gin.Context) {
 		"org_id":            orgId,
 		"org_name":          orgName,
 		"org_role":          orgRole,
+		"org_quota_limit":   orgQuotaLimit,
+		"org_quota_used":    orgQuotaUsed,
 	}
 
 	c.JSON(http.StatusOK, gin.H{

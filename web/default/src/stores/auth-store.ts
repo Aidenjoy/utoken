@@ -60,6 +60,15 @@ export interface AuthUser {
   org_id?: number
   org_name?: string
   org_role?: string
+  /**
+   * Member sub-quota inside the organization (`org_members.quota_limit` /
+   * `quota_used`). `org_quota_limit <= 0` means the organization did not cap
+   * the member. The creation-page quota gate treats an active membership with
+   * an unlimited or non-exhausted sub-quota as a valid funding source even
+   * when the personal wallet is empty.
+   */
+  org_quota_limit?: number
+  org_quota_used?: number
 }
 
 interface AuthState {
