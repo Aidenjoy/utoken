@@ -323,7 +323,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			request.Temperature = nil
 		}
 
-		// gpt-5系列模型适配 归零不再支持的参数
+		// gpt-5 及之后世代（gpt-6-luna 等）模型适配 归零不再支持的采样参数
 		if isGPT5Model {
 			request.Temperature = nil
 			request.TopP = nil

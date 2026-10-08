@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -219,8 +220,32 @@ func IsOpenAIReasoningOModel(modelName string) bool {
 		strings.HasPrefix(modelName, "o4")
 }
 
+// IsOpenAIGPT5Model 判断模型是否属于 gpt-5 及之后的推理世代（如 gpt-6-luna）：
+// 这些模型只接受 max_completion_tokens，并拒收 temperature/top_p/logprobs 等采样参数。
+// 按 "gpt-<主版本>" 解析主版本（>=5 命中），gpt-4o、gpt-4.1、gpt-oss、gpt-image 等
+// 不带 >=5 主版本的名字保持经典 chat 行为不变。
 func IsOpenAIGPT5Model(modelName string) bool {
-	return strings.HasPrefix(modelName, "gpt-5")
+	return openAIGPTMajorVersion(modelName) >= 5
+}
+
+// openAIGPTMajorVersion 提取 "gpt-<主版本>..." 模型名的主版本号；名字不带数字主版本时返回 0。
+func openAIGPTMajorVersion(modelName string) int {
+	rest, ok := strings.CutPrefix(modelName, "gpt-")
+	if !ok {
+		return 0
+	}
+	digits := 0
+	for digits < len(rest) && rest[digits] >= '0' && rest[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 {
+		return 0
+	}
+	major, err := strconv.Atoi(rest[:digits])
+	if err != nil {
+		return 0
+	}
+	return major
 }
 
 func (r *GeneralOpenAIRequest) GetSystemRoleName() string {
