@@ -243,6 +243,14 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		}
 	}
 
+	// Sonnet 5 / Opus 4.7+ 世代拒收任何非默认采样参数，需整体省略，
+	// 否则上游返回 400 "... does not support non-default temperature"。
+	if dto.IsClaudeSamplingRestrictedModel(claudeRequest.Model) {
+		claudeRequest.Temperature = nil
+		claudeRequest.TopP = nil
+		claudeRequest.TopK = nil
+	}
+
 	if textRequest.Stop != nil {
 		// stop maybe string/array string, convert to array string
 		switch textRequest.Stop.(type) {

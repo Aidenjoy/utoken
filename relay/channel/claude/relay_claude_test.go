@@ -373,3 +373,53 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(
 	require.Nil(t, claudeRequest.TopP)
 	require.Nil(t, claudeRequest.TopK)
 }
+
+// claude-sonnet-5-5 无 thinking/effort 后缀时，仍需省略非默认采样参数，
+// 否则上游返回 400 "does not support non-default temperature"。
+func TestRequestOpenAI2ClaudeMessage_ClaudeSonnet55StripsSamplingParams(t *testing.T) {
+	request := dto.GeneralOpenAIRequest{
+		Model:       "claude-sonnet-5-5",
+		Temperature: commonPointer(0.7),
+		TopP:        commonPointer(0.9),
+		TopK:        commonPointer(40),
+		Messages: []dto.Message{
+			{
+				Role:    "user",
+				Content: "hello",
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.Equal(t, "claude-sonnet-5-5", claudeRequest.Model)
+	require.Nil(t, claudeRequest.Temperature)
+	require.Nil(t, claudeRequest.TopP)
+	require.Nil(t, claudeRequest.TopK)
+}
+
+// 对照：claude-sonnet-4-5 仍支持采样参数，不得被误剥。
+func TestRequestOpenAI2ClaudeMessage_ClaudeSonnet45KeepsSamplingParams(t *testing.T) {
+	request := dto.GeneralOpenAIRequest{
+		Model:       "claude-sonnet-4-5",
+		Temperature: commonPointer(0.7),
+		TopP:        commonPointer(0.9),
+		TopK:        commonPointer(40),
+		Messages: []dto.Message{
+			{
+				Role:    "user",
+				Content: "hello",
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.Equal(t, "claude-sonnet-4-5", claudeRequest.Model)
+	require.NotNil(t, claudeRequest.Temperature)
+	assert.InDelta(t, 0.7, *claudeRequest.Temperature, 1e-9)
+	require.NotNil(t, claudeRequest.TopP)
+	assert.InDelta(t, 0.9, *claudeRequest.TopP, 1e-9)
+	require.NotNil(t, claudeRequest.TopK)
+	assert.Equal(t, 40, *claudeRequest.TopK)
+}

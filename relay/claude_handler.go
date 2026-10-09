@@ -107,6 +107,14 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		info.UpstreamModelName = request.Model
 	}
 
+	// Sonnet 5 / Opus 4.7+ 世代拒收任何非默认采样参数，需整体省略，
+	// 否则上游返回 400 "... does not support non-default temperature"。
+	if dto.IsClaudeSamplingRestrictedModel(request.Model) {
+		request.Temperature = nil
+		request.TopP = nil
+		request.TopK = nil
+	}
+
 	if info.ChannelSetting.SystemPrompt != "" {
 		if request.System == nil {
 			request.SetStringSystem(info.ChannelSetting.SystemPrompt)

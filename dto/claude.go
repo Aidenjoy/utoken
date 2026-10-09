@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -368,6 +369,77 @@ func (c *ClaudeRequest) IsStream(ctx *gin.Context) bool {
 func (c *ClaudeRequest) SetModelName(modelName string) {
 	if modelName != "" {
 		c.Model = modelName
+	}
+}
+
+// IsClaudeSamplingRestrictedModel 判断 Claude 模型是否拒收非默认采样参数
+// （temperature/top_p/top_k）。Anthropic 从 Opus 4.7 与 Sonnet/Haiku 5 世代起，
+// 对这些模型设置任何非默认采样值都会返回 400（上游文案形如
+// "claude-sonnet-5-5 does not support non-default temperature"），必须整体省略这些字段。
+// 兼容新旧两种命名：claude-<family>-<major>[-<minor>]（如 claude-sonnet-5-5、
+// claude-opus-4-7）与 claude-<major>-<minor>-<family>（如 claude-3-5-sonnet，恒为
+// 3.x 世代，不受限）。
+func IsClaudeSamplingRestrictedModel(modelName string) bool {
+	family, major, minor, ok := parseClaudeModelVersion(modelName)
+	if !ok {
+		return false
+	}
+	switch family {
+	case "opus":
+		return major > 4 || (major == 4 && minor >= 7)
+	case "sonnet", "haiku":
+		return major >= 5
+	default:
+		return false
+	}
+}
+
+// parseClaudeModelVersion 从 Claude 模型名解析家族（opus/sonnet/haiku）与主、次版本号。
+// 名字不含 claude- 前缀、缺家族或缺主版本时返回 ok=false；尾部日期/后缀（-20250929、-thinking）被忽略。
+func parseClaudeModelVersion(modelName string) (family string, major, minor int, ok bool) {
+	rest, found := strings.CutPrefix(modelName, "claude-")
+	if !found {
+		return "", 0, 0, false
+	}
+	parts := strings.Split(rest, "-")
+	idx := 0
+	if isClaudeFamily(parts[0]) {
+		family = parts[0]
+		idx = 1
+	}
+	version := make([]int, 0, 2)
+	for idx < len(parts) && len(version) < 2 {
+		n, err := strconv.Atoi(parts[idx])
+		if err != nil {
+			break
+		}
+		version = append(version, n)
+		idx++
+	}
+	if family == "" {
+		for _, p := range parts[idx:] {
+			if isClaudeFamily(p) {
+				family = p
+				break
+			}
+		}
+	}
+	if len(version) == 0 || family == "" {
+		return "", 0, 0, false
+	}
+	major = version[0]
+	if len(version) > 1 {
+		minor = version[1]
+	}
+	return family, major, minor, true
+}
+
+func isClaudeFamily(token string) bool {
+	switch token {
+	case "opus", "sonnet", "haiku":
+		return true
+	default:
+		return false
 	}
 }
 
