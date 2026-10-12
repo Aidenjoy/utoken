@@ -42,11 +42,11 @@ type BillingRechargeRecord struct {
 }
 
 type BillingRechargeStat struct {
-	Count           int `json:"count"`
-	TotalQuota      int `json:"total_quota"`
-	OnlineQuota     int `json:"online_quota"`
-	UserAdjustQuota int `json:"user_adjust_quota"`
-	OrgAdjustQuota  int `json:"org_adjust_quota"`
+	Count        int `json:"count"`
+	TotalQuota   int `json:"total_quota"`
+	InflowQuota  int `json:"inflow_quota"`
+	OutflowQuota int `json:"outflow_quota"`
+	BalanceQuota int `json:"balance_quota"`
 }
 
 type BillingConsumptionStat struct {
@@ -54,6 +54,7 @@ type BillingConsumptionStat struct {
 	ConsumeQuota int64 `json:"consume_quota"`
 	RefundQuota  int64 `json:"refund_quota"`
 	TotalTokens  int64 `json:"total_tokens"`
+	BalanceQuota int   `json:"balance_quota"`
 }
 
 func containsInt(ids []int, target int) bool {
@@ -188,9 +189,14 @@ func collectOnlineTopupRecords(userIds []int, startTimestamp, endTimestamp int64
 	}
 	records := make([]*BillingRechargeRecord, 0, len(topups))
 	for _, topUp := range topups {
+		// 历史订单可能没有 complete_time，回退到下单时间避免时间列为空
+		createdAt := topUp.CompleteTime
+		if createdAt == 0 {
+			createdAt = topUp.CreateTime
+		}
 		records = append(records, &BillingRechargeRecord{
 			Source:        BillingSourceOnlineTopup,
-			CreatedAt:     topUp.CompleteTime,
+			CreatedAt:     createdAt,
 			UserId:        topUp.UserId,
 			Quota:         topUpGrantedQuota(topUp),
 			Money:         topUp.Money,
@@ -328,16 +334,40 @@ func GetBillingRechargeRecords(userIds, orgIds []int, startTimestamp, endTimesta
 	for _, record := range records {
 		stat.Count++
 		stat.TotalQuota += record.Quota
-		switch record.Source {
-		case BillingSourceOnlineTopup:
-			stat.OnlineQuota += record.Quota
-		case BillingSourceUserAdjust:
-			stat.UserAdjustQuota += record.Quota
-		case BillingSourceOrgAdjust:
-			stat.OrgAdjustQuota += record.Quota
+		if record.Quota > 0 {
+			stat.InflowQuota += record.Quota
+		} else {
+			stat.OutflowQuota += record.Quota
 		}
 	}
+	balance, err := computeBillingBalance(userIds, orgIds)
+	if err != nil {
+		return nil, stat, err
+	}
+	stat.BalanceQuota = balance
 	return records, stat, nil
+}
+
+// computeBillingBalance 汇总选定对象当前剩余额度：用户个人钱包 + 企业额度池。
+// 空切片表示不限定（全平台），与流水查询的筛选语义一致；余额是实时值，不受时间范围影响。
+func computeBillingBalance(userIds, orgIds []int) (int, error) {
+	var userSum int64
+	tx := DB.Model(&User{})
+	if len(userIds) > 0 {
+		tx = tx.Where("id IN ?", userIds)
+	}
+	if err := tx.Select("COALESCE(SUM(quota), 0)").Scan(&userSum).Error; err != nil {
+		return 0, err
+	}
+	var orgSum int64
+	tx = DB.Model(&Organization{})
+	if len(orgIds) > 0 {
+		tx = tx.Where("id IN ?", orgIds)
+	}
+	if err := tx.Select("COALESCE(SUM(quota), 0)").Scan(&orgSum).Error; err != nil {
+		return 0, err
+	}
+	return int(userSum + orgSum), nil
 }
 
 // GetBillingConsumption 按用户/企业维度分页查询消耗与退款明细。
@@ -391,6 +421,11 @@ func GetBillingConsumption(userIds, orgIds []int, startTimestamp, endTimestamp i
 		RefundQuota:  statRow.RefundQuota,
 		TotalTokens:  statRow.TotalTokens,
 	}
+	balance, balanceErr := computeBillingBalance(userIds, orgIds)
+	if balanceErr != nil {
+		return nil, 0, stat, nil, nil, balanceErr
+	}
+	stat.BalanceQuota = balance
 
 	if err = tx.Count(&total).Error; err != nil {
 		return nil, 0, stat, nil, nil, err

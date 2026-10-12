@@ -31,9 +31,14 @@ interface BillingStatCardsProps {
 }
 
 export function BillingStatCards({ items, isLoading }: BillingStatCardsProps) {
+  const gridClass = cn(
+    'grid grid-cols-2 gap-2.5 sm:gap-3',
+    items.length >= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'
+  )
+
   if (isLoading) {
     return (
-      <div className='grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4'>
+      <div className={gridClass}>
         {items.map((item) => (
           <Skeleton
             key={item.label}
@@ -45,7 +50,7 @@ export function BillingStatCards({ items, isLoading }: BillingStatCardsProps) {
   }
 
   return (
-    <div className='grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4'>
+    <div className={gridClass}>
       {items.map((item) => (
         <div
           key={item.label}

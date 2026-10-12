@@ -203,23 +203,23 @@ export function RechargeTable({ filter }: RechargeTableProps) {
 
   const statItems: BillingStatItem[] = [
     {
-      label: t('Total Recharge'),
-      value: formatLogQuota(stat?.total_quota ?? 0),
+      label: t('Total Recharged'),
+      value: formatLogQuota(stat?.inflow_quota ?? 0),
       accent: 'bg-emerald-500/70',
     },
     {
-      label: t('Online Top-up'),
-      value: formatLogQuota(stat?.online_quota ?? 0),
+      label: t('Total Deducted'),
+      value: formatLogQuota(stat?.outflow_quota ?? 0),
+      accent: 'bg-rose-500/65',
+    },
+    {
+      label: t('Net Increase'),
+      value: formatLogQuota(stat?.total_quota ?? 0),
       accent: 'bg-sky-500/70',
     },
     {
-      label: t('User Adjust'),
-      value: formatLogQuota(stat?.user_adjust_quota ?? 0),
-      accent: 'bg-violet-500/70',
-    },
-    {
-      label: t('Org Adjust'),
-      value: formatLogQuota(stat?.org_adjust_quota ?? 0),
+      label: t('Current Balance'),
+      value: formatLogQuota(stat?.balance_quota ?? 0),
       accent: 'bg-amber-500/70',
     },
   ]

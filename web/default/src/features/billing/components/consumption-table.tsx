@@ -256,9 +256,16 @@ export function ConsumptionTable({ filter }: ConsumptionTableProps) {
       accent: 'bg-emerald-500/70',
     },
     {
-      label: t('Tokens'),
-      value: formatNumber(stat?.total_tokens ?? 0),
-      accent: 'bg-sky-500/70',
+      label: t('Actual Consumption'),
+      value: formatLogQuota(
+        (stat?.consume_quota ?? 0) - (stat?.refund_quota ?? 0)
+      ),
+      accent: 'bg-violet-500/70',
+    },
+    {
+      label: t('Current Balance'),
+      value: formatLogQuota(stat?.balance_quota ?? 0),
+      accent: 'bg-amber-500/70',
     },
   ]
 

@@ -58,9 +58,9 @@ export interface BillingRechargeRecord {
 export interface BillingRechargeStat {
   count: number
   total_quota: number
-  online_quota: number
-  user_adjust_quota: number
-  org_adjust_quota: number
+  inflow_quota: number
+  outflow_quota: number
+  balance_quota: number
 }
 
 export interface BillingConsumptionStat {
@@ -68,6 +68,7 @@ export interface BillingConsumptionStat {
   consume_quota: number
   refund_quota: number
   total_tokens: number
+  balance_quota: number
 }
 
 export interface BillingConsumptionRow {
