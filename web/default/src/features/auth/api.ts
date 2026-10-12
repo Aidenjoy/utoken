@@ -25,6 +25,7 @@ import type {
   TwoFAPayload,
   RegisterPayload,
   ApiResponse,
+  DiscountCodePreviewResponse,
 } from './types'
 
 // ============================================================================
@@ -108,6 +109,18 @@ export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
 export async function register(payload: RegisterPayload): Promise<ApiResponse> {
   const res = await api.post(`/api/user/register`, payload, {
     params: { turnstile: payload.turnstile ?? '' },
+  })
+  return res.data
+}
+
+// Anonymous read-only preview of a discount invite code (no consumption), used
+// to show the discount on the sign-up page before registration. Business errors
+// are surfaced inline by the caller, so skip the global error toast.
+export async function previewDiscountCode(
+  code: string
+): Promise<DiscountCodePreviewResponse> {
+  const res = await api.get(`/api/user/discount_code/${code}`, {
+    skipBusinessError: true,
   })
   return res.data
 }

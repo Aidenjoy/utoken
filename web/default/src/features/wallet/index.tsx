@@ -305,6 +305,7 @@ export function Wallet(props: WalletProps) {
                   enableWaffoPancakeTopup={
                     topupInfo?.enable_waffo_pancake_topup
                   }
+                  rechargeDiscount={user?.recharge_discount}
                 />
               </div>
 

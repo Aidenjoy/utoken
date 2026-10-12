@@ -240,12 +240,26 @@ func Register(c *gin.Context) {
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	// 折扣邀请码：注册时原子消费并永久绑定折扣。仅提供折扣、无佣金，故不改 InviterId、不触发 aff 奖励。
+	var consumedDiscountCode *model.DiscountInviteCode
+	if code := strings.TrimSpace(user.DiscountCode); code != "" {
+		dc, consumeErr := model.ConsumeDiscountInviteCode(code)
+		if consumeErr != nil {
+			respondDiscountCodeError(c, consumeErr)
+			return
+		}
+		consumedDiscountCode = dc
+	}
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+	}
+	if consumedDiscountCode != nil {
+		cleanUser.RechargeDiscount = consumedDiscountCode.Discount
+		cleanUser.RechargeDiscountCode = consumedDiscountCode.Code
 	}
 	// 邀请人在企业内时，新用户继承企业归属与分组并登记为普通成员。
 	// 邀请裂变是企业扩员的主要来源；成员登记失败只记日志，不阻断注册。
@@ -263,6 +277,10 @@ func Register(c *gin.Context) {
 		cleanUser.Email = user.Email
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
+		// 注册失败，补偿回滚已消费的折扣码次数，避免占用名额。
+		if consumedDiscountCode != nil {
+			model.ReleaseDiscountInviteCode(consumedDiscountCode.Id)
+		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 			return
@@ -319,6 +337,49 @@ func Register(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
+	})
+	return
+}
+
+// respondDiscountCodeError 把折扣码类型化错误映射为 i18n 响应，供注册与预览端点复用。
+func respondDiscountCodeError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, model.ErrDiscountCodeNotFound):
+		common.ApiErrorI18n(c, i18n.MsgDiscountCodeNotFound)
+	case errors.Is(err, model.ErrDiscountCodeDisabled):
+		common.ApiErrorI18n(c, i18n.MsgDiscountCodeDisabled)
+	case errors.Is(err, model.ErrDiscountCodeExpired):
+		common.ApiErrorI18n(c, i18n.MsgDiscountCodeExpired)
+	case errors.Is(err, model.ErrDiscountCodeExhausted):
+		common.ApiErrorI18n(c, i18n.MsgDiscountCodeExhausted)
+	case errors.Is(err, model.ErrDiscountInvalid):
+		common.ApiErrorI18n(c, i18n.MsgDiscountCodeInvalid)
+	default:
+		common.ApiError(c, err)
+	}
+}
+
+// PreviewDiscountCode 匿名预览折扣码：只读校验是否可用并返回折扣，不消费。
+// 供注册页在提交前展示"你将享受 X 折充值优惠"。
+func PreviewDiscountCode(c *gin.Context) {
+	code := strings.TrimSpace(c.Param("code"))
+	if code == "" {
+		common.ApiErrorI18n(c, i18n.MsgDiscountCodeNotFound)
+		return
+	}
+	dc, err := model.GetDiscountCodeByCode(code)
+	if err != nil {
+		respondDiscountCodeError(c, err)
+		return
+	}
+	if err := dc.CheckUsable(common.GetTimestamp()); err != nil {
+		respondDiscountCodeError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"valid":      true,
+		"discount":   dc.Discount,
+		"owner_type": dc.OwnerType,
 	})
 	return
 }
@@ -523,38 +584,53 @@ func GetSelf(c *gin.Context) {
 		orgQuotaUsed = member.QuotaUsed
 	}
 
+	// 代理商身份：前端据此决定是否展示"代理商控制台"入口（按 is_agent 而非角色 gating）。
+	// 仅启用状态的代理商才算数；查不到或已禁用一律按普通用户处理，不阻断。
+	isAgent := false
+	agentMinDiscount := 0.0
+	agentMaxDiscount := 0.0
+	if agent, agentErr := model.GetAgentByUserId(id); agentErr == nil && agent != nil && agent.Status == model.AgentStatusEnabled {
+		isAgent = true
+		agentMinDiscount = agent.MinDiscount
+		agentMaxDiscount = agent.MaxDiscount
+	}
+
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
-		"id":                user.Id,
-		"username":          user.Username,
-		"display_name":      user.DisplayName,
-		"role":              user.Role,
-		"status":            user.Status,
-		"email":             user.Email,
-		"github_id":         user.GitHubId,
-		"discord_id":        user.DiscordId,
-		"oidc_id":           user.OidcId,
-		"wechat_id":         user.WeChatId,
-		"telegram_id":       user.TelegramId,
-		"group":             user.Group,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
-		"aff_code":          user.AffCode,
-		"aff_count":         user.AffCount,
-		"aff_quota":         user.AffQuota,
-		"aff_history_quota": user.AffHistoryQuota,
-		"inviter_id":        user.InviterId,
-		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
-		"stripe_customer":   user.StripeCustomer,
-		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
-		"permissions":       permissions,                // 新增权限字段
-		"org_id":            orgId,
-		"org_name":          orgName,
-		"org_role":          orgRole,
-		"org_quota_limit":   orgQuotaLimit,
-		"org_quota_used":    orgQuotaUsed,
+		"id":                 user.Id,
+		"username":           user.Username,
+		"display_name":       user.DisplayName,
+		"role":               user.Role,
+		"status":             user.Status,
+		"email":              user.Email,
+		"github_id":          user.GitHubId,
+		"discord_id":         user.DiscordId,
+		"oidc_id":            user.OidcId,
+		"wechat_id":          user.WeChatId,
+		"telegram_id":        user.TelegramId,
+		"group":              user.Group,
+		"quota":              user.Quota,
+		"used_quota":         user.UsedQuota,
+		"request_count":      user.RequestCount,
+		"aff_code":           user.AffCode,
+		"aff_count":          user.AffCount,
+		"aff_quota":          user.AffQuota,
+		"aff_history_quota":  user.AffHistoryQuota,
+		"inviter_id":         user.InviterId,
+		"linux_do_id":        user.LinuxDOId,
+		"setting":            user.Setting,
+		"stripe_customer":    user.StripeCustomer,
+		"sidebar_modules":    userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"permissions":        permissions,                // 新增权限字段
+		"org_id":             orgId,
+		"org_name":           orgName,
+		"org_role":           orgRole,
+		"org_quota_limit":    orgQuotaLimit,
+		"org_quota_used":     orgQuotaUsed,
+		"recharge_discount":  user.RechargeDiscount,
+		"is_agent":           isAgent,
+		"agent_min_discount": agentMinDiscount,
+		"agent_max_discount": agentMaxDiscount,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1218,7 +1294,8 @@ func ManageUser(c *gin.Context) {
 				return
 			}
 			recordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
+				"quota":       logger.LogQuota(req.Value),
+				"quota_value": req.Value,
 			})
 		case "subtract":
 			if req.Value <= 0 {
@@ -1230,7 +1307,8 @@ func ManageUser(c *gin.Context) {
 				return
 			}
 			recordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
+				"quota":       logger.LogQuota(req.Value),
+				"quota_value": req.Value,
 			})
 		case "override":
 			oldQuota := user.Quota
@@ -1239,8 +1317,10 @@ func ManageUser(c *gin.Context) {
 				return
 			}
 			recordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
-				"from": logger.LogQuota(oldQuota),
-				"to":   logger.LogQuota(req.Value),
+				"from":       logger.LogQuota(oldQuota),
+				"to":         logger.LogQuota(req.Value),
+				"from_value": oldQuota,
+				"to_value":   req.Value,
 			})
 		default:
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)

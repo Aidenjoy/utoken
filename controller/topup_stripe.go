@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,7 +54,7 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getStripePayMoney(float64(req.Amount), group)
+	payMoney := getStripePayMoney(float64(req.Amount), group, model.GetUserRechargeDiscount(id))
 	if payMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -92,7 +93,18 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
-	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
+	// 折扣与分组倍率仅用于计算折后 Stripe 单价；额度基数 chargedMoney 不含折扣（按面值入账）。
+	userDiscount := model.GetUserRechargeDiscount(id)
+	presetDiscount := 1.0
+	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(req.Amount)]; ok && ds > 0 {
+		presetDiscount = ds
+	}
+	groupRatio := common.GetTopupGroupRatio(user.Group)
+	if groupRatio == 0 {
+		groupRatio = 1
+	}
+
+	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, presetDiscount*userDiscount, groupRatio, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 创建 Checkout Session 失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceId, req.Amount, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
@@ -338,7 +350,7 @@ func sessionExpired(ctx context.Context, event stripe.Event) {
 //   - cancelURL: custom URL to redirect when payment is canceled (empty for default)
 //
 // Returns the checkout session URL or an error if the session creation fails.
-func genStripeLink(referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string) (string, error) {
+func genStripeLink(referenceId string, customerId string, email string, amount int64, discount float64, groupRatio float64, successURL string, cancelURL string) (string, error) {
 	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
 		return "", fmt.Errorf("无效的Stripe API密钥")
 	}
@@ -353,16 +365,34 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		cancelURL = paymentReturnPath("/console/topup")
 	}
 
-	params := &stripe.CheckoutSessionParams{
-		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(successURL),
-		CancelURL:         stripe.String(cancelURL),
-		LineItems: []*stripe.CheckoutSessionLineItemParams{
-			{
-				Price:    stripe.String(setting.StripePriceId),
-				Quantity: stripe.Int64(amount),
+	// 默认走目录价 StripePriceId（行为零变更）；仅当存在折扣时改用内联 PriceData 按折后单价计价，
+	// 因为目录价无法按用户改价。单价口径与 getStripePayMoney 预览保持一致。
+	lineItem := &stripe.CheckoutSessionLineItemParams{
+		Price:    stripe.String(setting.StripePriceId),
+		Quantity: stripe.Int64(amount),
+	}
+	if discount < 1.0 {
+		unitAmount := int64(math.Round(setting.StripeUnitPrice * groupRatio * discount * 100))
+		if unitAmount < 1 {
+			unitAmount = 1
+		}
+		lineItem = &stripe.CheckoutSessionLineItemParams{
+			PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
+				Currency:   stripe.String(setting.StripeCurrency),
+				UnitAmount: stripe.Int64(unitAmount),
+				ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
+					Name: stripe.String("Top-up"),
+				},
 			},
-		},
+			Quantity: stripe.Int64(amount),
+		}
+	}
+
+	params := &stripe.CheckoutSessionParams{
+		ClientReferenceID:   stripe.String(referenceId),
+		SuccessURL:          stripe.String(successURL),
+		CancelURL:           stripe.String(cancelURL),
+		LineItems:           []*stripe.CheckoutSessionLineItemParams{lineItem},
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
 		AllowPromotionCodes: stripe.Bool(setting.StripePromotionCodesEnabled),
 	}
@@ -394,7 +424,7 @@ func GetChargedAmount(count float64, user model.User) float64 {
 	return count * topUpGroupRatio
 }
 
-func getStripePayMoney(amount float64, group string) float64 {
+func getStripePayMoney(amount float64, group string, userDiscount float64) float64 {
 	originalAmount := amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
@@ -410,6 +440,10 @@ func getStripePayMoney(amount float64, group string) float64 {
 		if ds > 0 {
 			discount = ds
 		}
+	}
+	// 叠加用户个人折扣（折扣邀请码注册绑定，永久生效）：只降实付金额，额度仍按面值入账。
+	if userDiscount > 0 && userDiscount <= 1 {
+		discount *= userDiscount
 	}
 	payMoney := amount * setting.StripeUnitPrice * topupGroupRatio * discount
 	return payMoney

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  BadgePercent,
   BarChart3,
   BookOpen,
   Box,
@@ -30,6 +31,7 @@ import {
   FlaskConical,
   FolderSync,
   Gift,
+  Handshake,
   Image as ImageIcon,
   Images,
   Key,
@@ -41,6 +43,7 @@ import {
   Package,
   Percent,
   Radio,
+  ReceiptText,
   Scissors,
   ScrollText,
   ServerCog,
@@ -267,6 +270,17 @@ export function useSidebarData(): SidebarData {
             url: '/prompts',
             icon: BookOpen,
           },
+          // The reseller console is gated by the `is_agent` flag rather than a
+          // system role, so any promoted user sees it regardless of role.
+          ...(user?.is_agent
+            ? [
+                {
+                  title: t('Agent Console'),
+                  url: '/agent-console',
+                  icon: Handshake,
+                },
+              ]
+            : []),
         ],
       },
       ...(hasOrganization
@@ -352,6 +366,12 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.ADMIN,
           },
           {
+            title: t('Agent Management'),
+            url: '/agents',
+            icon: BadgePercent,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
             title: t('Statistics Data'),
             url: '/statistics',
             icon: BarChart3,
@@ -361,6 +381,12 @@ export function useSidebarData(): SidebarData {
             title: t('Statistics Logs'),
             url: '/statistics-logs',
             icon: ScrollText,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Billing Center'),
+            url: '/billing',
+            icon: ReceiptText,
             requiredRole: ROLE.ADMIN,
           },
           {

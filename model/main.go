@@ -319,6 +319,8 @@ func migrateDB() error {
 		&DirectorEntityAsset{},
 		&Organization{},
 		&OrgMember{},
+		&Agent{},
+		&DiscountInviteCode{},
 		&PromptTemplate{},
 	)
 	if err != nil {

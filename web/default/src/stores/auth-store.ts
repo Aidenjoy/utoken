@@ -69,6 +69,16 @@ export interface AuthUser {
    */
   org_quota_limit?: number
   org_quota_used?: number
+  /**
+   * Recharge discount pushed by `/api/user/self`. `recharge_discount` is the
+   * pay multiplier in (0, 1] bound at registration via a discount invite code;
+   * 0 (unset) means no discount (equivalent to 1.0). `is_agent` marks a user
+   * promoted to reseller, gating the agent-console entry (independent of role).
+   */
+  recharge_discount?: number
+  is_agent?: boolean
+  agent_min_discount?: number
+  agent_max_discount?: number
 }
 
 interface AuthState {

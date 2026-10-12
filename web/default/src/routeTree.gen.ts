@@ -58,8 +58,11 @@ import { Route as AuthenticatedDirectorIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedCostCalculatorIndexRouteImport } from './routes/_authenticated/cost-calculator/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
+import { Route as AuthenticatedBillingIndexRouteImport } from './routes/_authenticated/billing/index'
 import { Route as AuthenticatedAssetSyncIndexRouteImport } from './routes/_authenticated/asset-sync/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
+import { Route as AuthenticatedAgentsIndexRouteImport } from './routes/_authenticated/agents/index'
+import { Route as AuthenticatedAgentConsoleIndexRouteImport } from './routes/_authenticated/agent-console/index'
 import { Route as AuthenticatedViralHeroHeroSetRouteImport } from './routes/_authenticated/viral-hero/hero-set'
 import { Route as AuthenticatedViralHeroHeroDesignRouteImport } from './routes/_authenticated/viral-hero/hero-design'
 import { Route as AuthenticatedViralHeroDetailPageRouteImport } from './routes/_authenticated/viral-hero/detail-page'
@@ -364,6 +367,12 @@ const AuthenticatedChannelsIndexRoute =
     path: '/channels/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedBillingIndexRoute =
+  AuthenticatedBillingIndexRouteImport.update({
+    id: '/billing/',
+    path: '/billing/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAssetSyncIndexRoute =
   AuthenticatedAssetSyncIndexRouteImport.update({
     id: '/asset-sync/',
@@ -374,6 +383,18 @@ const AuthenticatedAssetLibraryIndexRoute =
   AuthenticatedAssetLibraryIndexRouteImport.update({
     id: '/asset-library/',
     path: '/asset-library/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAgentsIndexRoute =
+  AuthenticatedAgentsIndexRouteImport.update({
+    id: '/agents/',
+    path: '/agents/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAgentConsoleIndexRoute =
+  AuthenticatedAgentConsoleIndexRouteImport.update({
+    id: '/agent-console/',
+    path: '/agent-console/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedViralHeroHeroSetRoute =
@@ -660,8 +681,11 @@ export interface FileRoutesByFullPath {
   '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
   '/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
+  '/agent-console/': typeof AuthenticatedAgentConsoleIndexRoute
+  '/agents/': typeof AuthenticatedAgentsIndexRoute
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
+  '/billing/': typeof AuthenticatedBillingIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -749,8 +773,11 @@ export interface FileRoutesByTo {
   '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
   '/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
+  '/agent-console': typeof AuthenticatedAgentConsoleIndexRoute
+  '/agents': typeof AuthenticatedAgentsIndexRoute
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync': typeof AuthenticatedAssetSyncIndexRoute
+  '/billing': typeof AuthenticatedBillingIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
@@ -842,8 +869,11 @@ export interface FileRoutesById {
   '/_authenticated/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/_authenticated/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
   '/_authenticated/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
+  '/_authenticated/agent-console/': typeof AuthenticatedAgentConsoleIndexRoute
+  '/_authenticated/agents/': typeof AuthenticatedAgentsIndexRoute
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/_authenticated/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
+  '/_authenticated/billing/': typeof AuthenticatedBillingIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -935,8 +965,11 @@ export interface FileRouteTypes {
     | '/viral-hero/detail-page'
     | '/viral-hero/hero-design'
     | '/viral-hero/hero-set'
+    | '/agent-console/'
+    | '/agents/'
     | '/asset-library/'
     | '/asset-sync/'
+    | '/billing/'
     | '/channels/'
     | '/cost-calculator/'
     | '/dashboard/'
@@ -1024,8 +1057,11 @@ export interface FileRouteTypes {
     | '/viral-hero/detail-page'
     | '/viral-hero/hero-design'
     | '/viral-hero/hero-set'
+    | '/agent-console'
+    | '/agents'
     | '/asset-library'
     | '/asset-sync'
+    | '/billing'
     | '/channels'
     | '/cost-calculator'
     | '/dashboard'
@@ -1116,8 +1152,11 @@ export interface FileRouteTypes {
     | '/_authenticated/viral-hero/detail-page'
     | '/_authenticated/viral-hero/hero-design'
     | '/_authenticated/viral-hero/hero-set'
+    | '/_authenticated/agent-console/'
+    | '/_authenticated/agents/'
     | '/_authenticated/asset-library/'
     | '/_authenticated/asset-sync/'
+    | '/_authenticated/billing/'
     | '/_authenticated/channels/'
     | '/_authenticated/cost-calculator/'
     | '/_authenticated/dashboard/'
@@ -1527,6 +1566,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChannelsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/billing/': {
+      id: '/_authenticated/billing/'
+      path: '/billing'
+      fullPath: '/billing/'
+      preLoaderRoute: typeof AuthenticatedBillingIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/asset-sync/': {
       id: '/_authenticated/asset-sync/'
       path: '/asset-sync'
@@ -1539,6 +1585,20 @@ declare module '@tanstack/react-router' {
       path: '/asset-library'
       fullPath: '/asset-library/'
       preLoaderRoute: typeof AuthenticatedAssetLibraryIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/agents/': {
+      id: '/_authenticated/agents/'
+      path: '/agents'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AuthenticatedAgentsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/agent-console/': {
+      id: '/_authenticated/agent-console/'
+      path: '/agent-console'
+      fullPath: '/agent-console/'
+      preLoaderRoute: typeof AuthenticatedAgentConsoleIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/viral-hero/hero-set': {
@@ -1967,8 +2027,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedViralHeroDetailPageRoute: typeof AuthenticatedViralHeroDetailPageRoute
   AuthenticatedViralHeroHeroDesignRoute: typeof AuthenticatedViralHeroHeroDesignRoute
   AuthenticatedViralHeroHeroSetRoute: typeof AuthenticatedViralHeroHeroSetRoute
+  AuthenticatedAgentConsoleIndexRoute: typeof AuthenticatedAgentConsoleIndexRoute
+  AuthenticatedAgentsIndexRoute: typeof AuthenticatedAgentsIndexRoute
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
   AuthenticatedAssetSyncIndexRoute: typeof AuthenticatedAssetSyncIndexRoute
+  AuthenticatedBillingIndexRoute: typeof AuthenticatedBillingIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCostCalculatorIndexRoute: typeof AuthenticatedCostCalculatorIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
@@ -2020,8 +2083,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedViralHeroDetailPageRoute: AuthenticatedViralHeroDetailPageRoute,
   AuthenticatedViralHeroHeroDesignRoute: AuthenticatedViralHeroHeroDesignRoute,
   AuthenticatedViralHeroHeroSetRoute: AuthenticatedViralHeroHeroSetRoute,
+  AuthenticatedAgentConsoleIndexRoute: AuthenticatedAgentConsoleIndexRoute,
+  AuthenticatedAgentsIndexRoute: AuthenticatedAgentsIndexRoute,
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
   AuthenticatedAssetSyncIndexRoute: AuthenticatedAssetSyncIndexRoute,
+  AuthenticatedBillingIndexRoute: AuthenticatedBillingIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedCostCalculatorIndexRoute: AuthenticatedCostCalculatorIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,

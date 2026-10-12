@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2 } from 'lucide-react'
+import { Loader2, TicketPercent } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { register, wechatLoginByCode } from '@/features/auth/api'
+import { register, wechatLoginByCode, previewDiscountCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { registerFormSchema } from '@/features/auth/constants'
@@ -47,19 +47,25 @@ import { useEmailVerification } from '@/features/auth/hooks/use-email-verificati
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import {
   getAffiliateCode,
+  getDiscountCode,
   saveAffiliateCode,
+  saveDiscountCode,
 } from '@/features/auth/lib/storage'
+import type { DiscountCodePreview } from '@/features/auth/types'
 import { useStatus } from '@/hooks/use-status'
+import { formatDiscount } from '@/lib/discount'
 import { cn } from '@/lib/utils'
 
 export function SignUpForm({
   className,
   ...props
 }: React.HTMLAttributes<HTMLFormElement>) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
   const [agreedToLegal, setAgreedToLegal] = useState(false)
+  const [discountPreview, setDiscountPreview] =
+    useState<DiscountCodePreview | null>(null)
   const [wechatCode, setWeChatCode] = useState('')
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
@@ -133,6 +139,35 @@ export function SignUpForm({
     if (aff) {
       saveAffiliateCode(aff)
     }
+    // Capture the discount invite code from `?discount=` (agent/admin invite
+    // links) and persist it so registration binds the permanent discount.
+    const discount = new URLSearchParams(window.location.search)
+      .get('discount')
+      ?.trim()
+    if (discount) {
+      saveDiscountCode(discount)
+    }
+  }, [])
+
+  // Preview the stored discount code (read-only, no consumption) so the user
+  // sees the recharge discount before registering.
+  useEffect(() => {
+    const code = getDiscountCode()
+    if (!code) {
+      setDiscountPreview(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const res = await previewDiscountCode(code)
+      if (cancelled) return
+      setDiscountPreview(
+        res.success && res.data?.valid ? res.data : null
+      )
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   async function onSubmit(data: z.infer<typeof registerFormSchema>) {
@@ -163,6 +198,7 @@ export function SignUpForm({
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
         aff_code: getAffiliateCode(),
+        discount_code: getDiscountCode(),
         turnstile: turnstileToken,
       })
 
@@ -351,6 +387,20 @@ export function SignUpForm({
           onCheckedChange={setAgreedToLegal}
           className='mt-1'
         />
+
+        {/* Discount invite banner: shown when a valid discount code is bound. */}
+        {discountPreview ? (
+          <div className='bg-primary/10 text-primary flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium'>
+            <TicketPercent className='size-4 shrink-0' />
+            {t('You will enjoy {{discount}} on every recharge', {
+              discount: formatDiscount(
+                discountPreview.discount,
+                i18n.language,
+                t
+              ),
+            })}
+          </div>
+        ) : null}
 
         {/* Submit Button */}
         <Button

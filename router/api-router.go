@@ -76,6 +76,8 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, controller.EpayNotify)
 			userRoute.GET("/epay/notify", controller.EpayNotify)
 			userRoute.GET("/groups", controller.GetUserGroups)
+			// 匿名预览折扣码（注册页展示折扣用），只读校验不消费
+			userRoute.GET("/discount_code/:code", middleware.CriticalRateLimit(), controller.PreviewDiscountCode)
 
 			selfRoute := userRoute.Group("/")
 			selfRoute.Use(middleware.UserAuth())
@@ -147,6 +149,31 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
+		}
+
+		// 代理商（Reseller）折扣邀请：管理员管理代理商与折扣码，代理商在被允许范围内自建码。
+		// /agent/admin/* 与 /agent/profile、/agent/codes 为不同静态段，路由树无冲突。
+		agentAdminRoute := apiRouter.Group("/agent/admin")
+		agentAdminRoute.Use(middleware.AdminAuth())
+		{
+			agentAdminRoute.GET("/agents", controller.AdminListAgents)
+			agentAdminRoute.POST("/agents", controller.AdminCreateAgent)
+			agentAdminRoute.PUT("/agents/:id", controller.AdminUpdateAgent)
+			agentAdminRoute.DELETE("/agents/:id", controller.AdminDeleteAgent)
+			agentAdminRoute.GET("/codes", controller.AdminListDiscountCodes)
+			agentAdminRoute.POST("/codes", controller.AdminCreateDiscountCode)
+			agentAdminRoute.PUT("/codes/:id", controller.AdminUpdateDiscountCode)
+			agentAdminRoute.DELETE("/codes/:id", controller.AdminDeleteDiscountCode)
+		}
+
+		agentSelfRoute := apiRouter.Group("/agent")
+		agentSelfRoute.Use(middleware.UserAuth(), middleware.AgentAuth())
+		{
+			agentSelfRoute.GET("/profile", controller.GetAgentProfile)
+			agentSelfRoute.GET("/codes", controller.ListAgentCodes)
+			agentSelfRoute.POST("/codes", controller.CreateAgentCode)
+			agentSelfRoute.PUT("/codes/:id", controller.UpdateAgentCode)
+			agentSelfRoute.DELETE("/codes/:id", controller.DeleteAgentCode)
 		}
 
 		// Subscription billing (plans, purchase, admin management)
@@ -293,6 +320,15 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
+
+		billingRoute := apiRouter.Group("/billing")
+		billingRoute.Use(middleware.AdminAuth())
+		{
+			billingRoute.GET("/recharge", controller.GetBillingRecharge)
+			billingRoute.GET("/recharge/export", controller.ExportBillingRecharge)
+			billingRoute.GET("/consumption", controller.GetBillingConsumption)
+			billingRoute.GET("/consumption/export", controller.ExportBillingConsumption)
+		}
 
 		systemTaskRoute := apiRouter.Group("/system-task")
 		systemTaskRoute.Use(middleware.RootAuth())

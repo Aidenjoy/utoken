@@ -38,6 +38,7 @@ export interface RegisterPayload {
   email?: string
   verification_code?: string
   aff_code?: string
+  discount_code?: string
   turnstile?: string
 }
 
@@ -79,6 +80,21 @@ export interface ApiResponse {
   success: boolean
   message: string
   data?: unknown
+}
+
+// Anonymous read-only preview of a discount invite code, used on the sign-up
+// page to show the discount before the user registers. `discount` is the pay
+// multiplier in (0, 1]; `owner_type` is 'agent' | 'admin'.
+export interface DiscountCodePreview {
+  valid: boolean
+  discount: number
+  owner_type: string
+}
+
+export interface DiscountCodePreviewResponse {
+  success: boolean
+  message: string
+  data?: DiscountCodePreview
 }
 
 // ============================================================================

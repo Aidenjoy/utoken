@@ -378,6 +378,27 @@ const (
 	MsgOrgMemberStatusInvalid    = "org.member_status_invalid"
 )
 
+// Agent (distributor discount) related messages
+const (
+	MsgAgentNotFound          = "agent.not_found"
+	MsgAgentDisabled          = "agent.disabled"
+	MsgAgentAlreadyExists     = "agent.already_exists"
+	MsgAgentUserNotFound      = "agent.user_not_found"
+	MsgAgentDiscountRange     = "agent.discount_range_invalid"
+	MsgAgentDiscountOutOfRang = "agent.discount_out_of_range"
+)
+
+// Discount invite code related messages
+const (
+	MsgDiscountCodeNotFound    = "discount_code.not_found"
+	MsgDiscountCodeDisabled    = "discount_code.disabled"
+	MsgDiscountCodeExpired     = "discount_code.expired"
+	MsgDiscountCodeExhausted   = "discount_code.exhausted"
+	MsgDiscountCodeInvalid     = "discount_code.invalid_discount"
+	MsgDiscountCodeGenerateErr = "discount_code.generate_failed"
+	MsgDiscountCodeNotOwned    = "discount_code.not_owned"
+)
+
 // Prompt template library related messages
 const (
 	MsgPromptNotFound             = "prompt.not_found"

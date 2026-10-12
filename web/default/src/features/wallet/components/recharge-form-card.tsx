@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
+import { Gift, ExternalLink, Loader2, Receipt, WalletCards, TicketPercent } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -34,6 +34,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatNumber } from '@/lib/format'
+import { formatDiscount, hasRechargeDiscount } from '@/lib/discount'
 import { cn } from '@/lib/utils'
 
 import {
@@ -80,6 +81,12 @@ interface RechargeFormCardProps {
   waffoMinTopup?: number
   onWaffoMethodSelect?: (method: WaffoPayMethod, index: number) => void
   enableWaffoPancakeTopup?: boolean
+  /**
+   * Permanent recharge discount bound at registration (pay multiplier in
+   * (0, 1]). Used only to surface an "already discounted" badge and to flag
+   * that fixed-price Creem products do not participate in the discount.
+   */
+  rechargeDiscount?: number
 }
 
 export function RechargeFormCard({
@@ -110,9 +117,11 @@ export function RechargeFormCard({
   waffoMinTopup,
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
+  rechargeDiscount,
 }: RechargeFormCardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
+  const userHasDiscount = hasRechargeDiscount(rechargeDiscount)
 
   useEffect(() => {
     setLocalAmount(topupAmount.toString())
@@ -209,6 +218,16 @@ export function RechargeFormCard({
       }
       contentClassName='space-y-4 sm:space-y-6'
     >
+      {/* Permanent recharge discount badge (bound at registration). */}
+      {userHasDiscount ? (
+        <div className='bg-primary/10 text-primary flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium'>
+          <TicketPercent className='h-4 w-4 shrink-0' />
+          {t('You already enjoy {{discount}} on recharges', {
+            discount: formatDiscount(rechargeDiscount, i18n.language, t),
+          })}
+        </div>
+      ) : null}
+
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-4 sm:space-y-6'>
@@ -482,6 +501,7 @@ export function RechargeFormCard({
             <CreemProductsSection
               products={creemProducts}
               onProductSelect={onCreemProductSelect}
+              excludedFromDiscount={userHasDiscount}
             />
           </div>
         )}
