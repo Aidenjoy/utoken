@@ -168,6 +168,23 @@ export function MultiSelect(props: MultiSelectProps) {
     return Array.from(set)
   }, [props.options, props.selected, canCreate, trimmedInput])
 
+  // Base UI filters by the raw item value, which hides options whose friendly
+  // label differs from their value (e.g. `alice (#2)` stored as `"2"`). Match
+  // on both so search behaves like the rendered list.
+  const filterItems = React.useCallback(
+    (item: string, query: string) => {
+      const normalized = query.trim().toLowerCase()
+      if (!normalized) return true
+      if (canCreate && item === trimmedInput) return true
+      const label = labelMap.get(item) ?? ''
+      return (
+        item.toLowerCase().includes(normalized) ||
+        label.toLowerCase().includes(normalized)
+      )
+    },
+    [canCreate, labelMap, trimmedInput]
+  )
+
   const addValues = React.useCallback(
     (values: string[]) => {
       const next: string[] = []
@@ -250,6 +267,7 @@ export function MultiSelect(props: MultiSelectProps) {
     <Combobox
       multiple
       items={items}
+      filter={filterItems}
       value={props.selected}
       onValueChange={handleValueChange}
       inputValue={inputValue}
