@@ -107,7 +107,8 @@ export function SetCodeDialog({
     discountParsed >= lowerBound &&
     discountParsed <= upperBound
   const usesValid = Number.isInteger(maxUsesParsed) && maxUsesParsed >= 0
-  const canSubmit = discountValid && usesValid
+  // 编辑时折扣只读（创建后锁定），故不因折扣校验阻断保存。
+  const canSubmit = usesValid && (isEdit || discountValid)
 
   const submit = async () => {
     if (!canSubmit) return
@@ -116,7 +117,6 @@ export function SetCodeDialog({
     try {
       if (isEdit && code) {
         const payload = {
-          discount: discountParsed,
           max_uses: maxUsesParsed,
           expires_at: expires,
           status,
@@ -178,18 +178,27 @@ export function SetCodeDialog({
               max={upperBound}
               step={0.01}
               value={discount}
+              disabled={isEdit}
               onChange={(event) => setDiscount(event.target.value)}
             />
-            <p className='text-muted-foreground text-xs'>
-              {discountValid
-                ? t('Invitee pays: {{value}}', {
-                    value: formatDiscount(discountParsed, i18n.language, t),
-                  })
-                : t('Require {{min}} ≤ discount ≤ {{max}}', {
-                    min: lowerBound,
-                    max: upperBound,
-                  })}
-            </p>
+            {isEdit ? (
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'The discount is fixed after creation. Create a new code for a different discount.'
+                )}
+              </p>
+            ) : (
+              <p className='text-muted-foreground text-xs'>
+                {discountValid
+                  ? t('Invitee pays: {{value}}', {
+                      value: formatDiscount(discountParsed, i18n.language, t),
+                    })
+                  : t('Require {{min}} ≤ discount ≤ {{max}}', {
+                      min: lowerBound,
+                      max: upperBound,
+                    })}
+              </p>
+            )}
           </div>
 
           <div className='space-y-2'>

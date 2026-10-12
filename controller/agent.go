@@ -271,31 +271,20 @@ func AdminCreateDiscountCode(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgCreateSuccess, dc)
 }
 
+// updateDiscountCodeRequest 折扣码更新请求。折扣值（discount）创建后不可修改，
+// 故此处不接受该字段：用户注册时已将折扣快照绑定到其账户，改动码面折扣只会让
+// 同一个码在不同时间代表不同折扣、并与老用户的快照产生歧义。如需不同折扣请另建码。
 type updateDiscountCodeRequest struct {
-	Discount  *float64 `json:"discount"`
-	MaxUses   *int     `json:"max_uses"`
-	ExpiresAt *int64   `json:"expires_at"`
-	Status    *int     `json:"status"`
-	Remark    *string  `json:"remark"`
+	MaxUses   *int    `json:"max_uses"`
+	ExpiresAt *int64  `json:"expires_at"`
+	Status    *int    `json:"status"`
+	Remark    *string `json:"remark"`
 }
 
-// buildDiscountCodeUpdateFields 从更新请求构造字段白名单，并做通用校验（折扣边界/状态取值）。
-// 代理商侧调用时会额外传入其允许区间做范围校验；管理员侧传 (0,0) 表示不限范围。
-func buildDiscountCodeUpdateFields(req *updateDiscountCodeRequest, minDiscount, maxDiscount float64) (map[string]interface{}, error) {
+// buildDiscountCodeUpdateFields 从更新请求构造字段白名单并做通用校验（次数/有效期/状态/备注）。
+// 折扣值不在可更新范围内（见 updateDiscountCodeRequest 注释）。
+func buildDiscountCodeUpdateFields(req *updateDiscountCodeRequest) (map[string]interface{}, error) {
 	fields := make(map[string]interface{})
-	if req.Discount != nil {
-		d := *req.Discount
-		var err error
-		if minDiscount > 0 || maxDiscount > 0 {
-			err = model.ValidateDiscountInRange(d, minDiscount, maxDiscount)
-		} else {
-			err = model.ValidateDiscountValue(d)
-		}
-		if err != nil {
-			return nil, err
-		}
-		fields["discount"] = d
-	}
 	if req.MaxUses != nil {
 		maxUses := *req.MaxUses
 		if maxUses < 0 {
@@ -337,7 +326,7 @@ func AdminUpdateDiscountCode(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	fields, err := buildDiscountCodeUpdateFields(&req, 0, 0)
+	fields, err := buildDiscountCodeUpdateFields(&req)
 	if err != nil {
 		respondAgentModelError(c, err)
 		return

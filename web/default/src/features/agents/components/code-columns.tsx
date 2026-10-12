@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Pencil, Power, Trash2 } from 'lucide-react'
+import { Link2, Pencil, Power, Trash2 } from 'lucide-react'
 import type { TFunction } from 'i18next'
+import { toast } from 'sonner'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { StatusBadge } from '@/components/status-badge'
@@ -179,6 +180,18 @@ export function useCodeColumns(
       const enabled = code.status === DISCOUNT_CODE_STATUS.ENABLED
       return (
         <DataTableRowActionMenu ariaLabel={t('Open menu')} modal={false}>
+          <DropdownMenuItem
+            onClick={() => {
+              const url = `${window.location.origin}/sign-up?discount=${code.code}`
+              navigator.clipboard
+                .writeText(url)
+                .then(() => toast.success(t('Invite link copied')))
+                .catch(() => toast.error(t('Failed to copy')))
+            }}
+          >
+            {t('Copy invite link')}
+            <Link2 size={16} />
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => actions.onEdit(code)}>
             {t('Edit')}
             <Pencil size={16} />

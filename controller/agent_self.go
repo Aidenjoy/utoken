@@ -117,7 +117,7 @@ func loadOwnedAgentCode(c *gin.Context) (*model.DiscountInviteCode, bool) {
 	return dc, true
 }
 
-// UpdateAgentCode 代理商改/禁用自有折扣码：重校验折扣范围与归属。
+// UpdateAgentCode 代理商改/禁用自有折扣码：重校验归属。折扣值创建后不可改（见 buildDiscountCodeUpdateFields）。
 func UpdateAgentCode(c *gin.Context) {
 	dc, ok := loadOwnedAgentCode(c)
 	if !ok {
@@ -128,9 +128,7 @@ func UpdateAgentCode(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	minDiscount := c.GetFloat64("agent_min_discount")
-	maxDiscount := c.GetFloat64("agent_max_discount")
-	fields, err := buildDiscountCodeUpdateFields(&req, minDiscount, maxDiscount)
+	fields, err := buildDiscountCodeUpdateFields(&req)
 	if err != nil {
 		respondAgentModelError(c, err)
 		return

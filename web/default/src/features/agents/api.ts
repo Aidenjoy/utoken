@@ -53,7 +53,8 @@ export interface CodePayload {
 }
 
 export interface CodeUpdatePayload {
-  discount?: number
+  // `discount` is immutable after creation (bound users keep their snapshot),
+  // so it is intentionally absent here; create a new code for a new discount.
   max_uses?: number
   expires_at?: number
   status?: number
