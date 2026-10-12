@@ -134,15 +134,14 @@ func ExportBillingRecharge(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	header := []string{"时间", "类型", "对象", "额度变化", "折算金额", "支付金额", "支付方式", "订单号", "操作人"}
+	header := []string{"时间", "类型", "对象", "金额", "支付金额", "支付方式", "订单号", "操作人"}
 	rows := make([][]string, 0, len(records)+1)
 	for _, record := range records {
 		rows = append(rows, []string{
 			billingTimestamp(record.CreatedAt),
 			rechargeSourceText(record.Source),
 			rechargeTargetText(record),
-			strconv.Itoa(record.Quota),
-			logger.LogQuota(record.Quota),
+			logger.FormatQuota(record.Quota),
 			strconv.FormatFloat(record.Money, 'f', 2, 64),
 			record.PaymentMethod,
 			record.TradeNo,
@@ -151,8 +150,7 @@ func ExportBillingRecharge(c *gin.Context) {
 	}
 	rows = append(rows, []string{
 		"合计", "", "",
-		strconv.Itoa(stat.TotalQuota),
-		logger.LogQuota(stat.TotalQuota),
+		logger.FormatQuota(stat.TotalQuota),
 		"", "", "", "",
 	})
 	writeBillingCSV(c, "billing-recharge-"+time.Now().Format("20060102-150405")+".csv", header, rows)
@@ -165,7 +163,7 @@ func ExportBillingConsumption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	header := []string{"时间", "用户", "企业", "令牌", "模型", "类型", "额度变化", "折算金额", "输入tokens", "输出tokens", "请求ID"}
+	header := []string{"时间", "用户", "企业", "令牌", "模型", "类型", "金额", "输入tokens", "输出tokens", "请求ID"}
 	rows := make([][]string, 0, len(logs))
 	for _, log := range logs {
 		quota := log.Quota
@@ -185,8 +183,7 @@ func ExportBillingConsumption(c *gin.Context) {
 			log.TokenName,
 			log.ModelName,
 			typeText,
-			strconv.Itoa(quota),
-			logger.LogQuota(quota),
+			logger.FormatQuota(quota),
 			strconv.Itoa(log.PromptTokens),
 			strconv.Itoa(log.CompletionTokens),
 			log.RequestId,
