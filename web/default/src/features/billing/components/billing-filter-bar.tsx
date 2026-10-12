@@ -17,17 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, Plus, RotateCcw, Search } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { Loader2, RotateCcw, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
-import { MultiSelect, type Option } from '@/components/multi-select'
+import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { getAdminOrganizations } from '@/features/organizations/api'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
-import { getUsers, searchUsers } from '@/features/users/api'
+import { getUsers } from '@/features/users/api'
 
 import type { BillingFilterDraft } from '../types'
 
@@ -41,19 +38,8 @@ interface BillingFilterBarProps {
   searching: boolean
 }
 
-function mergeOptions(base: Option[], extra: Option[]): Option[] {
-  const merged = [...base]
-  for (const option of extra) {
-    if (!merged.some((item) => item.value === option.value)) merged.push(option)
-  }
-  return merged
-}
-
 export function BillingFilterBar(props: BillingFilterBarProps) {
   const { t } = useTranslation()
-  const [keyword, setKeyword] = useState('')
-  const [extraUsers, setExtraUsers] = useState<Option[]>([])
-  const [userSearching, setUserSearching] = useState(false)
 
   const { data: userOptions = [] } = useQuery({
     queryKey: ['billing-user-options'],
@@ -79,69 +65,15 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const mergedUserOptions = useMemo(
-    () => mergeOptions(userOptions, extraUsers),
-    [extraUsers, userOptions]
-  )
-
-  const handleUserSearch = useCallback(async () => {
-    const kw = keyword.trim()
-    if (!kw) return
-    setUserSearching(true)
-    try {
-      const result = await searchUsers({ keyword: kw, p: 1, page_size: 50 })
-      const items = result.data?.items ?? []
-      if (items.length === 0) {
-        toast.info(t('No matching users'))
-        return
-      }
-      setExtraUsers((current) =>
-        mergeOptions(
-          current,
-          items.map((user) => ({
-            label: `${user.username} (#${user.id})`,
-            value: String(user.id),
-          }))
-        )
-      )
-    } catch {
-      toast.error(t('Failed to search users'))
-    } finally {
-      setUserSearching(false)
-    }
-  }, [keyword, t])
-
   const selectedUsers = props.draft.userIds.map(String)
   const selectedOrgs = props.draft.orgIds.map(String)
 
   return (
     <div className='border-border/60 bg-card rounded-xl border p-3 shadow-xs'>
       <div className='flex flex-wrap items-center gap-2'>
-        <div className='flex items-center gap-1.5'>
-          <Input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleUserSearch()
-            }}
-            placeholder={t('Search users to add')}
-            className='h-8 w-[170px] text-xs'
-          />
-          <Button
-            variant='ghost'
-            size='icon'
-            className='size-8 shrink-0'
-            onClick={handleUserSearch}
-            disabled={userSearching || !keyword.trim()}
-            aria-label={t('Search users to add')}
-          >
-            {userSearching ? <Loader2 className='animate-spin' /> : <Plus />}
-          </Button>
-        </div>
-
         <MultiSelect
           className='min-w-[220px] flex-1'
-          options={mergedUserOptions}
+          options={userOptions}
           selected={selectedUsers}
           onChange={(values) =>
             props.onDraftChange((current) => ({
