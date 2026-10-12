@@ -21,6 +21,7 @@ import { Pencil, Power, Trash2 } from 'lucide-react'
 import type { TFunction } from 'i18next'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
+import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
@@ -58,18 +59,22 @@ export function useAgentColumns(
       accessorKey: 'username',
       header: t('User'),
       meta: { mobileTitle: true },
-      cell: ({ row }) => (
-        <div className='flex flex-col'>
-          <span className='max-w-[220px] truncate font-medium'>
-            {row.original.display_name || row.original.username || '-'}
-          </span>
-          {row.original.email ? (
-            <span className='text-muted-foreground max-w-[220px] truncate text-xs'>
-              {row.original.email}
-            </span>
-          ) : null}
-        </div>
-      ),
+      cell: ({ row }) => {
+        const username = row.original.username
+        const displayName = row.original.display_name
+        return (
+          <div className='flex min-w-[160px] flex-col gap-1'>
+            <LongText className='max-w-[200px] font-medium'>
+              {username || '-'}
+            </LongText>
+            {displayName && displayName !== username && (
+              <LongText className='text-muted-foreground max-w-[200px] text-xs'>
+                {displayName}
+              </LongText>
+            )}
+          </div>
+        )
+      },
       size: 220,
     },
     {
