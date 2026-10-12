@@ -429,3 +429,42 @@ func TestGetDiscountCodeStats(t *testing.T) {
 	_, hasStat3 := stats["STAT3"]
 	assert.False(t, hasStat3, "code without bound users has no stat entry")
 }
+
+// TestAttachDiscountCodeOwners 验证用户列表回填码归属用户名：多归属解析、
+// 共享码去重、已删除码与无码用户保持空串。
+func TestAttachDiscountCodeOwners(t *testing.T) {
+	setupDiscountFixture(t)
+
+	seedOwner := func(id int, username string) {
+		require.NoError(t, DB.Create(&User{Id: id, Username: username, AffCode: fmt.Sprintf("aff-%d", id), Status: common.UserStatusEnabled, Group: DefaultUserGroup}).Error)
+	}
+	seedCodeWithOwner := func(code string, ownerId int) {
+		require.NoError(t, DB.Create(&DiscountInviteCode{Code: code, OwnerType: OwnerTypeAgent, OwnerUserId: ownerId, Discount: 0.7, Status: DiscountCodeStatusEnabled}).Error)
+	}
+	seedBoundUser := func(id int, code string) *User {
+		u := &User{Id: id, Username: fmt.Sprintf("u-%d", id), AffCode: fmt.Sprintf("aff-%d", id), Status: common.UserStatusEnabled, Group: DefaultUserGroup, RechargeDiscount: 0.7, RechargeDiscountCode: code}
+		require.NoError(t, DB.Create(u).Error)
+		return u
+	}
+
+	seedOwner(1, "agent_alice")
+	seedOwner(2, "admin_bob")
+	seedCodeWithOwner("CODE_A", 1)
+	seedCodeWithOwner("CODE_B", 2)
+
+	// 两个用户共用 CODE_A（去重路径），一个 CODE_B，一个已删除码，一个无码。
+	boundA1 := seedBoundUser(101, "CODE_A")
+	boundA2 := seedBoundUser(102, "CODE_A")
+	boundB := seedBoundUser(103, "CODE_B")
+	boundGone := seedBoundUser(104, "GONE")
+	boundNone := seedBoundUser(105, "")
+
+	users := []*User{boundA1, boundA2, boundB, boundGone, boundNone}
+	require.NoError(t, AttachDiscountCodeOwners(users))
+
+	assert.Equal(t, "agent_alice", boundA1.RechargeDiscountOwner)
+	assert.Equal(t, "agent_alice", boundA2.RechargeDiscountOwner)
+	assert.Equal(t, "admin_bob", boundB.RechargeDiscountOwner)
+	assert.Empty(t, boundGone.RechargeDiscountOwner, "deleted code has no resolvable owner")
+	assert.Empty(t, boundNone.RechargeDiscountOwner, "user without code has no owner")
+}
