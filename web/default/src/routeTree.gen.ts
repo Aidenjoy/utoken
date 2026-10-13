@@ -62,7 +62,6 @@ import { Route as AuthenticatedBillingIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedAssetSyncIndexRouteImport } from './routes/_authenticated/asset-sync/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
 import { Route as AuthenticatedAgentsIndexRouteImport } from './routes/_authenticated/agents/index'
-import { Route as AuthenticatedAgentConsoleIndexRouteImport } from './routes/_authenticated/agent-console/index'
 import { Route as AuthenticatedViralHeroHeroSetRouteImport } from './routes/_authenticated/viral-hero/hero-set'
 import { Route as AuthenticatedViralHeroHeroDesignRouteImport } from './routes/_authenticated/viral-hero/hero-design'
 import { Route as AuthenticatedViralHeroDetailPageRouteImport } from './routes/_authenticated/viral-hero/detail-page'
@@ -84,6 +83,9 @@ import { Route as AuthenticatedDirectorAssetsRouteImport } from './routes/_authe
 import { Route as AuthenticatedDirectorCategoryRouteImport } from './routes/_authenticated/director/$category'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
+import { Route as AuthenticatedAgentRechargeRouteImport } from './routes/_authenticated/agent/recharge'
+import { Route as AuthenticatedAgentMembersRouteImport } from './routes/_authenticated/agent/members'
+import { Route as AuthenticatedAgentCodesRouteImport } from './routes/_authenticated/agent/codes'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedSystemSettingsSiteIndexRouteImport } from './routes/_authenticated/system-settings/site/index'
 import { Route as AuthenticatedSystemSettingsSecurityIndexRouteImport } from './routes/_authenticated/system-settings/security/index'
@@ -391,12 +393,6 @@ const AuthenticatedAgentsIndexRoute =
     path: '/agents/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAgentConsoleIndexRoute =
-  AuthenticatedAgentConsoleIndexRouteImport.update({
-    id: '/agent-console/',
-    path: '/agent-console/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
 const AuthenticatedViralHeroHeroSetRoute =
   AuthenticatedViralHeroHeroSetRouteImport.update({
     id: '/viral-hero/hero-set',
@@ -517,6 +513,23 @@ const AuthenticatedDashboardSectionRoute =
 const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   id: '/chat/$chatId',
   path: '/chat/$chatId',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAgentRechargeRoute =
+  AuthenticatedAgentRechargeRouteImport.update({
+    id: '/agent/recharge',
+    path: '/agent/recharge',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAgentMembersRoute =
+  AuthenticatedAgentMembersRouteImport.update({
+    id: '/agent/members',
+    path: '/agent/members',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAgentCodesRoute = AuthenticatedAgentCodesRouteImport.update({
+  id: '/agent/codes',
+  path: '/agent/codes',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const authUserResetRoute = authUserResetRouteImport.update({
@@ -660,6 +673,9 @@ export interface FileRoutesByFullPath {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/agent/codes': typeof AuthenticatedAgentCodesRoute
+  '/agent/members': typeof AuthenticatedAgentMembersRoute
+  '/agent/recharge': typeof AuthenticatedAgentRechargeRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/director/$category': typeof AuthenticatedDirectorCategoryRouteWithChildren
@@ -681,7 +697,6 @@ export interface FileRoutesByFullPath {
   '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
   '/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
-  '/agent-console/': typeof AuthenticatedAgentConsoleIndexRoute
   '/agents/': typeof AuthenticatedAgentsIndexRoute
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
@@ -753,6 +768,9 @@ export interface FileRoutesByTo {
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/agent/codes': typeof AuthenticatedAgentCodesRoute
+  '/agent/members': typeof AuthenticatedAgentMembersRoute
+  '/agent/recharge': typeof AuthenticatedAgentRechargeRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/director/assets': typeof AuthenticatedDirectorAssetsRoute
@@ -773,7 +791,6 @@ export interface FileRoutesByTo {
   '/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
   '/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
-  '/agent-console': typeof AuthenticatedAgentConsoleIndexRoute
   '/agents': typeof AuthenticatedAgentsIndexRoute
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync': typeof AuthenticatedAssetSyncIndexRoute
@@ -848,6 +865,9 @@ export interface FileRoutesById {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
+  '/_authenticated/agent/codes': typeof AuthenticatedAgentCodesRoute
+  '/_authenticated/agent/members': typeof AuthenticatedAgentMembersRoute
+  '/_authenticated/agent/recharge': typeof AuthenticatedAgentRechargeRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/director/$category': typeof AuthenticatedDirectorCategoryRouteWithChildren
@@ -869,7 +889,6 @@ export interface FileRoutesById {
   '/_authenticated/viral-hero/detail-page': typeof AuthenticatedViralHeroDetailPageRoute
   '/_authenticated/viral-hero/hero-design': typeof AuthenticatedViralHeroHeroDesignRoute
   '/_authenticated/viral-hero/hero-set': typeof AuthenticatedViralHeroHeroSetRoute
-  '/_authenticated/agent-console/': typeof AuthenticatedAgentConsoleIndexRoute
   '/_authenticated/agents/': typeof AuthenticatedAgentsIndexRoute
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/_authenticated/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
@@ -944,6 +963,9 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/user/reset'
+    | '/agent/codes'
+    | '/agent/members'
+    | '/agent/recharge'
     | '/chat/$chatId'
     | '/dashboard/$section'
     | '/director/$category'
@@ -965,7 +987,6 @@ export interface FileRouteTypes {
     | '/viral-hero/detail-page'
     | '/viral-hero/hero-design'
     | '/viral-hero/hero-set'
-    | '/agent-console/'
     | '/agents/'
     | '/asset-library/'
     | '/asset-sync/'
@@ -1037,6 +1058,9 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/setup'
     | '/user/reset'
+    | '/agent/codes'
+    | '/agent/members'
+    | '/agent/recharge'
     | '/chat/$chatId'
     | '/dashboard/$section'
     | '/director/assets'
@@ -1057,7 +1081,6 @@ export interface FileRouteTypes {
     | '/viral-hero/detail-page'
     | '/viral-hero/hero-design'
     | '/viral-hero/hero-set'
-    | '/agent-console'
     | '/agents'
     | '/asset-library'
     | '/asset-sync'
@@ -1131,6 +1154,9 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/(auth)/user/reset'
+    | '/_authenticated/agent/codes'
+    | '/_authenticated/agent/members'
+    | '/_authenticated/agent/recharge'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/director/$category'
@@ -1152,7 +1178,6 @@ export interface FileRouteTypes {
     | '/_authenticated/viral-hero/detail-page'
     | '/_authenticated/viral-hero/hero-design'
     | '/_authenticated/viral-hero/hero-set'
-    | '/_authenticated/agent-console/'
     | '/_authenticated/agents/'
     | '/_authenticated/asset-library/'
     | '/_authenticated/asset-sync/'
@@ -1594,13 +1619,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgentsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/agent-console/': {
-      id: '/_authenticated/agent-console/'
-      path: '/agent-console'
-      fullPath: '/agent-console/'
-      preLoaderRoute: typeof AuthenticatedAgentConsoleIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/viral-hero/hero-set': {
       id: '/_authenticated/viral-hero/hero-set'
       path: '/viral-hero/hero-set'
@@ -1746,6 +1764,27 @@ declare module '@tanstack/react-router' {
       path: '/chat/$chatId'
       fullPath: '/chat/$chatId'
       preLoaderRoute: typeof AuthenticatedChatChatIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/agent/recharge': {
+      id: '/_authenticated/agent/recharge'
+      path: '/agent/recharge'
+      fullPath: '/agent/recharge'
+      preLoaderRoute: typeof AuthenticatedAgentRechargeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/agent/members': {
+      id: '/_authenticated/agent/members'
+      path: '/agent/members'
+      fullPath: '/agent/members'
+      preLoaderRoute: typeof AuthenticatedAgentMembersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/agent/codes': {
+      id: '/_authenticated/agent/codes'
+      path: '/agent/codes'
+      fullPath: '/agent/codes'
+      preLoaderRoute: typeof AuthenticatedAgentCodesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(auth)/user/reset': {
@@ -2006,6 +2045,9 @@ const AuthenticatedDirectorCategoryRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
+  AuthenticatedAgentCodesRoute: typeof AuthenticatedAgentCodesRoute
+  AuthenticatedAgentMembersRoute: typeof AuthenticatedAgentMembersRoute
+  AuthenticatedAgentRechargeRoute: typeof AuthenticatedAgentRechargeRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedDirectorCategoryRoute: typeof AuthenticatedDirectorCategoryRouteWithChildren
@@ -2027,7 +2069,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedViralHeroDetailPageRoute: typeof AuthenticatedViralHeroDetailPageRoute
   AuthenticatedViralHeroHeroDesignRoute: typeof AuthenticatedViralHeroHeroDesignRoute
   AuthenticatedViralHeroHeroSetRoute: typeof AuthenticatedViralHeroHeroSetRoute
-  AuthenticatedAgentConsoleIndexRoute: typeof AuthenticatedAgentConsoleIndexRoute
   AuthenticatedAgentsIndexRoute: typeof AuthenticatedAgentsIndexRoute
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
   AuthenticatedAssetSyncIndexRoute: typeof AuthenticatedAssetSyncIndexRoute
@@ -2058,6 +2099,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
+  AuthenticatedAgentCodesRoute: AuthenticatedAgentCodesRoute,
+  AuthenticatedAgentMembersRoute: AuthenticatedAgentMembersRoute,
+  AuthenticatedAgentRechargeRoute: AuthenticatedAgentRechargeRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedDirectorCategoryRoute:
@@ -2083,7 +2127,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedViralHeroDetailPageRoute: AuthenticatedViralHeroDetailPageRoute,
   AuthenticatedViralHeroHeroDesignRoute: AuthenticatedViralHeroHeroDesignRoute,
   AuthenticatedViralHeroHeroSetRoute: AuthenticatedViralHeroHeroSetRoute,
-  AuthenticatedAgentConsoleIndexRoute: AuthenticatedAgentConsoleIndexRoute,
   AuthenticatedAgentsIndexRoute: AuthenticatedAgentsIndexRoute,
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
   AuthenticatedAssetSyncIndexRoute: AuthenticatedAssetSyncIndexRoute,

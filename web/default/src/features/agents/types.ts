@@ -65,6 +65,29 @@ export interface AgentProfile {
   total_recharge: number
 }
 
+// A member is a user who registered with one of the agent's invite codes.
+export interface AgentMember {
+  user_id: number
+  username: string
+  display_name: string
+  discount: number
+  code: string
+  created_at: number
+  total_recharge: number
+}
+
+// A successful top-up made by one of the agent's members.
+export interface AgentRechargeRecord {
+  created_at: number
+  user_id: number
+  username: string
+  display_name: string
+  amount: number
+  money: number
+  payment_method: string
+  trade_no: string
+}
+
 export const AGENT_STATUS = {
   ENABLED: 1,
   DISABLED: 2,

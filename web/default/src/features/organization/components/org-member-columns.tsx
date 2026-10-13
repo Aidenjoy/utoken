@@ -20,6 +20,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { Edit, KeyRound, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { TruncatedCell } from '@/components/data-table'
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
@@ -64,16 +65,13 @@ export function useOrgMemberColumns(
       header: t('Username'),
       meta: { mobileTitle: true },
       cell: ({ row }) => (
-        <div className='flex flex-col'>
-          <span className='max-w-[200px] truncate font-medium'>
-            {row.original.username}
+        <div className='flex min-w-[140px] flex-col gap-0.5'>
+          <TruncatedCell cellClassName='font-medium'>
+            {row.original.display_name || row.original.username}
+          </TruncatedCell>
+          <span className='text-muted-foreground text-xs'>
+            {row.original.username} · #{row.original.user_id}
           </span>
-          {row.original.display_name &&
-          row.original.display_name !== row.original.username ? (
-            <span className='text-muted-foreground max-w-[200px] truncate text-xs'>
-              {row.original.display_name}
-            </span>
-          ) : null}
         </div>
       ),
       size: 200,

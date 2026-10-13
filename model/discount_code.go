@@ -354,3 +354,161 @@ func GetDiscountCodeStats(codes []string) (map[string]DiscountCodeStat, error) {
 	}
 	return stats, nil
 }
+
+// AgentMember 代理商成员视图行：注册时绑定该代理商邀请码的用户及其累计成功充值面值。
+// 仅用于代理商自助端展示，不落库。
+type AgentMember struct {
+	UserId        int     `json:"user_id"`
+	Username      string  `json:"username"`
+	DisplayName   string  `json:"display_name"`
+	Discount      float64 `json:"discount"`
+	Code          string  `json:"code"`
+	CreatedAt     int64   `json:"created_at"`
+	TotalRecharge int64   `json:"total_recharge"`
+}
+
+// AgentRechargeRecord 代理商成员充值视图行：成员的成功充值流水。
+// 仅用于代理商自助端展示，不落库。
+type AgentRechargeRecord struct {
+	CreatedAt     int64   `json:"created_at"`
+	UserId        int     `json:"user_id"`
+	Username      string  `json:"username"`
+	DisplayName   string  `json:"display_name"`
+	Amount        int64   `json:"amount"`
+	Money         float64 `json:"money"`
+	PaymentMethod string  `json:"payment_method"`
+	TradeNo       string  `json:"trade_no"`
+}
+
+// agentOwnedCodeStrings 返回该代理商名下全部邀请码字符串，供成员/充值两个自助查询共用。
+func agentOwnedCodeStrings(ownerUserId int) ([]string, error) {
+	codes, err := GetDiscountCodesByOwner(ownerUserId, OwnerTypeAgent)
+	if err != nil {
+		return nil, err
+	}
+	codeStrs := make([]string, 0, len(codes))
+	for _, dc := range codes {
+		codeStrs = append(codeStrs, dc.Code)
+	}
+	return codeStrs, nil
+}
+
+// ListAgentMembers 分页返回绑定该代理商邀请码的用户（成员），并回填各自的成功充值面值总额。
+// 沿用 GetDiscountCodeStats 的两段式无 JOIN 模式（先查用户再按用户聚合充值）以保持三库兼容。
+func ListAgentMembers(ownerUserId int, pageInfo *common.PageInfo) (members []*AgentMember, total int64, err error) {
+	codeStrs, err := agentOwnedCodeStrings(ownerUserId)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(codeStrs) == 0 {
+		return nil, 0, nil
+	}
+	q := DB.Model(&User{}).Where("recharge_discount_code IN ?", codeStrs)
+	if err = q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var users []User
+	if err = q.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+	if len(users) == 0 {
+		return nil, total, nil
+	}
+	ids := make([]int, 0, len(users))
+	for i := range users {
+		ids = append(ids, users[i].Id)
+	}
+	type rechargeRow struct {
+		UserId int   `gorm:"column:user_id"`
+		Total  int64 `gorm:"column:total"`
+	}
+	var rechargeRows []rechargeRow
+	if err = DB.Model(&TopUp{}).
+		Select("user_id", "COALESCE(SUM(amount), 0) as total").
+		Where("user_id IN ? AND status = ?", ids, common.TopUpStatusSuccess).
+		Group("user_id").
+		Find(&rechargeRows).Error; err != nil {
+		return nil, 0, err
+	}
+	rechargeByUser := make(map[int]int64, len(rechargeRows))
+	for _, r := range rechargeRows {
+		rechargeByUser[r.UserId] = r.Total
+	}
+	for i := range users {
+		u := &users[i]
+		members = append(members, &AgentMember{
+			UserId:        u.Id,
+			Username:      u.Username,
+			DisplayName:   u.DisplayName,
+			Discount:      u.RechargeDiscount,
+			Code:          u.RechargeDiscountCode,
+			CreatedAt:     u.CreatedAt,
+			TotalRecharge: rechargeByUser[u.Id],
+		})
+	}
+	return members, total, nil
+}
+
+// ListAgentRechargeRecords 分页返回该代理商成员（绑定其邀请码的用户）的成功充值流水，
+// 并回填用户名。先解析成员 id 集合再查充值表，避免跨表 JOIN 以保持三库兼容。
+func ListAgentRechargeRecords(ownerUserId int, pageInfo *common.PageInfo) (records []*AgentRechargeRecord, total int64, err error) {
+	codeStrs, err := agentOwnedCodeStrings(ownerUserId)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(codeStrs) == 0 {
+		return nil, 0, nil
+	}
+	var userIds []int
+	if err = DB.Model(&User{}).
+		Select("id").
+		Where("recharge_discount_code IN ?", codeStrs).
+		Pluck("id", &userIds).Error; err != nil {
+		return nil, 0, err
+	}
+	if len(userIds) == 0 {
+		return nil, 0, nil
+	}
+	q := DB.Model(&TopUp{}).Where("user_id IN ? AND status = ?", userIds, common.TopUpStatusSuccess)
+	if err = q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var topUps []TopUp
+	if err = q.Order("create_time desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topUps).Error; err != nil {
+		return nil, 0, err
+	}
+	if len(topUps) == 0 {
+		return nil, total, nil
+	}
+	pageUserIds := make([]int, 0, len(topUps))
+	seen := make(map[int]struct{}, len(topUps))
+	for i := range topUps {
+		if _, ok := seen[topUps[i].UserId]; !ok {
+			seen[topUps[i].UserId] = struct{}{}
+			pageUserIds = append(pageUserIds, topUps[i].UserId)
+		}
+	}
+	var users []User
+	if err = DB.Model(&User{}).Where("id IN ?", pageUserIds).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+	userById := make(map[int]User, len(users))
+	for i := range users {
+		userById[users[i].Id] = users[i]
+	}
+	for i := range topUps {
+		tu := &topUps[i]
+		u := userById[tu.UserId]
+		records = append(records, &AgentRechargeRecord{
+			CreatedAt:     tu.CreateTime,
+			UserId:        tu.UserId,
+			Username:      u.Username,
+			DisplayName:   u.DisplayName,
+			Amount:        tu.Amount,
+			Money:         tu.Money,
+			PaymentMethod: tu.PaymentMethod,
+			TradeNo:       tu.TradeNo,
+		})
+	}
+	return records, total, nil
+}

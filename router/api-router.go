@@ -174,6 +174,8 @@ func SetApiRouter(router *gin.Engine) {
 			agentSelfRoute.POST("/codes", controller.CreateAgentCode)
 			agentSelfRoute.PUT("/codes/:id", controller.UpdateAgentCode)
 			agentSelfRoute.DELETE("/codes/:id", controller.DeleteAgentCode)
+			agentSelfRoute.GET("/members", controller.ListAgentMembers)
+			agentSelfRoute.GET("/recharge", controller.ListAgentRecharge)
 		}
 
 		// Subscription billing (plans, purchase, admin management)

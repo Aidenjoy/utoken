@@ -20,7 +20,9 @@ import { api } from '@/lib/api'
 
 import type {
   Agent,
+  AgentMember,
   AgentProfile,
+  AgentRechargeRecord,
   ApiResponse,
   DiscountCode,
   PaginatedResponse,
@@ -164,5 +166,21 @@ export async function updateMyCode(
 
 export async function deleteMyCode(id: number): Promise<ApiResponse> {
   const res = await api.delete(`/api/agent/codes/${id}`)
+  return res.data
+}
+
+export async function listMyMembers(
+  params: ListParams = {}
+): Promise<PaginatedResponse<AgentMember>> {
+  const { p = 1, page_size = 20 } = params
+  const res = await api.get(`/api/agent/members?p=${p}&page_size=${page_size}`)
+  return res.data
+}
+
+export async function listMyRecharge(
+  params: ListParams = {}
+): Promise<PaginatedResponse<AgentRechargeRecord>> {
+  const { p = 1, page_size = 20 } = params
+  const res = await api.get(`/api/agent/recharge?p=${p}&page_size=${page_size}`)
   return res.data
 }

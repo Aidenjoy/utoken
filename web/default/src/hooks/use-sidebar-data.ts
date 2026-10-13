@@ -31,7 +31,6 @@ import {
   FlaskConical,
   FolderSync,
   Gift,
-  Handshake,
   Image as ImageIcon,
   Images,
   Key,
@@ -270,17 +269,6 @@ export function useSidebarData(): SidebarData {
             url: '/prompts',
             icon: BookOpen,
           },
-          // The reseller console is gated by the `is_agent` flag rather than a
-          // system role, so any promoted user sees it regardless of role.
-          ...(user?.is_agent
-            ? [
-                {
-                  title: t('Agent Console'),
-                  url: '/agent-console',
-                  icon: Handshake,
-                },
-              ]
-            : []),
         ],
       },
       ...(hasOrganization
@@ -321,6 +309,33 @@ export function useSidebarData(): SidebarData {
                       },
                     ]
                   : []),
+              ],
+            },
+          ]
+        : []),
+      // The reseller workspace is gated by the `is_agent` flag rather than a
+      // system role, so any promoted user sees it regardless of role.
+      ...(user?.is_agent
+        ? [
+            {
+              id: 'agent',
+              title: t('Agent'),
+              items: [
+                {
+                  title: t('Discount Codes'),
+                  url: '/agent/codes',
+                  icon: Ticket,
+                },
+                {
+                  title: t('Members'),
+                  url: '/agent/members',
+                  icon: Users,
+                },
+                {
+                  title: t('Recharge Records'),
+                  url: '/agent/recharge',
+                  icon: ReceiptText,
+                },
               ],
             },
           ]

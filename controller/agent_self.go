@@ -63,6 +63,34 @@ func ListAgentCodes(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+// ListAgentMembers 我的成员（注册时绑定我邀请码的用户）分页列表。
+func ListAgentMembers(c *gin.Context) {
+	userId := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+	members, total, err := model.ListAgentMembers(userId, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(members)
+	common.ApiSuccess(c, pageInfo)
+}
+
+// ListAgentRecharge 我的成员的成功充值流水分页列表。
+func ListAgentRecharge(c *gin.Context) {
+	userId := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.ListAgentRechargeRecords(userId, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
 type createAgentCodeRequest struct {
 	Discount  float64 `json:"discount"`
 	MaxUses   int     `json:"max_uses"`

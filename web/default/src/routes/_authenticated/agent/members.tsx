@@ -18,10 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { AgentConsole } from '@/features/agent-console'
+import { AgentMembers } from '@/features/agent-console/members'
 import { useAuthStore } from '@/stores/auth-store'
 
-export const Route = createFileRoute('/_authenticated/agent-console/')({
+export const Route = createFileRoute('/_authenticated/agent/members')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
@@ -33,5 +33,5 @@ export const Route = createFileRoute('/_authenticated/agent-console/')({
       })
     }
   },
-  component: AgentConsole,
+  component: AgentMembers,
 })
