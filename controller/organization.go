@@ -2,7 +2,6 @@ package controller
 
 import (
 	"errors"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -1216,17 +1215,19 @@ func AdminUpdateOrgTokenRate(c *gin.Context) {
 		return
 	}
 	var req struct {
-		TokenRate float64 `json:"token_rate"`
+		ExpectedDiscount float64 `json:"expected_discount"`
+		PurchaseDiscount float64 `json:"purchase_discount"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if math.IsNaN(req.TokenRate) || math.IsInf(req.TokenRate, 0) || req.TokenRate < 0 || req.TokenRate > 100 {
+	rate, ok := resolveTokenRateFromDiscounts(req.ExpectedDiscount, req.PurchaseDiscount)
+	if !ok {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if err := model.SetOrganizationTokenRate(org.Id, req.TokenRate); err != nil {
+	if err := model.SetOrganizationTokenRate(org.Id, rate, req.ExpectedDiscount, req.PurchaseDiscount); err != nil {
 		if errors.Is(err, model.ErrOrgNotFound) {
 			common.ApiErrorI18n(c, i18n.MsgOrgNotFound)
 			return
@@ -1235,9 +1236,11 @@ func AdminUpdateOrgTokenRate(c *gin.Context) {
 		return
 	}
 	recordManageAudit(c, "org.token_rate", map[string]interface{}{
-		"id":         org.Id,
-		"name":       orgAuditName(org),
-		"token_rate": req.TokenRate,
+		"id":                org.Id,
+		"name":              orgAuditName(org),
+		"token_rate":        rate,
+		"expected_discount": req.ExpectedDiscount,
+		"purchase_discount": req.PurchaseDiscount,
 	})
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 }

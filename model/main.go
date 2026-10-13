@@ -326,6 +326,10 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	// 「设置费率」由单字段改为期望折扣/采购折扣两字段：为已有 token_rate 的旧数据反推分子分母
+	if err := backfillTokenRateDiscounts(); err != nil {
+		return err
+	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -419,6 +423,24 @@ func dropDirectorRedundantColumns() error {
 		common.SysLog("dropped obsolete director table: director_video_merges")
 	}
 	return nil
+}
+
+// backfillTokenRateDiscounts 为「设置费率」改造前已有 token_rate 的用户/企业回填折扣分子分母。
+// 旧数据只有费率 R，按「分母=1、分子=R」反推（R = 期望折扣/采购折扣 = R/1），管理员后续可再修改。
+// 幂等：purchase_discount=0 仅表示未经新 UI 设置过；回填后置 1，新 UI 保存时两折扣均 >0，都不会再次命中。
+func backfillTokenRateDiscounts() error {
+	backfill := map[string]interface{}{
+		"purchase_discount": 1,
+		"expected_discount": gorm.Expr("token_rate"),
+	}
+	if err := DB.Model(&User{}).
+		Where("token_rate > 0 AND purchase_discount = 0").
+		Updates(backfill).Error; err != nil {
+		return err
+	}
+	return DB.Model(&Organization{}).
+		Where("token_rate > 0 AND purchase_discount = 0").
+		Updates(backfill).Error
 }
 
 func migrateDBFast() error {

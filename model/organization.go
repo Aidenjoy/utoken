@@ -88,7 +88,9 @@ type Organization struct {
 	CacheTTL            int     `json:"cache_ttl" gorm:"type:int;default:300"`
 	AllowWalletFallback bool    `json:"allow_wallet_fallback" gorm:"type:bool"`        // 企业池不足时是否回落成员个人钱包
 	HidePoolQuota       bool    `json:"hide_pool_quota" gorm:"type:bool"`              // 对成员隐藏企业池余额
-	TokenRate           float64 `json:"token_rate" gorm:"default:0;column:token_rate"` // 企业 token 消耗费率，0=未设置；保存时覆盖全部成员个人费率
+	TokenRate           float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // 企业 token 消耗费率（=期望折扣/采购折扣），0=未设置；保存时覆盖全部成员个人费率
+	ExpectedDiscount    float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 期望折扣（费率分子），保存时覆盖全部成员
+	PurchaseDiscount    float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 采购折扣（费率分母），保存时覆盖全部成员
 
 	CreatedAt int64 `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	UpdatedAt int64 `json:"updated_at" gorm:"autoUpdateTime;column:updated_at"`
@@ -459,9 +461,14 @@ func UpdateOrganizationGroup(orgId int, group string) error {
 // （最后设置即覆盖先前设置；0 表示清除，成员一并回到默认 1.0 倍）。
 // 与分组同步同一模式：成员费率必须与企业一致，否则后加入或曾单独设置过的成员会与企业费率倒挂。
 // 费率缓存是独立的进程内写穿缓存，事务提交后逐成员同步，计费读路径无需感知企业维度。
-func SetOrganizationTokenRate(orgId int, rate float64) error {
+func SetOrganizationTokenRate(orgId int, rate, expected, purchase float64) error {
 	if orgId <= 0 {
 		return ErrOrgNotFound
+	}
+	fields := map[string]interface{}{
+		"token_rate":        rate,
+		"expected_discount": expected,
+		"purchase_discount": purchase,
 	}
 	var userIds []int
 	if err := DB.Transaction(func(tx *gorm.DB) error {
@@ -469,7 +476,7 @@ func SetOrganizationTokenRate(orgId int, rate float64) error {
 			return err
 		}
 		if err := tx.Model(&Organization{}).Where("id = ?", orgId).
-			Update("token_rate", rate).Error; err != nil {
+			Updates(fields).Error; err != nil {
 			return err
 		}
 		if err := tx.Model(&OrgMember{}).Where("org_id = ?", orgId).
@@ -479,7 +486,7 @@ func SetOrganizationTokenRate(orgId int, rate float64) error {
 		if len(userIds) == 0 {
 			return nil
 		}
-		return tx.Model(&User{}).Where("id IN ?", userIds).Update("token_rate", rate).Error
+		return tx.Model(&User{}).Where("id IN ?", userIds).Updates(fields).Error
 	}); err != nil {
 		return err
 	}
@@ -711,9 +718,11 @@ func AddOrgMember(member *OrgMember) error {
 			return err
 		}
 		updates := map[string]interface{}{"org_id": org.Id, "group": org.Group}
-		// 新成员默认继承企业费率：与企业费率倒挂的旧个人费率在加入时被覆盖
+		// 新成员默认继承企业费率（含折扣分子分母）：与企业费率倒挂的旧个人费率在加入时被覆盖
 		if org.TokenRate > 0 {
 			updates["token_rate"] = org.TokenRate
+			updates["expected_discount"] = org.ExpectedDiscount
+			updates["purchase_discount"] = org.PurchaseDiscount
 			joinedRate = org.TokenRate
 		}
 		if err := tx.Model(&User{}).Where("id = ?", member.UserId).
@@ -771,8 +780,10 @@ func CreateOrgMemberUser(user *User, member *OrgMember) error {
 		}
 		user.OrgId = org.Id
 		user.Group = org.Group
-		// 企业内新建的账号直接以企业费率为默认费率
+		// 企业内新建的账号直接以企业费率（含折扣分子分母）为默认费率
 		user.TokenRate = org.TokenRate
+		user.ExpectedDiscount = org.ExpectedDiscount
+		user.PurchaseDiscount = org.PurchaseDiscount
 		if err := user.InsertWithTx(tx, 0); err != nil {
 			return err
 		}

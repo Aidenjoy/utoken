@@ -118,15 +118,19 @@ export async function manageUser(
 }
 
 /**
- * Set a user's token consumption rate (0 clears the rate, restoring the default
- * 1.0x multiplier). Only affects seedance video task billing.
+ * Set a user's token consumption rate from two discounts: the server computes
+ * rate = expectedDiscount / purchaseDiscount. Passing 0 for both clears the
+ * rate (restoring the default 1.0x multiplier). Only affects seedance video
+ * task billing.
  */
 export async function updateUserTokenRate(
   id: number,
-  tokenRate: number
+  expectedDiscount: number,
+  purchaseDiscount: number
 ): Promise<ApiResponse> {
   const res = await api.put(`/api/user/${id}/token_rate`, {
-    token_rate: tokenRate,
+    expected_discount: expectedDiscount,
+    purchase_discount: purchaseDiscount,
   })
   return res.data
 }

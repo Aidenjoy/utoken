@@ -53,7 +53,9 @@ type User struct {
 	LinuxDOId             string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting               string                     `json:"setting" gorm:"type:text;column:setting"`
 	Remark                string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	TokenRate             float64                    `json:"token_rate" gorm:"default:0;column:token_rate"`                                // token 消耗费率，0=未设置（等效 1.0）
+	TokenRate             float64                    `json:"token_rate" gorm:"default:0;column:token_rate"`                                // token 消耗费率（=期望折扣/采购折扣），0=未设置（等效 1.0）
+	ExpectedDiscount      float64                    `json:"expected_discount" gorm:"default:0;column:expected_discount"`                  // 期望折扣（费率分子），0=未设置；服务端由 num/denom 反算 token_rate
+	PurchaseDiscount      float64                    `json:"purchase_discount" gorm:"default:0;column:purchase_discount"`                  // 采购折扣（费率分母），0=未设置；服务端由 num/denom 反算 token_rate
 	RechargeDiscount      float64                    `json:"recharge_discount" gorm:"default:0;column:recharge_discount"`                  // 充值折扣乘数，0=无折扣（等效 1.0），有效区间 (0,1]，注册时绑定后永久生效
 	RechargeDiscountCode  string                     `json:"recharge_discount_code" gorm:"type:varchar(32);column:recharge_discount_code"` // 注册时绑定的折扣邀请码，审计/统计用
 	RechargeDiscountOwner string                     `json:"recharge_discount_owner" gorm:"-"`                                             // 折扣码归属用户名（列表返回时回填，不落库）

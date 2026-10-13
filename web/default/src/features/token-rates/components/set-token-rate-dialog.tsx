@@ -37,6 +37,7 @@ import type { User } from '@/features/users/types'
 
 const MIN_RATE = 0.1
 const MAX_RATE = 100
+const MAX_DISCOUNT = 100
 
 type Props = {
   open: boolean
@@ -45,35 +46,70 @@ type Props = {
 }
 
 /**
- * Set a user's token consumption rate. The rate multiplies the tokens reported
+ * Set a user's token consumption rate from two discounts. The rate is derived
+ * as Expected Discount ÷ Purchase Discount and multiplies the tokens reported
  * by seedance video tasks before billing, so 1.5 charges 1.5x the upstream
  * tokens. It does not touch the pricing system itself.
  */
 export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [rate, setRate] = useState('')
+  const [expected, setExpected] = useState('')
+  const [purchase, setPurchase] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (open) {
-      const current = user?.token_rate ?? 0
-      setRate(current > 0 ? String(current) : '')
+      const expectedDiscount = user?.expected_discount ?? 0
+      const purchaseDiscount = user?.purchase_discount ?? 0
+      const currentRate = user?.token_rate ?? 0
+      if (expectedDiscount > 0 && purchaseDiscount > 0) {
+        setExpected(String(expectedDiscount))
+        setPurchase(String(purchaseDiscount))
+      } else if (currentRate > 0) {
+        // Legacy rows carry only the rate: prefill as denominator 1, numerator = rate.
+        setExpected(String(currentRate))
+        setPurchase('1')
+      } else {
+        setExpected('')
+        setPurchase('')
+      }
     }
   }, [open, user])
 
-  const parsed = Number.parseFloat(rate)
-  const isValid =
-    rate.trim() !== '' &&
-    Number.isFinite(parsed) &&
-    parsed >= MIN_RATE &&
-    parsed <= MAX_RATE
+  const parsedExpected = Number.parseFloat(expected)
+  const parsedPurchase = Number.parseFloat(purchase)
+  const bothFilled = expected.trim() !== '' && purchase.trim() !== ''
+  const discountsValid =
+    bothFilled &&
+    Number.isFinite(parsedExpected) &&
+    Number.isFinite(parsedPurchase) &&
+    parsedExpected > 0 &&
+    parsedPurchase > 0 &&
+    parsedExpected <= MAX_DISCOUNT &&
+    parsedPurchase <= MAX_DISCOUNT
+  const rate = discountsValid ? parsedExpected / parsedPurchase : Number.NaN
+  const isValid = discountsValid && rate >= MIN_RATE && rate <= MAX_RATE
+
+  let rateError = ''
+  if (bothFilled && !discountsValid) {
+    rateError = t('Discount must be greater than 0')
+  } else if (discountsValid && !isValid) {
+    rateError = t('Rate must be between {{min}} and {{max}}', {
+      min: MIN_RATE,
+      max: MAX_RATE,
+    })
+  }
 
   const submit = async () => {
     if (!user || !isValid) return
     setIsSubmitting(true)
     try {
-      const result = await updateUserTokenRate(user.id, parsed)
+      const result = await updateUserTokenRate(
+        user.id,
+        parsedExpected,
+        parsedPurchase
+      )
       if (!result.success) {
         toast.error(result.message || t('Failed to update token rate'))
         return
@@ -100,29 +136,49 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
 
         <div className='space-y-4'>
           <div className='space-y-2'>
-            <Label>{t('Token Rate')}</Label>
+            <Label>{t('Expected Discount')}</Label>
             <Input
               type='number'
-              min={MIN_RATE}
-              max={MAX_RATE}
+              min={0}
+              max={MAX_DISCOUNT}
               step='0.1'
-              placeholder='1.5'
-              value={rate}
-              onChange={(event) => setRate(event.target.value)}
+              placeholder='0.9'
+              value={expected}
+              onChange={(event) => setExpected(event.target.value)}
             />
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('Purchase Discount')}</Label>
+            <Input
+              type='number'
+              min={0}
+              max={MAX_DISCOUNT}
+              step='0.1'
+              placeholder='0.6'
+              value={purchase}
+              onChange={(event) => setPurchase(event.target.value)}
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('Token Rate')}</Label>
+            <Input
+              readOnly
+              value={
+                Number.isFinite(rate) ? String(Number(rate.toFixed(4))) : ''
+              }
+              placeholder={t('Auto-calculated')}
+            />
+            <p className='text-muted-foreground text-xs'>
+              {t('Rate = Expected Discount ÷ Purchase Discount')}
+            </p>
             <p className='text-muted-foreground text-xs'>
               {t(
                 'Tokens consumed by this user are multiplied by this rate. Leave the pricing system unchanged.'
               )}
             </p>
           </div>
-          {rate.trim() !== '' && !isValid ? (
-            <p className='text-destructive text-xs'>
-              {t('Rate must be between {{min}} and {{max}}', {
-                min: MIN_RATE,
-                max: MAX_RATE,
-              })}
-            </p>
+          {rateError ? (
+            <p className='text-destructive text-xs'>{rateError}</p>
           ) : null}
         </div>
 

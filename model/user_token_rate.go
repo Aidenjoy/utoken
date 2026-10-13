@@ -43,12 +43,17 @@ func GetUserTokenRate(id int) float64 {
 	return user.TokenRate
 }
 
-// UpdateUserTokenRate 更新用户 token 费率（0 表示清除，恢复默认 1.0 倍）。
-func UpdateUserTokenRate(id int, rate float64) error {
+// UpdateUserTokenRate 更新用户 token 费率及其折扣分子分母（rate=0 表示清除，恢复默认 1.0 倍）。
+// rate 由调用方根据 expected/purchase 算出（单一真源），三个字段一同落库以保证展示与计费一致。
+func UpdateUserTokenRate(id int, rate, expected, purchase float64) error {
 	if id <= 0 {
 		return errors.New("invalid user id")
 	}
-	result := DB.Model(&User{}).Where("id = ?", id).Update("token_rate", rate)
+	result := DB.Model(&User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"token_rate":        rate,
+		"expected_discount": expected,
+		"purchase_discount": purchase,
+	})
 	if result.Error != nil {
 		return result.Error
 	}

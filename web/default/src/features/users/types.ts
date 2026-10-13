@@ -64,6 +64,8 @@ export const userSchema = z.object({
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
   token_rate: z.number().optional(),
+  expected_discount: z.number().optional(),
+  purchase_discount: z.number().optional(),
   recharge_discount: z.number().optional(),
   recharge_discount_code: z.string().optional(),
   recharge_discount_owner: z.string().optional(),

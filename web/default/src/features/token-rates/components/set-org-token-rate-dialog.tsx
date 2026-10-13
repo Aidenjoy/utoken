@@ -37,6 +37,7 @@ import { updateAdminOrganizationTokenRate } from '@/features/organizations/api'
 
 const MIN_RATE = 0.1
 const MAX_RATE = 100
+const MAX_DISCOUNT = 100
 
 type Props = {
   open: boolean
@@ -45,8 +46,9 @@ type Props = {
 }
 
 /**
- * Set an enterprise's token consumption rate. Saving overwrites the personal
- * rate of every member (last setting wins); later joins inherit it too.
+ * Set an enterprise's token consumption rate from two discounts (rate =
+ * Expected Discount ÷ Purchase Discount). Saving overwrites the personal rate
+ * of every member (last setting wins); later joins inherit it too.
  */
 export function SetOrgTokenRateDialog({
   open,
@@ -55,22 +57,52 @@ export function SetOrgTokenRateDialog({
 }: Props) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [rate, setRate] = useState('')
+  const [expected, setExpected] = useState('')
+  const [purchase, setPurchase] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (open) {
-      const current = organization?.token_rate ?? 0
-      setRate(current > 0 ? String(current) : '')
+      const expectedDiscount = organization?.expected_discount ?? 0
+      const purchaseDiscount = organization?.purchase_discount ?? 0
+      const currentRate = organization?.token_rate ?? 0
+      if (expectedDiscount > 0 && purchaseDiscount > 0) {
+        setExpected(String(expectedDiscount))
+        setPurchase(String(purchaseDiscount))
+      } else if (currentRate > 0) {
+        // Legacy rows carry only the rate: prefill as denominator 1, numerator = rate.
+        setExpected(String(currentRate))
+        setPurchase('1')
+      } else {
+        setExpected('')
+        setPurchase('')
+      }
     }
   }, [open, organization])
 
-  const parsed = Number.parseFloat(rate)
-  const isValid =
-    rate.trim() !== '' &&
-    Number.isFinite(parsed) &&
-    parsed >= MIN_RATE &&
-    parsed <= MAX_RATE
+  const parsedExpected = Number.parseFloat(expected)
+  const parsedPurchase = Number.parseFloat(purchase)
+  const bothFilled = expected.trim() !== '' && purchase.trim() !== ''
+  const discountsValid =
+    bothFilled &&
+    Number.isFinite(parsedExpected) &&
+    Number.isFinite(parsedPurchase) &&
+    parsedExpected > 0 &&
+    parsedPurchase > 0 &&
+    parsedExpected <= MAX_DISCOUNT &&
+    parsedPurchase <= MAX_DISCOUNT
+  const rate = discountsValid ? parsedExpected / parsedPurchase : Number.NaN
+  const isValid = discountsValid && rate >= MIN_RATE && rate <= MAX_RATE
+
+  let rateError = ''
+  if (bothFilled && !discountsValid) {
+    rateError = t('Discount must be greater than 0')
+  } else if (discountsValid && !isValid) {
+    rateError = t('Rate must be between {{min}} and {{max}}', {
+      min: MIN_RATE,
+      max: MAX_RATE,
+    })
+  }
 
   const submit = async () => {
     if (!organization || !isValid) return
@@ -78,7 +110,8 @@ export function SetOrgTokenRateDialog({
     try {
       const result = await updateAdminOrganizationTokenRate(
         organization.id,
-        parsed
+        parsedExpected,
+        parsedPurchase
       )
       if (!result.success) {
         toast.error(result.message || t('Failed to update token rate'))
@@ -107,29 +140,49 @@ export function SetOrgTokenRateDialog({
 
         <div className='space-y-4'>
           <div className='space-y-2'>
-            <Label>{t('Token Rate')}</Label>
+            <Label>{t('Expected Discount')}</Label>
             <Input
               type='number'
-              min={MIN_RATE}
-              max={MAX_RATE}
+              min={0}
+              max={MAX_DISCOUNT}
               step='0.1'
-              placeholder='1.2'
-              value={rate}
-              onChange={(event) => setRate(event.target.value)}
+              placeholder='0.9'
+              value={expected}
+              onChange={(event) => setExpected(event.target.value)}
             />
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('Purchase Discount')}</Label>
+            <Input
+              type='number'
+              min={0}
+              max={MAX_DISCOUNT}
+              step='0.1'
+              placeholder='0.6'
+              value={purchase}
+              onChange={(event) => setPurchase(event.target.value)}
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('Token Rate')}</Label>
+            <Input
+              readOnly
+              value={
+                Number.isFinite(rate) ? String(Number(rate.toFixed(4))) : ''
+              }
+              placeholder={t('Auto-calculated')}
+            />
+            <p className='text-muted-foreground text-xs'>
+              {t('Rate = Expected Discount ÷ Purchase Discount')}
+            </p>
             <p className='text-muted-foreground text-xs'>
               {t(
                 'Saving overwrites the personal token rate of every member in this organization.'
               )}
             </p>
           </div>
-          {rate.trim() !== '' && !isValid ? (
-            <p className='text-destructive text-xs'>
-              {t('Rate must be between {{min}} and {{max}}', {
-                min: MIN_RATE,
-                max: MAX_RATE,
-              })}
-            </p>
+          {rateError ? (
+            <p className='text-destructive text-xs'>{rateError}</p>
           ) : null}
         </div>
 

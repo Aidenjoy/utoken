@@ -1069,7 +1069,32 @@ func DeleteUser(c *gin.Context) {
 	return
 }
 
-// UpdateUserTokenRate 管理员设置用户 token 消耗费率（0-100，0 表示清除费率恢复默认 1.0 倍）。
+// maxTokenRate 是 token 费率（计费倍率）的上限，同时约束折扣分子/分母各自的取值，防止异常放大。
+const maxTokenRate = 100
+
+// resolveTokenRateFromDiscounts 由期望折扣（分子）与采购折扣（分母）计算 token 费率。
+// 当模型计价基准为采购价时，费率 = 期望折扣 / 采购折扣 即用户期望的计费倍率。
+// 两者皆为 0 表示清除费率（返回 0）；其余情况要求两者均为有限正数、各自不超上限，且费率落在 (0, maxTokenRate]。
+func resolveTokenRateFromDiscounts(expected, purchase float64) (float64, bool) {
+	for _, v := range []float64{expected, purchase} {
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > maxTokenRate {
+			return 0, false
+		}
+	}
+	if expected == 0 && purchase == 0 {
+		return 0, true // 清除费率
+	}
+	if expected == 0 || purchase == 0 {
+		return 0, false // 单边为 0：分母为 0 无意义，分子为 0 会把费率清零
+	}
+	rate := expected / purchase
+	if rate <= 0 || rate > maxTokenRate {
+		return 0, false
+	}
+	return rate, true
+}
+
+// UpdateUserTokenRate 管理员设置用户 token 消耗费率（接收期望折扣/采购折扣，服务端算 rate=分子/分母；两者皆 0 表示清除恢复默认 1.0 倍）。
 // Only admin user can do this.
 func UpdateUserTokenRate(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -1078,13 +1103,15 @@ func UpdateUserTokenRate(c *gin.Context) {
 		return
 	}
 	var req struct {
-		TokenRate float64 `json:"token_rate"`
+		ExpectedDiscount float64 `json:"expected_discount"`
+		PurchaseDiscount float64 `json:"purchase_discount"`
 	}
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if math.IsNaN(req.TokenRate) || math.IsInf(req.TokenRate, 0) || req.TokenRate < 0 || req.TokenRate > 100 {
+	rate, ok := resolveTokenRateFromDiscounts(req.ExpectedDiscount, req.PurchaseDiscount)
+	if !ok {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -1098,12 +1125,14 @@ func UpdateUserTokenRate(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	if err := model.UpdateUserTokenRate(id, req.TokenRate); err != nil {
+	if err := model.UpdateUserTokenRate(id, rate, req.ExpectedDiscount, req.PurchaseDiscount); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	recordManageAuditFor(c, id, "user.token_rate", map[string]interface{}{
-		"token_rate": req.TokenRate,
+		"token_rate":        rate,
+		"expected_discount": req.ExpectedDiscount,
+		"purchase_discount": req.PurchaseDiscount,
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

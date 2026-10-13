@@ -135,17 +135,22 @@ export async function updateAdminOrganizationStatus(
 }
 
 /**
- * Enterprise token rate. `tokenRate` is 0-100 (0 clears the rate and restores
- * the default 1.0x); saving overwrites the personal rate of every member —
- * the last setting wins.
+ * Enterprise token rate. The server computes rate = expectedDiscount /
+ * purchaseDiscount; passing 0 for both clears the rate (restoring the default
+ * 1.0x). Saving overwrites the personal rate of every member — the last
+ * setting wins.
  */
 export async function updateAdminOrganizationTokenRate(
   id: number,
-  tokenRate: number
+  expectedDiscount: number,
+  purchaseDiscount: number
 ): Promise<ApiResponse<null>> {
   const res = await api.put(
     `/api/org/admin/${id}/token_rate`,
-    { token_rate: tokenRate },
+    {
+      expected_discount: expectedDiscount,
+      purchase_discount: purchaseDiscount,
+    },
     orgRequestConfig
   )
   return res.data

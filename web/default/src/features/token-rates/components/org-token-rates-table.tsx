@@ -118,7 +118,11 @@ export function OrgTokenRatesTable() {
     if (!clearTarget) return
     setIsWorking(true)
     try {
-      const result = await updateAdminOrganizationTokenRate(clearTarget.id, 0)
+      const result = await updateAdminOrganizationTokenRate(
+        clearTarget.id,
+        0,
+        0
+      )
       if (!result.success) {
         toast.error(result.message || t('Failed to update token rate'))
         return

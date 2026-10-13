@@ -79,6 +79,10 @@ export interface Organization {
   /** Enterprise token consumption rate; 0 = unset (default 1.0x). Saving an
    *  enterprise rate overwrites the personal rate of every member. */
   token_rate: number
+  /** Expected discount (rate numerator); rate = expected / purchase. */
+  expected_discount: number
+  /** Purchase discount (rate denominator); rate = expected / purchase. */
+  purchase_discount: number
   created_at: number
   updated_at: number
 }
