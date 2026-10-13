@@ -395,7 +395,7 @@ func SearchUsers(keyword string, group string, role *int, status *int, referrer 
 	}
 	if referrer != "" {
 		// 发展关系：由该用户邀请，或注册时绑定了该用户拥有的折扣码。
-		query = query.Where("(inviter_id = (SELECT id FROM users WHERE username = ?) OR recharge_discount_code IN (SELECT code FROM discount_codes WHERE owner_user_id = (SELECT id FROM users WHERE username = ?)))", referrer, referrer)
+		query = query.Where("(inviter_id = (SELECT id FROM users WHERE username = ?) OR recharge_discount_code IN (SELECT code FROM discount_invite_codes WHERE owner_user_id = (SELECT id FROM users WHERE username = ?)))", referrer, referrer)
 	}
 
 	// 获取总数
