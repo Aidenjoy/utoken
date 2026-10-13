@@ -18,19 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type {
-  BillingApiResponse,
-  BillingConsumptionRow,
-  BillingConsumptionStat,
-  BillingQueryParams,
-  BillingRechargeRecord,
-  BillingRechargeStat,
+import {
+  billingScopeToParam,
+  type BillingApiResponse,
+  type BillingConsumptionRow,
+  type BillingConsumptionStat,
+  type BillingQueryParams,
+  type BillingRechargeRecord,
+  type BillingRechargeStat,
 } from './types'
 
 function toQueryParams(filter: BillingQueryParams): Record<string, string> {
   const params: Record<string, string> = {}
-  if (filter.userIds.length > 0) params.user_ids = filter.userIds.join(',')
-  if (filter.orgIds.length > 0) params.org_ids = filter.orgIds.join(',')
+  const userIds = billingScopeToParam(filter.userSel)
+  if (userIds) params.user_ids = userIds
+  const orgIds = billingScopeToParam(filter.orgSel)
+  if (orgIds) params.org_ids = orgIds
   if (filter.start) params.start_timestamp = String(filter.start)
   if (filter.end) params.end_timestamp = String(filter.end)
   if (filter.p) params.p = String(filter.p)

@@ -31,6 +31,7 @@ import {
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
+import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import { downloadBillingRecharge, getBillingRecharge } from '../api'
@@ -47,7 +48,7 @@ const SOURCE_META: Record<
 }
 
 function formatMoney(money: number): string {
-  return money > 0 ? `$${money.toFixed(2)}` : '-'
+  return money > 0 ? formatLocalCurrencyAmount(money) : '-'
 }
 
 interface RechargeTableProps {
@@ -61,12 +62,12 @@ export function RechargeTable({ filter }: RechargeTableProps) {
   const queryKey = useMemo(
     () => [
       'billing-recharge',
-      filter.userIds,
-      filter.orgIds,
+      filter.userSel,
+      filter.orgSel,
       filter.start,
       filter.end,
     ],
-    [filter.userIds, filter.orgIds, filter.start, filter.end]
+    [filter.userSel, filter.orgSel, filter.start, filter.end]
   )
 
   const { data, isLoading, isFetching } = useQuery({

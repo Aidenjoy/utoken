@@ -26,7 +26,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BillingFilterBar } from './components/billing-filter-bar'
 import { ConsumptionTable } from './components/consumption-table'
 import { RechargeTable } from './components/recharge-table'
-import type { BillingFilter, BillingFilterDraft } from './types'
+import {
+  BILLING_SCOPE_ALL,
+  type BillingFilter,
+  type BillingFilterDraft,
+} from './types'
 
 type BillingTab = 'recharge' | 'consumption'
 
@@ -34,7 +38,12 @@ function getDefaultDraft(): BillingFilterDraft {
   const end = new Date()
   const start = new Date(end.getTime() - 29 * 24 * 60 * 60 * 1000)
   start.setHours(0, 0, 0, 0)
-  return { userIds: [], orgIds: [], start, end }
+  return {
+    userSel: [BILLING_SCOPE_ALL],
+    orgSel: [BILLING_SCOPE_ALL],
+    start,
+    end,
+  }
 }
 
 export function BillingCenter() {
@@ -51,8 +60,8 @@ export function BillingCenter() {
 
   const filter = useMemo<BillingFilter>(
     () => ({
-      userIds: applied.userIds,
-      orgIds: applied.orgIds,
+      userSel: applied.userSel,
+      orgSel: applied.orgSel,
       start: applied.start
         ? Math.floor(applied.start.getTime() / 1000)
         : undefined,

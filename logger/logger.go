@@ -172,6 +172,23 @@ func FormatQuota(quota int) string {
 	}
 }
 
+// FormatLocalCurrency 格式化已按本币计价的金额（如支付金额），货币符号与
+// FormatQuota 的展示配置保持一致；TOKENS 展示下计费金额不以点表示，回退美元符号。
+func FormatLocalCurrency(amount float64) string {
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
+		return fmt.Sprintf("¥%.2f", amount)
+	case operation_setting.QuotaDisplayTypeCustom:
+		symbol := operation_setting.GetGeneralSetting().CustomCurrencySymbol
+		if symbol == "" {
+			symbol = "¤"
+		}
+		return fmt.Sprintf("%s%.2f", symbol, amount)
+	default:
+		return fmt.Sprintf("$%.2f", amount)
+	}
+}
+
 // LogJson 仅供测试使用 only for test
 func LogJson(ctx context.Context, msg string, obj any) {
 	if !common.DebugEnabled {

@@ -26,7 +26,12 @@ import { getAdminOrganizations } from '@/features/organizations/api'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 import { getUsers } from '@/features/users/api'
 
-import type { BillingFilterDraft } from '../types'
+import {
+  BILLING_SCOPE_ALL,
+  BILLING_SCOPE_NONE,
+  normalizeBillingScope,
+  type BillingFilterDraft,
+} from '../types'
 
 interface BillingFilterBarProps {
   draft: BillingFilterDraft
@@ -65,20 +70,28 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const selectedUsers = props.draft.userIds.map(String)
-  const selectedOrgs = props.draft.orgIds.map(String)
+  const userScopeOptions = [
+    { value: BILLING_SCOPE_ALL, label: t('All') },
+    { value: BILLING_SCOPE_NONE, label: t('None') },
+    ...userOptions,
+  ]
+  const orgScopeOptions = [
+    { value: BILLING_SCOPE_ALL, label: t('All') },
+    { value: BILLING_SCOPE_NONE, label: t('None') },
+    ...orgOptions,
+  ]
 
   return (
     <div className='border-border/60 bg-card rounded-xl border p-3 shadow-xs'>
       <div className='flex flex-wrap items-center gap-2'>
         <MultiSelect
           className='min-w-[220px] flex-1'
-          options={userOptions}
-          selected={selectedUsers}
+          options={userScopeOptions}
+          selected={props.draft.userSel}
           onChange={(values) =>
             props.onDraftChange((current) => ({
               ...current,
-              userIds: values.map(Number),
+              userSel: normalizeBillingScope(current.userSel, values),
             }))
           }
           placeholder={t('Select users')}
@@ -87,12 +100,12 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
 
         <MultiSelect
           className='min-w-[200px] flex-1'
-          options={orgOptions}
-          selected={selectedOrgs}
+          options={orgScopeOptions}
+          selected={props.draft.orgSel}
           onChange={(values) =>
             props.onDraftChange((current) => ({
               ...current,
-              orgIds: values.map(Number),
+              orgSel: normalizeBillingScope(current.orgSel, values),
             }))
           }
           placeholder={t('Select organizations')}

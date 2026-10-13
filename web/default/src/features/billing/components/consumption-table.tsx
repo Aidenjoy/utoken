@@ -62,13 +62,13 @@ export function ConsumptionTable({ filter }: ConsumptionTableProps) {
 
   useEffect(() => {
     setPagination((current) => ({ ...current, pageIndex: 0 }))
-  }, [filter.userIds, filter.orgIds, filter.start, filter.end])
+  }, [filter.userSel, filter.orgSel, filter.start, filter.end])
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'billing-consumption',
-      filter.userIds,
-      filter.orgIds,
+      filter.userSel,
+      filter.orgSel,
       filter.start,
       filter.end,
       pagination.pageIndex + 1,

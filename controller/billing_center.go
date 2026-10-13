@@ -17,20 +17,35 @@ import (
 // 账单中心：管理员按用户/企业维度查询充值流水与消耗明细，支持 CSV 导出。
 
 type billingFilter struct {
-	userIds []int
-	orgIds  []int
-	start   int64
-	end     int64
+	userScope model.BillingScope
+	orgScope  model.BillingScope
+	start     int64
+	end       int64
 }
 
 func parseBillingFilter(c *gin.Context) billingFilter {
 	filter := billingFilter{
-		userIds: parseIntList(c.Query("user_ids")),
-		orgIds:  parseIntList(c.Query("org_ids")),
+		userScope: parseBillingScope(c.Query("user_ids")),
+		orgScope:  parseBillingScope(c.Query("org_ids")),
 	}
 	filter.start, _ = strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	filter.end, _ = strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	return filter
+}
+
+// parseBillingScope 解析单个维度参数：缺省或 all=全部，none=排除该维度，其余为 id 列表。
+func parseBillingScope(raw string) model.BillingScope {
+	switch strings.TrimSpace(raw) {
+	case "", "all":
+		return model.BillingScope{Mode: model.BillingScopeAll}
+	case "none":
+		return model.BillingScope{Mode: model.BillingScopeNone}
+	}
+	ids := parseIntList(raw)
+	if len(ids) == 0 {
+		return model.BillingScope{Mode: model.BillingScopeAll}
+	}
+	return model.BillingScope{Mode: model.BillingScopeIds, Ids: ids}
 }
 
 func parseIntList(raw string) []int {
@@ -50,7 +65,7 @@ func parseIntList(raw string) []int {
 
 func GetBillingRecharge(c *gin.Context) {
 	filter := parseBillingFilter(c)
-	records, stat, err := model.GetBillingRechargeRecords(filter.userIds, filter.orgIds, filter.start, filter.end)
+	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -65,7 +80,7 @@ func GetBillingRecharge(c *gin.Context) {
 func GetBillingConsumption(c *gin.Context) {
 	filter := parseBillingFilter(c)
 	pageInfo := common.GetPageQuery(c)
-	logs, total, stat, userOrg, orgNames, err := model.GetBillingConsumption(filter.userIds, filter.orgIds, filter.start, filter.end, pageInfo)
+	logs, total, stat, userOrg, orgNames, err := model.GetBillingConsumption(filter.userScope, filter.orgScope, filter.start, filter.end, pageInfo)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -129,20 +144,22 @@ func writeBillingCSV(c *gin.Context, filename string, header []string, rows [][]
 
 func ExportBillingRecharge(c *gin.Context) {
 	filter := parseBillingFilter(c)
-	records, stat, err := model.GetBillingRechargeRecords(filter.userIds, filter.orgIds, filter.start, filter.end)
+	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	header := []string{"时间", "类型", "对象", "金额", "支付金额", "支付方式", "订单号", "操作人"}
 	rows := make([][]string, 0, len(records)+1)
+	var totalMoney float64
 	for _, record := range records {
+		totalMoney += record.Money
 		rows = append(rows, []string{
 			billingTimestamp(record.CreatedAt),
 			rechargeSourceText(record.Source),
 			rechargeTargetText(record),
 			logger.FormatQuota(record.Quota),
-			strconv.FormatFloat(record.Money, 'f', 2, 64),
+			logger.FormatLocalCurrency(record.Money),
 			record.PaymentMethod,
 			record.TradeNo,
 			record.Operator,
@@ -151,14 +168,15 @@ func ExportBillingRecharge(c *gin.Context) {
 	rows = append(rows, []string{
 		"合计", "", "",
 		logger.FormatQuota(stat.TotalQuota),
-		"", "", "", "",
+		logger.FormatLocalCurrency(totalMoney),
+		"", "", "",
 	})
 	writeBillingCSV(c, "billing-recharge-"+time.Now().Format("20060102-150405")+".csv", header, rows)
 }
 
 func ExportBillingConsumption(c *gin.Context) {
 	filter := parseBillingFilter(c)
-	logs, userOrg, orgNames, err := model.GetBillingConsumptionAll(filter.userIds, filter.orgIds, filter.start, filter.end)
+	logs, userOrg, orgNames, err := model.GetBillingConsumptionAll(filter.userScope, filter.orgScope, filter.start, filter.end)
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -172,10 +172,43 @@ func adjustQuotaFromParams(action string, params map[string]interface{}) (int, b
 	return 0, false
 }
 
-func collectOnlineTopupRecords(userIds []int, startTimestamp, endTimestamp int64) ([]*BillingRechargeRecord, error) {
+// BillingScopeMode 账单中心单个筛选维度（用户/企业）的模式。
+type BillingScopeMode int
+
+const (
+	// BillingScopeAll 不限定该维度：纳入该维度全部对象。
+	BillingScopeAll BillingScopeMode = iota
+	// BillingScopeNone 排除该维度：不产生任何该维度记录。
+	BillingScopeNone
+	// BillingScopeIds 限定该维度：仅纳入 Ids 内对象。
+	BillingScopeIds
+)
+
+// BillingScope 账单中心一个筛选维度的三态描述。
+type BillingScope struct {
+	Mode BillingScopeMode
+	Ids  []int
+}
+
+// match 判断单个对象是否落在该维度筛选内。
+func (s BillingScope) match(id int) bool {
+	switch s.Mode {
+	case BillingScopeNone:
+		return false
+	case BillingScopeIds:
+		return containsInt(s.Ids, id)
+	default:
+		return true
+	}
+}
+
+func collectOnlineTopupRecords(userScope BillingScope, startTimestamp, endTimestamp int64) ([]*BillingRechargeRecord, error) {
+	if userScope.Mode == BillingScopeNone {
+		return nil, nil
+	}
 	tx := DB.Model(&TopUp{}).Where("status = ?", common.TopUpStatusSuccess)
-	if len(userIds) > 0 {
-		tx = tx.Where("user_id IN ?", userIds)
+	if userScope.Mode == BillingScopeIds {
+		tx = tx.Where("user_id IN ?", userScope.Ids)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("create_time >= ?", startTimestamp)
@@ -214,7 +247,7 @@ type manageAuditRow struct {
 	Other     string `gorm:"column:other"`
 }
 
-func collectAdjustRecords(userIds, orgIds []int, startTimestamp, endTimestamp int64) ([]*BillingRechargeRecord, error) {
+func collectAdjustRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) ([]*BillingRechargeRecord, error) {
 	actions := []string{"user.quota_add", "user.quota_subtract", "user.quota_override", "org.quota_adjust"}
 	condition := ""
 	args := make([]interface{}, 0, len(actions))
@@ -265,7 +298,7 @@ func collectAdjustRecords(userIds, orgIds []int, startTimestamp, endTimestamp in
 		}
 		if action == "org.quota_adjust" {
 			orgId, orgOk := paramInt(params, "id")
-			if !orgOk || (len(orgIds) > 0 && !containsInt(orgIds, orgId)) {
+			if !orgOk || !orgScope.match(orgId) {
 				continue
 			}
 			record.Source = BillingSourceOrgAdjust
@@ -273,7 +306,7 @@ func collectAdjustRecords(userIds, orgIds []int, startTimestamp, endTimestamp in
 			record.OrgName = paramString(params, "name")
 		} else {
 			targetUserId, _ := paramInt(params, "target_user_id")
-			if len(userIds) > 0 && !containsInt(userIds, targetUserId) {
+			if !userScope.match(targetUserId) {
 				continue
 			}
 			record.UserId = targetUserId
@@ -314,13 +347,13 @@ func attachBillingUsernames(records []*BillingRechargeRecord) error {
 }
 
 // GetBillingRechargeRecords 合并三类充值/加额来源，按时间倒序返回并汇总统计。
-// userIds/orgIds 为空表示不限定对象（全平台流水）。
-func GetBillingRechargeRecords(userIds, orgIds []int, startTimestamp, endTimestamp int64) (records []*BillingRechargeRecord, stat BillingRechargeStat, err error) {
-	online, err := collectOnlineTopupRecords(userIds, startTimestamp, endTimestamp)
+// 用户/企业两个维度各自独立纳入记录：全部=该维度全部对象，无=该维度不产生记录。
+func GetBillingRechargeRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) (records []*BillingRechargeRecord, stat BillingRechargeStat, err error) {
+	online, err := collectOnlineTopupRecords(userScope, startTimestamp, endTimestamp)
 	if err != nil {
 		return nil, stat, err
 	}
-	adjusts, err := collectAdjustRecords(userIds, orgIds, startTimestamp, endTimestamp)
+	adjusts, err := collectAdjustRecords(userScope, orgScope, startTimestamp, endTimestamp)
 	if err != nil {
 		return nil, stat, err
 	}
@@ -340,7 +373,7 @@ func GetBillingRechargeRecords(userIds, orgIds []int, startTimestamp, endTimesta
 			stat.OutflowQuota += record.Quota
 		}
 	}
-	balance, err := computeBillingBalance(userIds, orgIds)
+	balance, err := computeBillingBalance(userScope, orgScope)
 	if err != nil {
 		return nil, stat, err
 	}
@@ -349,23 +382,27 @@ func GetBillingRechargeRecords(userIds, orgIds []int, startTimestamp, endTimesta
 }
 
 // computeBillingBalance 汇总选定对象当前剩余额度：用户个人钱包 + 企业额度池。
-// 空切片表示不限定（全平台），与流水查询的筛选语义一致；余额是实时值，不受时间范围影响。
-func computeBillingBalance(userIds, orgIds []int) (int, error) {
+// 维度为 BillingScopeNone 时该侧计 0；余额是实时值，不受时间范围影响。
+func computeBillingBalance(userScope, orgScope BillingScope) (int, error) {
 	var userSum int64
-	tx := DB.Model(&User{})
-	if len(userIds) > 0 {
-		tx = tx.Where("id IN ?", userIds)
-	}
-	if err := tx.Select("COALESCE(SUM(quota), 0)").Scan(&userSum).Error; err != nil {
-		return 0, err
+	if userScope.Mode != BillingScopeNone {
+		tx := DB.Model(&User{})
+		if userScope.Mode == BillingScopeIds {
+			tx = tx.Where("id IN ?", userScope.Ids)
+		}
+		if err := tx.Select("COALESCE(SUM(quota), 0)").Scan(&userSum).Error; err != nil {
+			return 0, err
+		}
 	}
 	var orgSum int64
-	tx = DB.Model(&Organization{})
-	if len(orgIds) > 0 {
-		tx = tx.Where("id IN ?", orgIds)
-	}
-	if err := tx.Select("COALESCE(SUM(quota), 0)").Scan(&orgSum).Error; err != nil {
-		return 0, err
+	if orgScope.Mode != BillingScopeNone {
+		tx := DB.Model(&Organization{})
+		if orgScope.Mode == BillingScopeIds {
+			tx = tx.Where("id IN ?", orgScope.Ids)
+		}
+		if err := tx.Select("COALESCE(SUM(quota), 0)").Scan(&orgSum).Error; err != nil {
+			return 0, err
+		}
 	}
 	return int(userSum + orgSum), nil
 }
@@ -373,24 +410,19 @@ func computeBillingBalance(userIds, orgIds []int) (int, error) {
 // GetBillingConsumption 按用户/企业维度分页查询消耗与退款明细。
 // 企业维度通过成员关系展开为用户集合参与筛选；userOrg/orgNames 则按返回行
 // 的用户当前归属回填，供前端展示企业列。
-func GetBillingConsumption(userIds, orgIds []int, startTimestamp, endTimestamp int64, pageInfo *common.PageInfo) (logs []*Log, total int64, stat BillingConsumptionStat, userOrg map[int]int, orgNames map[int]string, err error) {
+func GetBillingConsumption(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64, pageInfo *common.PageInfo) (logs []*Log, total int64, stat BillingConsumptionStat, userOrg map[int]int, orgNames map[int]string, err error) {
 	userOrg = make(map[int]int)
 	orgNames = make(map[int]string)
-	mergedIds := append([]int{}, userIds...)
-	for _, orgId := range orgIds {
-		memberIds, memberErr := GetOrgMemberUserIds(orgId)
-		if memberErr != nil {
-			return nil, 0, stat, nil, nil, memberErr
-		}
-		for _, memberId := range memberIds {
-			if !containsInt(mergedIds, memberId) {
-				mergedIds = append(mergedIds, memberId)
-			}
-		}
+	constrained, mergedIds, mergeErr := billingConsumptionUserIds(userScope, orgScope)
+	if mergeErr != nil {
+		return nil, 0, stat, nil, nil, mergeErr
 	}
 
 	tx := LOG_DB.Model(&Log{}).Where("type IN ?", []int{LogTypeConsume, LogTypeRefund})
-	if len(mergedIds) > 0 {
+	if constrained {
+		if len(mergedIds) == 0 {
+			return nil, 0, stat, userOrg, orgNames, nil
+		}
 		tx = tx.Where("user_id IN ?", mergedIds)
 	}
 	if startTimestamp != 0 {
@@ -421,7 +453,7 @@ func GetBillingConsumption(userIds, orgIds []int, startTimestamp, endTimestamp i
 		RefundQuota:  statRow.RefundQuota,
 		TotalTokens:  statRow.TotalTokens,
 	}
-	balance, balanceErr := computeBillingBalance(userIds, orgIds)
+	balance, balanceErr := computeBillingBalance(userScope, orgScope)
 	if balanceErr != nil {
 		return nil, 0, stat, nil, nil, balanceErr
 	}
@@ -471,10 +503,40 @@ func GetBillingConsumption(userIds, orgIds []int, startTimestamp, endTimestamp i
 // GetBillingConsumptionAll 导出用：不分页拉取消耗明细（带上限保护）。
 const billingConsumptionExportCap = 100000
 
-func GetBillingConsumptionAll(userIds, orgIds []int, startTimestamp, endTimestamp int64) (logs []*Log, userOrg map[int]int, orgNames map[int]string, err error) {
+func GetBillingConsumptionAll(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) (logs []*Log, userOrg map[int]int, orgNames map[int]string, err error) {
 	pageInfo := &common.PageInfo{}
 	pageInfo.Page = 1
 	pageInfo.PageSize = billingConsumptionExportCap
-	logs, _, _, userOrg, orgNames, err = GetBillingConsumption(userIds, orgIds, startTimestamp, endTimestamp, pageInfo)
+	logs, _, _, userOrg, orgNames, err = GetBillingConsumption(userScope, orgScope, startTimestamp, endTimestamp, pageInfo)
 	return logs, userOrg, orgNames, err
+}
+
+// billingConsumptionUserIds 把用户/企业两个维度合并为消耗日志的用户 id 集合。
+// constrained=false 表示用户维度为全部，不需要限定 user_id；否则集合为空时调用方直接返回空结果。
+func billingConsumptionUserIds(userScope, orgScope BillingScope) (bool, []int, error) {
+	if userScope.Mode == BillingScopeAll {
+		return false, nil, nil
+	}
+	merged := append([]int{}, userScope.Ids...)
+	if orgScope.Mode == BillingScopeNone {
+		return true, merged, nil
+	}
+	orgIds := orgScope.Ids
+	if orgScope.Mode == BillingScopeAll {
+		if err := DB.Model(&Organization{}).Pluck("id", &orgIds).Error; err != nil {
+			return false, nil, err
+		}
+	}
+	for _, orgId := range orgIds {
+		memberIds, memberErr := GetOrgMemberUserIds(orgId)
+		if memberErr != nil {
+			return false, nil, memberErr
+		}
+		for _, memberId := range memberIds {
+			if !containsInt(merged, memberId) {
+				merged = append(merged, memberId)
+			}
+		}
+	}
+	return true, merged, nil
 }

@@ -16,16 +16,50 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/** Sentinel option: no constraint on this dimension (query everything). */
+export const BILLING_SCOPE_ALL = '__all__'
+/** Sentinel option: exclude this dimension entirely (wire value "none"). */
+export const BILLING_SCOPE_NONE = 'none'
+
+/**
+ * Normalize a multi-select change for a scope dropdown whose options are
+ * [All, None, ...real items]. All/None are mutually exclusive with real items
+ * and with each other; an empty selection falls back to All.
+ */
+export function normalizeBillingScope(
+  prev: string[],
+  next: string[]
+): string[] {
+  const prevAll = prev.includes(BILLING_SCOPE_ALL)
+  const prevNone = prev.includes(BILLING_SCOPE_NONE)
+  if (next.includes(BILLING_SCOPE_ALL) && !prevAll) return [BILLING_SCOPE_ALL]
+  if (next.includes(BILLING_SCOPE_NONE) && !prevNone) {
+    return [BILLING_SCOPE_NONE]
+  }
+  const ids = next.filter(
+    (v) => v !== BILLING_SCOPE_ALL && v !== BILLING_SCOPE_NONE
+  )
+  if (ids.length === 0) return [BILLING_SCOPE_ALL]
+  return ids
+}
+
+/** Map a scope selection to the backend query value (undefined = omit). */
+export function billingScopeToParam(sel: string[]): string | undefined {
+  if (sel.length === 0 || sel.includes(BILLING_SCOPE_ALL)) return undefined
+  if (sel.includes(BILLING_SCOPE_NONE)) return BILLING_SCOPE_NONE
+  return sel.join(',')
+}
+
 export interface BillingFilter {
-  userIds: number[]
-  orgIds: number[]
+  userSel: string[]
+  orgSel: string[]
   start?: number
   end?: number
 }
 
 export interface BillingFilterDraft {
-  userIds: number[]
-  orgIds: number[]
+  userSel: string[]
+  orgSel: string[]
   start?: Date
   end?: Date
 }
