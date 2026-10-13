@@ -341,16 +341,3 @@ func AdminUpdateDiscountCode(c *gin.Context) {
 	}
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 }
-
-// AdminDeleteDiscountCode 管理员删除任意折扣码。
-func AdminDeleteDiscountCode(c *gin.Context) {
-	id, ok := parseAgentPathId(c)
-	if !ok {
-		return
-	}
-	if err := model.DeleteDiscountCode(id); err != nil {
-		respondAgentModelError(c, err)
-		return
-	}
-	common.ApiSuccessI18n(c, i18n.MsgDeleteSuccess, nil)
-}

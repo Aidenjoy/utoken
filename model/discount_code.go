@@ -277,21 +277,6 @@ func UpdateDiscountCodeFields(id int, fields map[string]interface{}) error {
 	return nil
 }
 
-// DeleteDiscountCode 删除折扣码（不影响已绑定用户已享受的折扣）。
-func DeleteDiscountCode(id int) error {
-	if id <= 0 {
-		return ErrDiscountCodeNotFound
-	}
-	res := DB.Where("id = ?", id).Delete(&DiscountInviteCode{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrDiscountCodeNotFound
-	}
-	return nil
-}
-
 // DiscountCodeStat 折扣码导流统计：绑定用户数与其成功充值面值总额。
 type DiscountCodeStat struct {
 	UserCount     int64 `json:"user_count"`

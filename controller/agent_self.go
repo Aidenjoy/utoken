@@ -171,16 +171,3 @@ func UpdateAgentCode(c *gin.Context) {
 	}
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 }
-
-// DeleteAgentCode 代理商删除自有折扣码（不影响已绑定用户的既有折扣）。
-func DeleteAgentCode(c *gin.Context) {
-	dc, ok := loadOwnedAgentCode(c)
-	if !ok {
-		return
-	}
-	if err := model.DeleteDiscountCode(dc.Id); err != nil {
-		respondAgentModelError(c, err)
-		return
-	}
-	common.ApiSuccessI18n(c, i18n.MsgDeleteSuccess, nil)
-}

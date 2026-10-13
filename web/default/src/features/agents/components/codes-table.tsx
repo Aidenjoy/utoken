@@ -42,17 +42,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import { deleteAdminCode, listAllCodes, updateAdminCode } from '../api'
+import { listAllCodes, updateAdminCode } from '../api'
 import { DISCOUNT_CODE_STATUS, OWNER_TYPE, type DiscountCode } from '../types'
 import { useCodeColumns } from './code-columns'
 import { SetCodeDialog } from './set-code-dialog'
 
 const ALL_OWNERS = 'all'
 
-type PendingAction =
-  | { kind: 'status'; code: DiscountCode }
-  | { kind: 'delete'; code: DiscountCode }
-  | null
+type PendingAction = { kind: 'status'; code: DiscountCode } | null
 
 /**
  * System-administrator view of every discount invite code (admin- and
@@ -107,8 +104,6 @@ export function CodesTable() {
         onEdit: (code: DiscountCode) => openEdit(code),
         onToggleStatus: (code: DiscountCode) =>
           setPendingAction({ kind: 'status', code }),
-        onDelete: (code: DiscountCode) =>
-          setPendingAction({ kind: 'delete', code }),
       }),
       [openEdit]
     ),
@@ -135,28 +130,19 @@ export function CodesTable() {
 
   const runPendingAction = async () => {
     if (!pendingAction) return
-    const { kind, code } = pendingAction
+    const { code } = pendingAction
     setIsWorking(true)
     try {
-      if (kind === 'status') {
-        const nextStatus =
-          code.status === DISCOUNT_CODE_STATUS.ENABLED
-            ? DISCOUNT_CODE_STATUS.DISABLED
-            : DISCOUNT_CODE_STATUS.ENABLED
-        const result = await updateAdminCode(code.id, { status: nextStatus })
-        if (!result.success) {
-          toast.error(result.message || t('Failed to update code'))
-          return
-        }
-        toast.success(t('Code updated'))
-      } else {
-        const result = await deleteAdminCode(code.id)
-        if (!result.success) {
-          toast.error(result.message || t('Failed to delete code'))
-          return
-        }
-        toast.success(t('Code deleted'))
+      const nextStatus =
+        code.status === DISCOUNT_CODE_STATUS.ENABLED
+          ? DISCOUNT_CODE_STATUS.DISABLED
+          : DISCOUNT_CODE_STATUS.ENABLED
+      const result = await updateAdminCode(code.id, { status: nextStatus })
+      if (!result.success) {
+        toast.error(result.message || t('Failed to update code'))
+        return
       }
+      toast.success(t('Code updated'))
       setPendingAction(null)
       refresh()
     } finally {
@@ -184,28 +170,11 @@ export function CodesTable() {
     </Select>
   )
 
-  const isDelete = pendingAction?.kind === 'delete'
   const isEnabled = pendingAction?.code.status === DISCOUNT_CODE_STATUS.ENABLED
-
-  let pendingDescription = ''
-  let pendingConfirmLabel = t('Enable')
-  if (isDelete) {
-    pendingDescription = t(
-      'Delete code {{code}}? Invitees already bound keep their discount, but the code can no longer be used to register.',
-      { code: pendingAction?.code.code ?? '' }
-    )
-    pendingConfirmLabel = t('Delete')
-  } else if (isEnabled) {
-    pendingDescription = t('Disable code {{code}}?', {
-      code: pendingAction?.code.code ?? '',
-    })
-    pendingConfirmLabel = t('Disable')
-  } else {
-    pendingDescription = t('Enable code {{code}}?', {
-      code: pendingAction?.code.code ?? '',
-    })
-    pendingConfirmLabel = t('Enable')
-  }
+  const pendingDescription = isEnabled
+    ? t('Disable code {{code}}?', { code: pendingAction?.code.code ?? '' })
+    : t('Enable code {{code}}?', { code: pendingAction?.code.code ?? '' })
+  const pendingConfirmLabel = isEnabled ? t('Disable') : t('Enable')
 
   return (
     <>
@@ -244,9 +213,7 @@ export function CodesTable() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {isDelete ? t('Delete Discount Code') : t('Change Status')}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{t('Change Status')}</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDescription}
             </AlertDialogDescription>

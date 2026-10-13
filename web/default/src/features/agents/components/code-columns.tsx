@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Link2, Pencil, Power, Trash2 } from 'lucide-react'
+import { Link2, Pencil, Power } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import { toast } from 'sonner'
 
@@ -33,7 +33,6 @@ import { DISCOUNT_CODE_STATUS, OWNER_TYPE, type DiscountCode } from '../types'
 export type CodeActions = {
   onEdit: (code: DiscountCode) => void
   onToggleStatus: (code: DiscountCode) => void
-  onDelete: (code: DiscountCode) => void
 }
 
 /**
@@ -199,13 +198,6 @@ export function useCodeColumns(
           <DropdownMenuItem onClick={() => actions.onToggleStatus(code)}>
             {enabled ? t('Disable') : t('Enable')}
             <Power size={16} />
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => actions.onDelete(code)}
-            className='text-destructive focus:text-destructive'
-          >
-            {t('Delete')}
-            <Trash2 size={16} />
           </DropdownMenuItem>
         </DataTableRowActionMenu>
       )

@@ -127,11 +127,6 @@ export async function updateAdminCode(
   return res.data
 }
 
-export async function deleteAdminCode(id: number): Promise<ApiResponse> {
-  const res = await api.delete(`/api/agent/admin/codes/${id}`)
-  return res.data
-}
-
 // ============================================================================
 // Agent self-service (requires the caller to be a promoted agent)
 // ============================================================================
@@ -161,11 +156,6 @@ export async function updateMyCode(
   payload: CodeUpdatePayload
 ): Promise<ApiResponse> {
   const res = await api.put(`/api/agent/codes/${id}`, payload)
-  return res.data
-}
-
-export async function deleteMyCode(id: number): Promise<ApiResponse> {
-  const res = await api.delete(`/api/agent/codes/${id}`)
   return res.data
 }
 

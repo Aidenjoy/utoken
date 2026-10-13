@@ -163,7 +163,6 @@ func SetApiRouter(router *gin.Engine) {
 			agentAdminRoute.GET("/codes", controller.AdminListDiscountCodes)
 			agentAdminRoute.POST("/codes", controller.AdminCreateDiscountCode)
 			agentAdminRoute.PUT("/codes/:id", controller.AdminUpdateDiscountCode)
-			agentAdminRoute.DELETE("/codes/:id", controller.AdminDeleteDiscountCode)
 		}
 
 		agentSelfRoute := apiRouter.Group("/agent")
@@ -173,7 +172,6 @@ func SetApiRouter(router *gin.Engine) {
 			agentSelfRoute.GET("/codes", controller.ListAgentCodes)
 			agentSelfRoute.POST("/codes", controller.CreateAgentCode)
 			agentSelfRoute.PUT("/codes/:id", controller.UpdateAgentCode)
-			agentSelfRoute.DELETE("/codes/:id", controller.DeleteAgentCode)
 			agentSelfRoute.GET("/members", controller.ListAgentMembers)
 			agentSelfRoute.GET("/recharge", controller.ListAgentRecharge)
 		}
