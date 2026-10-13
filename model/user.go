@@ -348,7 +348,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, role *int, status *int, referrer string, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -392,6 +392,10 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 		} else {
 			query = query.Where("deleted_at IS NULL").Where("status = ?", *status)
 		}
+	}
+	if referrer != "" {
+		// 发展关系：由该用户邀请，或注册时绑定了该用户拥有的折扣码。
+		query = query.Where("(inviter_id = (SELECT id FROM users WHERE username = ?) OR recharge_discount_code IN (SELECT code FROM discount_codes WHERE owner_user_id = (SELECT id FROM users WHERE username = ?)))", referrer, referrer)
 	}
 
 	// 获取总数

@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
+import { Search } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -27,6 +29,8 @@ import {
   DataTablePage,
   useDataTable,
 } from '@/components/data-table'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 
@@ -46,6 +50,16 @@ const route = getRouteApi('/_authenticated/users/')
 
 function isDisabledUserRow(user: User) {
   return isUserDeleted(user) || user.status === USER_STATUS.DISABLED
+}
+
+// 点击搜索按钮后才提交的筛选快照；工具栏的输入/选择在此之前只是草稿，
+// 避免每改一下就发起一次请求。
+interface AppliedUserFilter {
+  keyword: string
+  status: string
+  role: string
+  group: string
+  referrer: string
 }
 
 export function UsersTable() {
@@ -85,41 +99,62 @@ export function UsersTable() {
     (columnFilters.find((filter) => filter.id === 'group')?.value as string) ??
     ''
 
+  const [referrerDraft, setReferrerDraft] = useState('')
+  const [applied, setApplied] = useState<AppliedUserFilter>(() => ({
+    keyword: globalFilter ?? '',
+    status: statusFilter[0] ?? '',
+    role: roleFilter[0] ?? '',
+    group: groupFilter,
+    referrer: '',
+  }))
+
+  const handleSearch = () => {
+    setApplied({
+      keyword: globalFilter ?? '',
+      status: statusFilter[0] ?? '',
+      role: roleFilter[0] ?? '',
+      group: groupFilter,
+      referrer: referrerDraft.trim(),
+    })
+    onPaginationChange({ pageIndex: 0, pageSize: pagination.pageSize })
+  }
+
   // Fetch data with React Query
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'users',
       pagination.pageIndex + 1,
       pagination.pageSize,
-      globalFilter,
-      statusFilter,
-      roleFilter,
-      groupFilter,
+      applied,
       refreshTrigger,
     ],
     queryFn: async () => {
-      const hasFilter = globalFilter?.trim()
-      const hasColumnFilter =
-        statusFilter.length > 0 || roleFilter.length > 0 || Boolean(groupFilter)
+      const hasFilter =
+        applied.keyword.trim() ||
+        applied.status ||
+        applied.role ||
+        applied.group ||
+        applied.referrer
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
       }
 
-      const result =
-        hasFilter || hasColumnFilter
-          ? await searchUsers({
-              ...params,
-              keyword: globalFilter,
-              status: statusFilter[0] ?? '',
-              role: roleFilter[0] ?? '',
-              group: groupFilter,
-            })
-          : await getUsers(params)
+      const result = hasFilter
+        ? await searchUsers({
+            ...params,
+            keyword: applied.keyword,
+            status: applied.status,
+            role: applied.role,
+            group: applied.group,
+            referrer: applied.referrer,
+          })
+        : await getUsers(params)
 
       if (!result.success) {
         toast.error(
-          result.message || `Failed to ${hasFilter ? 'search' : 'load'} users`
+          result.message ||
+            `Failed to ${applied.keyword ? 'search' : 'load'} users`
         )
         return { items: [], total: 0 }
       }
@@ -177,6 +212,23 @@ export function UsersTable() {
       applyHeaderSize
       toolbarProps={{
         searchPlaceholder: t('Filter by username, name or email...'),
+        preActions: (
+          <div className='flex items-center gap-2'>
+            <Input
+              className='h-8 w-[150px]'
+              value={referrerDraft}
+              onChange={(event) => setReferrerDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleSearch()
+              }}
+              placeholder={t('Referrer username')}
+            />
+            <Button variant='outline' size='sm' onClick={handleSearch}>
+              <Search />
+              {t('Search')}
+            </Button>
+          </div>
+        ),
         filters: [
           {
             columnId: 'status',
@@ -192,13 +244,10 @@ export function UsersTable() {
           },
         ],
       }}
-      getRowClassName={(row, { isMobile }) =>
-        isDisabledUserRow(row.original)
-          ? isMobile
-            ? DISABLED_ROW_MOBILE
-            : DISABLED_ROW_DESKTOP
-          : undefined
-      }
+      getRowClassName={(row, { isMobile }) => {
+        if (!isDisabledUserRow(row.original)) return undefined
+        return isMobile ? DISABLED_ROW_MOBILE : DISABLED_ROW_DESKTOP
+      }}
       bulkActions={<DataTableBulkActions table={table} />}
     />
   )
