@@ -22,6 +22,7 @@ func TestResolveTokenRateFromDiscounts(t *testing.T) {
 		{name: "numerator over denominator", expected: 0.9, purchase: 0.6, wantRate: 1.5, wantOK: true},
 		{name: "denominator one keeps rate", expected: 1.5, purchase: 1, wantRate: 1.5, wantOK: true},
 		{name: "small ratio within bounds", expected: 1, purchase: 100, wantRate: 0.01, wantOK: true},
+		{name: "long ratio ceils to two decimals", expected: 0.9, purchase: 0.78, wantRate: 1.16, wantOK: true},
 		{name: "zero denominator rejected", expected: 1, purchase: 0, wantRate: 0, wantOK: false},
 		{name: "zero numerator rejected", expected: 0, purchase: 1, wantRate: 0, wantOK: false},
 		{name: "negative numerator rejected", expected: -1, purchase: 1, wantRate: 0, wantOK: false},
@@ -41,6 +42,28 @@ func TestResolveTokenRateFromDiscounts(t *testing.T) {
 			} else {
 				assert.Zero(t, rate)
 			}
+		})
+	}
+}
+
+// TestCeilTokenRate 守护费率向上取整到 2 位小数的计费安全语义：只进不舍（避免截断少收/扩损），
+// 且本就是两位小数的值不因浮点噪声（如 0.07*100=7.000…1）被误进位。
+func TestCeilTokenRate(t *testing.T) {
+	tests := []struct {
+		name string
+		in   float64
+		want float64
+	}{
+		{name: "long repeating decimal rounds up", in: 1.1538461538461537, want: 1.16},
+		{name: "third decimal below five still rounds up", in: 1.821, want: 1.83},
+		{name: "third decimal five rounds up", in: 1.275, want: 1.28},
+		{name: "clean one decimal unchanged", in: 1.5, want: 1.5},
+		{name: "integer unchanged", in: 2, want: 2},
+		{name: "fp noise above integer not bumped", in: 0.07, want: 0.07},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.InDelta(t, tt.want, ceilTokenRate(tt.in), 1e-9)
 		})
 	}
 }

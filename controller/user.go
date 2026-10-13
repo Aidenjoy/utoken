@@ -1072,8 +1072,18 @@ func DeleteUser(c *gin.Context) {
 // maxTokenRate 是 token 费率（计费倍率）的上限，同时约束折扣分子/分母各自的取值，防止异常放大。
 const maxTokenRate = 100
 
+// ceilTokenRate 把费率向上取整到 2 位小数（分），保证计费倍率只增不减，避免因截断/四舍五入而少收（扩损）。
+// 先按 1e-9 容差把浮点噪声吸附到最近整数，避免 1.16 这类本就是两位小数的值因 1.16*100=116.000…1 被误进位成 1.17。
+func ceilTokenRate(rate float64) float64 {
+	scaled := rate * 100
+	if rounded := math.Round(scaled); math.Abs(scaled-rounded) < 1e-9 {
+		scaled = rounded
+	}
+	return math.Ceil(scaled) / 100
+}
+
 // resolveTokenRateFromDiscounts 由期望折扣（分子）与采购折扣（分母）计算 token 费率。
-// 当模型计价基准为采购价时，费率 = 期望折扣 / 采购折扣 即用户期望的计费倍率。
+// 当模型计价基准为采购价时，费率 = 期望折扣 / 采购折扣 即用户期望的计费倍率；结果向上取整到 2 位小数。
 // 两者皆为 0 表示清除费率（返回 0）；其余情况要求两者均为有限正数、各自不超上限，且费率落在 (0, maxTokenRate]。
 func resolveTokenRateFromDiscounts(expected, purchase float64) (float64, bool) {
 	for _, v := range []float64{expected, purchase} {
@@ -1087,7 +1097,7 @@ func resolveTokenRateFromDiscounts(expected, purchase float64) (float64, bool) {
 	if expected == 0 || purchase == 0 {
 		return 0, false // 单边为 0：分母为 0 无意义，分子为 0 会把费率清零
 	}
-	rate := expected / purchase
+	rate := ceilTokenRate(expected / purchase)
 	if rate <= 0 || rate > maxTokenRate {
 		return 0, false
 	}

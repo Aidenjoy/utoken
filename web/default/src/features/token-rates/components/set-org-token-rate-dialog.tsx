@@ -35,6 +35,8 @@ import { Label } from '@/components/ui/label'
 import type { Organization } from '@/features/organization/types'
 import { updateAdminOrganizationTokenRate } from '@/features/organizations/api'
 
+import { ceilTokenRate } from '../rate'
+
 const MIN_RATE = 0.1
 const MAX_RATE = 100
 const MAX_DISCOUNT = 100
@@ -91,7 +93,9 @@ export function SetOrgTokenRateDialog({
     parsedPurchase > 0 &&
     parsedExpected <= MAX_DISCOUNT &&
     parsedPurchase <= MAX_DISCOUNT
-  const rate = discountsValid ? parsedExpected / parsedPurchase : Number.NaN
+  const rate = discountsValid
+    ? ceilTokenRate(parsedExpected / parsedPurchase)
+    : Number.NaN
   const isValid = discountsValid && rate >= MIN_RATE && rate <= MAX_RATE
 
   let rateError = ''
@@ -167,9 +171,7 @@ export function SetOrgTokenRateDialog({
             <Label>{t('Token Rate')}</Label>
             <Input
               readOnly
-              value={
-                Number.isFinite(rate) ? String(Number(rate.toFixed(4))) : ''
-              }
+              value={Number.isFinite(rate) ? String(rate) : ''}
               placeholder={t('Auto-calculated')}
             />
             <p className='text-muted-foreground text-xs'>

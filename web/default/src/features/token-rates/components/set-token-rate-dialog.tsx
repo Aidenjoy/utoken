@@ -35,6 +35,8 @@ import { Label } from '@/components/ui/label'
 import { updateUserTokenRate } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 
+import { ceilTokenRate } from '../rate'
+
 const MIN_RATE = 0.1
 const MAX_RATE = 100
 const MAX_DISCOUNT = 100
@@ -88,7 +90,9 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
     parsedPurchase > 0 &&
     parsedExpected <= MAX_DISCOUNT &&
     parsedPurchase <= MAX_DISCOUNT
-  const rate = discountsValid ? parsedExpected / parsedPurchase : Number.NaN
+  const rate = discountsValid
+    ? ceilTokenRate(parsedExpected / parsedPurchase)
+    : Number.NaN
   const isValid = discountsValid && rate >= MIN_RATE && rate <= MAX_RATE
 
   let rateError = ''
@@ -163,9 +167,7 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
             <Label>{t('Token Rate')}</Label>
             <Input
               readOnly
-              value={
-                Number.isFinite(rate) ? String(Number(rate.toFixed(4))) : ''
-              }
+              value={Number.isFinite(rate) ? String(rate) : ''}
               placeholder={t('Auto-calculated')}
             />
             <p className='text-muted-foreground text-xs'>
