@@ -62,7 +62,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
   const [results, setResults] = useState<User[]>([])
   const [searching, setSearching] = useState(false)
   const [selected, setSelected] = useState<User | null>(null)
-  const [minDiscount, setMinDiscount] = useState('0.6')
+  const [minDiscount, setMinDiscount] = useState('0.8')
   const [maxDiscount, setMaxDiscount] = useState('1')
   const [status, setStatus] = useState<number>(AGENT_STATUS.ENABLED)
   const [remark, setRemark] = useState('')
@@ -79,7 +79,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
       setStatus(agent.status)
       setRemark(agent.remark ?? '')
     } else {
-      setMinDiscount('0.6')
+      setMinDiscount('0.8')
       setMaxDiscount('1')
       setStatus(AGENT_STATUS.ENABLED)
       setRemark('')
