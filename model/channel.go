@@ -84,6 +84,46 @@ var channelSortColumns = map[string]string{
 	"test_time":     "test_time",
 }
 
+// 渠道列表默认排序的模型类别关键词，与前端 lib/model-category.ts 规则对齐：
+// 含任一视频模型→视频，否则含任一图片模型→图片，否则语言。
+// 仅影响列表默认展示顺序，不影响中转调度选型（见 ability.go）。
+var channelVideoModelKeywords = []string{
+	"seedance", "sora", "hailuo", "vidu", "kling", "jimeng", "veo", "wan-",
+	"hunyuanvideo", "pika", "video",
+}
+
+var channelImageModelKeywords = []string{
+	"seedream", "dall-e", "gpt-image", "cogview", "flux", "imagen",
+	"stable-diffusion", "sdxl", "kolors", "qwen-image", "hunyuan-image",
+	"step-1x", "ideogram", "recraft", "t2i", "image",
+}
+
+// 跨数据库安全的模型类别 CASE 表达式（LOWER + LIKE），
+// 作为渠道列表默认排序的第一排序键：语言(0) → 图片(1) → 视频(2)。
+var channelCategoryOrder = func() string {
+	tiers := []struct {
+		keywords []string
+		value    int
+	}{
+		{channelVideoModelKeywords, 2},
+		{channelImageModelKeywords, 1},
+	}
+	var sb strings.Builder
+	sb.WriteString("CASE")
+	for _, tier := range tiers {
+		sb.WriteString(" WHEN ")
+		for i, keyword := range tier.keywords {
+			if i > 0 {
+				sb.WriteString(" OR ")
+			}
+			fmt.Fprintf(&sb, "LOWER(models) LIKE '%%%s%%'", keyword)
+		}
+		fmt.Fprintf(&sb, " THEN %d", tier.value)
+	}
+	sb.WriteString(" ELSE 0 END")
+	return sb.String()
+}()
+
 func NewChannelSortOptions(sortBy string, sortOrder string, idSort bool) ChannelSortOptions {
 	normalizedSortBy := strings.ToLower(strings.TrimSpace(sortBy))
 	normalizedSortOrder := strings.ToLower(strings.TrimSpace(sortOrder))
@@ -114,10 +154,18 @@ func (options ChannelSortOptions) Apply(query *gorm.DB) *gorm.DB {
 			Desc:   true,
 		})
 	}
-	return query.Order(clause.OrderByColumn{
-		Column: clause.Column{Name: "priority"},
-		Desc:   true,
-	})
+	// 默认视图：先按模型类别分组（语言→图片→视频），
+	// 同类内优先级降序，同优先级用 id 降序保证稳定顺序。
+	return query.
+		Order(channelCategoryOrder).
+		Order(clause.OrderByColumn{
+			Column: clause.Column{Name: "priority"},
+			Desc:   true,
+		}).
+		Order(clause.OrderByColumn{
+			Column: clause.Column{Name: "id"},
+			Desc:   true,
+		})
 }
 
 func resolveChannelSortOptions(idSort bool, sortOptions []ChannelSortOptions) ChannelSortOptions {
