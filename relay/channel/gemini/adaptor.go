@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/relayconvert"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
@@ -59,8 +61,12 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	if model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) {
+		return convertImageRequestToNanoBanana(c, info, request)
+	}
+
 	if !strings.HasPrefix(info.UpstreamModelName, "imagen") {
-		return nil, errors.New("not supported model for image generation, only imagen models are supported")
+		return nil, errors.New("not supported model for image generation, only imagen and gemini imagine models are supported")
 	}
 
 	// convert size to aspect ratio but allow user to specify aspect ratio
@@ -120,6 +126,120 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 		geminiRequest.Parameters.ImageSize = imageSize
 	}
+
+	return geminiRequest, nil
+}
+
+// convertImageRequestToNanoBanana converts an OpenAI Images API request into a
+// Gemini generateContent request for nanobanana models (e.g. gemini-3-pro-image-preview).
+// These models generate images through the chat interface with ResponseModalities ["TEXT","IMAGE"].
+func convertImageRequestToNanoBanana(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	var parts []dto.GeminiPart
+
+	// Add reference images if provided (image-to-image)
+	if len(request.Image) > 0 {
+		var imageRefs []string
+		// Try parsing as array first, then as single string
+		if err := common.Unmarshal(request.Image, &imageRefs); err != nil {
+			var single string
+			if err2 := common.Unmarshal(request.Image, &single); err2 == nil {
+				imageRefs = []string{single}
+			}
+		}
+		for _, ref := range imageRefs {
+			if ref == "" {
+				continue
+			}
+			if strings.HasPrefix(ref, "data:") {
+				mimeType, base64Data, err := service.DecodeBase64FileData(ref)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decode reference image: %w", err)
+				}
+				parts = append(parts, dto.GeminiPart{
+					InlineData: &dto.GeminiInlineData{
+						MimeType: mimeType,
+						Data:     base64Data,
+					},
+				})
+			} else {
+				// URL reference — fetch and convert to inline data
+				source := types.NewURLFileSource(ref)
+				base64Data, mimeType, err := service.GetBase64Data(c, source, "nanobanana reference image")
+				if err != nil {
+					return nil, fmt.Errorf("failed to fetch reference image from URL: %w", err)
+				}
+				parts = append(parts, dto.GeminiPart{
+					InlineData: &dto.GeminiInlineData{
+						MimeType: mimeType,
+						Data:     base64Data,
+					},
+				})
+			}
+		}
+	}
+
+	// Add the text prompt
+	parts = append(parts, dto.GeminiPart{
+		Text: request.Prompt,
+	})
+
+	geminiRequest := dto.GeminiChatRequest{
+		Contents: []dto.GeminiChatContent{
+			{
+				Role:  "user",
+				Parts: parts,
+			},
+		},
+		GenerationConfig: dto.GeminiChatGenerationConfig{
+			ResponseModalities: []string{"TEXT", "IMAGE"},
+		},
+	}
+
+	// Map size to aspect ratio via imageConfig
+	size := strings.TrimSpace(request.Size)
+	if size != "" {
+		aspectRatio := ""
+		if strings.Contains(size, ":") {
+			aspectRatio = size
+		} else {
+			switch size {
+			case "256x256", "512x512", "1024x1024", "2048x2048":
+				aspectRatio = "1:1"
+			case "1536x1024", "2304x1728", "1664x2496":
+				aspectRatio = "3:2"
+			case "1024x1536", "1728x2304", "2496x1664":
+				aspectRatio = "2:3"
+			case "1024x1792", "1440x2560":
+				aspectRatio = "9:16"
+			case "1792x1024", "2560x1440":
+				aspectRatio = "16:9"
+			case "3024x1296":
+				aspectRatio = "21:9"
+			}
+		}
+		if aspectRatio != "" {
+			imageConfig := map[string]interface{}{
+				"aspectRatio": aspectRatio,
+			}
+			imageConfigBytes, err := common.Marshal(imageConfig)
+			if err == nil {
+				geminiRequest.GenerationConfig.ImageConfig = imageConfigBytes
+			}
+		}
+	}
+
+	// Add safety settings
+	safetySettings := make([]dto.GeminiChatSafetySettings, 0, len(SafetySettingList))
+	for _, category := range SafetySettingList {
+		safetySettings = append(safetySettings, dto.GeminiChatSafetySettings{
+			Category:  category,
+			Threshold: model_setting.GetGeminiSafetySetting(category),
+		})
+	}
+	geminiRequest.SafetySettings = safetySettings
+
+	// Ensure non-streaming for image generation
+	info.IsStream = false
 
 	return geminiRequest, nil
 }
@@ -274,6 +394,12 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		} else {
 			return GeminiTextGenerationHandler(c, info, resp)
 		}
+	}
+
+	// Images API with nanobanana models: extract inline images from generateContent response
+	if info.RelayMode == constant.RelayModeImagesGenerations &&
+		model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) {
+		return GeminiNanoBananaImageHandler(c, info, resp)
 	}
 
 	if strings.HasPrefix(info.UpstreamModelName, "imagen") {

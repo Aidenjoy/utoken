@@ -1675,6 +1675,76 @@ func GeminiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	return usage, nil
 }
 
+// GeminiNanoBananaImageHandler handles the generateContent response for nanobanana models
+// (e.g. gemini-3-pro-image-preview) when called via the OpenAI Images API endpoint.
+// It extracts inline image data from the response and converts it to OpenAI ImageResponse format.
+func GeminiNanoBananaImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
+	responseBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, types.NewOpenAIError(readErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	_ = resp.Body.Close()
+
+	logger.LogDebugJSON(c, "Gemini nanobanana image response body: %s", responseBody)
+
+	var geminiResponse dto.GeminiChatResponse
+	if jsonErr := common.Unmarshal(responseBody, &geminiResponse); jsonErr != nil {
+		return nil, types.NewOpenAIError(jsonErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	if len(geminiResponse.Candidates) == 0 {
+		if geminiResponse.PromptFeedback != nil && geminiResponse.PromptFeedback.BlockReason != nil {
+			return nil, types.NewOpenAIError(
+				fmt.Errorf("request blocked by Gemini API: %s", *geminiResponse.PromptFeedback.BlockReason),
+				types.ErrorCodePromptBlocked,
+				http.StatusBadRequest,
+			)
+		}
+		return nil, types.NewOpenAIError(errors.New("no images generated: empty response from Gemini API"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	// Extract inline image data from response parts
+	openAIResponse := dto.ImageResponse{
+		Created: common.GetTimestamp(),
+		Data:    make([]dto.ImageData, 0),
+	}
+
+	for _, candidate := range geminiResponse.Candidates {
+		for _, part := range candidate.Content.Parts {
+			if part.InlineData != nil && strings.HasPrefix(part.InlineData.MimeType, "image") {
+				openAIResponse.Data = append(openAIResponse.Data, dto.ImageData{
+					B64Json: part.InlineData.Data,
+				})
+			}
+		}
+	}
+
+	if len(openAIResponse.Data) == 0 {
+		return nil, types.NewOpenAIError(errors.New("no images generated: response contains no image data"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+
+	jsonResponse, jsonErr := common.Marshal(openAIResponse)
+	if jsonErr != nil {
+		return nil, types.NewError(jsonErr, types.ErrorCodeBadResponseBody)
+	}
+
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.Writer.WriteHeader(http.StatusOK)
+	_, _ = c.Writer.Write(jsonResponse)
+
+	// Build usage from Gemini response metadata
+	usage := buildUsageFromGeminiMetadata(geminiResponse.UsageMetadata, info.GetEstimatePromptTokens())
+
+	// If no completion tokens reported but we generated images, estimate based on image count
+	// (each generated image ~1400 tokens as per Gemini's internal accounting)
+	if usage.CompletionTokens == 0 && len(openAIResponse.Data) > 0 {
+		usage.CompletionTokens = len(openAIResponse.Data) * 1400
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+
+	return &usage, nil
+}
+
 type GeminiModelsResponse struct {
 	Models        []dto.GeminiModel `json:"models"`
 	NextPageToken string            `json:"nextPageToken"`
