@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -95,4 +96,74 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 
 		convertAndReplay(t, c, prompt)
 	})
+}
+
+// TestConvertImageGenerationsWithImageToEdits verifies that a generations
+// request carrying image input is rewritten to the OpenAI images/edits
+// endpoint as a multipart form, since OpenAI rejects `image` on generations.
+func TestConvertImageGenerationsWithImageToEdits(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	imageBytes := []byte("fake image bytes")
+	dataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(imageBytes)
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	info := &relaycommon.RelayInfo{
+		RelayMode:      relayconstant.RelayModeImagesGenerations,
+		RequestURLPath: "/v1/images/generations",
+	}
+	imageRaw, err := common.Marshal(dataURI)
+	require.NoError(t, err)
+	request := dto.ImageRequest{
+		Model:  "gpt-image-2.5-sunburst",
+		Prompt: "turn into watercolor",
+		Image:  imageRaw,
+	}
+
+	converted, err := (&Adaptor{}).ConvertImageRequest(c, info, request)
+	require.NoError(t, err)
+	require.Equal(t, "/v1/images/edits", info.RequestURLPath)
+
+	buffer, ok := converted.(*bytes.Buffer)
+	require.True(t, ok)
+
+	replayed := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(buffer.Bytes()))
+	replayed.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+	require.NoError(t, replayed.ParseMultipartForm(32<<20))
+	require.Equal(t, "gpt-image-2.5-sunburst", replayed.PostForm.Get("model"))
+	require.Equal(t, "turn into watercolor", replayed.PostForm.Get("prompt"))
+	require.Len(t, replayed.MultipartForm.File["image"], 1)
+
+	file, err := replayed.MultipartForm.File["image"][0].Open()
+	require.NoError(t, err)
+	defer file.Close()
+	got, err := io.ReadAll(file)
+	require.NoError(t, err)
+	require.Equal(t, imageBytes, got)
+}
+
+// TestConvertImageGenerationsWithoutImageUnchanged verifies plain text-to-image
+// generations requests still pass through as JSON to the generations endpoint.
+func TestConvertImageGenerationsWithoutImageUnchanged(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	info := &relaycommon.RelayInfo{
+		RelayMode:      relayconstant.RelayModeImagesGenerations,
+		RequestURLPath: "/v1/images/generations",
+	}
+	request := dto.ImageRequest{
+		Model:  "gpt-image-2.5-sunburst",
+		Prompt: "a cat",
+	}
+
+	converted, err := (&Adaptor{}).ConvertImageRequest(c, info, request)
+	require.NoError(t, err)
+	_, isBuffer := converted.(*bytes.Buffer)
+	require.False(t, isBuffer)
+	require.Equal(t, "/v1/images/generations", info.RequestURLPath)
 }

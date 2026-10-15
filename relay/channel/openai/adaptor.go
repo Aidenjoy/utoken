@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -556,8 +557,143 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		return &requestBody, nil
 
 	default:
+		// OpenAI 仅 images/edits 端点接受图片输入；若 generations 请求携带
+		// image/images，则自动改写为 edits 端点并构造 multipart 表单。
+		if images := imageEntriesToStrings(request.Image, request.Images); len(images) > 0 {
+			buffer, err := buildEditsMultipart(c, request, images)
+			if err != nil {
+				return nil, err
+			}
+			info.RequestURLPath = "/v1/images/edits"
+			return buffer, nil
+		}
 		return request, nil
 	}
+}
+
+// imageEntriesToStrings 将 image / images / mask 字段（可能是单个字符串或字符串
+// 数组）展开为 url / data-uri 字符串列表。
+func imageEntriesToStrings(raws ...json.RawMessage) []string {
+	var out []string
+	for _, raw := range raws {
+		if len(raw) == 0 {
+			continue
+		}
+		var single string
+		if err := common.Unmarshal(raw, &single); err == nil {
+			if single != "" {
+				out = append(out, single)
+			}
+			continue
+		}
+		var list []string
+		if err := common.Unmarshal(raw, &list); err == nil {
+			for _, s := range list {
+				if s != "" {
+					out = append(out, s)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// imageDataToBytes 将单个图片条目（data-uri 或远程 url）解码为字节与 mime 类型。
+func imageDataToBytes(c *gin.Context, entry string) ([]byte, string, error) {
+	var mimeType, base64Data string
+	if strings.HasPrefix(entry, "data:") {
+		m, d, err := service.DecodeBase64FileData(entry)
+		if err != nil {
+			return nil, "", err
+		}
+		mimeType, base64Data = m, d
+	} else {
+		d, m, err := service.GetBase64Data(c, types.NewURLFileSource(entry), "openai_image_edits")
+		if err != nil {
+			return nil, "", err
+		}
+		base64Data, mimeType = d, m
+	}
+	data, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to decode image data: %w", err)
+	}
+	return data, mimeType, nil
+}
+
+func editsFileName(field, mimeType string) string {
+	ext := strings.TrimPrefix(mimeType, "image/")
+	if ext == "" || ext == mimeType {
+		ext = "png"
+	}
+	return field + "." + ext
+}
+
+func writeEditsImagePart(c *gin.Context, writer *multipart.Writer, field, entry string) error {
+	data, mimeType, err := imageDataToBytes(c, entry)
+	if err != nil {
+		return err
+	}
+	part, err := writer.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": []string{fmt.Sprintf(`form-data; name="%s"; filename="%s"`, field, editsFileName(field, mimeType))},
+		"Content-Type":        []string{mimeType},
+	})
+	if err != nil {
+		return err
+	}
+	_, err = part.Write(data)
+	return err
+}
+
+// buildEditsMultipart 将携带图片输入的 generations 请求转换为 OpenAI
+// images/edits 所需的 multipart/form-data 表单（图片以文件形式上传）。
+func buildEditsMultipart(c *gin.Context, request dto.ImageRequest, images []string) (*bytes.Buffer, error) {
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	writeField := func(key, value string) error {
+		if value == "" {
+			return nil
+		}
+		return writer.WriteField(key, value)
+	}
+	for _, f := range []struct{ key, value string }{
+		{"model", request.Model},
+		{"prompt", request.Prompt},
+		{"size", request.Size},
+		{"quality", request.Quality},
+		{"response_format", request.ResponseFormat},
+	} {
+		if err := writeField(f.key, f.value); err != nil {
+			return nil, err
+		}
+	}
+	if request.N != nil {
+		if err := writeField("n", fmt.Sprintf("%d", *request.N)); err != nil {
+			return nil, err
+		}
+	}
+
+	imageField := "image"
+	if len(images) > 1 {
+		imageField = "image[]"
+	}
+	for _, entry := range images {
+		if err := writeEditsImagePart(c, writer, imageField, entry); err != nil {
+			return nil, err
+		}
+	}
+	if masks := imageEntriesToStrings(request.Mask); len(masks) > 0 {
+		if err := writeEditsImagePart(c, writer, "mask", masks[0]); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	return &requestBody, nil
 }
 
 func isJSONRequest(c *gin.Context) bool {
