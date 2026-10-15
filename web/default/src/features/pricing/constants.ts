@@ -91,11 +91,23 @@ export function getEndpointTypeLabels(
     [ENDPOINT_TYPES.ANTHROPIC]: 'Anthropic',
     [ENDPOINT_TYPES.GEMINI]: 'Gemini',
     [ENDPOINT_TYPES.JINA_RERANK]: 'Rerank',
-    [ENDPOINT_TYPES.IMAGE_GENERATION]: t('Image'),
+    [ENDPOINT_TYPES.IMAGE_GENERATION]: t('Image Model'),
     [ENDPOINT_TYPES.EMBEDDINGS]: t('Embeddings'),
-    [ENDPOINT_TYPES.OPENAI_VIDEO]: t('Video'),
+    [ENDPOINT_TYPES.OPENAI_VIDEO]: t('Video Model'),
   }
 }
+
+/**
+ * Model-type (modality) filter options surfaced in the pricing sidebar, in
+ * display order. Protocol-only endpoint types (Anthropic / Gemini / Rerank /
+ * Embeddings / Response) are intentionally excluded so the filter reads as a
+ * clean modality switch: language / image / video.
+ */
+export const MODEL_TYPE_FILTERS: EndpointTypeOption[] = [
+  ENDPOINT_TYPES.OPENAI,
+  ENDPOINT_TYPES.IMAGE_GENERATION,
+  ENDPOINT_TYPES.OPENAI_VIDEO,
+]
 
 /** Filter section keys */
 export const FILTER_SECTIONS = {

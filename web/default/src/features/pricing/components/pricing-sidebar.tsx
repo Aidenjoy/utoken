@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import {
   ENDPOINT_TYPES,
   FILTER_ALL,
+  MODEL_TYPE_FILTERS,
   QUOTA_TYPES,
   getEndpointTypeLabels,
   getQuotaTypeLabels,
@@ -233,16 +234,13 @@ export function PricingSidebar(props: PricingSidebarProps) {
       label: endpointTypeLabels[ENDPOINT_TYPES.ALL],
       count: props.models.length,
     },
-    ...Object.entries(endpointTypeLabels)
-      .filter(([value]) => value !== ENDPOINT_TYPES.ALL)
-      .map(([value, label]) => ({
-        value,
-        label,
-        count: countBy(props.models, (model) =>
-          matchesEndpointType(model, value)
-        ),
-      }))
-      .filter((option) => option.count > 0),
+    ...MODEL_TYPE_FILTERS.map((value) => ({
+      value,
+      label: endpointTypeLabels[value],
+      count: countBy(props.models, (model) =>
+        matchesEndpointType(model, value)
+      ),
+    })).filter((option) => option.count > 0),
   ]
 
   return (
