@@ -156,7 +156,7 @@ function buildImageSections(siteUrl: string): DocSection[] {
             code={`{
   "model": "${IMAGE_MODEL}",
   "prompt": "一只橘猫在草地上奔跑，阳光明媚，高清摄影风格",
-  "size": "2K",
+  "size": "2048x2048",
   "watermark": false
 }`}
           />
@@ -169,7 +169,7 @@ function buildImageSections(siteUrl: string): DocSection[] {
   -d '{
     "model": "${IMAGE_MODEL}",
     "prompt": "一只橘猫在草地上奔跑，阳光明媚，高清摄影风格",
-    "size": "2K",
+    "size": "2048x2048",
     "watermark": false
   }'`}
           />
@@ -212,7 +212,7 @@ function buildImageSections(siteUrl: string): DocSection[] {
   "model": "${IMAGE_MODEL}",
   "prompt": "将照片转换为水彩画风格，保持构图不变",
   "image": "https://example.com/photo.jpg",
-  "size": "2K",
+  "size": "2048x2048",
   "watermark": false
 }`}
           />
@@ -226,7 +226,7 @@ function buildImageSections(siteUrl: string): DocSection[] {
     "model": "${IMAGE_MODEL}",
     "prompt": "将照片转换为水彩画风格，保持构图不变",
     "image": "https://example.com/photo.jpg",
-    "size": "2K",
+    "size": "2048x2048",
     "watermark": false
   }'`}
           />
@@ -258,7 +258,7 @@ function buildImageSections(siteUrl: string): DocSection[] {
     "https://example.com/person.jpg",
     "https://example.com/outfit.jpg"
   ],
-  "size": "2K",
+  "size": "2048x2048",
   "watermark": false
 }`}
           />
@@ -275,7 +275,7 @@ function buildImageSections(siteUrl: string): DocSection[] {
       "https://example.com/person.jpg",
       "https://example.com/outfit.jpg"
     ],
-    "size": "2K",
+    "size": "2048x2048",
     "watermark": false
   }'`}
           />
