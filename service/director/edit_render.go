@@ -399,25 +399,58 @@ func ffprobeHasAudio(ffmpeg, filePath string) bool {
 	return err == nil && strings.Contains(string(out), "audio")
 }
 
-// EditRenderProgress 剪辑渲染实时进度（内存态，进程重启即失；终态保留供前端最后一次轮询）
+// EditRenderProgress 剪辑渲染实时进度（终态保留供前端最后一次轮询）。
+// Redis 开启时写入共享缓存，使负载均衡下任意节点的轮询都能看到渲染节点写入的进度；
+// 未开启时退化为进程内 sync.Map（单机）。
 type EditRenderProgress struct {
 	Stage   string `json:"stage"`   // queued/preparing/encoding/uploading/done/failed
 	Percent int    `json:"percent"` // 0-100
 	Detail  string `json:"detail"`  // 阶段说明，前端直接展示
 }
 
-var editRenderProgressStore sync.Map // projectId(int) -> EditRenderProgress
+var editRenderProgressStore sync.Map // projectId(int) -> EditRenderProgress（单机降级 / 渲染节点阶段变更日志）
 
-// setEditRenderProgress 更新进度；阶段切换时打日志，便于从服务端日志直接观察渲染轨迹
+// editRenderProgressTTL 进度键过期时间：渲染中每次写入都会刷新，终态写入后再保留 1 小时
+// 供前端完成最后一次轮询，随后自动过期，避免历史项目进度长期堆积。
+const editRenderProgressTTL = time.Hour
+
+func editRenderProgressKey(projectID int) string {
+	return fmt.Sprintf("director:edit_render_progress:%d", projectID)
+}
+
+// setEditRenderProgress 更新进度；阶段切换时打日志，便于从服务端日志直接观察渲染轨迹。
+// Redis 开启时同步写入共享缓存，让其它节点的前端轮询也能读到实时进度。
 func setEditRenderProgress(projectID int, stage string, percent int, detail string) {
+	progress := EditRenderProgress{Stage: stage, Percent: percent, Detail: detail}
 	if old, ok := editRenderProgressStore.Load(projectID); !ok || old.(EditRenderProgress).Stage != stage {
 		common.SysLog(fmt.Sprintf("云导演剪辑渲染阶段: projectId=%d, stage=%s, percent=%d, detail=%s", projectID, stage, percent, detail))
 	}
-	editRenderProgressStore.Store(projectID, EditRenderProgress{Stage: stage, Percent: percent, Detail: detail})
+	editRenderProgressStore.Store(projectID, progress)
+	if common.RedisEnabled {
+		data, err := common.Marshal(progress)
+		if err != nil {
+			common.SysError("failed to marshal edit render progress: " + err.Error())
+			return
+		}
+		if err := common.RedisSet(editRenderProgressKey(projectID), string(data), editRenderProgressTTL); err != nil {
+			common.SysError("failed to cache edit render progress: " + err.Error())
+		}
+	}
 }
 
-// GetEditRenderProgress 查询渲染进度（无记录时返回零值，前端按"排队中"展示）
+// GetEditRenderProgress 查询渲染进度（无记录时返回零值，前端按"排队中"展示）。Redis 开启时读共享缓存，
+// 使负载均衡下任意节点的轮询都能看到渲染节点写入的实时进度。
 func (s *EditService) GetEditRenderProgress(projectID int) EditRenderProgress {
+	if common.RedisEnabled {
+		if val, err := common.RedisGet(editRenderProgressKey(projectID)); err == nil && val != "" {
+			var progress EditRenderProgress
+			if err := common.UnmarshalJsonStr(val, &progress); err == nil {
+				return progress
+			}
+		}
+		// Redis 无记录：本节点可能不是渲染节点，统一按"排队中"展示，不回退本地旧值
+		return EditRenderProgress{Stage: "queued", Percent: 0, Detail: "排队等待渲染资源"}
+	}
 	if p, ok := editRenderProgressStore.Load(projectID); ok {
 		return p.(EditRenderProgress)
 	}
