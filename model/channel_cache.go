@@ -23,7 +23,17 @@ var channelsIDM map[int]*Channel                     // all channels include dis
 var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
 var channelSyncLock sync.RWMutex
 
+// InitChannelCache 重建本节点渠道/能力缓存，并广播失效通知让其它节点立即重建。
+// 所有管理端渠道增删改、密钥刷新、能力修复、上游模型更新都经此入口，因此天然
+// 获得跨节点即时同步；周期轮询与订阅端请改用 reloadChannelCacheFromDB 以免回环/风暴。
 func InitChannelCache() {
+	reloadChannelCacheFromDB()
+	publishChannelInvalidation()
+}
+
+// reloadChannelCacheFromDB 仅在本节点从数据库重建渠道/能力缓存，不广播。
+// 供启动初始化、SyncChannelCache 周期轮询、以及跨节点订阅端调用。
+func reloadChannelCacheFromDB() {
 	if !common.MemoryCacheEnabled {
 		return
 	}
@@ -101,7 +111,7 @@ func SyncChannelCache(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
 		common.SysLog("syncing channels from database")
-		InitChannelCache()
+		reloadChannelCacheFromDB()
 	}
 }
 

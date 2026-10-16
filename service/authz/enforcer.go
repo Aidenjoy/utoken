@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/casbin/casbin/v2"
 	casbinmodel "github.com/casbin/casbin/v2/model"
 	"gorm.io/gorm"
@@ -73,6 +74,17 @@ func ReloadPolicy() error {
 		return fmt.Errorf("authz enforcer is not initialized")
 	}
 	return enforcer.LoadPolicy()
+}
+
+// ReloadPolicyAndBroadcast 重新加载本节点权限策略，并广播失效让其它节点立即重载。
+// 供管理员变更用户权限后调用；周期轮询的 StartPolicySync 仍用 ReloadPolicy（不广播），
+// 避免每 60s 发布一次造成广播风暴。
+func ReloadPolicyAndBroadcast() error {
+	if err := ReloadPolicy(); err != nil {
+		return err
+	}
+	model.PublishAuthzInvalidation()
+	return nil
 }
 
 // StartPolicySync periodically reloads the authorization policy from the database.

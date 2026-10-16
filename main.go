@@ -106,6 +106,13 @@ func main() {
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
 
+	// 注入权限重载 hook：model 收到 authz 失效广播时调用（model 不能直接 import authz，避免循环引用）
+	model.AuthzReloadFunc = authz.ReloadPolicy
+
+	// 多节点即时同步：订阅 Redis 失效广播，选项/定价/渠道/权限变更时立即重建本地缓存，
+	// 不再等待 SyncOptions / SyncChannelCache 周期轮询；Redis 未启用（单机）时自动跳过。
+	go model.StartCacheSyncSubscriber()
+
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
 	go authz.StartPolicySync(common.SyncFrequency)
 

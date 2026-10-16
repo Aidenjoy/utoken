@@ -221,7 +221,13 @@ func UpdateOption(key string, value string) error {
 	// otherwise it will execute Update (with all fields).
 	DB.Save(&option)
 	// Update OptionMap
-	return updateOptionMap(key, value)
+	if err := updateOptionMap(key, value); err != nil {
+		return err
+	}
+	// 多节点部署：广播失效，让其它节点立即从 DB 重载选项并重建定价缓存，
+	// 避免负载均衡下改价后刷新读到旧节点缓存而误判为“未保存”。
+	publishOptionInvalidation(key)
+	return nil
 }
 
 // UpdateOptionsBulk persists multiple key/value pairs in a single database
@@ -249,11 +255,15 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
+	keys := make([]string, 0, len(values))
 	for k, v := range values {
 		if err := updateOptionMap(k, v); err != nil {
 			return err
 		}
+		keys = append(keys, k)
 	}
+	// 批量写入同样广播一次失效（携带全部键），其它节点合并为一次全量重载。
+	publishOptionInvalidation(keys...)
 	return nil
 }
 

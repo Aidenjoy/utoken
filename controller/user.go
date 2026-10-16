@@ -841,7 +841,7 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	if authzTouched {
-		if err := authz.ReloadPolicy(); err != nil {
+		if err := authz.ReloadPolicyAndBroadcast(); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -1212,7 +1212,7 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 	if authzTouched {
-		if err := authz.ReloadPolicy(); err != nil {
+		if err := authz.ReloadPolicyAndBroadcast(); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -1386,7 +1386,7 @@ func ManageUser(c *gin.Context) {
 			return
 		}
 		if authzTouched {
-			if err := authz.ReloadPolicy(); err != nil {
+			if err := authz.ReloadPolicyAndBroadcast(); err != nil {
 				common.ApiError(c, err)
 				return
 			}
