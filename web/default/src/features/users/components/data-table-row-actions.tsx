@@ -48,6 +48,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useAuthStore } from '@/stores/auth-store'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 
 import { manageUser, resetUserPasskey, resetUserTwoFA } from '../api'
@@ -140,6 +141,11 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const isDisabled = user.status === USER_STATUS.DISABLED
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
+  // 当前登录者权限：用户管理员（运营）仅能启用/禁用/删除比自己角色低的用户
+  const currentRole = useAuthStore((s) => s.auth.user?.role) ?? 0
+  const canManageAll = currentRole >= USER_ROLE.ADMIN
+  const canManageRow =
+    currentRole === USER_ROLE.ROOT || currentRole > user.role
 
   if (isUserDeleted(user)) {
     return null
@@ -147,28 +153,33 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
 
   return (
     <div className='-ml-1.5 flex items-center gap-1'>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant='ghost'
-              size='icon-sm'
-              onClick={handleEdit}
-              aria-label={t('Edit')}
-            />
-          }
-        >
-          <Pencil />
-        </TooltipTrigger>
-        <TooltipContent>{t('Edit')}</TooltipContent>
-      </Tooltip>
+      {canManageAll && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant='ghost'
+                size='icon-sm'
+                onClick={handleEdit}
+                aria-label={t('Edit')}
+              />
+            }
+          >
+            <Pencil />
+          </TooltipTrigger>
+          <TooltipContent>{t('Edit')}</TooltipContent>
+        </Tooltip>
+      )}
 
       <DataTableRowActionMenu
         ariaLabel={t('Open menu')}
         contentClassName='w-48'
       >
         {isDisabled ? (
-          <DropdownMenuItem onClick={() => handleManage('enable')}>
+          <DropdownMenuItem
+            onClick={() => handleManage('enable')}
+            disabled={!canManageRow}
+          >
             {t('Enable')}
             <DropdownMenuShortcut>
               <Power size={16} />
@@ -177,7 +188,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         ) : (
           <DropdownMenuItem
             onClick={() => handleManage('disable')}
-            disabled={isRoot}
+            disabled={isRoot || !canManageRow}
           >
             {t('Disable')}
             <DropdownMenuShortcut>
@@ -186,7 +197,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuItem>
         )}
 
-        {isAdmin && !isRoot && (
+        {canManageAll && isAdmin && !isRoot && (
           <DropdownMenuItem onClick={() => handleManage('demote')}>
             {t('Demote')}
             <DropdownMenuShortcut>
@@ -195,7 +206,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuItem>
         )}
 
-        {!isAdmin && (
+        {canManageAll && !isAdmin && (
           <DropdownMenuItem onClick={() => handleManage('promote')}>
             {t('Promote')}
             <DropdownMenuShortcut>
@@ -204,88 +215,96 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuItem>
         )}
 
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault()
-            setBindingDialogOpen(true)
-          }}
-        >
-          {t('Manage Bindings')}
-          <DropdownMenuShortcut>
-            <Link2 size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+        {canManageAll && (
+          <>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setBindingDialogOpen(true)
+              }}
+            >
+              {t('Manage Bindings')}
+              <DropdownMenuShortcut>
+                <Link2 size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault()
-            setSubscriptionsDialogOpen(true)
-          }}
-        >
-          {t('Manage Subscriptions')}
-          <DropdownMenuShortcut>
-            <CreditCard size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setSubscriptionsDialogOpen(true)
+              }}
+            >
+              {t('Manage Subscriptions')}
+              <DropdownMenuShortcut>
+                <CreditCard size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault()
-            setCreateApiKeyOpen(true)
-          }}
-        >
-          {t('Create API Key')}
-          <DropdownMenuShortcut>
-            <CirclePlus size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setCreateApiKeyOpen(true)
+              }}
+            >
+              {t('Create API Key')}
+              <DropdownMenuShortcut>
+                <CirclePlus size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault()
-            setApiKeysDialogOpen(true)
-          }}
-        >
-          {t('API Keys')}
-          <DropdownMenuShortcut>
-            <KeySquare size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setApiKeysDialogOpen(true)
+              }}
+            >
+              {t('API Keys')}
+              <DropdownMenuShortcut>
+                <KeySquare size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </>
+        )}
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault()
-            setResetPasskeyOpen(true)
-          }}
-          disabled={isRoot}
-        >
-          {t('Reset Passkey')}
-          <DropdownMenuShortcut>
-            <KeyRound size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+        {canManageAll && (
+          <>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setResetPasskeyOpen(true)
+              }}
+              disabled={isRoot}
+            >
+              {t('Reset Passkey')}
+              <DropdownMenuShortcut>
+                <KeyRound size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
 
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault()
-            setResetTwoFAOpen(true)
-          }}
-          disabled={isRoot}
-        >
-          {t('Reset 2FA')}
-          <DropdownMenuShortcut>
-            <ShieldAlert size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setResetTwoFAOpen(true)
+              }}
+              disabled={isRoot}
+            >
+              {t('Reset 2FA')}
+              <DropdownMenuShortcut>
+                <ShieldAlert size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </>
+        )}
 
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
           onClick={handleDelete}
           className='text-destructive focus:text-destructive'
-          disabled={isRoot}
+          disabled={isRoot || !canManageRow}
         >
           {t('Delete')}
           <DropdownMenuShortcut>

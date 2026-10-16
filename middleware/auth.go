@@ -164,7 +164,7 @@ func authHelper(c *gin.Context, minRole int) {
 	// 的写接口都会自动留痕（无需在路由上单独挂审计中间件，避免漏挂）。
 	// handler 内手动埋点者会设置 ContextKeyAuditLogged，finishAdminAudit 据此跳过。
 	var auditWriter *auditResponseWriter
-	if minRole >= common.RoleAdminUser {
+	if minRole >= common.RoleUserManager {
 		auditWriter = beginAdminAudit(c)
 	}
 
@@ -193,6 +193,14 @@ func UserAuth() func(c *gin.Context) {
 func AdminAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, common.RoleAdminUser)
+	}
+}
+
+// UserManagerAuth 用户管理员（运营）鉴权：放行角色 >= RoleUserManager 的请求，
+// 用于用户列表/详情/添加/禁用/删除等运营接口；调额等其余管理接口仍走 AdminAuth。
+func UserManagerAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		authHelper(c, common.RoleUserManager)
 	}
 }
 

@@ -366,7 +366,7 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
-            requiredRole: ROLE.ADMIN,
+            requiredRole: ROLE.USER_MANAGER,
           },
           {
             title: t('Organization Management'),
@@ -408,6 +408,7 @@ export function useSidebarData(): SidebarData {
             title: t('Cost Calculator'),
             url: '/cost-calculator',
             icon: Calculator,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Redemption Codes'),

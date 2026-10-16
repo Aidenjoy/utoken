@@ -659,6 +659,22 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 				"setting": false, // 管理员不能访问系统设置
 			},
 		}
+	} else if userRole == common.RoleUserManager {
+		// 用户管理员（运营）：边栏仅开放用户管理入口
+		permissions["sidebar_settings"] = true
+		permissions["sidebar_modules"] = map[string]interface{}{
+			"admin": map[string]interface{}{
+				"enabled":      true,
+				"channel":      false,
+				"models":       false,
+				"redemption":   false,
+				"user":         true,
+				"organization": false,
+				"setting":      false,
+				"subscription": false,
+				"log":          false,
+			},
+		}
 	} else {
 		// 普通用户只能设置个人功能，不包含管理员区域
 		permissions["sidebar_settings"] = true
@@ -711,6 +727,19 @@ func generateDefaultSidebarConfig(userRole int) string {
 			"user":         true,
 			"organization": true,
 			"setting":      false, // 管理员不能访问系统设置
+		}
+	} else if userRole == common.RoleUserManager {
+		// 用户管理员（运营）：仅开放用户管理入口
+		defaultConfig["admin"] = map[string]interface{}{
+			"enabled":      true,
+			"channel":      false,
+			"models":       false,
+			"redemption":   false,
+			"user":         true,
+			"organization": false,
+			"setting":      false,
+			"subscription": false,
+			"log":          false,
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
@@ -1275,6 +1304,15 @@ func ManageUser(c *gin.Context) {
 	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
+	}
+	// 用户管理员（运营）仅允许启用/禁用/删除；调额、升/降角色等一律拒绝。
+	if myRole < common.RoleAdminUser {
+		switch req.Action {
+		case "enable", "disable", "delete":
+		default:
+			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+			return
+		}
 	}
 	switch req.Action {
 	case "disable":

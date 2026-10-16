@@ -53,9 +53,10 @@ export function useSidebarView(): ResolvedSidebarView {
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
     const role = userRole ?? ROLE.GUEST
-    const isAdmin = role >= ROLE.ADMIN
+    // 用户管理员（运营）也能看到管理分组，但其中仅"用户"入口对其开放（见各项 requiredRole）
+    const canSeeAdminGroup = role >= ROLE.USER_MANAGER
     return configFilteredRoot
-      .filter((group) => (group.id === 'admin' ? isAdmin : true))
+      .filter((group) => (group.id === 'admin' ? canSeeAdminGroup : true))
       .map((group) => {
         const items = group.items.filter(
           (item) => item.requiredRole === undefined || role >= item.requiredRole

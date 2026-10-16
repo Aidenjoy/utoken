@@ -201,14 +201,15 @@ const (
 )
 
 const (
-	RoleGuestUser  = 0
-	RoleCommonUser = 1
-	RoleAdminUser  = 10
-	RoleRootUser   = 100
+	RoleGuestUser   = 0
+	RoleCommonUser  = 1
+	RoleUserManager = 5 // 用户管理员（运营）：仅可查看/添加/禁用/删除普通用户，无调额等其余管理权限
+	RoleAdminUser   = 10
+	RoleRootUser    = 100
 )
 
 func IsValidateRole(role int) bool {
-	return role == RoleGuestUser || role == RoleCommonUser || role == RoleAdminUser || role == RoleRootUser
+	return role == RoleGuestUser || role == RoleCommonUser || role == RoleUserManager || role == RoleAdminUser || role == RoleRootUser
 }
 
 var (

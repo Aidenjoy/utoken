@@ -130,14 +130,8 @@ func SetApiRouter(router *gin.Engine) {
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
 			{
-				adminRoute.GET("/", controller.GetAllUsers)
-				adminRoute.GET("/search", controller.SearchUsers)
-				adminRoute.GET("/:id", controller.GetUser)
-				adminRoute.POST("/", controller.CreateUser)
-				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.PUT("/:id/token_rate", controller.UpdateUserTokenRate)
-				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
@@ -148,6 +142,19 @@ func SetApiRouter(router *gin.Engine) {
 				// Admin 2FA routes
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
+			}
+
+			// User-manager routes (role >= RoleUserManager)：运营只读用户 + 添加/启用/禁用/删除，
+			// 调额、改角色/分组、令牌倍率、重置 Passkey/2FA/绑定等仍仅限 AdminAuth。
+			userManagerRoute := userRoute.Group("/")
+			userManagerRoute.Use(middleware.UserManagerAuth())
+			{
+				userManagerRoute.GET("/", controller.GetAllUsers)
+				userManagerRoute.GET("/search", controller.SearchUsers)
+				userManagerRoute.GET("/:id", controller.GetUser)
+				userManagerRoute.POST("/", controller.CreateUser)
+				userManagerRoute.POST("/manage", controller.ManageUser)
+				userManagerRoute.DELETE("/:id", controller.DeleteUser)
 			}
 		}
 

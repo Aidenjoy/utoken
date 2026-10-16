@@ -108,6 +108,9 @@ export function UsersMutateDrawer({
   const isUpdate = !!currentRow
   const { triggerRefresh } = useUsers()
   const currentUser = useAuthStore((s) => s.auth.user)
+  // 用户管理员（运营）创建用户时角色固定为普通用户，不展示角色选择，
+  // 也无需拉取仅 Admin 可见的分组/权限目录
+  const isUserManager = (currentUser?.role ?? 0) < ROLE.ADMIN
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
 
@@ -116,6 +119,7 @@ export function UsersMutateDrawer({
     queryKey: ['groups'],
     queryFn: getGroups,
     staleTime: 5 * 60 * 1000,
+    enabled: !isUserManager,
   })
 
   const groups = groupsData?.data || []
@@ -125,6 +129,7 @@ export function UsersMutateDrawer({
     queryKey: ['admin-permission-catalog'],
     queryFn: getPermissionCatalog,
     staleTime: 5 * 60 * 1000,
+    enabled: !isUserManager,
   })
 
   const form = useForm<UserFormValues>({
@@ -265,43 +270,49 @@ export function UsersMutateDrawer({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name='role'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Role')}</FormLabel>
-                      <Select
-                        items={[
-                          { value: '1', label: t('Common User') },
-                          { value: '10', label: t('Admin') },
-                        ]}
-                        onValueChange={(value) =>
-                          value !== null && field.onChange(parseInt(value))
-                        }
-                        value={String(field.value)}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={t('Select a role')} />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            <SelectItem value='1'>
-                              {t('Common User')}
-                            </SelectItem>
-                            <SelectItem value='10'>{t('Admin')}</SelectItem>
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        {t("Set the user's role (cannot be Root)")}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {!isUserManager && (
+                  <FormField
+                    control={form.control}
+                    name='role'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Role')}</FormLabel>
+                        <Select
+                          items={[
+                            { value: '1', label: t('Common User') },
+                            { value: '5', label: t('User Manager') },
+                            { value: '10', label: t('Admin') },
+                          ]}
+                          onValueChange={(value) =>
+                            value !== null && field.onChange(parseInt(value))
+                          }
+                          value={String(field.value)}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('Select a role')} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              <SelectItem value='1'>
+                                {t('Common User')}
+                              </SelectItem>
+                              <SelectItem value='5'>
+                                {t('User Manager')}
+                              </SelectItem>
+                              <SelectItem value='10'>{t('Admin')}</SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          {t("Set the user's role (cannot be Root)")}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}

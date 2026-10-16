@@ -168,6 +168,19 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 			"organization": true,
 			"setting":      false, // 管理员不能访问系统设置
 		}
+	} else if userRole == common.RoleUserManager {
+		// 用户管理员（运营）：仅开放用户管理入口
+		defaultConfig["admin"] = map[string]interface{}{
+			"enabled":      true,
+			"channel":      false,
+			"models":       false,
+			"redemption":   false,
+			"user":         true,
+			"organization": false,
+			"setting":      false,
+			"subscription": false,
+			"log":          false,
+		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
