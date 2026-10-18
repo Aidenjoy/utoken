@@ -227,6 +227,7 @@ export const channelFormSchema = z
     asset_group_id: z.string().optional(),
     asset_project_name: z.string().optional(),
     asset_region: z.string().optional(),
+    asset_endpoint: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if ([3, 8, 36, 45, 60].includes(data.type) && !data.base_url?.trim()) {
@@ -376,6 +377,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   asset_group_id: '',
   asset_project_name: '',
   asset_region: '',
+  asset_endpoint: '',
 }
 
 // ============================================================================
@@ -446,6 +448,7 @@ export function transformChannelToFormDefaults(
   let assetGroupId = ''
   let assetProjectName = ''
   let assetRegion = ''
+  let assetEndpoint = ''
 
   if (channel.settings) {
     try {
@@ -489,6 +492,7 @@ export function transformChannelToFormDefaults(
       assetGroupId = String(parsed.asset_group_id || '')
       assetProjectName = String(parsed.asset_project_name || '')
       assetRegion = String(parsed.asset_region || '')
+      assetEndpoint = String(parsed.asset_endpoint || '')
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to parse channel settings:', error)
@@ -549,6 +553,7 @@ export function transformChannelToFormDefaults(
     asset_group_id: assetGroupId,
     asset_project_name: assetProjectName,
     asset_region: assetRegion,
+    asset_endpoint: assetEndpoint,
   }
 }
 
@@ -697,6 +702,7 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     'asset_group_id',
     'asset_project_name',
     'asset_region',
+    'asset_endpoint',
   ] as const
   if (formData.type === 59 && formData.asset_upload_protocol) {
     settingsObj.asset_upload_protocol = formData.asset_upload_protocol
@@ -725,6 +731,16 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       settingsObj.asset_ak = (formData.asset_ak || '').trim()
       settingsObj.asset_sk = (formData.asset_sk || '').trim()
       settingsObj.asset_group_id = formData.asset_group_id || ''
+    }
+    // 素材网关地址只有「火山官方」协议可自定义（用于方舟兼容网关，如百度智能云）；
+    // tokenbit / 星枢无极 / 移动云的网关是各自固定服务，落库也只会被后端忽略。
+    if (
+      formData.asset_upload_protocol === 'ark_official' &&
+      formData.asset_endpoint?.trim()
+    ) {
+      settingsObj.asset_endpoint = formData.asset_endpoint.trim()
+    } else {
+      delete settingsObj.asset_endpoint
     }
   } else {
     for (const key of assetSettingKeys) {

@@ -14,11 +14,12 @@ import (
 )
 
 // ArkOfficialProtocol 火山方舟官方素材协议：
-// AK/SK 签名直连 universal API（host 默认 open.volcengineapi.com），
-// Action=CreateAsset/GetAsset，Version=2024-01-01，service=ark。
+// AK/SK 签名直连 universal API（host 默认 open.volcengineapi.com，可由渠道
+// asset_endpoint 改成方舟兼容网关），Action=CreateAsset/GetAsset，Version=2024-01-01，service=ark。
 type ArkOfficialProtocol struct {
 	cfg ChannelConfig
-	// endpoint 允许测试覆盖（默认 https://open.volcengineapi.com）。
+	// endpoint 素材网关地址：来自渠道 asset_endpoint 配置（也允许测试覆盖），
+	// 空时用默认的 https://open.volcengineapi.com。
 	endpoint string
 	// now 允许测试注入固定时间做确定性签名断言。
 	now func() time.Time
@@ -39,6 +40,24 @@ const (
 	// arkDefaultAssetGroupName 渠道未配置 asset_group_id 时自动创建的默认虚拟人像素材组名称。
 	arkDefaultAssetGroupName = "new-api-assets"
 )
+
+// normalizeAssetEndpoint 归一化渠道配置的方舟兼容素材网关地址。
+// 留空返回 ""，由 call() 回退到火山官方默认地址；非空则要求是带 host 的绝对 URL。
+// query 与 fragment 一律剥除：Action/Version 由 call() 按接口写入，而运维往往直接
+// 从对接方给的 curl 里复制完整 URL（已带 ?Action=...&Version=...），不剥除会把
+// 该次调用的 Action 固化到所有请求上。路径与尾斜杠原样保留，
+// 因为部分网关的路径前缀既参与路由也参与签名（如 /seedance25/openapi/）。
+func normalizeAssetEndpoint(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", fmt.Errorf("invalid asset endpoint %q: expect an absolute http(s) URL like %s", raw, arkOfficialDefaultEndpoint)
+	}
+	return u.Scheme + "://" + u.Host + u.Path, nil
+}
 
 func (p *ArkOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 	groupID := strings.TrimSpace(p.cfg.Settings.AssetGroupID)

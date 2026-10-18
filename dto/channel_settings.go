@@ -75,6 +75,10 @@ type ChannelOtherSettings struct {
 	AssetGroupID        string `json:"asset_group_id,omitempty"`        // 官方协议素材组 GroupId
 	AssetProjectName    string `json:"asset_project_name,omitempty"`    // 官方协议 ProjectName
 	AssetRegion         string `json:"asset_region,omitempty"`          // 官方协议区域，默认 cn-beijing
+	// AssetEndpoint 方舟兼容素材网关地址（如百度智能云网关 https://aigw.bce.baidu.com/volc）。
+	// 仅 ark_official 协议读取：留空走火山官方默认地址，bit_official/xswj_official
+	// 的网关是各自固定服务，仍由代码内常量决定，不受该字段影响。
+	AssetEndpoint string `json:"asset_endpoint,omitempty"`
 }
 
 // AssetUploadPathOrDefault 返回 relay 协议素材注册路径。

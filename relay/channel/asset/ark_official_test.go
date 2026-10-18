@@ -276,3 +276,107 @@ func TestCanonicalQueryAndEscape(t *testing.T) {
 	q := map[string]string{"Version": "2024-01-01", "Action": "CreateAsset"}
 	assert.Equal(t, "Action=CreateAsset&Version=2024-01-01", canonicalQuery(q))
 }
+
+func TestNormalizeAssetEndpoint(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr string
+	}{
+		{name: "empty keeps the official default", in: "", want: ""},
+		{name: "blank keeps the official default", in: "   \n", want: ""},
+		{name: "custom gateway is kept", in: "https://aigw.bce.baidu.com/volc", want: "https://aigw.bce.baidu.com/volc"},
+		// 路径前缀既参与路由也参与签名，尾斜杠不能被吃掉
+		{name: "path and trailing slash are preserved", in: "https://gw.example.com/seedance25/openapi/", want: "https://gw.example.com/seedance25/openapi/"},
+		// 运维通常直接复制对接方 curl 里的完整 URL，query 必须剥掉，
+		// 否则这一次的 Action 会被固化到后续所有请求上
+		{name: "query copied from curl is stripped", in: "https://aigw.bce.baidu.com/volc?Action=CreateAssetGroup&Version=2024-01-01", want: "https://aigw.bce.baidu.com/volc"},
+		{name: "fragment is stripped", in: "https://gw.example.com/volc#top", want: "https://gw.example.com/volc"},
+		{name: "surrounding whitespace is trimmed", in: "  https://gw.example.com/volc\n", want: "https://gw.example.com/volc"},
+		{name: "http is allowed for local gateways", in: "http://127.0.0.1:8080/volc", want: "http://127.0.0.1:8080/volc"},
+		{name: "missing scheme", in: "aigw.bce.baidu.com/volc", wantErr: "invalid asset endpoint"},
+		{name: "missing host", in: "https:///volc", wantErr: "invalid asset endpoint"},
+		{name: "unsupported scheme", in: "ftp://gw.example.com/volc", wantErr: "invalid asset endpoint"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeAssetEndpoint(tt.in)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNewProtocolUsesConfiguredAssetEndpoint(t *testing.T) {
+	var gotPath, gotAction, gotVersion, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAction = r.URL.Query().Get("Action")
+		gotVersion = r.URL.Query().Get("Version")
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Id":"asset-baidu-1"}}`))
+	}))
+	defer srv.Close()
+
+	cfg := officialConfig("")
+	// 直接从对接方 curl 复制的完整 URL：带 query 也必须能用
+	cfg.Settings.AssetEndpoint = srv.URL + "/volc?Action=CreateAssetGroup&Version=2024-01-01"
+	proto, err := NewProtocol(cfg)
+	require.NoError(t, err)
+	ark, ok := proto.(*ArkOfficialProtocol)
+	require.True(t, ok)
+	assert.Equal(t, srv.URL+"/volc", ark.endpoint)
+
+	res, err := ark.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage, Name: "a"})
+	require.NoError(t, err)
+	assert.Equal(t, "asset-baidu-1", res.AssetID)
+
+	assert.Equal(t, "/volc", gotPath)
+	// Action/Version 由代码按接口写入，不受配置里剥掉的 query 影响
+	assert.Equal(t, "CreateAsset", gotAction)
+	assert.Equal(t, "2024-01-01", gotVersion)
+	// 换网关不改鉴权模型：仍是 AK/SK 的 V4 签名
+	assert.Contains(t, gotAuth, "Credential=AKLT-test/")
+}
+
+func TestNewProtocolKeepsOfficialEndpointWhenUnset(t *testing.T) {
+	proto, err := NewProtocol(officialConfig(""))
+	require.NoError(t, err)
+	// endpoint 留空即回退官方默认地址，与接入自定义网关前的行为一致
+	assert.Equal(t, "", proto.(*ArkOfficialProtocol).endpoint)
+}
+
+func TestNewProtocolRejectsInvalidAssetEndpoint(t *testing.T) {
+	cfg := officialConfig("")
+	cfg.Settings.AssetEndpoint = "aigw.bce.baidu.com/volc"
+	_, err := NewProtocol(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid asset endpoint")
+}
+
+func TestNewProtocolFixedGatewaysIgnoreAssetEndpoint(t *testing.T) {
+	// tokenbit / 星枢无极的网关是各自固定服务，asset_endpoint 不得把它们挪走
+	tests := []struct {
+		protocol string
+		want     string
+	}{
+		{dto.AssetUploadProtocolBitOfficial, bitOfficialDefaultEndpoint},
+		{dto.AssetUploadProtocolXswjOfficial, xswjOfficialEndpoint},
+	}
+	for _, tt := range tests {
+		t.Run(tt.protocol, func(t *testing.T) {
+			cfg := officialConfig("")
+			cfg.Settings.AssetUploadProtocol = tt.protocol
+			cfg.Settings.AssetEndpoint = "https://gw.example.com/volc"
+			proto, err := NewProtocol(cfg)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, proto.(*ArkOfficialProtocol).endpoint)
+		})
+	}
+}

@@ -305,6 +305,7 @@ const SENSITIVE_FORM_FIELDS = [
   'asset_group_id',
   'asset_project_name',
   'asset_region',
+  'asset_endpoint',
 ] satisfies (keyof ChannelFormValues)[]
 
 function readAdvancedSettingsPreference(): boolean {
@@ -2998,6 +2999,32 @@ export function ChannelMutateDrawer({
                                     currentAssetUploadProtocol ===
                                       'xswj_official') && (
                                     <>
+                                      {currentAssetUploadProtocol ===
+                                        'ark_official' && (
+                                        <FormField
+                                          control={form.control}
+                                          name='asset_endpoint'
+                                          render={({ field }) => (
+                                            <FormItem>
+                                              <FormLabel>
+                                                {t('Asset Gateway URL')}
+                                              </FormLabel>
+                                              <FormControl>
+                                                <Input
+                                                  placeholder='https://open.volcengineapi.com'
+                                                  {...field}
+                                                />
+                                              </FormControl>
+                                              <FormDescription>
+                                                {t(
+                                                  'Optional Ark-compatible asset gateway. Leave empty to use the Volcengine official endpoint https://open.volcengineapi.com'
+                                                )}
+                                              </FormDescription>
+                                              <FormMessage />
+                                            </FormItem>
+                                          )}
+                                        />
+                                      )}
                                       <FormField
                                         control={form.control}
                                         name='asset_ak'

@@ -61,7 +61,13 @@ func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 		if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
 			return nil, fmt.Errorf("ark_official asset protocol requires asset_ak and asset_sk")
 		}
-		return &ArkOfficialProtocol{cfg: cfg}, nil
+		// 方舟兼容网关（如百度智能云 aigw）与火山官方协议一致，仅地址不同，
+		// 因此这里允许渠道自定义 endpoint；留空仍走官方默认地址。
+		endpoint, err := normalizeAssetEndpoint(cfg.Settings.AssetEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		return &ArkOfficialProtocol{cfg: cfg, endpoint: endpoint}, nil
 	case dto.AssetUploadProtocolEcloud:
 		if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
 			return nil, fmt.Errorf("ecloud asset protocol requires asset_ak and asset_sk")
