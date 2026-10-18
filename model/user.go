@@ -21,37 +21,40 @@ const UserNameMaxLength = 20
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id                    int                        `json:"id"`
-	Username              string                     `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password              string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword      string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName           string                     `json:"display_name" gorm:"index" validate:"max=20"`
-	Role                  int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status                int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email                 string                     `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId              string                     `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId             string                     `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId                string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId              string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId            string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode      string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken           *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota                 int                        `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota             int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount          int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group                 string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode               string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount              int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota              int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota       int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId             int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	OrgId                 int                        `json:"org_id" gorm:"type:int;column:org_id;index;default:0"` // 所属企业（组织），0=无企业
-	OrgName               string                     `json:"org_name" gorm:"-"`                                    // 所属企业展示名（列表返回时回填，不落库）
-	OrgQuotaLimit         int                        `json:"org_quota_limit" gorm:"-"`                             // 企业子额度上限（列表返回时回填，0=不限，不落库）
-	OrgQuotaUsed          int                        `json:"org_quota_used" gorm:"-"`                              // 企业子额度已用（列表返回时回填，不落库）
-	DeletedAt             gorm.DeletedAt             `gorm:"index"`
-	LinuxDOId             string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting               string                     `json:"setting" gorm:"type:text;column:setting"`
+	Id               int            `json:"id"`
+	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email            string         `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode string         `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
+	AccessToken      *string        `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota            int            `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	OrgId            int            `json:"org_id" gorm:"type:int;column:org_id;index;default:0"` // 所属企业（组织），0=无企业
+	OrgName          string         `json:"org_name" gorm:"-"`                                    // 所属企业展示名（列表返回时回填，不落库）
+	OrgQuotaLimit    int            `json:"org_quota_limit" gorm:"-"`                             // 企业子额度上限（列表返回时回填，0=不限，不落库）
+	OrgQuotaUsed     int            `json:"org_quota_used" gorm:"-"`                              // 企业子额度已用（列表返回时回填，不落库）
+	DeletedAt        gorm.DeletedAt `gorm:"index"`
+	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
+	// ModelDiscounts 按模型折扣（管理员配置，JSON：{"模型名":0.8}，值域 (0,1]）。
+	// 空字符串 = 无折扣（原价）。仅 model_discounts 专用接口可写，通用更新路径不得覆盖。
+	ModelDiscounts        string                     `json:"model_discounts,omitempty" gorm:"type:text;column:model_discounts"`
 	Remark                string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	TokenRate             float64                    `json:"token_rate" gorm:"default:0;column:token_rate"`                                // token 消耗费率（=期望折扣/采购折扣），0=未设置（等效 1.0）
 	ExpectedDiscount      float64                    `json:"expected_discount" gorm:"default:0;column:expected_discount"`                  // 期望折扣（费率分子），0=未设置；服务端由 num/denom 反算 token_rate
@@ -68,14 +71,15 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
-		OrgId:    user.OrgId,
+		Id:             user.Id,
+		Group:          user.Group,
+		Quota:          user.Quota,
+		Status:         user.Status,
+		Username:       user.Username,
+		Setting:        user.Setting,
+		ModelDiscounts: user.ModelDiscounts,
+		Email:          user.Email,
+		OrgId:          user.OrgId,
 	}
 	return cache
 }
@@ -109,6 +113,20 @@ func (user *User) SetSetting(setting dto.UserSetting) {
 		return
 	}
 	user.Setting = string(settingBytes)
+}
+
+// UpdateUserModelDiscounts 写入用户的按模型折扣 JSON（管理员专用），并刷新用户缓存。
+// discountsJSON 为空字符串表示清空折扣（恢复原价）。
+func UpdateUserModelDiscounts(userId int, discountsJSON string) error {
+	if userId == 0 {
+		return errors.New("id 为空！")
+	}
+	if err := DB.Model(&User{}).Where("id = ?", userId).Update("model_discounts", discountsJSON).Error; err != nil {
+		return err
+	}
+	// 仅刷新该 hash 字段，不整条失效：quota 由原子增减路径维护，
+	// 重建缓存可能回填入尚未批量落库的陈旧额度。
+	return updateUserModelDiscountsCache(userId, discountsJSON)
 }
 
 func UpdateUserSetting(userId int, setting dto.UserSetting) error {
@@ -898,7 +916,9 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
-	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count").Updates(newUser).Error; err != nil {
+	// model_discounts 与额度同属资金相关字段：通用更新路径（管理员 PUT /api/user/）
+	// 不得覆盖，否则请求体里带上该字段就能绕过专用接口的校验与审计。
+	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "model_discounts").Updates(newUser).Error; err != nil {
 		return err
 	}
 	return tx.First(user, user.Id).Error

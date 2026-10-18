@@ -30,6 +30,7 @@ import {
   CreditCard,
   CirclePlus,
   KeySquare,
+  Percent,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -63,6 +64,7 @@ import type { User, ManageUserAction } from '../types'
 import { UserApiKeyCreateDialog } from './dialogs/user-api-key-create-dialog'
 import { UserApiKeysDialog } from './dialogs/user-api-keys-dialog'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
+import { UserModelDiscountDialog } from './dialogs/user-model-discount-dialog'
 import { useUsers } from './users-provider'
 
 interface DataTableRowActionsProps {
@@ -79,6 +81,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
   const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false)
   const [apiKeysDialogOpen, setApiKeysDialogOpen] = useState(false)
+  const [discountDialogOpen, setDiscountDialogOpen] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -244,6 +247,19 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
             <DropdownMenuItem
               onSelect={(event) => {
                 event.preventDefault()
+                setDiscountDialogOpen(true)
+              }}
+              disabled={!canManageRow}
+            >
+              {t('Model Discounts')}
+              <DropdownMenuShortcut>
+                <Percent size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
                 setCreateApiKeyOpen(true)
               }}
             >
@@ -361,6 +377,17 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         open={apiKeysDialogOpen}
         onOpenChange={setApiKeysDialogOpen}
         user={{ id: user.id, username: user.username }}
+      />
+
+      <UserModelDiscountDialog
+        open={discountDialogOpen}
+        onOpenChange={setDiscountDialogOpen}
+        user={{
+          id: user.id,
+          username: user.username,
+          display_name: user.display_name,
+        }}
+        onSuccess={triggerRefresh}
       />
     </div>
   )

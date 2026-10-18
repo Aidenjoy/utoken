@@ -356,6 +356,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	adminRejectReason := common.GetContextKeyString(ctx, constant.ContextKeyAdminRejectReason)
 	summary := calculateTextQuotaSummary(ctx, relayInfo, usage)
+	quotaBeforeDiscount := 0
 
 	var tieredResult *billingexpr.TieredResult
 	tieredBillingApplied := false
@@ -371,6 +372,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
 		}
 	}
+
+	// 用户按模型折扣：对最终额度整体打折（含 tiered/seedream/工具附加费），
+	// 折前额度写入日志 other.original_quota，前端「原价 / 折扣」两列据此展示。
+	summary.Quota, quotaBeforeDiscount = applyUserModelDiscount(relayInfo, summary.Quota)
 
 	if summary.WebSearchCallCount > 0 {
 		extraContent = append(extraContent, fmt.Sprintf("Web Search 调用 %d 次，调用花费 %s", summary.WebSearchCallCount, decimal.NewFromFloat(summary.WebSearchPrice).Mul(decimal.NewFromInt(int64(summary.WebSearchCallCount))).Div(decimal.NewFromInt(1000)).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
@@ -400,6 +405,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if summary.TotalTokens == 0 {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
+		// 本次不扣费，不应在日志里留下“原价”
+		quotaBeforeDiscount = 0
 	} else {
 		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
 		// 缓存命中不经过渠道选择，ChannelId 为 0，跳过渠道用量累加避免打到不存在的渠道
@@ -502,6 +509,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	attachQuotaSaturation(ctx, relayInfo, other)
+	appendModelDiscountInfo(other, relayInfo.ModelDiscountRatio(), quotaBeforeDiscount)
 
 	if relayInfo.CacheHit {
 		other["cache_hit"] = true

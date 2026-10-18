@@ -185,6 +185,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	info.PriceData = priceData
 
+	// 任务的模型名可能到提交阶段才确定（由 action 推导），因此重新解析用户折扣，
+	// 避免沿用 NewRelayInfo 时（模型名可能为空）的结果。
+	info.UserModelDiscount = common.ResolveUserModelDiscount(info.ModelDiscounts, modelName)
+
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
 	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
@@ -194,12 +198,36 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
+	// 5.5 用户按模型折扣：作为 OtherRatio 参与预扣，并随 BillingContext 快照落库，
+	//     结算侧经 OtherRatioMultiplier 生效，保证预扣与结算同比例。
+	//     remix 沿用原任务 OtherRatios 时不会泄露折扣：PriceData 已在上方重建。
+	if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
+		info.PriceData.AddOtherRatio(relaycommon.OtherRatioUserDiscount, discount)
+	}
+
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
 	if !common.StringsContains(constant.TaskPricePatches, modelName) {
-		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
+		baseQuota := info.PriceData.Quota
+		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(baseQuota))
 		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
 		info.PriceData.Quota = quota
 		noteTaskQuotaClamp(info, clamp)
+		// 折前额度：剔除用户折扣这一乘数（时长/分辨率仍计入原价），供日志「原价」列展示。
+		if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
+			multiplier := 1.0
+			for key, ratio := range info.PriceData.OtherRatios() {
+				if key == relaycommon.OtherRatioUserDiscount {
+					continue
+				}
+				multiplier *= ratio
+			}
+			info.QuotaBeforeUserDiscount = common.QuotaRound(float64(baseQuota) * multiplier)
+		}
+	} else if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
+		// 按次计费模型不套用时长/分辨率乘数，但折扣仍需生效，
+		// 且必须与结算侧（OtherRatios 快照）保持一致。
+		info.QuotaBeforeUserDiscount = info.PriceData.Quota
+		info.PriceData.Quota = common.ApplyModelDiscount(info.PriceData.Quota, discount)
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）

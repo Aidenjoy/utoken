@@ -132,6 +132,9 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				adminRoute.PUT("/", controller.UpdateUser)
 				adminRoute.PUT("/:id/token_rate", controller.UpdateUserTokenRate)
+				// 按模型折扣：影响实际扣费，仅限管理员（运营 role=5 不可配）。
+				adminRoute.GET("/:id/model_discounts", controller.GetUserModelDiscounts)
+				adminRoute.PUT("/:id/model_discounts", controller.UpdateUserModelDiscounts)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)

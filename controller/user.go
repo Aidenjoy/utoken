@@ -598,37 +598,40 @@ func GetSelf(c *gin.Context) {
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
-		"id":                 user.Id,
-		"username":           user.Username,
-		"display_name":       user.DisplayName,
-		"role":               user.Role,
-		"status":             user.Status,
-		"email":              user.Email,
-		"github_id":          user.GitHubId,
-		"discord_id":         user.DiscordId,
-		"oidc_id":            user.OidcId,
-		"wechat_id":          user.WeChatId,
-		"telegram_id":        user.TelegramId,
-		"group":              user.Group,
-		"quota":              user.Quota,
-		"used_quota":         user.UsedQuota,
-		"request_count":      user.RequestCount,
-		"aff_code":           user.AffCode,
-		"aff_count":          user.AffCount,
-		"aff_quota":          user.AffQuota,
-		"aff_history_quota":  user.AffHistoryQuota,
-		"inviter_id":         user.InviterId,
-		"linux_do_id":        user.LinuxDOId,
-		"setting":            user.Setting,
-		"stripe_customer":    user.StripeCustomer,
-		"sidebar_modules":    userSetting.SidebarModules, // 正确提取sidebar_modules字段
-		"permissions":        permissions,                // 新增权限字段
-		"org_id":             orgId,
-		"org_name":           orgName,
-		"org_role":           orgRole,
-		"org_quota_limit":    orgQuotaLimit,
-		"org_quota_used":     orgQuotaUsed,
-		"recharge_discount":  user.RechargeDiscount,
+		"id":                user.Id,
+		"username":          user.Username,
+		"display_name":      user.DisplayName,
+		"role":              user.Role,
+		"status":            user.Status,
+		"email":             user.Email,
+		"github_id":         user.GitHubId,
+		"discord_id":        user.DiscordId,
+		"oidc_id":           user.OidcId,
+		"wechat_id":         user.WeChatId,
+		"telegram_id":       user.TelegramId,
+		"group":             user.Group,
+		"quota":             user.Quota,
+		"used_quota":        user.UsedQuota,
+		"request_count":     user.RequestCount,
+		"aff_code":          user.AffCode,
+		"aff_count":         user.AffCount,
+		"aff_quota":         user.AffQuota,
+		"aff_history_quota": user.AffHistoryQuota,
+		"inviter_id":        user.InviterId,
+		"linux_do_id":       user.LinuxDOId,
+		"setting":           user.Setting,
+		"stripe_customer":   user.StripeCustomer,
+		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"permissions":       permissions,                // 新增权限字段
+		"org_id":            orgId,
+		"org_name":          orgName,
+		"org_role":          orgRole,
+		"org_quota_limit":   orgQuotaLimit,
+		"org_quota_used":    orgQuotaUsed,
+		"recharge_discount": user.RechargeDiscount,
+		// has_model_discount 仅告知本人“是否配有模型折扣”，前端据此决定使用日志
+		// 原价/折扣两列是否默认显示；折扣明细不下发给普通用户。
+		"has_model_discount": common.HasModelDiscounts(user.ModelDiscounts),
 		"is_agent":           isAgent,
 		"agent_min_discount": agentMinDiscount,
 		"agent_max_discount": agentMaxDiscount,
@@ -1178,6 +1181,81 @@ func UpdateUserTokenRate(c *gin.Context) {
 		"success": true,
 		"message": "",
 	})
+}
+
+// GetUserModelDiscounts 返回指定用户的按模型折扣（仅管理员）。
+func GetUserModelDiscounts(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		return
+	}
+	if !canManageTargetRole(c.GetInt("role"), user.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+		return
+	}
+
+	discounts := common.ParseModelDiscounts(user.ModelDiscounts)
+	if discounts == nil {
+		discounts = map[string]float64{}
+	}
+	common.ApiSuccess(c, gin.H{"discounts": discounts})
+}
+
+// UpdateUserModelDiscounts 保存指定用户的按模型折扣（仅管理员）。
+// 提交空对象视为清空折扣（恢复原价）。折扣仅影响钱包扣费，不影响订阅抵扣与充值赠送。
+func UpdateUserModelDiscounts(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req struct {
+		Discounts map[string]float64 `json:"discounts"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	normalized, err := common.NormalizeModelDiscounts(req.Discounts)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		return
+	}
+	if !canManageTargetRole(c.GetInt("role"), user.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+		return
+	}
+
+	// 空配置落库为空串而不是 "{}"，保持“无折扣”与历史数据一致。
+	discountsJSON := ""
+	if len(normalized) > 0 {
+		payload, err := common.Marshal(normalized)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		discountsJSON = string(payload)
+	}
+	if err := model.UpdateUserModelDiscounts(id, discountsJSON); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	recordManageAuditFor(c, id, "user.model_discounts", map[string]interface{}{
+		"discounts": normalized,
+	})
+	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, gin.H{"discounts": normalized})
 }
 
 func DeleteSelf(c *gin.Context) {

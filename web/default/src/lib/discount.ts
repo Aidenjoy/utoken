@@ -54,3 +54,26 @@ export function formatDiscount(
   const percentOff = Math.round((1 - value) * 100)
   return t('{{value}}% off', { value: percentOff })
 }
+
+/**
+ * Format a per-model billing discount for the usage-log "discount" column.
+ * Unlike `formatDiscount` above (recharge discounts, rendered as the savings:
+ * "8 折" / "20% off"), this always renders the share of the original price that
+ * was actually charged, so an undiscounted row reads "100%" next to a
+ * discounted row reading "80%" instead of falling back to "No discount".
+ * Ratios outside (0, 1] — including the `undefined` a legacy log row carries
+ * because the field did not exist yet — fall back to 100%.
+ */
+export function formatModelDiscount(
+  ratio: number | null | undefined,
+  locale?: string
+): string {
+  const value =
+    ratio == null || !Number.isFinite(ratio) || ratio <= 0 || ratio > 1
+      ? 1
+      : ratio
+  return Intl.NumberFormat(locale, {
+    style: 'percent',
+    maximumFractionDigits: 2,
+  }).format(value)
+}

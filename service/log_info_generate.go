@@ -49,6 +49,35 @@ func attachQuotaSaturation(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, o
 		clamp.Op, clamp.Kind, clamp.Original, clamp.Clamped, relayInfo.UserId, relayInfo.OriginModelName))
 }
 
+// applyUserModelDiscount 按用户配置的模型折扣下调结算额度，返回 (折后额度, 折前额度)。
+// 未命中折扣（或额度为 0）时折前额度返回 0，日志据此不写 original_quota/discount。
+// 折扣只作用于钱包扣费：订阅抵扣、充值赠送、违规扣费不走这里。
+func applyUserModelDiscount(relayInfo *relaycommon.RelayInfo, quota int) (int, int) {
+	if relayInfo == nil {
+		return quota, 0
+	}
+	discounted := common.ApplyModelDiscount(quota, relayInfo.ModelDiscountRatio())
+	if discounted == quota {
+		return quota, 0
+	}
+	return discounted, quota
+}
+
+// appendModelDiscountInfo 把折扣与折前额度写入消费日志 other 顶层（用户查看自己的
+// 日志也需要看到原价/折扣，故不放 admin_info）。仅在确实打折时写入，避免日志膨胀。
+// 用 !(0 < discount < 1) 而不是 discount <= 0 || discount >= 1：NaN 与两个比较
+// 都为 false，前者会拦下 NaN，后者会把 NaN 写进日志导致 Marshal 失败。
+func appendModelDiscountInfo(other map[string]interface{}, discount float64, quotaBeforeDiscount int) {
+	if other == nil || quotaBeforeDiscount <= 0 {
+		return
+	}
+	if !(discount > 0 && discount < 1) {
+		return
+	}
+	other["discount"] = discount
+	other["original_quota"] = quotaBeforeDiscount
+}
+
 func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
 	if other == nil {
 		return

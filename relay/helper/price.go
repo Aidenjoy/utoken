@@ -132,6 +132,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		preConsumedQuota = common.QuotaFromFloat(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 	}
 
+	// 用户按模型折扣：预扣与结算同比例下调，避免余额刚好够用的用户被超额冻结。
+	preConsumedQuota = common.ApplyModelDiscount(preConsumedQuota, info.ModelDiscountRatio())
+
 	// check if free model pre-consume is disabled
 	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
 		// if model price or ratio is 0, do not pre-consume quota
@@ -312,6 +315,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	// Expression coefficients are $/1M tokens prices; convert to quota the same way per-call billing does.
 	quotaBeforeGroup := rawCost / 1_000_000 * common.QuotaPerUnit
 	preConsumedQuota := billingexpr.QuotaRound(quotaBeforeGroup * groupRatioInfo.GroupRatio)
+	preConsumedQuota = common.ApplyModelDiscount(preConsumedQuota, info.ModelDiscountRatio())
 
 	freeModel := false
 	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
@@ -360,6 +364,7 @@ func modelPriceHelperSeedream(c *gin.Context, info *relaycommon.RelayInfo, group
 	if !ok {
 		return types.PriceData{}, fmt.Errorf("model %s is configured as seedream but has no seedream price config", info.OriginModelName)
 	}
+	preConsumedQuota = common.ApplyModelDiscount(preConsumedQuota, info.ModelDiscountRatio())
 
 	freeModel := false
 	if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume && groupRatioInfo.GroupRatio == 0 {

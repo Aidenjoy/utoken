@@ -45,12 +45,15 @@ const (
 	/* user related keys */
 	ContextKeyUserId      ContextKey = "id"
 	ContextKeyUserSetting ContextKey = "user_setting"
-	ContextKeyUserQuota   ContextKey = "user_quota"
-	ContextKeyUserStatus  ContextKey = "user_status"
-	ContextKeyUserEmail   ContextKey = "user_email"
-	ContextKeyUserGroup   ContextKey = "user_group"
-	ContextKeyUsingGroup  ContextKey = "group"
-	ContextKeyUserName    ContextKey = "username"
+	// ContextKeyUserModelDiscounts 携带用户的按模型折扣 JSON（管理员配置，空=无折扣），
+	// 由 UserBase.WriteContext 写入，计费链路据此解析当前模型折扣。
+	ContextKeyUserModelDiscounts ContextKey = "user_model_discounts"
+	ContextKeyUserQuota          ContextKey = "user_quota"
+	ContextKeyUserStatus         ContextKey = "user_status"
+	ContextKeyUserEmail          ContextKey = "user_email"
+	ContextKeyUserGroup          ContextKey = "user_group"
+	ContextKeyUsingGroup         ContextKey = "group"
+	ContextKeyUserName           ContextKey = "username"
 
 	// 企业（组织）上下文：OrgId=0 表示无企业，OrgRole 取 model.OrgRoleAdmin / OrgRoleMember。
 	// 企业管理员不是系统角色，权限仅在本企业内生效。

@@ -58,6 +58,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
 	attachQuotaSaturation(c, info, other)
+	appendModelDiscountInfo(other, info.ModelDiscountRatio(), info.QuotaBeforeUserDiscount)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
 		ModelName: info.OriginModelName,
@@ -191,6 +192,11 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			for k, v := range priceData.OtherRatios() {
 				other[k] = v
 			}
+		}
+		// 用户折扣额外以 discount 暴露（user_discount 是计费快照键名），
+		// 使差额结算/退款日志与提交日志在前端「折扣」列上表现一致。
+		if discount, ok := bc.OtherRatios[relaycommon.OtherRatioUserDiscount]; ok && discount > 0 && discount < 1 {
+			other["discount"] = discount
 		}
 	}
 	props := task.Properties

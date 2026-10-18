@@ -229,6 +229,17 @@ function CommonLogsCard<TData>({
           cell={cells.get('prompt_tokens')}
           primaryOnly
         />
+        {/* 两列仅在用户勾选可见时才存在（隐藏列不在 getVisibleCells 里）。 */}
+        <SummaryField
+          label={t('Original Price')}
+          cell={cells.get('original_price')}
+          primaryOnly
+        />
+        <SummaryField
+          label={t('Discount (%)')}
+          cell={cells.get('discount')}
+          primaryOnly
+        />
         <SummaryField
           label={t('Details')}
           cell={cells.get('content')}

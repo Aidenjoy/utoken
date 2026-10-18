@@ -79,6 +79,14 @@ export interface AuthUser {
   is_agent?: boolean
   agent_min_discount?: number
   agent_max_discount?: number
+  /**
+   * Whether an admin configured at least one effective per-model discount
+   * (ratio < 1) for this user. Pushed by `/api/user/self`; the discount details
+   * themselves stay on the admin-only endpoint. Drives the default visibility
+   * of the usage-log "original price / discount" columns: users without a
+   * discount would only ever see "original price = cost, 100%".
+   */
+  has_model_discount?: boolean
 }
 
 interface AuthState {

@@ -22,6 +22,9 @@ type UserBase struct {
 	Status   int    `json:"status"`
 	Username string `json:"username"`
 	Setting  string `json:"setting"`
+	// ModelDiscounts 按模型折扣 JSON（管理员配置，空=无折扣），
+	// 随用户快照下发至 context，计费链路无需额外查库。
+	ModelDiscounts string `json:"model_discounts"`
 	// OrgId / OrgRole 是企业（组织）上下文：OrgId=0 表示无企业，
 	// OrgRole 取 model.OrgRoleAdmin / OrgRoleMember，与系统角色无关。
 	// 两者随用户缓存一起失效（成员变更时调 invalidateUserCache）。
@@ -36,6 +39,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserModelDiscounts, user.ModelDiscounts)
 	// 企业上下文：令牌鉴权（TokenAuth）走的是本方法而非 authHelper，
 	// 企业维度计费与日志归属依赖这两个 key，因此必须在这里一并写入。
 	common.SetContextKey(c, constant.ContextKeyUserOrgId, user.OrgId)
@@ -103,6 +107,9 @@ func updateUserCache(user User) error {
 	if err := updateUserNameCache(user.Id, user.Username); err != nil {
 		return err
 	}
+	// ModelDiscounts 故意不在此处刷新：本函数可能收到只带部分字段的 User
+	// （如 UpdateSelf 的 cleanUser），零值会误清折扣缓存；折扣写入走专用
+	// updateUserModelDiscountsCache，缓存重建时由 ToBaseUser 带入。
 	return updateUserSettingCache(user.Id, user.Setting)
 }
 
@@ -262,6 +269,13 @@ func updateUserSettingCache(userId int, setting string) error {
 		return nil
 	}
 	return common.RedisHSetField(getUserCacheKey(userId), "Setting", setting)
+}
+
+func updateUserModelDiscountsCache(userId int, discounts string) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	return common.RedisHSetField(getUserCacheKey(userId), "ModelDiscounts", discounts)
 }
 
 // GetUserLanguage returns the user's language preference from cache

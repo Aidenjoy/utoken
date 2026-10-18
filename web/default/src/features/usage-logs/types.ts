@@ -210,6 +210,12 @@ export interface LogOtherData {
   violation_fee_code?: string
   violation_fee_marker?: string
   fee_quota?: number
+  // Per-user model discount: `discount` is the ratio in (0, 1] applied to the
+  // wallet charge and `original_quota` the pre-discount quota. Both are only
+  // written when a discount actually applied, so legacy rows carry neither and
+  // render as "original price = cost, 100%".
+  discount?: number
+  original_quota?: number
   // Reject / intercept reason (admin)
   reject_reason?: string
   // Task-related fields (for refund logs, type=6)

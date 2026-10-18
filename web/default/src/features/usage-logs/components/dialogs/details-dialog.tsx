@@ -40,6 +40,7 @@ import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import { formatModelDiscount } from '@/lib/discount'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -157,7 +158,7 @@ function BillingBreakdown(props: {
   other: LogOtherData
   isAdmin: boolean
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
@@ -323,6 +324,21 @@ function BillingBreakdown(props: {
       value: other.admin_info.local_count_tokens
         ? t('Local Billing')
         : t('Upstream Response'),
+    })
+  }
+
+  // 按用户按模型折扣：两个字段仅在后端确实打折时写入日志，
+  // 历史日志（或无折扣用户）两者皆缺，此时不展示“原价”行。
+  if (other.original_quota != null) {
+    rows.push({
+      label: t('Original Price'),
+      value: formatLogQuota(other.original_quota),
+    })
+  }
+  if (other.discount != null) {
+    rows.push({
+      label: t('Discount (%)'),
+      value: formatModelDiscount(other.discount, i18n.language),
     })
   }
 

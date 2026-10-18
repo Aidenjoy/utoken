@@ -83,6 +83,11 @@ func validatePrompt(prompt string) *dto.TaskError {
 // overflow quota calculation into a negative charge.
 const MaxTaskDurationSeconds = 3600
 
+// OtherRatioUserDiscount 是任务计费 OtherRatios 中「用户按模型折扣」的键名。
+// 提交时写入 PriceData，随 BillingContext 快照落库，结算侧经
+// OtherRatioMultiplier 自动生效（含 seedance 绝对单价模式），因此预扣与结算天然一致。
+const OtherRatioUserDiscount = "user_discount"
+
 func validateTaskDurationBounds(req TaskSubmitReq) *dto.TaskError {
 	seconds := req.Duration
 	if seconds == 0 && req.Seconds != "" {

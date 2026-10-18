@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { type ColumnDef } from '@tanstack/react-table'
+import { type ColumnDef, type VisibilityState } from '@tanstack/react-table'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -31,6 +32,7 @@ import { useMediaQuery } from '@/hooks'
 import { useIsAdmin } from '@/hooks/use-admin'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   DEFAULT_LOGS_DATA,
@@ -61,6 +63,14 @@ function getColumnVisibilityStorageKey(
   isAdmin: boolean
 ): string {
   return `usage-logs:${logCategory}:${isAdmin ? 'admin' : 'user'}:column-visibility`
+}
+
+// 「原价 / 折扣」两列的默认可见性：只有确实配有模型折扣的用户才默认展示，
+// 否则两列永远只是「原价 = 费用、折扣 = 100%」的噪声。用户仍可在工具条的
+// 「查看」里自行勾选；localStorage 里已保存的选择会覆盖这里的默认值。
+function getDiscountColumnVisibility(hasDiscount: boolean): VisibilityState {
+  if (hasDiscount) return {}
+  return { original_price: false, discount: false }
 }
 
 function deserializeLogTypeFilter(value: unknown): unknown[] {
@@ -155,11 +165,18 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const logs = data?.items || []
   const columns = useColumnsByCategory(logCategory, isAdmin)
   const isLoadingData = isLoading || (isFetching && !data)
+  const hasModelDiscount =
+    useAuthStore((s) => s.auth.user?.has_model_discount) === true
+  const initialColumnVisibility = useMemo(
+    () => getDiscountColumnVisibility(hasModelDiscount),
+    [hasModelDiscount]
+  )
 
   const { table } = useDataTable({
     data: logs as Record<string, unknown>[],
     columns: columns as ColumnDef<Record<string, unknown>>[],
     columnFilters,
+    initialColumnVisibility,
     columnVisibilityStorageKey: getColumnVisibilityStorageKey(
       logCategory,
       isAdmin

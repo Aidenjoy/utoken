@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -116,8 +117,16 @@ type RelayInfo struct {
 	AudioUsage             bool
 	ReasoningEffort        string
 	UserSetting            dto.UserSetting
-	UserEmail              string
-	UserQuota              int
+	// ModelDiscounts 是管理员为本用户配置的按模型折扣 JSON（随用户快照下发，空=无折扣）。
+	ModelDiscounts string
+	// UserModelDiscount 为本次请求模型命中的折扣比例（1=原价），预扣与结算共用同一值，
+	// 读取请走 ModelDiscountRatio()，它在字段未初始化时回退为原价。
+	UserModelDiscount float64
+	// QuotaBeforeUserDiscount 是任务提交时打折前的额度（保留时长/分辨率等乘数），
+	// 仅用于消费日志的「原价」展示，不参与任何资金计算；0 表示无折扣。
+	QuotaBeforeUserDiscount int
+	UserEmail               string
+	UserQuota               int
 	// OrgId / OrgName 是本次请求归属的企业（组织），OrgId=0 表示非企业成员。
 	// 仅用于消费日志 other 与 quota_data 的企业维度统计；实际扣费由
 	// BillingSession 的 OrganizationFunding 决定，两者互不依赖。
@@ -529,7 +538,22 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		info.UserSetting = userSetting
 	}
 
+	// 用户按模型折扣：与 UserSetting 同样来自用户快照 context（TokenAuth 写入），
+	// 在此一次性解析，文本/图片与任务（视频）计费路径共用同一折扣值。
+	info.ModelDiscounts = common.GetContextKeyString(c, constant.ContextKeyUserModelDiscounts)
+	info.UserModelDiscount = common.ResolveUserModelDiscount(info.ModelDiscounts, info.OriginModelName)
+
 	return info
+}
+
+// ModelDiscountRatio 返回本次请求命中的用户模型折扣比例。
+// 未初始化（0）、超出 (0,1] 或 NaN 一律按原价处理：折扣为 0 会让整条计费链免费。
+func (info *RelayInfo) ModelDiscountRatio() float64 {
+	ratio := info.UserModelDiscount
+	if math.IsNaN(ratio) || ratio <= 0 || ratio > 1 {
+		return common.NoModelDiscount
+	}
+	return ratio
 }
 
 func cloneRequestHeaders(c *gin.Context) map[string]string {

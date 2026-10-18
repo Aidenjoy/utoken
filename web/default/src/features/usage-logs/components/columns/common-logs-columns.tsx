@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/tooltip'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import { formatModelDiscount } from '@/lib/discount'
 import {
   formatUseTime,
   formatLogQuota,
@@ -292,7 +293,7 @@ function buildTypeDetailSegments(
 }
 
 export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const columns: ColumnDef<UsageLog>[] = [
     {
       accessorKey: 'created_at',
@@ -772,6 +773,49 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           </div>
         )
       },
+    },
+
+    {
+      id: 'original_price',
+      header: t('Original Price'),
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isDisplayableLogType(log.type)) return null
+
+        const other = parseLogOther(log.other)
+        // 订阅抵扣不走钱包折扣，原价/折扣两列对它没有意义。
+        if (other?.billing_source === 'subscription') {
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
+        }
+        // 历史日志没有 original_quota：回退为当前费用，即“原价 = 费用”。
+        const originalQuota = other?.original_quota ?? log.quota
+        return (
+          <span className='text-muted-foreground font-mono text-xs tabular-nums'>
+            {formatLogQuota(originalQuota)}
+          </span>
+        )
+      },
+      size: 110,
+    },
+
+    {
+      id: 'discount',
+      header: t('Discount (%)'),
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isDisplayableLogType(log.type)) return null
+
+        const other = parseLogOther(log.other)
+        if (other?.billing_source === 'subscription') {
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
+        }
+        return (
+          <span className='font-mono text-xs tabular-nums'>
+            {formatModelDiscount(other?.discount, i18n.language)}
+          </span>
+        )
+      },
+      size: 90,
     },
 
     {

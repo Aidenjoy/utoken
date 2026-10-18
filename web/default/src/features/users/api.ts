@@ -138,6 +138,31 @@ export async function updateUserTokenRate(
 }
 
 /**
+ * Get a user's per-model discounts (admin only). Values are ratios in (0, 1]
+ * keyed by the request model name; a key may end with `*` to match a prefix.
+ * An empty object means no discount (original price).
+ */
+export async function getUserModelDiscounts(
+  id: number
+): Promise<ApiResponse<{ discounts: Record<string, number> }>> {
+  const res = await api.get(`/api/user/${id}/model_discounts`)
+  return res.data
+}
+
+/**
+ * Replace a user's per-model discounts (admin only). Passing an empty object
+ * clears every discount. Only wallet billing is affected; subscription
+ * deductions and top-up bonuses stay at full price.
+ */
+export async function updateUserModelDiscounts(
+  id: number,
+  discounts: Record<string, number>
+): Promise<ApiResponse<{ discounts: Record<string, number> }>> {
+  const res = await api.put(`/api/user/${id}/model_discounts`, { discounts })
+  return res.data
+}
+
+/**
  * Adjust user quota atomically (add/subtract/override)
  */
 export async function adjustUserQuota(

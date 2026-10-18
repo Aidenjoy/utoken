@@ -115,3 +115,13 @@ func QuotaFromDecimalChecked(d decimal.Decimal) (int, *QuotaClamp) {
 	f, _ := d.Round(0).Float64()
 	return saturateQuota(f, "QuotaFromDecimal")
 }
+
+// ApplyModelDiscount 按用户配置的模型折扣下调额度（四舍五入 + 饱和）。
+// 折扣必须落在 (0,1]；非法值（NaN/0/负数/>1）与 quota<=0 一律原样返回，
+// 确保折扣配置出错时最坏情况是按原价扣费，绝不会变成免费或负扣费。
+func ApplyModelDiscount(quota int, discount float64) int {
+	if quota <= 0 || math.IsNaN(discount) || discount <= 0 || discount >= 1 {
+		return quota
+	}
+	return QuotaRound(float64(quota) * discount)
+}
