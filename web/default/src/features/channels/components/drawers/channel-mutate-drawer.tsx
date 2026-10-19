@@ -306,6 +306,7 @@ const SENSITIVE_FORM_FIELDS = [
   'asset_project_name',
   'asset_region',
   'asset_endpoint',
+  'asset_auth_mode',
 ] satisfies (keyof ChannelFormValues)[]
 
 function readAdvancedSettingsPreference(): boolean {
@@ -743,6 +744,11 @@ export function ChannelMutateDrawer({
   )
   const currentProxy = form.watch('proxy')
   const currentAssetUploadProtocol = form.watch('asset_upload_protocol')
+  const currentAssetAuthMode = form.watch('asset_auth_mode')
+  // bearer 模式下 AK/SK/区域都不参与请求，隐藏这些字段避免管理员填错凭据
+  const assetUsesBearerAuth =
+    currentAssetUploadProtocol === 'ark_official' &&
+    currentAssetAuthMode === 'bearer'
   const currentSystemPrompt = form.watch('system_prompt')
   const currentSystemPromptOverride = form.watch('system_prompt_override')
   const currentAllowServiceTier = form.watch('allow_service_tier')
@@ -3025,36 +3031,97 @@ export function ChannelMutateDrawer({
                                           )}
                                         />
                                       )}
-                                      <FormField
-                                        control={form.control}
-                                        name='asset_ak'
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>
-                                              {t('Asset AccessKey')}
-                                            </FormLabel>
-                                            <FormControl>
-                                              <Input {...field} />
-                                            </FormControl>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
-                                      <FormField
-                                        control={form.control}
-                                        name='asset_sk'
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>
-                                              {t('Asset SecretKey')}
-                                            </FormLabel>
-                                            <FormControl>
-                                              <Input {...field} />
-                                            </FormControl>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
+                                      {currentAssetUploadProtocol ===
+                                        'ark_official' && (
+                                        <FormField
+                                          control={form.control}
+                                          name='asset_auth_mode'
+                                          render={({ field }) => (
+                                            <FormItem>
+                                              <FormLabel>
+                                                {t('Asset Auth Mode')}
+                                              </FormLabel>
+                                              <Select
+                                                items={[
+                                                  {
+                                                    value: 'v4',
+                                                    label: t(
+                                                      'AK/SK Signature (V4)'
+                                                    ),
+                                                  },
+                                                  {
+                                                    value: 'bearer',
+                                                    label:
+                                                      t('API Key (Bearer)'),
+                                                  },
+                                                ]}
+                                                onValueChange={field.onChange}
+                                                value={field.value || 'v4'}
+                                              >
+                                                <FormControl>
+                                                  <SelectTrigger>
+                                                    <SelectValue />
+                                                  </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent
+                                                  alignItemWithTrigger={false}
+                                                >
+                                                  <SelectGroup>
+                                                    <SelectItem value='v4'>
+                                                      {t(
+                                                        'AK/SK Signature (V4)'
+                                                      )}
+                                                    </SelectItem>
+                                                    <SelectItem value='bearer'>
+                                                      {t('API Key (Bearer)')}
+                                                    </SelectItem>
+                                                  </SelectGroup>
+                                                </SelectContent>
+                                              </Select>
+                                              <FormDescription>
+                                                {t(
+                                                  'Choose API Key (Bearer) for Ark-compatible gateways that authenticate with the channel API key instead of Volcengine AK/SK signing, such as Baidu AI Cloud aigw'
+                                                )}
+                                              </FormDescription>
+                                              <FormMessage />
+                                            </FormItem>
+                                          )}
+                                        />
+                                      )}
+                                      {!assetUsesBearerAuth && (
+                                        <>
+                                          <FormField
+                                            control={form.control}
+                                            name='asset_ak'
+                                            render={({ field }) => (
+                                              <FormItem>
+                                                <FormLabel>
+                                                  {t('Asset AccessKey')}
+                                                </FormLabel>
+                                                <FormControl>
+                                                  <Input {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                              </FormItem>
+                                            )}
+                                          />
+                                          <FormField
+                                            control={form.control}
+                                            name='asset_sk'
+                                            render={({ field }) => (
+                                              <FormItem>
+                                                <FormLabel>
+                                                  {t('Asset SecretKey')}
+                                                </FormLabel>
+                                                <FormControl>
+                                                  <Input {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                              </FormItem>
+                                            )}
+                                          />
+                                        </>
+                                      )}
                                       <FormField
                                         control={form.control}
                                         name='asset_group_id'
@@ -3100,24 +3167,26 @@ export function ChannelMutateDrawer({
                                           </FormItem>
                                         )}
                                       />
-                                      <FormField
-                                        control={form.control}
-                                        name='asset_region'
-                                        render={({ field }) => (
-                                          <FormItem>
-                                            <FormLabel>
-                                              {t('Asset Region')}
-                                            </FormLabel>
-                                            <FormControl>
-                                              <Input
-                                                placeholder='cn-beijing'
-                                                {...field}
-                                              />
-                                            </FormControl>
-                                            <FormMessage />
-                                          </FormItem>
-                                        )}
-                                      />
+                                      {!assetUsesBearerAuth && (
+                                        <FormField
+                                          control={form.control}
+                                          name='asset_region'
+                                          render={({ field }) => (
+                                            <FormItem>
+                                              <FormLabel>
+                                                {t('Asset Region')}
+                                              </FormLabel>
+                                              <FormControl>
+                                                <Input
+                                                  placeholder='cn-beijing'
+                                                  {...field}
+                                                />
+                                              </FormControl>
+                                              <FormMessage />
+                                            </FormItem>
+                                          )}
+                                        />
+                                      )}
                                     </>
                                   )}
 

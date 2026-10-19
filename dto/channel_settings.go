@@ -45,6 +45,16 @@ const (
 	DefaultAssetRegion     = "cn-beijing"
 )
 
+// ark_official 协议的素材网关鉴权方式
+const (
+	// AssetAuthModeV4 火山 V4 签名（AK/SK），火山官方与 TokenBit/星枢无极等兼容网关使用。
+	AssetAuthModeV4 = "v4"
+	// AssetAuthModeBearer Authorization: Bearer <渠道密钥>。方舟兼容网关不一定照搬火山的
+	// 鉴权方式，如百度智能云 aigw 的 /volc 路由只认 API Key，用 AK/SK 签名会一直
+	// SignatureDoesNotMatch，故鉴权方式必须可配置而不能从 endpoint 推断。
+	AssetAuthModeBearer = "bearer"
+)
+
 type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string                `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType         `json:"vertex_key_type,omitempty"` // "json" or "api_key"
@@ -79,6 +89,9 @@ type ChannelOtherSettings struct {
 	// 仅 ark_official 协议读取：留空走火山官方默认地址，bit_official/xswj_official
 	// 的网关是各自固定服务，仍由代码内常量决定，不受该字段影响。
 	AssetEndpoint string `json:"asset_endpoint,omitempty"`
+	// AssetAuthMode ark_official 协议的鉴权方式：""/v4 走 AK/SK V4 签名，bearer 走渠道密钥。
+	// 选 bearer 时 AssetAK/AssetSK/AssetRegion 一律不参与请求。
+	AssetAuthMode string `json:"asset_auth_mode,omitempty"`
 }
 
 // AssetUploadPathOrDefault 返回 relay 协议素材注册路径。
@@ -103,6 +116,21 @@ func (s *ChannelOtherSettings) AssetRegionOrDefault() string {
 		return DefaultAssetRegion
 	}
 	return strings.TrimSpace(s.AssetRegion)
+}
+
+// AssetAuthModeOrDefault 返回 ark_official 协议的鉴权方式，留空按 V4 签名处理，
+// 保证已有渠道（火山官方 / TokenBit / 星枢无极）升级后行为不变。
+// 无法识别的取值同样回落 V4：宁可报签名错误也不要把 AK/SK 当 Bearer 明文发出去。
+func (s *ChannelOtherSettings) AssetAuthModeOrDefault() string {
+	if s == nil {
+		return AssetAuthModeV4
+	}
+	switch strings.TrimSpace(s.AssetAuthMode) {
+	case AssetAuthModeBearer:
+		return AssetAuthModeBearer
+	default:
+		return AssetAuthModeV4
+	}
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

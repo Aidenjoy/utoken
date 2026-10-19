@@ -341,7 +341,7 @@ func TestNewProtocolUsesConfiguredAssetEndpoint(t *testing.T) {
 	// Action/Version 由代码按接口写入，不受配置里剥掉的 query 影响
 	assert.Equal(t, "CreateAsset", gotAction)
 	assert.Equal(t, "2024-01-01", gotVersion)
-	// 换网关不改鉴权模型：仍是 AK/SK 的 V4 签名
+	// 换网关不改鉴权模型：未选 bearer 时仍是 AK/SK 的 V4 签名
 	assert.Contains(t, gotAuth, "Credential=AKLT-test/")
 }
 
@@ -377,6 +377,151 @@ func TestNewProtocolFixedGatewaysIgnoreAssetEndpoint(t *testing.T) {
 			proto, err := NewProtocol(cfg)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, proto.(*ArkOfficialProtocol).endpoint)
+		})
+	}
+}
+
+// TestArkOfficialBearerAuthMode 验证 bearer 鉴权模式（百度智能云 aigw 的 /volc
+// 路由只认 API Key）：发 Authorization: Bearer <渠道密钥>，不带 V4 签名的
+// X-Date / X-Content-Sha256，也不把 AK/SK 泄到请求里。
+func TestArkOfficialBearerAuthMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		apiKey   string
+		wantAuth string
+	}{
+		{name: "single key", apiKey: "sk-channel-key", wantAuth: "Bearer sk-channel-key"},
+		// 渠道密钥字段允许多 key 池，整串发出去必然 401，只能取第一条
+		{name: "newline separated key pool", apiKey: "sk-first\nsk-second\nsk-third", wantAuth: "Bearer sk-first"},
+		{name: "comma separated key pool", apiKey: "sk-first,sk-second", wantAuth: "Bearer sk-first"},
+		{name: "surrounding whitespace", apiKey: "  sk-channel-key \n", wantAuth: "Bearer sk-channel-key"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotAuth, gotXDate, gotSha256 string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotAuth = r.Header.Get("Authorization")
+				gotXDate = r.Header.Get("X-Date")
+				gotSha256 = r.Header.Get("X-Content-Sha256")
+				_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Id":"asset-bearer-1"}}`))
+			}))
+			defer srv.Close()
+
+			p := newOfficialProtocolForTest(srv.URL)
+			p.cfg.ApiKey = tt.apiKey
+			p.cfg.Settings.AssetAuthMode = dto.AssetAuthModeBearer
+			// bearer 模式下 AK/SK 不参与请求，置空以证明确实没用到
+			p.cfg.Settings.AssetAK = ""
+			p.cfg.Settings.AssetSK = ""
+
+			res, err := p.Upload(UploadRequest{URL: "https://example.com/a.jpg", AssetType: model.AssetTypeImage, Name: "a"})
+			require.NoError(t, err)
+			assert.Equal(t, "asset-bearer-1", res.AssetID)
+
+			assert.Equal(t, tt.wantAuth, gotAuth)
+			assert.Empty(t, gotXDate, "bearer 模式不应发签名头")
+			assert.Empty(t, gotSha256, "bearer 模式不应发签名头")
+		})
+	}
+}
+
+// TestNewProtocolBearerAuthValidation 验证 bearer 模式改用渠道密钥做必填校验：
+// 没有 AK/SK 也能构造（否则会拦住只发 API Key 的网关），但没渠道密钥必须报错。
+func TestNewProtocolBearerAuthValidation(t *testing.T) {
+	cfg := officialConfig("")
+	cfg.Settings.AssetAuthMode = dto.AssetAuthModeBearer
+	cfg.Settings.AssetAK = ""
+	cfg.Settings.AssetSK = ""
+	cfg.ApiKey = ""
+	_, err := NewProtocol(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires a channel api key")
+
+	cfg.ApiKey = "sk-channel-key"
+	proto, err := NewProtocol(cfg)
+	require.NoError(t, err)
+	assert.NotNil(t, proto)
+
+	// v4 模式（默认）仍要求 AK/SK，行为与接入鉴权开关前一致
+	cfg.Settings.AssetAuthMode = ""
+	_, err = NewProtocol(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires asset_ak and asset_sk")
+}
+
+func TestAssetAuthModeOrDefault(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty falls back to v4", in: "", want: dto.AssetAuthModeV4},
+		{name: "explicit v4", in: "v4", want: dto.AssetAuthModeV4},
+		{name: "bearer", in: "bearer", want: dto.AssetAuthModeBearer},
+		{name: "bearer with whitespace", in: "  bearer \n", want: dto.AssetAuthModeBearer},
+		// 无法识别的取值必须回落签名而不是 bearer：后者会把 SK 当明文令牌发出去
+		{name: "unknown falls back to v4", in: "Bearer", want: dto.AssetAuthModeV4},
+		{name: "garbage falls back to v4", in: "oauth2", want: dto.AssetAuthModeV4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := dto.ChannelOtherSettings{AssetAuthMode: tt.in}
+			assert.Equal(t, tt.want, s.AssetAuthModeOrDefault())
+		})
+	}
+	var nilSettings *dto.ChannelOtherSettings
+	assert.Equal(t, dto.AssetAuthModeV4, nilSettings.AssetAuthModeOrDefault())
+}
+
+// TestArkOfficialQueryAssetLevelError 验证素材级失败原因（Result.Error）被透出。
+// 这与信封层 ResponseMetadata.Error 是两条路径：后者 HTTP 200 也会让 call() 报错，
+// 前者是 HTTP 200 + Status=Failed，不透出的话用户只看到“失败”而不知道原因。
+func TestArkOfficialQueryAssetLevelError(t *testing.T) {
+	tests := []struct {
+		name       string
+		result     string
+		wantStatus string
+		wantErrMsg string
+	}{
+		{
+			// 百度网关对图片高宽有 300–6000px 约束，小图会进这个终态
+			name:       "failed with message",
+			result:     `{"Status":"Failed","Error":{"Code":"InvalidParameter.HeightTooSmall","Message":"Height must be between 300px and 6000px."}}`,
+			wantStatus: model.AssetStatusFailed,
+			wantErrMsg: "Height must be between 300px and 6000px.",
+		},
+		{
+			name:       "failed with code only",
+			result:     `{"Status":"Failed","Error":{"Code":"InvalidParameter.HeightTooSmall","Message":""}}`,
+			wantStatus: model.AssetStatusFailed,
+			wantErrMsg: "InvalidParameter.HeightTooSmall",
+		},
+		{
+			// 上游在成功时也带空 Error 对象，不得当成失败原因写进日志
+			name:       "active with empty error object",
+			result:     `{"Status":"Active","URL":"","Error":{"Code":"","Message":""}}`,
+			wantStatus: model.AssetStatusActive,
+			wantErrMsg: "",
+		},
+		{
+			name:       "processing without error field",
+			result:     `{"Status":"Processing"}`,
+			wantStatus: model.AssetStatusPending,
+			wantErrMsg: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":` + tt.result + `}`))
+			}))
+			defer srv.Close()
+
+			p := newOfficialProtocolForTest(srv.URL)
+			res, err := p.Query("asset-x")
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, res.Status)
+			assert.Equal(t, tt.wantErrMsg, res.ErrorMsg)
 		})
 	}
 }

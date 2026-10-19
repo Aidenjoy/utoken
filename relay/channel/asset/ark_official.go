@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 )
 
 // ArkOfficialProtocol 火山方舟官方素材协议：
-// AK/SK 签名直连 universal API（host 默认 open.volcengineapi.com，可由渠道
-// asset_endpoint 改成方舟兼容网关），Action=CreateAsset/GetAsset，Version=2024-01-01，service=ark。
+// Action=CreateAsset/GetAsset，Version=2024-01-01，service=ark。
+// 网关地址默认 open.volcengineapi.com，可由渠道 asset_endpoint 改成方舟兼容网关；
+// 鉴权方式由 asset_auth_mode 决定：默认 AK/SK V4 签名，bearer 则发渠道密钥。
 type ArkOfficialProtocol struct {
 	cfg ChannelConfig
 	// endpoint 素材网关地址：来自渠道 asset_endpoint 配置（也允许测试覆盖），
@@ -134,6 +136,13 @@ func (p *ArkOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 		Status     string `json:"Status"`
 		URL        string `json:"URL"`
 		PreviewURL string `json:"PreviewURL"`
+		// Error 是素材自身的失败原因（如百度网关对图片尺寸有 300–6000px 约束），
+		// 与信封层 ResponseMetadata.Error 不同：后者会让 call() 直接返回 error。
+		// 上游在成功时也可能带上空的 Error 对象，故必须判空后才能当失败原因用。
+		Error *struct {
+			Code    string `json:"Code"`
+			Message string `json:"Message"`
+		} `json:"Error"`
 	}
 	if err := p.call(arkActionGetAsset, body, &result); err != nil {
 		// 终端性错误（如帧率/参数不合规）转成 failed 结果，前端不再无限转圈；
@@ -147,13 +156,21 @@ func (p *ArkOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 	if preview == "" {
 		preview = result.URL
 	}
+	errMsg := ""
+	if result.Error != nil {
+		errMsg = strings.TrimSpace(result.Error.Message)
+		if errMsg == "" {
+			errMsg = strings.TrimSpace(result.Error.Code)
+		}
+	}
 	return &QueryResult{
 		Status:     NormalizeUpstreamStatus(result.Status),
 		PreviewURL: preview,
+		ErrorMsg:   errMsg,
 	}, nil
 }
 
-// call 执行一次签名请求并把 Result 解析到 out。
+// call 执行一次请求并把 Result 解析到 out；鉴权方式按 asset_auth_mode 分支。
 func (p *ArkOfficialProtocol) call(action string, body []byte, out any) error {
 	endpoint := p.endpoint
 	if endpoint == "" {
@@ -182,29 +199,38 @@ func (p *ArkOfficialProtocol) call(action string, body []byte, out any) error {
 	if p.now != nil {
 		now = p.now
 	}
-	signHost := httpReq.URL.Host
-	if p.signHost != "" {
-		signHost = p.signHost
+	if p.cfg.Settings.AssetAuthModeOrDefault() == dto.AssetAuthModeBearer {
+		// 渠道密钥可能是多行池，取第一条：整串发出去必然 401。
+		apiKey := strings.TrimSpace(p.cfg.ApiKey)
+		if i := strings.IndexAny(apiKey, "\r\n,"); i >= 0 {
+			apiKey = strings.TrimSpace(apiKey[:i])
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	} else {
+		signHost := httpReq.URL.Host
+		if p.signHost != "" {
+			signHost = p.signHost
+		}
+		signPath := httpReq.URL.Path
+		if p.signPath != "" {
+			signPath = p.signPath
+		}
+		signRequest(httpReq, signParams{
+			AK:      p.cfg.Settings.AssetAK,
+			SK:      p.cfg.Settings.AssetSK,
+			Region:  p.cfg.Settings.AssetRegionOrDefault(),
+			Service: arkOfficialService,
+			Host:    signHost,
+			Path:    signPath,
+			Query:   query,
+			Headers: http.Header{"content-type": []string{"application/json"}},
+			Body:    body,
+			Now:     now(),
+			SignedNames: []string{
+				"content-type", "host", "x-content-sha256", "x-date",
+			},
+		})
 	}
-	signPath := httpReq.URL.Path
-	if p.signPath != "" {
-		signPath = p.signPath
-	}
-	signRequest(httpReq, signParams{
-		AK:      p.cfg.Settings.AssetAK,
-		SK:      p.cfg.Settings.AssetSK,
-		Region:  p.cfg.Settings.AssetRegionOrDefault(),
-		Service: arkOfficialService,
-		Host:    signHost,
-		Path:    signPath,
-		Query:   query,
-		Headers: http.Header{"content-type": []string{"application/json"}},
-		Body:    body,
-		Now:     now(),
-		SignedNames: []string{
-			"content-type", "host", "x-content-sha256", "x-date",
-		},
-	})
 
 	client, err := httpClient(p.cfg.Proxy)
 	if err != nil {

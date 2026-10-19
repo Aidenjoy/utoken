@@ -58,11 +58,16 @@ func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 	case dto.AssetUploadProtocolRelay:
 		return &RelayProtocol{cfg: cfg}, nil
 	case dto.AssetUploadProtocolArkOfficial:
-		if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
+		// 方舟兼容网关（如百度智能云 aigw）与火山官方协议一致，但鉴权方式可能不同：
+		// 因此 endpoint 与 auth_mode 都开放配置，endpoint 留空仍走官方默认地址。
+		// bearer 模式用渠道密钥，此时 AK/SK 不参与请求，不能再当成必填项拦住。
+		if cfg.Settings.AssetAuthModeOrDefault() == dto.AssetAuthModeBearer {
+			if strings.TrimSpace(cfg.ApiKey) == "" {
+				return nil, fmt.Errorf("ark_official asset protocol with bearer auth requires a channel api key")
+			}
+		} else if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
 			return nil, fmt.Errorf("ark_official asset protocol requires asset_ak and asset_sk")
 		}
-		// 方舟兼容网关（如百度智能云 aigw）与火山官方协议一致，仅地址不同，
-		// 因此这里允许渠道自定义 endpoint；留空仍走官方默认地址。
 		endpoint, err := normalizeAssetEndpoint(cfg.Settings.AssetEndpoint)
 		if err != nil {
 			return nil, err

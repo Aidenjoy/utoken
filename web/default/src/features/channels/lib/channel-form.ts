@@ -228,6 +228,7 @@ export const channelFormSchema = z
     asset_project_name: z.string().optional(),
     asset_region: z.string().optional(),
     asset_endpoint: z.string().optional(),
+    asset_auth_mode: z.enum(['', 'v4', 'bearer']).optional(),
   })
   .superRefine((data, ctx) => {
     if ([3, 8, 36, 45, 60].includes(data.type) && !data.base_url?.trim()) {
@@ -378,6 +379,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   asset_project_name: '',
   asset_region: '',
   asset_endpoint: '',
+  asset_auth_mode: '',
 }
 
 // ============================================================================
@@ -449,6 +451,7 @@ export function transformChannelToFormDefaults(
   let assetProjectName = ''
   let assetRegion = ''
   let assetEndpoint = ''
+  let assetAuthMode: '' | 'v4' | 'bearer' = ''
 
   if (channel.settings) {
     try {
@@ -493,6 +496,10 @@ export function transformChannelToFormDefaults(
       assetProjectName = String(parsed.asset_project_name || '')
       assetRegion = String(parsed.asset_region || '')
       assetEndpoint = String(parsed.asset_endpoint || '')
+      assetAuthMode =
+        parsed.asset_auth_mode === 'v4' || parsed.asset_auth_mode === 'bearer'
+          ? parsed.asset_auth_mode
+          : ''
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to parse channel settings:', error)
@@ -554,6 +561,7 @@ export function transformChannelToFormDefaults(
     asset_project_name: assetProjectName,
     asset_region: assetRegion,
     asset_endpoint: assetEndpoint,
+    asset_auth_mode: assetAuthMode,
   }
 }
 
@@ -703,6 +711,7 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     'asset_project_name',
     'asset_region',
     'asset_endpoint',
+    'asset_auth_mode',
   ] as const
   if (formData.type === 59 && formData.asset_upload_protocol) {
     settingsObj.asset_upload_protocol = formData.asset_upload_protocol
@@ -741,6 +750,17 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       settingsObj.asset_endpoint = formData.asset_endpoint.trim()
     } else {
       delete settingsObj.asset_endpoint
+    }
+    // 鉴权方式只有「火山官方」协议可选（方舟兼容网关不一定照搬火山的 AK/SK
+    // 签名，如百度智能云 aigw 只认 API Key）；bearer 以外的值一律不落库，
+    // 后端留空即按 V4 签名处理。
+    if (
+      formData.asset_upload_protocol === 'ark_official' &&
+      formData.asset_auth_mode === 'bearer'
+    ) {
+      settingsObj.asset_auth_mode = 'bearer'
+    } else {
+      delete settingsObj.asset_auth_mode
     }
   } else {
     for (const key of assetSettingKeys) {
