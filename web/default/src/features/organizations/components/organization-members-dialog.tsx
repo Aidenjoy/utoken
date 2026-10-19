@@ -22,6 +22,16 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -38,13 +48,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { removeOrgMember } from '@/features/organization/api'
 import {
   MemberMutateDrawer,
   type MemberDrawerMode,
 } from '@/features/organization/components/member-mutate-drawer'
 import {
+  ORG_ERROR_MESSAGES,
   ORG_MEMBER_STATUSES,
   ORG_ROLES,
+  ORG_SUCCESS_MESSAGES,
 } from '@/features/organization/constants'
 import type {
   Organization,
@@ -67,12 +80,13 @@ type DrawerState = {
 }
 
 /**
- * Member list for a system administrator. Reading is always allowed; adding
- * and editing members are offered too because an organization created without
- * an admin (or whose admin appointment failed) would otherwise have nobody who
- * can ever populate or promote it. Writes go through the organization-scoped
- * endpoints with an explicit `org_id`, i.e. the administrator acts on behalf of
- * that org.
+ * Member list for a system administrator. Reading is always allowed; adding,
+ * editing and removing members are offered too because an organization created
+ * without an admin (or whose admin appointment failed) would otherwise have
+ * nobody who can ever populate or promote it, and an organization can only be
+ * deleted once it has no members left. Writes go through the
+ * organization-scoped endpoints with an explicit `org_id`, i.e. the
+ * administrator acts on behalf of that org.
  */
 export function OrganizationMembersDialog({
   open,
@@ -88,6 +102,10 @@ export function OrganizationMembersDialog({
     mode: 'create',
     member: null,
   })
+  const [pendingRemoval, setPendingRemoval] = useState<OrgMemberDetail | null>(
+    null
+  )
+  const [isRemoving, setIsRemoving] = useState(false)
 
   const openDrawer = (state: DrawerState) => {
     setDrawerState(state)
@@ -102,6 +120,25 @@ export function OrganizationMembersDialog({
       queryKey: ['admin-organization-detail', organization?.id ?? 0],
     })
     void queryClient.invalidateQueries({ queryKey: ['admin-organizations'] })
+  }
+
+  const confirmRemove = async () => {
+    if (!pendingRemoval) return
+    setIsRemoving(true)
+    try {
+      const result = await removeOrgMember(pendingRemoval.id, organization?.id)
+      if (!result.success) {
+        toast.error(
+          result.message || t(ORG_ERROR_MESSAGES.MEMBER_REMOVE_FAILED)
+        )
+        return
+      }
+      toast.success(t(ORG_SUCCESS_MESSAGES.MEMBER_REMOVED))
+      setPendingRemoval(null)
+      refreshMembers()
+    } finally {
+      setIsRemoving(false)
+    }
   }
 
   const { data, isLoading } = useQuery({
@@ -135,129 +172,176 @@ export function OrganizationMembersDialog({
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[760px]'>
-        <DialogHeader>
-          <DialogTitle>{t('Organization Members')}</DialogTitle>
-          <DialogDescription>
-            {t('Organization: {{name}}', {
-              name: organization?.display_name || organization?.name || '',
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        <div className='flex items-center justify-end gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => openDrawer({ mode: 'invite', member: null })}
-          >
-            {t('Add Existing User')}
-          </Button>
-          <Button
-            size='sm'
-            onClick={() => openDrawer({ mode: 'create', member: null })}
-          >
-            {t('Create Member')}
-          </Button>
-        </div>
-        <div className='max-h-[60vh] overflow-auto'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('Username')}</TableHead>
-                <TableHead>{t('Organization Role')}</TableHead>
-                <TableHead className='text-right'>{t('Sub-quota')}</TableHead>
-                <TableHead>{t('Status')}</TableHead>
-                <TableHead>{t('Joined At')}</TableHead>
-                <TableHead className='text-right'>{t('Actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading || members.length === 0 ? (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className='sm:max-w-[760px]'>
+          <DialogHeader>
+            <DialogTitle>{t('Organization Members')}</DialogTitle>
+            <DialogDescription>
+              {t('Organization: {{name}}', {
+                name: organization?.display_name || organization?.name || '',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className='flex items-center justify-end gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => openDrawer({ mode: 'invite', member: null })}
+            >
+              {t('Add Existing User')}
+            </Button>
+            <Button
+              size='sm'
+              onClick={() => openDrawer({ mode: 'create', member: null })}
+            >
+              {t('Create Member')}
+            </Button>
+          </div>
+          <div className='max-h-[60vh] overflow-auto'>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className='text-muted-foreground py-10 text-center'
-                  >
-                    {isLoading ? t('Loading...') : t('No Members Found')}
-                  </TableCell>
+                  <TableHead>{t('Username')}</TableHead>
+                  <TableHead>{t('Organization Role')}</TableHead>
+                  <TableHead className='text-right'>{t('Sub-quota')}</TableHead>
+                  <TableHead>{t('Status')}</TableHead>
+                  <TableHead>{t('Joined At')}</TableHead>
+                  <TableHead className='text-right'>{t('Actions')}</TableHead>
                 </TableRow>
-              ) : (
-                members.map((member) => {
-                  const roleConfig = ORG_ROLES[member.org_role]
-                  const statusConfig = ORG_MEMBER_STATUSES[member.status]
-                  return (
-                    <TableRow key={member.id}>
-                      <TableCell>
-                        <div className='flex flex-col'>
-                          <span className='max-w-[180px] truncate font-medium'>
-                            {member.username || `#${member.user_id}`}
-                          </span>
-                          {member.email ? (
-                            <span className='text-muted-foreground max-w-[180px] truncate text-xs'>
-                              {member.email}
+              </TableHeader>
+              <TableBody>
+                {isLoading || members.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className='text-muted-foreground py-10 text-center'
+                    >
+                      {isLoading ? t('Loading...') : t('No Members Found')}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  members.map((member) => {
+                    const roleConfig = ORG_ROLES[member.org_role]
+                    const statusConfig = ORG_MEMBER_STATUSES[member.status]
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className='flex flex-col'>
+                            <span className='max-w-[180px] truncate font-medium'>
+                              {member.username || `#${member.user_id}`}
                             </span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {roleConfig ? (
-                          <StatusBadge
-                            label={t(roleConfig.labelKey)}
-                            variant={roleConfig.variant}
-                            copyable={false}
-                          />
-                        ) : (
-                          <span className='text-muted-foreground'>-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className='text-right text-xs tabular-nums'>
-                        {member.quota_limit > 0
-                          ? `${formatQuota(member.quota_used)} / ${formatQuota(member.quota_limit)}`
-                          : `${t('Unlimited')} · ${formatQuota(member.quota_used)}`}
-                      </TableCell>
-                      <TableCell>
-                        {statusConfig ? (
-                          <StatusBadge
-                            label={t(statusConfig.labelKey)}
-                            variant={statusConfig.variant}
-                            copyable={false}
-                          />
-                        ) : (
-                          <span className='text-muted-foreground'>-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className='text-muted-foreground text-xs'>
-                        {formatTimestamp(member.joined_at)}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        <Button
-                          variant='ghost'
-                          size='sm'
-                          onClick={() => openDrawer({ mode: 'edit', member })}
-                        >
-                          {t('Edit')}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
+                            {member.email ? (
+                              <span className='text-muted-foreground max-w-[180px] truncate text-xs'>
+                                {member.email}
+                              </span>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {roleConfig ? (
+                            <StatusBadge
+                              label={t(roleConfig.labelKey)}
+                              variant={roleConfig.variant}
+                              copyable={false}
+                            />
+                          ) : (
+                            <span className='text-muted-foreground'>-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className='text-right text-xs tabular-nums'>
+                          {member.quota_limit > 0
+                            ? `${formatQuota(member.quota_used)} / ${formatQuota(member.quota_limit)}`
+                            : `${t('Unlimited')} · ${formatQuota(member.quota_used)}`}
+                        </TableCell>
+                        <TableCell>
+                          {statusConfig ? (
+                            <StatusBadge
+                              label={t(statusConfig.labelKey)}
+                              variant={statusConfig.variant}
+                              copyable={false}
+                            />
+                          ) : (
+                            <span className='text-muted-foreground'>-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className='text-muted-foreground text-xs'>
+                          {formatTimestamp(member.joined_at)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          <div className='flex items-center justify-end gap-1'>
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              onClick={() =>
+                                openDrawer({ mode: 'edit', member })
+                              }
+                            >
+                              {t('Edit')}
+                            </Button>
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              className='text-destructive hover:text-destructive'
+                              onClick={() => setPendingRemoval(member)}
+                            >
+                              {t('Remove from Organization')}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <MemberMutateDrawer
+            open={drawerOpen}
+            mode={drawerState.mode}
+            member={drawerState.member}
+            orgId={organization?.id}
+            quotaHeadroom={detail?.quota_headroom ?? null}
+            onRefresh={refreshMembers}
+            onOpenChange={(value) => {
+              if (!value) setDrawerOpen(false)
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(value) => {
+          if (!value) setPendingRemoval(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Remove Member')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'Remove {{username}} from this organization? The account, its keys and its history are kept; it simply stops consuming the shared pool.',
+                { username: pendingRemoval?.username ?? '' }
               )}
-            </TableBody>
-          </Table>
-        </div>
-        <MemberMutateDrawer
-          open={drawerOpen}
-          mode={drawerState.mode}
-          member={drawerState.member}
-          orgId={organization?.id}
-          quotaHeadroom={detail?.quota_headroom ?? null}
-          onRefresh={refreshMembers}
-          onOpenChange={(value) => {
-            if (!value) setDrawerOpen(false)
-          }}
-        />
-      </DialogContent>
-    </Dialog>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemoving}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRemoving}
+              onClick={(event) => {
+                event.preventDefault()
+                void confirmRemove()
+              }}
+            >
+              {isRemoving ? t('Removing...') : t('Remove')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

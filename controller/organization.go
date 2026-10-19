@@ -681,7 +681,9 @@ func RemoveOrgMember(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgOrgRemoveSelf)
 		return
 	}
-	if member.IsAdmin() {
+	// 最后管理员保护是防止企业失去自管理入口；系统管理员代管时自己就是兜底
+	// 渠道，且清空成员是删除企业的前置条件，故该限制对其不生效。
+	if member.IsAdmin() && !middleware.IsSystemAdmin(c) {
 		adminIds, err := model.GetOrgAdminUserIds(org.Id)
 		if err != nil {
 			common.ApiError(c, err)
