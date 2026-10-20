@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { type ColumnDef } from '@tanstack/react-table'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -61,6 +62,40 @@ function getColumnVisibilityStorageKey(
   isAdmin: boolean
 ): string {
   return `usage-logs:${logCategory}:${isAdmin ? 'admin' : 'user'}:column-visibility`
+}
+
+// 「原价 / 折扣」两列曾经对未配模型折扣的用户默认隐藏，那份「隐藏」被写进了
+// localStorage。限制取消后这两列应对所有人默认可见，但旧的存档仍会把它们藏起来
+// （管理员视角尤其明显）。这里做一次一次性迁移：清掉这两列的 false 存档、其余
+// 列的偏好原样保留，并用标记键保证只跑一次，之后用户自行隐藏的选择不再被回滚。
+const DISCOUNT_COLUMN_IDS = ['original_price', 'discount'] as const
+const DISCOUNT_VISIBILITY_MIGRATED_SUFFIX = ':discount-cols-migrated-v1'
+
+function migrateDiscountColumnVisibility(storageKey: string): void {
+  if (typeof window === 'undefined') return
+  const flagKey = storageKey + DISCOUNT_VISIBILITY_MIGRATED_SUFFIX
+  try {
+    if (window.localStorage.getItem(flagKey)) return
+    const raw = window.localStorage.getItem(storageKey)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        let changed = false
+        for (const id of DISCOUNT_COLUMN_IDS) {
+          if (parsed[id] === false) {
+            delete parsed[id]
+            changed = true
+          }
+        }
+        if (changed) {
+          window.localStorage.setItem(storageKey, JSON.stringify(parsed))
+        }
+      }
+    }
+    window.localStorage.setItem(flagKey, '1')
+  } catch {
+    // Storage can be unavailable in private mode; defaults still apply.
+  }
 }
 
 function deserializeLogTypeFilter(value: unknown): unknown[] {
@@ -156,14 +191,18 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const columns = useColumnsByCategory(logCategory, isAdmin)
   const isLoadingData = isLoading || (isFetching && !data)
 
+  // 先跑一次性迁移再交给 useDataTable，确保它读到的存档已清掉旧的「隐藏」标记。
+  const columnVisibilityStorageKey = useMemo(() => {
+    const key = getColumnVisibilityStorageKey(logCategory, isAdmin)
+    migrateDiscountColumnVisibility(key)
+    return key
+  }, [logCategory, isAdmin])
+
   const { table } = useDataTable({
     data: logs as Record<string, unknown>[],
     columns: columns as ColumnDef<Record<string, unknown>>[],
     columnFilters,
-    columnVisibilityStorageKey: getColumnVisibilityStorageKey(
-      logCategory,
-      isAdmin
-    ),
+    columnVisibilityStorageKey,
     pagination,
     enableRowSelection: false,
     onPaginationChange,
