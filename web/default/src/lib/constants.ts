@@ -21,7 +21,10 @@ For commercial licensing, please contact support@quantumnous.com
  */
 
 // System Configuration Defaults
-export const DEFAULT_SYSTEM_NAME = 'New API'
+// The system name has no built-in default on purpose: before /api/status
+// resolves, an empty string renders as blank instead of flashing the product
+// name and then swapping to the operator's configured site name.
+export const DEFAULT_SYSTEM_NAME = ''
 export const DEFAULT_LOGO = '/logo.png'
 
 // LocalStorage Keys

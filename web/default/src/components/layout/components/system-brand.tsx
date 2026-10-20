@@ -51,7 +51,11 @@ export function SystemBrand(props: SystemBrandProps) {
   const { logo } = useSystemConfig()
 
   const variant = props.variant ?? 'sidebar'
-  const name = status?.system_name || props.defaultName || 'New API'
+  // No product-name fallback: while /api/status is still in flight the slot
+  // stays blank rather than flashing a name that gets replaced a moment later.
+  // A non-breaking space keeps the line box occupied so the sidebar header
+  // does not jump when the real name arrives.
+  const name = status?.system_name || props.defaultName || '\u00A0'
   const version =
     status?.version || props.defaultVersion || t('Unknown version')
 

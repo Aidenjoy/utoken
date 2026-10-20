@@ -48,7 +48,9 @@ export function isRoot() {
 
 export function getSystemName() {
   let system_name = localStorage.getItem('system_name');
-  if (!system_name) return 'New API';
+  // Empty instead of a product name: before /api/status lands, callers render
+  // a blank slot rather than flashing a name that is replaced right after.
+  if (!system_name) return '';
   return system_name;
 }
 

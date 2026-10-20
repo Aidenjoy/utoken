@@ -170,7 +170,12 @@ export function Footer(props: FooterProps) {
   // Logo filename as dynamic switch: true.png → show New API attribution, other → slogan
   const logoFileName = displayLogo.split('/').pop() || ''
   const showAttributionByLogo = logoFileName === 'true.png'
-  const displayName = systemName || props.name || 'New API'
+  // No product-name fallback: the copyright line stays blank while
+  // /api/status is in flight instead of flashing a name that gets replaced.
+  const displayName = systemName || props.name || ''
+  // “© 2026 .” reads as a typo, so the period travels with the name and is
+  // omitted entirely when there is nothing to put in front of it.
+  const copyrightName = displayName ? `${displayName}. ` : ''
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
 
@@ -245,7 +250,7 @@ export function Footer(props: FooterProps) {
           ) : (
             <>
               <span>
-                &copy; {currentYear} {displayName}.{' '}
+                &copy; {currentYear} {copyrightName}
                 {props.copyright ?? t('footer.defaultCopyright')}
               </span>
               <LegalLinks leadingSeparator />
@@ -340,7 +345,7 @@ export function Footer(props: FooterProps) {
         <div className='border-border/30 mt-12 flex flex-col items-center justify-between gap-x-3 gap-y-2 border-t pt-6 sm:flex-row'>
           <div className='text-muted-foreground/40 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
             <span>
-              &copy; {currentYear} {displayName}.{' '}
+              &copy; {currentYear} {copyrightName}
               {props.copyright ?? t('footer.defaultCopyright')}
             </span>
             <LegalLinks leadingSeparator />
