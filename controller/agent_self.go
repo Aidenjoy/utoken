@@ -255,6 +255,13 @@ func UpdateAgentMemberModelDiscounts(c *gin.Context) {
 	if merged == nil {
 		merged = map[string]float64{}
 	}
+
+	// 价格只能上调：提交值低于成员已存折扣即拒，UI 的输入框 min 只是第一道闸。
+	if badModel, err := common.ValidateModelDiscountsNotLowered(normalized, merged); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgAgentDiscountLowered, map[string]any{"Model": badModel})
+		return
+	}
+
 	for modelName := range merged {
 		if _, authorized := floors[modelName]; authorized {
 			delete(merged, modelName)

@@ -17,13 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -46,10 +44,13 @@ const PERCENT_STEP = 0.1
 const RATIO_PRECISION = 10000
 
 interface DiscountRow {
-  /** 稳定的行 id，避免用模型名当 key（模型名可切换且可能临时重复） */
-  id: string
   model: string
+  /** 当前输入的价格（百分比）；打开弹窗时为已存折扣或授权下限 */
   percent: string
+  /** 本行允许的最小百分比：已存折扣（价格只能上调）或授权下限（首次设置） */
+  minPercent: number
+  /** 管理员给本代理设的授权下限（百分比），仅用于提示文案区分两种下限 */
+  floorPercent: number
 }
 
 interface Props {
@@ -59,15 +60,9 @@ interface Props {
   onSuccess?: () => void
 }
 
-let rowSeq = 0
-function nextRowId(): string {
-  rowSeq += 1
-  return `member-discount-row-${rowSeq}`
-}
-
-function ratioToPercent(ratio: number): string {
-  const percent = ratio * 100
-  return String(Math.round(percent * 100) / 100)
+/** 折扣小数 → 百分比数值（0.85 → 85），抹掉浮点尾差。 */
+function percentOf(ratio: number): number {
+  return Math.round(ratio * MAX_PERCENT * 100) / 100
 }
 
 /**
@@ -81,15 +76,18 @@ function formatMultiplier(ratio: number): string {
 /**
  * Per-member model discount editor, scoped to what this agent may resell.
  *
- * The model picker only offers the agent's authorized models and each one
- * carries its own floor — the deepest discount the admin allowed the agent to
- * grant — so the percentage input is clamped per row rather than globally.
- * Submitting the form sends the complete set of authorized-model discounts:
- * a model dropped here reverts to full price for that member.
+ * The row list is the agent's authorization itself — models are not picked or
+ * added here — and each row opens at the member's saved price, or at the floor
+ * (the deepest discount the admin allowed) when the member has none yet. That
+ * opening value is also the row's minimum: prices can only be revised upward,
+ * so an agent can never deepen a discount after the fact. The backend enforces
+ * the same rule (ValidateModelDiscountsNotLowered); the input min is only the
+ * first gate.
  *
- * Discounts an admin set for models outside this agent's authorization are
- * neither listed nor submitted; the server keeps them untouched, so opening
- * this dialog can never silently wipe an admin's configuration.
+ * Submitting sends every authorized model, so the member's price list always
+ * mirrors the authorization. Discounts an admin set for models outside this
+ * agent's authorization are neither listed nor submitted; the server keeps them
+ * untouched, so this dialog can never silently wipe an admin's configuration.
  */
 export function MemberDiscountDialog({
   open,
@@ -111,114 +109,65 @@ export function MemberDiscountDialog({
 
   // floors 的键集合就是本代理的授权清单，值是每个模型可给的最低折扣（最深折）。
   const floors = useMemo(() => data?.data?.floors ?? {}, [data])
-  const modelOptions = useMemo(
-    () =>
-      Object.keys(floors)
-        .sort((a, b) => a.localeCompare(b))
-        .map((name) => ({ value: name, label: name })),
-    [floors]
-  )
+  const authorizedCount = useMemo(() => Object.keys(floors).length, [floors])
 
   useEffect(() => {
     if (!open) return
     const discounts = data?.data?.discounts ?? {}
-    // 只列授权范围内的折扣：清单外的条目属于管理员配置，代理商无权改也不该看见。
+    // 行清单 = 授权模型自动铺满，不让代理商挑：已存折扣原样回显，没设过的从
+    // 授权下限起。两者都是本行之后允许的最小值——价格只能上调。
     setRows(
-      Object.entries(discounts)
-        .filter(([model]) => model in floors)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([model, ratio]) => ({
-          id: nextRowId(),
-          model,
-          percent: ratioToPercent(ratio),
-        }))
+      Object.keys(floors)
+        .sort((a, b) => a.localeCompare(b))
+        .map((model) => {
+          const floorPercent = percentOf(floors[model])
+          const saved = discounts[model]
+          const minPercent =
+            typeof saved === 'number' ? percentOf(saved) : floorPercent
+          return { model, percent: String(minPercent), minPercent, floorPercent }
+        })
     )
   }, [open, data, floors])
 
-  const floorPercentOf = (model: string): number | null => {
-    const floor = floors[model]
-    return typeof floor === 'number' ? floor * MAX_PERCENT : null
-  }
-
-  const updateRow = (id: string, patch: Partial<DiscountRow>) => {
+  const updateRow = (model: string, patch: Partial<DiscountRow>) => {
     setRows((prev) =>
-      prev.map((row) => (row.id === id ? { ...row, ...patch } : row))
+      prev.map((row) => (row.model === model ? { ...row, ...patch } : row))
     )
   }
 
-  /**
-   * Switching a row's model also re-clamps its percentage: the new model may
-   * have a different (usually higher) floor, and leaving the old value in place
-   * would just show an error the user has to fix by hand. A value still inside
-   * the new range is kept as typed.
-   */
-  const changeModel = (id: string, model: string) => {
-    setRows((prev) =>
-      prev.map((row) => {
-        if (row.id !== id) return row
-        const floor = floorPercentOf(model)
-        const percent = Number.parseFloat(row.percent)
-        if (
-          floor == null ||
-          !Number.isFinite(percent) ||
-          percent < floor ||
-          percent > MAX_PERCENT
-        ) {
-          return {
-            ...row,
-            model,
-            percent:
-              floor != null ? ratioToPercent(floor / MAX_PERCENT) : row.percent,
-          }
-        }
-        return { ...row, model }
-      })
-    )
-  }
-
-  const addRow = () => {
-    setRows((prev) => [...prev, { id: nextRowId(), model: '', percent: '' }])
-  }
-
-  const removeRow = (id: string) => {
-    setRows((prev) => prev.filter((row) => row.id !== id))
-  }
-
-  // 校验：模型必选、不重复、百分比落在 [该模型下限, 100]。与后端
-  // common.ValidateModelDiscountsWithinFloors 对齐，但错误就地提示而不是等 400。
-  const seen = new Set<string>()
+  // 校验：百分比必须落在 [本行最小值, 100]。本行最小值 = 已存折扣（价格只能
+  // 上调）或授权下限（首次设置），与后端 ValidateModelDiscountsWithinFloors /
+  // ValidateModelDiscountsNotLowered 对齐，但错误就地提示而不是等 400。
   let validationError = ''
   for (const row of rows) {
-    const model = row.model.trim()
-    if (!model) {
-      validationError = t('Model name is required')
-      break
-    }
-    if (seen.has(model)) {
-      validationError = t('Duplicate model name')
-      break
-    }
-    seen.add(model)
-    const floor = floorPercentOf(model)
-    if (floor == null) {
-      validationError = t('Model {{name}} is not authorized', { name: model })
-      break
-    }
     const percent = Number.parseFloat(row.percent)
     if (
       row.percent.trim() === '' ||
       !Number.isFinite(percent) ||
-      percent < floor ||
       percent > MAX_PERCENT
     ) {
       validationError = t(
         'Discount for {{name}} must be between {{min}} and {{max}}',
         {
-          name: model,
-          min: ratioToPercent(floor / MAX_PERCENT),
+          name: row.model,
+          min: row.minPercent,
           max: MAX_PERCENT,
         }
       )
+      break
+    }
+    if (percent < row.minPercent) {
+      validationError =
+        row.minPercent > row.floorPercent
+          ? t('Price for {{name}} can only be raised, lowest {{min}}%', {
+              name: row.model,
+              min: row.minPercent,
+            })
+          : t('Discount for {{name}} must be between {{min}} and {{max}}', {
+              name: row.model,
+              min: row.minPercent,
+              max: MAX_PERCENT,
+            })
       break
     }
   }
@@ -232,7 +181,7 @@ export function MemberDiscountDialog({
       for (const row of rows) {
         const percent = Number.parseFloat(row.percent)
         // 百分比 → 小数，按后端精度四舍五入到 4 位，避免 0.8500000000000001 之类的浮点尾巴
-        discounts[row.model.trim()] =
+        discounts[row.model] =
           Math.round((percent / MAX_PERCENT) * RATIO_PRECISION) /
           RATIO_PRECISION
       }
@@ -270,23 +219,10 @@ export function MemberDiscountDialog({
         </DialogHeader>
 
         <div className='space-y-3'>
-          <div className='flex items-center justify-between gap-2'>
-            <div className='text-muted-foreground text-xs'>
-              {t(
-                'You can only discount the models you are authorized for, and never below the floor set for each.'
-              )}
-            </div>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              className='shrink-0'
-              disabled={modelOptions.length === 0}
-              onClick={addRow}
-            >
-              <Plus size={16} />
-              {t('Add Model Discount')}
-            </Button>
+          <div className='text-muted-foreground text-xs'>
+            {t(
+              'Models come from your authorization list. You can only adjust the price, and only upward.'
+            )}
           </div>
 
           {isLoading && (
@@ -295,20 +231,11 @@ export function MemberDiscountDialog({
             </div>
           )}
 
-          {!isLoading && modelOptions.length === 0 && (
+          {!isLoading && authorizedCount === 0 && (
             <div className='border-border/60 bg-muted/20 text-muted-foreground rounded-md border border-dashed py-8 text-center text-sm'>
               {t('No authorized models')}
               <div className='mt-1 text-xs'>
                 {t('Ask an administrator to authorize models for you first.')}
-              </div>
-            </div>
-          )}
-
-          {!isLoading && modelOptions.length > 0 && rows.length === 0 && (
-            <div className='border-border/60 bg-muted/20 text-muted-foreground rounded-md border border-dashed py-8 text-center text-sm'>
-              {t('No model discounts')}
-              <div className='mt-1 text-xs'>
-                {t('This member is billed at the original price.')}
               </div>
             </div>
           )}
@@ -319,49 +246,39 @@ export function MemberDiscountDialog({
                 <span className='flex-1'>{t('Model name')}</span>
                 <span className='w-28 text-right'>{t('Discount (%)')}</span>
                 <span className='w-16 text-right'>{t('Multiplier')}</span>
-                <span className='w-8' />
               </div>
               {rows.map((row) => {
-                const floor = floorPercentOf(row.model)
                 const percent = Number.parseFloat(row.percent)
                 const ratio = Number.isFinite(percent)
                   ? percent / MAX_PERCENT
                   : null
                 const isValidPercent =
                   ratio != null &&
-                  floor != null &&
-                  percent >= floor &&
+                  percent >= row.minPercent &&
                   percent <= MAX_PERCENT
                 return (
-                  <div key={row.id} className='flex items-center gap-2'>
-                    <div className='flex-1'>
-                      <Combobox
-                        options={modelOptions}
-                        value={row.model}
-                        onValueChange={(value) =>
-                          changeModel(row.id, value ?? '')
-                        }
-                        placeholder={t('Model name')}
-                        searchPlaceholder={t('Search a model')}
-                        emptyText={t('No matching model')}
-                      />
-                      {floor != null && (
-                        <div className='text-muted-foreground mt-1 pl-1 text-xs'>
-                          {t('Floor: {{floor}}%', {
-                            floor: ratioToPercent(floor / MAX_PERCENT),
-                          })}
-                        </div>
-                      )}
+                  <div key={row.model} className='flex items-center gap-2'>
+                    <div className='min-w-0 flex-1'>
+                      <span className='font-mono text-sm'>{row.model}</span>
+                      <div className='text-muted-foreground mt-1 pl-1 text-xs'>
+                        {row.minPercent > row.floorPercent
+                          ? t('Can only be raised from {{min}}%', {
+                              min: row.minPercent,
+                            })
+                          : t('Floor: {{floor}}%', {
+                              floor: row.floorPercent,
+                            })}
+                      </div>
                     </div>
                     <div className='flex w-28 items-center gap-1'>
                       <Input
                         type='number'
-                        min={floor ?? 0}
+                        min={row.minPercent}
                         max={MAX_PERCENT}
                         step={PERCENT_STEP}
                         value={row.percent}
                         onChange={(event) =>
-                          updateRow(row.id, { percent: event.target.value })
+                          updateRow(row.model, { percent: event.target.value })
                         }
                         className='text-right font-mono'
                         aria-label={t('Discount (%)')}
@@ -373,16 +290,6 @@ export function MemberDiscountDialog({
                         ? `×${formatMultiplier(ratio)}`
                         : '-'}
                     </span>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='icon-sm'
-                      className='text-destructive hover:text-destructive shrink-0'
-                      onClick={() => removeRow(row.id)}
-                      aria-label={t('Delete')}
-                    >
-                      <Trash2 size={16} />
-                    </Button>
                   </div>
                 )
               })}

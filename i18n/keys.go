@@ -390,6 +390,7 @@ const (
 	MsgAgentModelDiscountInvalid = "agent.model_discounts_invalid"
 	MsgAgentModelNotAuthorized   = "agent.model_not_authorized"
 	MsgAgentDiscountBelowFloor   = "agent.discount_below_floor"
+	MsgAgentDiscountLowered      = "agent.discount_lowered"
 	MsgAgentMemberNotOwned       = "agent.member_not_owned"
 )
 

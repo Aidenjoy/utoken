@@ -333,6 +333,7 @@ agent.model_discounts_empty: "Authorize at least one model"
 agent.model_discounts_invalid: "Invalid model authorization; require 0 < discount <= 1 and no wildcard model names"
 agent.model_not_authorized: "Model {{.Model}} is outside this agent's authorized list"
 agent.discount_below_floor: "The discount for model {{.Model}} is below the allowed floor"
+agent.discount_lowered: "The price for model {{.Model}} can only be raised, not lowered"
 agent.member_not_owned: "This user is not one of your members"
 
 invite_code.not_found: "Invite code does not exist"

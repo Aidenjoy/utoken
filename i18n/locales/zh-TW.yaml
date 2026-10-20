@@ -334,6 +334,7 @@ agent.model_discounts_empty: "至少需要授權一個模型"
 agent.model_discounts_invalid: "授權模型設定無效，需滿足 0 < 折扣 ≤ 1，且模型名稱不能使用萬用字元"
 agent.model_not_authorized: "模型 {{.Model}} 不在該代理商的授權範圍內"
 agent.discount_below_floor: "模型 {{.Model}} 的折扣低於允許的下限"
+agent.discount_lowered: "模型 {{.Model}} 的價格只能上調，不能低於當前值"
 agent.member_not_owned: "該使用者不是你的成員"
 
 invite_code.not_found: "邀請碼不存在"

@@ -35,6 +35,9 @@ var (
 	errAgentModelWildcard      = errors.New("授权模型不支持通配（*），请填完整模型名")
 	ErrAgentModelNotAuthorized = errors.New("模型不在该代理商的授权范围内")
 	ErrAgentDiscountBelowFloor = errors.New("折扣低于该模型允许的下限")
+	// ErrAgentDiscountLowered 代理商给成员的价格只能上调：
+	// 提交值低于该成员已存折扣即报错，避免事后加深折扣追溯减费。
+	ErrAgentDiscountLowered = errors.New("价格只能上调，不能低于该成员当前折扣")
 )
 
 // ParseModelDiscounts 解析折扣 JSON；空串或解析失败返回 nil（等同无折扣）。
@@ -197,4 +200,22 @@ func ValidateModelDiscountsWithinFloors(discounts map[string]float64, floors map
 // roundModelDiscount 按 modelDiscountPrecision 归一折扣值，消除二进制浮点尾差。
 func roundModelDiscount(ratio float64) float64 {
 	return math.Round(ratio*modelDiscountPrecision) / modelDiscountPrecision
+}
+
+// ValidateModelDiscountsNotLowered 校验「价格只能上调」：提交里每个模型若在该成员
+// 已存折扣中已有值，新值不得低于旧值；未设过的模型不受此限（首次定价仍由授权下限约束）。
+//
+// 返回出错的模型名 + ErrAgentDiscountLowered，调用方据模型名填充 i18n 的 {{.Model}}；
+// 无错误时返回 "" 与 nil。浮点比较同 ValidateModelDiscountsWithinFloors 先过 round。
+func ValidateModelDiscountsNotLowered(discounts, current map[string]float64) (string, error) {
+	for model, ratio := range discounts {
+		old, ok := current[model]
+		if !ok {
+			continue
+		}
+		if roundModelDiscount(ratio) < roundModelDiscount(old) {
+			return model, fmt.Errorf("%w：%s", ErrAgentDiscountLowered, model)
+		}
+	}
+	return "", nil
 }

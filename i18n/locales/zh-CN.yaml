@@ -334,6 +334,7 @@ agent.model_discounts_empty: "至少需要授权一个模型"
 agent.model_discounts_invalid: "授权模型配置无效，需满足 0 < 折扣 ≤ 1，且模型名不能使用通配符"
 agent.model_not_authorized: "模型 {{.Model}} 不在该代理商的授权范围内"
 agent.discount_below_floor: "模型 {{.Model}} 的折扣低于允许的下限"
+agent.discount_lowered: "模型 {{.Model}} 的价格只能上调，不能低于当前值"
 agent.member_not_owned: "该用户不是你的成员"
 
 invite_code.not_found: "邀请码不存在"

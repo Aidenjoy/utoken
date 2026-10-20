@@ -373,6 +373,67 @@ func TestValidateModelDiscountsWithinFloors(t *testing.T) {
 	assert.Equal(t, "gpt-4o", model)
 }
 
+// TestValidateModelDiscountsNotLowered 覆盖「价格只能上调」：
+// 已存折扣的模型不允许提交更低的值，未设过的模型不受此限（首次定价由下限约束）。
+func TestValidateModelDiscountsNotLowered(t *testing.T) {
+	current := map[string]float64{"gpt-4o": 0.9}
+
+	tests := []struct {
+		name      string
+		discounts map[string]float64
+		wantModel string
+		wantErr   error
+	}{
+		{
+			name:      "raising the price passes",
+			discounts: map[string]float64{"gpt-4o": 0.95},
+		},
+		{
+			name:      "keeping the price passes",
+			discounts: map[string]float64{"gpt-4o": 0.9},
+		},
+		{
+			// 浮点尾差不能把“保持不变”误判成下调。
+			name:      "unchanged value survives float noise",
+			discounts: map[string]float64{"gpt-4o": 0.8999999999},
+		},
+		{
+			name:      "models without a stored price are unconstrained here",
+			discounts: map[string]float64{"gpt-4o": 0.9, "claude-3-5-sonnet": 0.5},
+		},
+		{
+			name:      "lowering the price rejected",
+			discounts: map[string]float64{"gpt-4o": 0.85},
+			wantModel: "gpt-4o",
+			wantErr:   ErrAgentDiscountLowered,
+		},
+		{
+			name:      "lowering rejected even when another model is raised",
+			discounts: map[string]float64{"gpt-4o": 0.8999, "claude-3-5-sonnet": 1},
+			wantModel: "gpt-4o",
+			wantErr:   ErrAgentDiscountLowered,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			model, err := ValidateModelDiscountsNotLowered(tc.discounts, current)
+			if tc.wantErr == nil {
+				assert.NoError(t, err)
+				assert.Empty(t, model)
+				return
+			}
+			assert.ErrorIs(t, err, tc.wantErr)
+			assert.Equal(t, tc.wantModel, model, "the offending model name feeds the i18n placeholder")
+		})
+	}
+
+	// 成员当前无折扣时任何提交都不算下调。
+	model, err := ValidateModelDiscountsNotLowered(map[string]float64{"gpt-4o": 0.5}, nil)
+	assert.NoError(t, err)
+	assert.Empty(t, model)
+}
+
 // TestApplyModelDiscount 校验计费不变量：折扣只减不增、非法折扣与
 // 非正额度原样返回（绝不产生负扣费或免费额度）。
 func TestApplyModelDiscount(t *testing.T) {
