@@ -169,6 +169,8 @@ func SetApiRouter(router *gin.Engine) {
 			agentAdminRoute.POST("/agents", controller.AdminCreateAgent)
 			agentAdminRoute.PUT("/agents/:id", controller.AdminUpdateAgent)
 			agentAdminRoute.DELETE("/agents/:id", controller.AdminDeleteAgent)
+			// 授权模型下拉的候选：全平台启用模型全集，见 AdminListServableModels。
+			agentAdminRoute.GET("/models", controller.AdminListServableModels)
 			agentAdminRoute.GET("/codes", controller.AdminListInviteCodes)
 			agentAdminRoute.POST("/codes", controller.AdminCreateInviteCode)
 			agentAdminRoute.PUT("/codes/:id", controller.AdminUpdateInviteCode)

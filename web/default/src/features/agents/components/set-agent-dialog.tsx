@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -34,12 +33,19 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { getPricing } from '@/features/pricing/api'
 import { searchUsers } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 
-import { createAgent, updateAgent } from '../api'
+import { createAgent, listServableModels, updateAgent } from '../api'
 import { AGENT_STATUS, type Agent } from '../types'
 
 type Props = {
@@ -82,6 +88,33 @@ function formatMultiplier(ratio: number): string {
   return String(Math.round(ratio * RATIO_PRECISION) / RATIO_PRECISION)
 }
 
+interface UserIdentityFields {
+  username?: string
+  display_name?: string
+  email?: string
+}
+
+/**
+ * 用户名为主、昵称与邮箱为辅的单行展示：昵称允许重复，只展示昵称时同名用户
+ * 根本无从区分，用户名才是唯一标识。与用户列表列的呈现口径一致。
+ */
+function UserIdentity(props: { user: UserIdentityFields }) {
+  const { user } = props
+  return (
+    <>
+      <span className='font-medium'>{user.username || '-'}</span>
+      {user.display_name && user.display_name !== user.username ? (
+        <span className='text-muted-foreground ml-2 text-xs'>
+          {user.display_name}
+        </span>
+      ) : null}
+      {user.email ? (
+        <span className='text-muted-foreground ml-2 text-xs'>{user.email}</span>
+      ) : null}
+    </>
+  )
+}
+
 /**
  * Promote a registered user to reseller (create) or edit an existing reseller's
  * model authorization / status / remark.
@@ -111,23 +144,29 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
   const [remark, setRemark] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // 模型候选来自模型广场的定价缓存（queryKey ['pricing']），与按模型折扣编辑器一致。
-  const pricing = useQuery({
-    queryKey: ['pricing'],
-    queryFn: getPricing,
-    staleTime: 5 * 60 * 1000,
+  // 候选取全平台启用模型（/api/agent/admin/models），不按调用者分组过滤。
+  const servable = useQuery({
+    queryKey: ['agent-servable-models'],
+    queryFn: listServableModels,
+    staleTime: 60 * 1000,
     enabled: open,
   })
 
-  const modelOptions = useMemo(
-    () =>
-      (pricing.data?.data ?? [])
-        .map((model) => model.model_name)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((name) => ({ value: name, label: name })),
-    [pricing.data]
-  )
+  // 编辑时把清单里已有、但目前已不在启用集合中的模型名并进来，避免老授权行
+  // 变成下拉里选不中的孤儿值。
+  const modelOptions = useMemo(() => {
+    const names = new Set(servable.data?.data ?? [])
+    for (const row of rows) {
+      const model = row.model.trim()
+      if (model) names.add(model)
+    }
+    return [...names]
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ value: name, label: name }))
+  }, [servable.data, rows])
+
+  // 候选没到位时禁用触发器：一个点不开的空下拉只会让人觉得控件坏了。
+  const modelsDisabled = servable.isPending || modelOptions.length === 0
 
   useEffect(() => {
     if (!open) return
@@ -289,12 +328,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
             <div className='space-y-2'>
               <Label>{t('User')}</Label>
               <div className='bg-muted/50 rounded-md px-3 py-2 text-sm'>
-                {agent?.display_name || agent?.username || '-'}
-                {agent?.email ? (
-                  <span className='text-muted-foreground ml-2 text-xs'>
-                    {agent.email}
-                  </span>
-                ) : null}
+                <UserIdentity user={agent ?? {}} />
               </div>
             </div>
           ) : (
@@ -302,13 +336,8 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
               <Label>{t('User')}</Label>
               {selected ? (
                 <div className='bg-muted/50 flex items-center justify-between rounded-md px-3 py-2 text-sm'>
-                  <span>
-                    {selected.display_name || selected.username}
-                    {selected.email ? (
-                      <span className='text-muted-foreground ml-2 text-xs'>
-                        {selected.email}
-                      </span>
-                    ) : null}
+                  <span className='min-w-0 truncate'>
+                    <UserIdentity user={selected} />
                   </span>
                   <Button
                     type='button'
@@ -349,13 +378,8 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
                             }}
                           >
                             <Check className='size-4 shrink-0 opacity-0' />
-                            <span className='truncate'>
-                              {user.display_name || user.username}
-                              {user.email ? (
-                                <span className='text-muted-foreground ml-2 text-xs'>
-                                  {user.email}
-                                </span>
-                              ) : null}
+                            <span className='min-w-0 flex-1 truncate'>
+                              <UserIdentity user={user} />
                             </span>
                           </button>
                         </li>
@@ -405,16 +429,38 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
                   return (
                     <div key={row.id} className='flex items-center gap-2'>
                       <div className='flex-1'>
-                        <Combobox
-                          options={modelOptions}
-                          value={row.model}
+                        <Select
+                          value={row.model === '' ? null : row.model}
                           onValueChange={(value) =>
                             updateRow(row.id, { model: value ?? '' })
                           }
-                          placeholder={t('Model name')}
-                          searchPlaceholder={t('Search a model')}
-                          emptyText={t('No matching model')}
-                        />
+                          disabled={modelsDisabled}
+                        >
+                          <SelectTrigger
+                            className='w-full min-w-0'
+                            aria-label={t('Model name')}
+                          >
+                            <SelectValue
+                              placeholder={
+                                servable.isPending
+                                  ? t('Loading...')
+                                  : t('Select a model')
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              {modelOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className='flex w-28 items-center gap-1'>
                         <Input
@@ -449,6 +495,25 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
                 })}
               </div>
             )}
+
+            {servable.isError ? (
+              <p className='text-destructive flex items-center gap-2 text-xs'>
+                {t('Failed to load models')}
+                <Button
+                  type='button'
+                  variant='link'
+                  size='sm'
+                  className='h-auto px-1 py-0 text-xs'
+                  onClick={() => void servable.refetch()}
+                >
+                  {t('Retry')}
+                </Button>
+              </p>
+            ) : servable.data?.data?.length === 0 ? (
+              <p className='text-muted-foreground text-xs'>
+                {t('No enabled models')}
+              </p>
+            ) : null}
 
             <p className='text-muted-foreground text-xs'>
               {t(

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -105,6 +106,15 @@ func AdminListAgents(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(agents)
 	common.ApiSuccess(c, pageInfo)
+}
+
+// AdminListServableModels 返回当前全平台可服务的模型名，供提升代理商时的授权模型
+// 下拉选择。这里取 abilities 的启用模型全集而不是 /api/pricing：pricing 会按调用者
+// 的可用分组过滤，管理员也会漏掉仅在其他分组启用的模型，下拉就会缺项。
+func AdminListServableModels(c *gin.Context) {
+	models := model.GetEnabledModels()
+	sort.Strings(models)
+	common.ApiSuccess(c, models)
 }
 
 // AdminCreateAgent 把已注册用户提升为代理商并配置授权模型清单与折扣下限。

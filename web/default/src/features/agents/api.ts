@@ -84,6 +84,23 @@ export async function listAgents(
   return res.data
 }
 
+/**
+ * Candidate model names for the authorization picker: every model currently
+ * enabled on any channel. Deliberately not /api/pricing, which is filtered by
+ * the caller's usable groups and would silently omit models an admin still
+ * needs to be able to authorize.
+ *
+ * Errors are surfaced inline by the dialog (with a retry) instead of the
+ * global error toast: a missing candidate list degrades the picker, it is not
+ * a request the admin acted on.
+ */
+export async function listServableModels(): Promise<ApiResponse<string[]>> {
+  const res = await api.get('/api/agent/admin/models', {
+    skipErrorHandler: true,
+  })
+  return res.data
+}
+
 export async function createAgent(
   payload: AgentPayload
 ): Promise<ApiResponse<Agent>> {
