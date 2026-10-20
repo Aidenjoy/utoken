@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Loader2, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -168,8 +168,15 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
   // 候选没到位时禁用触发器：一个点不开的空下拉只会让人觉得控件坏了。
   const modelsDisabled = servable.isPending || modelOptions.length === 0
 
+  // 新建时自动铺满所有启用模型，默认 100%（无折扣），管理员可按需下调或删除。
+  // 只在 servable 首次加载完成时填充一次，避免后续 refetch 覆盖用户已做的调整；
+  // 对话框关闭时重置标记，保证下次打开重新铺满。
+  const hasInitializedForCreate = useRef(false)
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      hasInitializedForCreate.current = false
+      return
+    }
     setSelected(null)
     setKeyword('')
     setResults([])
@@ -185,13 +192,29 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
             percent: ratioToPercent(ratio),
           }))
       )
+      return
+    }
+    setStatus(AGENT_STATUS.ENABLED)
+    setRemark('')
+    // 已铺满过就不再重填，避免 servable 后台刷新时覆盖用户的调整。
+    if (hasInitializedForCreate.current) return
+    const models = servable.data?.data ?? []
+    if (models.length > 0) {
+      hasInitializedForCreate.current = true
+      setRows(
+        [...models]
+          .sort((a, b) => a.localeCompare(b))
+          .map((model) => ({
+            id: nextRowId(),
+            model,
+            percent: String(MAX_PERCENT),
+          }))
+      )
     } else {
-      setStatus(AGENT_STATUS.ENABLED)
-      setRemark('')
-      // 新建时给一行空白：授权清单不允许为空，先摆一行引导填写。
+      // 模型列表还没加载完，先给一行空白引导。
       setRows([{ id: nextRowId(), model: '', percent: DEFAULT_FLOOR_PERCENT }])
     }
-  }, [open, agent])
+  }, [open, agent, servable.data])
 
   // Debounced user search (create mode only).
   useEffect(() => {
@@ -311,15 +334,19 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[560px]'>
+      <DialogContent className='sm:max-w-[640px]'>
         <DialogHeader>
           <DialogTitle>
             {isEdit ? t('Edit Agent') : t('Promote User to Agent')}
           </DialogTitle>
           <DialogDescription>
-            {t(
-              'Pick the models this agent may resell and the deepest discount allowed for each. Members can only call these models.'
-            )}
+            {isEdit
+              ? t(
+                  'Manage the models this agent may resell and the deepest discount allowed for each. Members can only call these models.'
+                )
+              : t(
+                  'All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.'
+                )}
           </DialogDescription>
         </DialogHeader>
 
@@ -394,16 +421,18 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
           <div className='space-y-2'>
             <div className='flex items-center justify-between gap-2'>
               <Label>{t('Authorized Models')}</Label>
-              <Button
-                type='button'
-                variant='outline'
-                size='sm'
-                className='shrink-0'
-                onClick={addRow}
-              >
-                <Plus size={16} />
-                {t('Add Model')}
-              </Button>
+              {isEdit && (
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  className='shrink-0'
+                  onClick={addRow}
+                >
+                  <Plus size={16} />
+                  {t('Add Model')}
+                </Button>
+              )}
             </div>
 
             {rows.length === 0 ? (
@@ -414,7 +443,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
                 </div>
               </div>
             ) : (
-              <div className='max-h-[280px] space-y-2 overflow-y-auto pr-1'>
+              <div className='max-h-[360px] space-y-2 overflow-y-auto pr-1'>
                 <div className='text-muted-foreground flex items-center gap-2 px-1 text-xs'>
                   <span className='flex-1'>{t('Model name')}</span>
                   <span className='w-28 text-right'>{t('Floor (%)')}</span>
@@ -516,9 +545,13 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
             ) : null}
 
             <p className='text-muted-foreground text-xs'>
-              {t(
-                'The floor is the deepest discount the agent may grant: 80% lets them price the model anywhere from 80% to 100% per member.'
-              )}
+              {isEdit
+                ? t(
+                    'The floor is the deepest discount the agent may grant: 80% lets them price the model anywhere from 80% to 100% per member.'
+                  )
+                : t(
+                    '100% means no discount (original price). Lower the floor to allow the agent to offer discounted rates to members.'
+                  )}
             </p>
           </div>
 
