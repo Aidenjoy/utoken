@@ -29,6 +29,39 @@ type ModelRequest struct {
 	Group string `json:"group,omitempty"`
 }
 
+// agentModelForbidden 执行代理商授权模型白名单：归属于代理商的用户只能调用
+// 该代理商授权清单内的模型。返回 true 表示请求已被拒绝（响应已写入），
+// 调用方应立即 return。
+//
+// 抽成独立函数而不是内联在 Distribute 里，是因为这段判定有四种分支
+// （无归属放行 / 授权命中放行 / 未授权拒绝 / 快照缺失 fail-open），
+// 而 Distribute 本体要跑通需要渠道、令牌、分组等一整套夹具，无法单独验证它。
+//
+// modelName 为空时放行：mj/suno 的任务查询类请求 shouldSelectChannel=false，
+// 模型名未必在请求体里，此时按空名拒绝会误伤这些查询接口。
+func agentModelForbidden(c *gin.Context, modelName string) bool {
+	if modelName == "" {
+		return false
+	}
+	agentId := common.GetContextKeyInt(c, constant.ContextKeyUserAgentId)
+	if agentId <= 0 {
+		return false
+	}
+	allowed := model.ResolveAllowedModels(agentId, common.GetContextKeyString(c, constant.ContextKeyUserAllowedModels))
+	if len(allowed) == 0 {
+		// 代理行缺失或配置损坏：fail-open 放行。白名单查不到就拒绝会让
+		// 一处配置异常放大成该代理商全部成员断服，代价远高于放行。
+		// 正常流程走不到这里：DeleteAgent 会主动把成员 agent_id 解绑。
+		common.SysError(fmt.Sprintf("agent %d has no resolvable model allowlist, fail-open for user %d", agentId, c.GetInt("id")))
+		return false
+	}
+	if allowed.Allows(modelName) {
+		return false
+	}
+	abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorUserModelForbidden, map[string]any{"Model": modelName}), types.ErrorCodeModelNotFound)
+	return true
+}
+
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
@@ -36,6 +69,11 @@ func Distribute() func(c *gin.Context) {
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
+			return
+		}
+		// 代理商授权模型白名单：与下面的令牌级模型限制同构，只是作用在用户维度。
+		// 放在「令牌指定渠道」与「自动选渠道」两条路径之前，避免令牌绑定到某渠道后绕过白名单。
+		if agentModelForbidden(c, modelRequest.Model) {
 			return
 		}
 		if ok {

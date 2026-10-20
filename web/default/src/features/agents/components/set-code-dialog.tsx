@@ -34,81 +34,69 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { formatDiscount } from '@/lib/discount'
 
 import {
-  createAdminCode,
-  createMyCode,
-  updateAdminCode,
-  updateMyCode,
+  createAdminInviteCode,
+  createMyInviteCode,
+  updateAdminInviteCode,
+  updateMyInviteCode,
 } from '../api'
-import { DISCOUNT_CODE_STATUS, type DiscountCode } from '../types'
+import { INVITE_CODE_STATUS, type InviteCode } from '../types'
 
 type Props = {
   open: boolean
-  code: DiscountCode | null
+  code: InviteCode | null
   onOpenChange: (open: boolean) => void
-  /** 'admin' has no discount-range restriction; 'agent' is clamped to `range`. */
+  /** 'admin' issues site-wide codes; 'agent' issues codes bound to the agent. */
   mode: 'admin' | 'agent'
-  /** Agent-only allowed discount range (pay multipliers). */
-  range?: { min: number; max: number }
   /** Query key invalidated after a successful mutation. */
   queryKey: string
 }
 
 /**
- * Create or edit a discount invite code. `discount` is a pay multiplier in
- * (0, 1]: 0.6 means the invitee pays 60%. Admins may set any value; agents are
- * clamped to their allowed range. `max_uses` of 0 means unlimited, `expires_at`
- * of 0 means never expires.
+ * Create or edit an invite code. The code carries no discount: registering with
+ * it only binds the new user to the code's owner, so an agent's code is what
+ * pulls a user into that agent's authorized model list. The only knobs left are
+ * how many times the code may be used and when it stops working — `max_uses` of
+ * 0 means unlimited, `expires_at` of 0 means never expires.
  */
 export function SetCodeDialog({
   open,
   code,
   onOpenChange,
   mode,
-  range,
   queryKey,
 }: Props) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const isEdit = code !== null
 
-  const [discount, setDiscount] = useState('0.8')
   const [maxUses, setMaxUses] = useState('0')
   const [expiresAt, setExpiresAt] = useState<Date | undefined>(undefined)
-  const [status, setStatus] = useState<number>(DISCOUNT_CODE_STATUS.ENABLED)
+  const [status, setStatus] = useState<number>(INVITE_CODE_STATUS.ENABLED)
   const [remark, setRemark] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (!open) return
     if (code) {
-      setDiscount(String(code.discount))
       setMaxUses(String(code.max_uses ?? 0))
-      setExpiresAt(code.expires_at > 0 ? new Date(code.expires_at * 1000) : undefined)
+      setExpiresAt(
+        code.expires_at > 0 ? new Date(code.expires_at * 1000) : undefined
+      )
       setStatus(code.status)
       setRemark(code.remark ?? '')
     } else {
-      setDiscount(mode === 'agent' && range ? String(range.min) : '0.8')
       setMaxUses('0')
       setExpiresAt(undefined)
-      setStatus(DISCOUNT_CODE_STATUS.ENABLED)
+      setStatus(INVITE_CODE_STATUS.ENABLED)
       setRemark('')
     }
-  }, [open, code, mode, range])
+  }, [open, code])
 
-  const discountParsed = Number.parseFloat(discount)
   const maxUsesParsed = Number.parseInt(maxUses, 10)
-  const lowerBound = mode === 'agent' && range ? range.min : 0.01
-  const upperBound = mode === 'agent' && range ? range.max : 1
-  const discountValid =
-    Number.isFinite(discountParsed) &&
-    discountParsed >= lowerBound &&
-    discountParsed <= upperBound
   const usesValid = Number.isInteger(maxUsesParsed) && maxUsesParsed >= 0
-  // 编辑时折扣只读（创建后锁定），故不因折扣校验阻断保存。
-  const canSubmit = usesValid && (isEdit || discountValid)
+  const canSubmit = usesValid
 
   const submit = async () => {
     if (!canSubmit) return
@@ -124,8 +112,8 @@ export function SetCodeDialog({
         }
         const res =
           mode === 'admin'
-            ? await updateAdminCode(code.id, payload)
-            : await updateMyCode(code.id, payload)
+            ? await updateAdminInviteCode(code.id, payload)
+            : await updateMyInviteCode(code.id, payload)
         if (!res.success) {
           toast.error(res.message || t('Failed to save'))
           return
@@ -133,15 +121,14 @@ export function SetCodeDialog({
         toast.success(t('Code updated'))
       } else {
         const payload = {
-          discount: discountParsed,
           max_uses: maxUsesParsed,
           expires_at: expires,
           remark: remark.trim(),
         }
         const res =
           mode === 'admin'
-            ? await createAdminCode(payload)
-            : await createMyCode(payload)
+            ? await createAdminInviteCode(payload)
+            : await createMyInviteCode(payload)
         if (!res.success) {
           toast.error(res.message || t('Failed to create'))
           return
@@ -160,47 +147,16 @@ export function SetCodeDialog({
       <DialogContent className='sm:max-w-[480px]'>
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? t('Edit Discount Code') : t('Create Discount Code')}
+            {isEdit ? t('Edit Invite Code') : t('Create Invite Code')}
           </DialogTitle>
           <DialogDescription>
             {t(
-              'Discount is the payment multiplier: 0.6 means the invitee pays 60%. Invitees keep this discount on every future recharge.'
+              'Anyone who registers with this code is bound to its owner. A code issued by an agent also limits that user to the models the agent is authorized for.'
             )}
           </DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4'>
-          <div className='space-y-2'>
-            <Label>{t('Discount (multiplier)')}</Label>
-            <Input
-              type='number'
-              min={lowerBound}
-              max={upperBound}
-              step={0.01}
-              value={discount}
-              disabled={isEdit}
-              onChange={(event) => setDiscount(event.target.value)}
-            />
-            {isEdit ? (
-              <p className='text-muted-foreground text-xs'>
-                {t(
-                  'The discount is fixed after creation. Create a new code for a different discount.'
-                )}
-              </p>
-            ) : (
-              <p className='text-muted-foreground text-xs'>
-                {discountValid
-                  ? t('Invitee pays: {{value}}', {
-                      value: formatDiscount(discountParsed, i18n.language, t),
-                    })
-                  : t('Require {{min}} ≤ discount ≤ {{max}}', {
-                      min: lowerBound,
-                      max: upperBound,
-                    })}
-              </p>
-            )}
-          </div>
-
           <div className='space-y-2'>
             <Label>{t('Max Uses')}</Label>
             <Input
@@ -231,24 +187,24 @@ export function SetCodeDialog({
                 <Button
                   type='button'
                   variant={
-                    status === DISCOUNT_CODE_STATUS.ENABLED
+                    status === INVITE_CODE_STATUS.ENABLED
                       ? 'default'
                       : 'outline'
                   }
                   size='sm'
-                  onClick={() => setStatus(DISCOUNT_CODE_STATUS.ENABLED)}
+                  onClick={() => setStatus(INVITE_CODE_STATUS.ENABLED)}
                 >
                   {t('Enabled')}
                 </Button>
                 <Button
                   type='button'
                   variant={
-                    status === DISCOUNT_CODE_STATUS.DISABLED
+                    status === INVITE_CODE_STATUS.DISABLED
                       ? 'default'
                       : 'outline'
                   }
                   size='sm'
-                  onClick={() => setStatus(DISCOUNT_CODE_STATUS.DISABLED)}
+                  onClick={() => setStatus(INVITE_CODE_STATUS.DISABLED)}
                 >
                   {t('Disabled')}
                 </Button>

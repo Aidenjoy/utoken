@@ -315,6 +315,7 @@ const (
 	MsgDistributorAffinityChannelDisabled = "distributor.affinity_channel_disabled"
 	MsgDistributorTokenNoModelAccess      = "distributor.token_no_model_access"
 	MsgDistributorTokenModelForbidden     = "distributor.token_model_forbidden"
+	MsgDistributorUserModelForbidden      = "distributor.user_model_forbidden"
 	MsgDistributorModelNameRequired       = "distributor.model_name_required"
 	MsgDistributorInvalidPlayground       = "distributor.invalid_playground_request"
 	MsgDistributorGroupAccessDenied       = "distributor.group_access_denied"
@@ -378,25 +379,28 @@ const (
 	MsgOrgMemberStatusInvalid    = "org.member_status_invalid"
 )
 
-// Agent (distributor discount) related messages
+// Agent (model authorization) related messages
 const (
-	MsgAgentNotFound          = "agent.not_found"
-	MsgAgentDisabled          = "agent.disabled"
-	MsgAgentAlreadyExists     = "agent.already_exists"
-	MsgAgentUserNotFound      = "agent.user_not_found"
-	MsgAgentDiscountRange     = "agent.discount_range_invalid"
-	MsgAgentDiscountOutOfRang = "agent.discount_out_of_range"
+	MsgAgentNotFound             = "agent.not_found"
+	MsgAgentDisabled             = "agent.disabled"
+	MsgAgentAlreadyExists        = "agent.already_exists"
+	MsgAgentUserNotFound         = "agent.user_not_found"
+	MsgAgentModelDiscountsEmpty  = "agent.model_discounts_empty"
+	MsgAgentModelDiscountInvalid = "agent.model_discounts_invalid"
+	MsgAgentModelNotAuthorized   = "agent.model_not_authorized"
+	MsgAgentDiscountBelowFloor   = "agent.discount_below_floor"
+	MsgAgentMemberNotOwned       = "agent.member_not_owned"
 )
 
-// Discount invite code related messages
+// Invite code related messages
+// 邀请码只做「用户 ↔ 代理商」绑定，本身不再携带折扣，因此原 discount_code.invalid_discount 已删除。
 const (
-	MsgDiscountCodeNotFound    = "discount_code.not_found"
-	MsgDiscountCodeDisabled    = "discount_code.disabled"
-	MsgDiscountCodeExpired     = "discount_code.expired"
-	MsgDiscountCodeExhausted   = "discount_code.exhausted"
-	MsgDiscountCodeInvalid     = "discount_code.invalid_discount"
-	MsgDiscountCodeGenerateErr = "discount_code.generate_failed"
-	MsgDiscountCodeNotOwned    = "discount_code.not_owned"
+	MsgInviteCodeNotFound    = "invite_code.not_found"
+	MsgInviteCodeDisabled    = "invite_code.disabled"
+	MsgInviteCodeExpired     = "invite_code.expired"
+	MsgInviteCodeExhausted   = "invite_code.exhausted"
+	MsgInviteCodeGenerateErr = "invite_code.generate_failed"
+	MsgInviteCodeNotOwned    = "invite_code.not_owned"
 )
 
 // Prompt template library related messages

@@ -29,18 +29,12 @@ interface CreemProductsSectionProps {
   products: CreemProduct[]
   onProductSelect: (product: CreemProduct) => void
   loading?: boolean
-  /**
-   * When true, the user holds a recharge discount that Creem's fixed catalog
-   * prices cannot honour, so a clarifying note is shown above the products.
-   */
-  excludedFromDiscount?: boolean
 }
 
 export function CreemProductsSection({
   products,
   onProductSelect,
   loading,
-  excludedFromDiscount,
 }: CreemProductsSectionProps) {
   const { t } = useTranslation()
 
@@ -59,32 +53,25 @@ export function CreemProductsSection({
   }
 
   return (
-    <div className='space-y-2'>
-      {excludedFromDiscount ? (
-        <p className='text-muted-foreground text-xs'>
-          {t('Fixed-price packages do not participate in the recharge discount.')}
-        </p>
-      ) : null}
-      <div className='grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3'>
-        {products.map((product) => (
-          <Card
-            key={product.productId}
-            data-card-hover='false'
-            className='cursor-pointer'
-            onClick={() => onProductSelect(product)}
-          >
-            <CardContent className='p-3 text-center sm:p-4'>
-              <div className='mb-2 text-lg font-medium'>{product.name}</div>
-              <div className='text-muted-foreground mb-2 text-sm'>
-                {t('Quota')}: {formatNumber(product.quota)}
-              </div>
-              <div className='text-primary text-lg font-semibold'>
-                {formatCreemPrice(product.price, product.currency)}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+    <div className='grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3'>
+      {products.map((product) => (
+        <Card
+          key={product.productId}
+          data-card-hover='false'
+          className='cursor-pointer'
+          onClick={() => onProductSelect(product)}
+        >
+          <CardContent className='p-3 text-center sm:p-4'>
+            <div className='mb-2 text-lg font-medium'>{product.name}</div>
+            <div className='text-muted-foreground mb-2 text-sm'>
+              {t('Quota')}: {formatNumber(product.quota)}
+            </div>
+            <div className='text-primary text-lg font-semibold'>
+              {formatCreemPrice(product.price, product.currency)}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }

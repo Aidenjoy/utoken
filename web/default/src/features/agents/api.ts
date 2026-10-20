@@ -21,10 +21,11 @@ import { api } from '@/lib/api'
 import type {
   Agent,
   AgentMember,
+  AgentMemberDiscounts,
   AgentProfile,
   AgentRechargeRecord,
   ApiResponse,
-  DiscountCode,
+  InviteCode,
   PaginatedResponse,
 } from './types'
 
@@ -33,30 +34,36 @@ export interface ListParams {
   page_size?: number
 }
 
+/**
+ * `model_discounts` maps an exact model name to the deepest discount (pay
+ * multiplier in (0, 1]) the agent may grant for it. The key set doubles as the
+ * allowlist for every user bound to this agent, so the server rejects an empty
+ * map and rejects wildcard names.
+ */
 export interface AgentPayload {
   user_id: number
-  min_discount: number
-  max_discount: number
+  model_discounts: Record<string, number>
   remark?: string
 }
 
+/**
+ * Updating replaces the whole authorization list rather than merging into it —
+ * a model dropped from the map is de-authorized for all of the agent's members.
+ */
 export interface AgentUpdatePayload {
-  min_discount?: number
-  max_discount?: number
+  model_discounts?: Record<string, number>
   status?: number
   remark?: string
 }
 
-export interface CodePayload {
-  discount: number
+// Invite codes carry no discount, so creating one only sets its usage limits.
+export interface InviteCodePayload {
   max_uses?: number
   expires_at?: number
   remark?: string
 }
 
-export interface CodeUpdatePayload {
-  // `discount` is immutable after creation (bound users keep their snapshot),
-  // so it is intentionally absent here; create a new code for a new discount.
+export interface InviteCodeUpdatePayload {
   max_uses?: number
   expires_at?: number
   status?: number
@@ -71,7 +78,9 @@ export async function listAgents(
   params: ListParams = {}
 ): Promise<PaginatedResponse<Agent>> {
   const { p = 1, page_size = 20 } = params
-  const res = await api.get(`/api/agent/admin/agents?p=${p}&page_size=${page_size}`)
+  const res = await api.get(
+    `/api/agent/admin/agents?p=${p}&page_size=${page_size}`
+  )
   return res.data
 }
 
@@ -96,12 +105,12 @@ export async function deleteAgent(id: number): Promise<ApiResponse> {
 }
 
 // ============================================================================
-// Admin: discount codes (no range restriction)
+// Admin: invite codes (no owner restriction)
 // ============================================================================
 
-export async function listAllCodes(
+export async function listAllInviteCodes(
   params: ListParams & { owner_user_id?: number; owner_type?: string } = {}
-): Promise<PaginatedResponse<DiscountCode>> {
+): Promise<PaginatedResponse<InviteCode>> {
   const { p = 1, page_size = 20, owner_user_id, owner_type } = params
   const query = new URLSearchParams()
   query.set('p', String(p))
@@ -112,16 +121,16 @@ export async function listAllCodes(
   return res.data
 }
 
-export async function createAdminCode(
-  payload: CodePayload
-): Promise<ApiResponse<DiscountCode>> {
+export async function createAdminInviteCode(
+  payload: InviteCodePayload
+): Promise<ApiResponse<InviteCode>> {
   const res = await api.post('/api/agent/admin/codes', payload)
   return res.data
 }
 
-export async function updateAdminCode(
+export async function updateAdminInviteCode(
   id: number,
-  payload: CodeUpdatePayload
+  payload: InviteCodeUpdatePayload
 ): Promise<ApiResponse> {
   const res = await api.put(`/api/agent/admin/codes/${id}`, payload)
   return res.data
@@ -136,24 +145,24 @@ export async function getAgentProfile(): Promise<ApiResponse<AgentProfile>> {
   return res.data
 }
 
-export async function listMyCodes(
+export async function listMyInviteCodes(
   params: ListParams = {}
-): Promise<PaginatedResponse<DiscountCode>> {
+): Promise<PaginatedResponse<InviteCode>> {
   const { p = 1, page_size = 20 } = params
   const res = await api.get(`/api/agent/codes?p=${p}&page_size=${page_size}`)
   return res.data
 }
 
-export async function createMyCode(
-  payload: CodePayload
-): Promise<ApiResponse<DiscountCode>> {
+export async function createMyInviteCode(
+  payload: InviteCodePayload
+): Promise<ApiResponse<InviteCode>> {
   const res = await api.post('/api/agent/codes', payload)
   return res.data
 }
 
-export async function updateMyCode(
+export async function updateMyInviteCode(
   id: number,
-  payload: CodeUpdatePayload
+  payload: InviteCodeUpdatePayload
 ): Promise<ApiResponse> {
   const res = await api.put(`/api/agent/codes/${id}`, payload)
   return res.data
@@ -164,6 +173,33 @@ export async function listMyMembers(
 ): Promise<PaginatedResponse<AgentMember>> {
   const { p = 1, page_size = 20 } = params
   const res = await api.get(`/api/agent/members?p=${p}&page_size=${page_size}`)
+  return res.data
+}
+
+/**
+ * Read a member's per-model discounts together with the agent's own floors, so
+ * the editor can clamp each percentage input before submitting.
+ */
+export async function getAgentMemberDiscounts(
+  memberId: number
+): Promise<ApiResponse<AgentMemberDiscounts>> {
+  const res = await api.get(`/api/agent/members/${memberId}/model_discounts`)
+  return res.data
+}
+
+/**
+ * Set a member's discounts for the models this agent is authorized for.
+ * Authorized models omitted from the payload revert to full price; discounts
+ * the agent is not authorized for are left untouched server-side (they belong
+ * to an admin's configuration).
+ */
+export async function updateAgentMemberDiscounts(
+  memberId: number,
+  discounts: Record<string, number>
+): Promise<ApiResponse<{ discounts: Record<string, number> }>> {
+  const res = await api.put(`/api/agent/members/${memberId}/model_discounts`, {
+    discounts,
+  })
   return res.data
 }
 

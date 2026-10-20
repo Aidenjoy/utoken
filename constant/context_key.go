@@ -60,6 +60,13 @@ const (
 	ContextKeyUserOrgId   ContextKey = "org_id"
 	ContextKeyUserOrgRole ContextKey = "org_role"
 
+	// 代理商授权上下文：AgentId=0 表示该用户不属于任何代理商，模型访问不受限。
+	// AllowedModels 是代理商授权模型清单的 JSON 数组（精确模型名，不含通配），
+	// 由 UserBase.WriteContext 写入。AgentId>0 而 AllowedModels 为空表示代理配置
+	// 解析失败（代理行缺失或 JSON 损坏），分发层据此走 fail-open 并记录错误。
+	ContextKeyUserAgentId       ContextKey = "user_agent_id"
+	ContextKeyUserAllowedModels ContextKey = "user_allowed_models"
+
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 
 	ContextKeySystemPromptOverride ContextKey = "system_prompt_override"

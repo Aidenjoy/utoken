@@ -27,7 +27,7 @@ For commercial licensing, please contact support@quantumnous.com
 const STORAGE_KEYS = {
   USER_ID: 'uid',
   AFFILIATE: 'aff',
-  DISCOUNT: 'discount',
+  INVITE: 'invite',
   STATUS: 'status',
 } as const
 
@@ -107,34 +107,35 @@ export function saveAffiliateCode(code: string): void {
 }
 
 // ============================================================================
-// Discount Invite Code Storage
+// Invite Code Storage
 // ============================================================================
 
 /**
- * Get the discount invite code captured from the `?discount=` query param.
- * Unlike the affiliate code this carries no commission — it only binds a
- * permanent recharge discount at registration.
+ * Get the invite code captured from the `?invite=` query param (the legacy
+ * `?discount=` param is still read for old bookmarks). Unlike the affiliate
+ * code this carries no commission and no discount — it only binds the new
+ * account to the code's owner at registration.
  */
-export function getDiscountCode(): string {
+export function getInviteCode(): string {
   if (typeof window === 'undefined') return ''
   try {
-    return window.localStorage.getItem(STORAGE_KEYS.DISCOUNT) ?? ''
+    return window.localStorage.getItem(STORAGE_KEYS.INVITE) ?? ''
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('Failed to get discount code:', error)
+    console.error('Failed to get invite code:', error)
     return ''
   }
 }
 
 /**
- * Save discount invite code to localStorage
+ * Save invite code to localStorage
  */
-export function saveDiscountCode(code: string): void {
+export function saveInviteCode(code: string): void {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(STORAGE_KEYS.DISCOUNT, code)
+    window.localStorage.setItem(STORAGE_KEYS.INVITE, code)
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('Failed to save discount code:', error)
+    console.error('Failed to save invite code:', error)
   }
 }

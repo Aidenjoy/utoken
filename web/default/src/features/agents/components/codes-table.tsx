@@ -42,22 +42,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import { listAllCodes, updateAdminCode } from '../api'
-import { DISCOUNT_CODE_STATUS, OWNER_TYPE, type DiscountCode } from '../types'
+import { listAllInviteCodes, updateAdminInviteCode } from '../api'
+import { INVITE_CODE_STATUS, OWNER_TYPE, type InviteCode } from '../types'
 import { useCodeColumns } from './code-columns'
 import { SetCodeDialog } from './set-code-dialog'
 
 const ALL_OWNERS = 'all'
 
-type PendingAction = { kind: 'status'; code: DiscountCode } | null
+type PendingAction = { kind: 'status'; code: InviteCode } | null
 
 /**
- * System-administrator view of every discount invite code (admin- and
- * agent-issued), filterable by owner type. Admins may create codes with no
- * discount-range restriction.
+ * System-administrator view of every invite code (admin- and agent-issued),
+ * filterable by owner type. An admin-issued code binds the registrant to the
+ * site rather than to an agent, so it leaves the user's model access untouched.
  */
 export function CodesTable() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
 
   const [pageIndex, setPageIndex] = useState(0)
@@ -65,21 +65,21 @@ export function CodesTable() {
   const [ownerType, setOwnerType] = useState<string>(ALL_OWNERS)
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<DiscountCode | null>(null)
+  const [editing, setEditing] = useState<InviteCode | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [isWorking, setIsWorking] = useState(false)
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['agent-codes', pageIndex, pageSize, ownerType],
     queryFn: async () => {
-      const result = await listAllCodes({
+      const result = await listAllInviteCodes({
         p: pageIndex + 1,
         page_size: pageSize,
         owner_type: ownerType === ALL_OWNERS ? undefined : ownerType,
       })
       if (!result.success) {
         toast.error(result.message || t('Failed to load codes'))
-        return { items: [] as DiscountCode[], total: 0 }
+        return { items: [] as InviteCode[], total: 0 }
       }
       return {
         items: result.data?.items ?? [],
@@ -93,7 +93,7 @@ export function CodesTable() {
     void queryClient.invalidateQueries({ queryKey: ['agent-codes'] })
   }, [queryClient])
 
-  const openEdit = useCallback((code: DiscountCode | null) => {
+  const openEdit = useCallback((code: InviteCode | null) => {
     setEditing(code)
     setDialogOpen(true)
   }, [])
@@ -101,14 +101,13 @@ export function CodesTable() {
   const columns = useCodeColumns(
     useMemo(
       () => ({
-        onEdit: (code: DiscountCode) => openEdit(code),
-        onToggleStatus: (code: DiscountCode) =>
+        onEdit: (code: InviteCode) => openEdit(code),
+        onToggleStatus: (code: InviteCode) =>
           setPendingAction({ kind: 'status', code }),
       }),
       [openEdit]
     ),
     t,
-    i18n.language,
     { showOwner: true }
   )
 
@@ -134,10 +133,12 @@ export function CodesTable() {
     setIsWorking(true)
     try {
       const nextStatus =
-        code.status === DISCOUNT_CODE_STATUS.ENABLED
-          ? DISCOUNT_CODE_STATUS.DISABLED
-          : DISCOUNT_CODE_STATUS.ENABLED
-      const result = await updateAdminCode(code.id, { status: nextStatus })
+        code.status === INVITE_CODE_STATUS.ENABLED
+          ? INVITE_CODE_STATUS.DISABLED
+          : INVITE_CODE_STATUS.ENABLED
+      const result = await updateAdminInviteCode(code.id, {
+        status: nextStatus,
+      })
       if (!result.success) {
         toast.error(result.message || t('Failed to update code'))
         return
@@ -153,12 +154,15 @@ export function CodesTable() {
   const primaryButtons = (
     <Button size='sm' onClick={() => openEdit(null)}>
       <Plus className='size-4' />
-      {t('Create Discount Code')}
+      {t('Create Invite Code')}
     </Button>
   )
 
   const ownerFilter = (
-    <Select value={ownerType} onValueChange={(v) => setOwnerType(v ?? ALL_OWNERS)}>
+    <Select
+      value={ownerType}
+      onValueChange={(v) => setOwnerType(v ?? ALL_OWNERS)}
+    >
       <SelectTrigger className='w-[140px]'>
         <SelectValue />
       </SelectTrigger>
@@ -170,7 +174,7 @@ export function CodesTable() {
     </Select>
   )
 
-  const isEnabled = pendingAction?.code.status === DISCOUNT_CODE_STATUS.ENABLED
+  const isEnabled = pendingAction?.code.status === INVITE_CODE_STATUS.ENABLED
   const pendingDescription = isEnabled
     ? t('Disable code {{code}}?', { code: pendingAction?.code.code ?? '' })
     : t('Enable code {{code}}?', { code: pendingAction?.code.code ?? '' })
@@ -183,9 +187,9 @@ export function CodesTable() {
         columns={columns}
         isLoading={isLoading}
         isFetching={isFetching}
-        emptyTitle={t('No Discount Codes Found')}
+        emptyTitle={t('No Invite Codes Found')}
         emptyDescription={t(
-          'Create a discount code to invite users with a permanent recharge discount.'
+          'Create an invite code to bind new registrations to their owner.'
         )}
         emptyAction={primaryButtons}
         skeletonKeyPrefix='agent-codes-skeleton'

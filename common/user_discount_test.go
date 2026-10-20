@@ -251,6 +251,128 @@ func TestNormalizeModelDiscounts(t *testing.T) {
 	assert.Contains(t, err.Error(), "gpt-4o")
 }
 
+// TestNormalizeAgentModelFloors 覆盖代理商授权配置（{模型名: 折扣下限}）的校验。
+// 与 NormalizeModelDiscounts 的两处关键差异是这里的重点：不允许为空、不允许通配键。
+func TestNormalizeAgentModelFloors(t *testing.T) {
+	// 正常配置：键去空白、值保留 4 位小数。
+	normalized, err := NormalizeAgentModelFloors(map[string]float64{" gpt-4o ": 0.81254, "claude-3-5-sonnet": 1})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]float64{"gpt-4o": 0.8125, "claude-3-5-sonnet": 1}, normalized)
+
+	// 空授权等于“成员一个模型都调不通”，必须在写入时就拦住。
+	_, err = NormalizeAgentModelFloors(nil)
+	assert.ErrorIs(t, err, ErrAgentModelsEmpty)
+	_, err = NormalizeAgentModelFloors(map[string]float64{})
+	assert.ErrorIs(t, err, ErrAgentModelsEmpty)
+
+	// 通配键在白名单语义下会过度放行，一律拒绝。
+	_, err = NormalizeAgentModelFloors(map[string]float64{"*": 0.8})
+	assert.ErrorIs(t, err, errAgentModelWildcard)
+	_, err = NormalizeAgentModelFloors(map[string]float64{"seedance*": 0.8})
+	assert.ErrorIs(t, err, errAgentModelWildcard)
+
+	// 值域与键约束复用按模型折扣那套规则。
+	_, err = NormalizeAgentModelFloors(map[string]float64{"gpt-4o": 0})
+	assert.ErrorIs(t, err, errModelDiscountInvalidRate)
+	_, err = NormalizeAgentModelFloors(map[string]float64{"gpt-4o": 1.2})
+	assert.ErrorIs(t, err, errModelDiscountInvalidRate)
+	_, err = NormalizeAgentModelFloors(map[string]float64{"gpt-4o": math.NaN()})
+	assert.ErrorIs(t, err, errModelDiscountInvalidRate)
+	_, err = NormalizeAgentModelFloors(map[string]float64{"   ": 0.8})
+	assert.ErrorIs(t, err, errModelDiscountEmptyKey)
+	_, err = NormalizeAgentModelFloors(map[string]float64{strings.Repeat("m", MaxModelDiscountKeyLength+1): 0.8})
+	assert.ErrorIs(t, err, errModelDiscountKeyTooLong)
+
+	tooMany := make(map[string]float64, MaxModelDiscountEntries+1)
+	for i := 0; i <= MaxModelDiscountEntries; i++ {
+		tooMany["model-"+strconv.Itoa(i)] = 0.8
+	}
+	_, err = NormalizeAgentModelFloors(tooMany)
+	assert.ErrorIs(t, err, errModelDiscountTooMany)
+
+	// 一个键违规就整体拒绝：授权清单是原子的，半套清单落库会造成“能看见却调不通”。
+	_, err = NormalizeAgentModelFloors(map[string]float64{"gpt-4o": 0.8, "seedance*": 0.9})
+	assert.ErrorIs(t, err, errAgentModelWildcard)
+}
+
+// TestValidateModelDiscountsWithinFloors 覆盖代理商给成员设折扣的边界：
+// 未授权模型被拒、低于下限被拒、恰好等于下限必须通过。
+// 返回出错的模型名，供 controller 填 i18n 的 {{.Model}} 占位。
+func TestValidateModelDiscountsWithinFloors(t *testing.T) {
+	floors := map[string]float64{"gpt-4o": 0.8, "claude-3-5-sonnet": 0.95}
+
+	tests := []struct {
+		name      string
+		discounts map[string]float64
+		wantModel string
+		wantErr   error
+	}{
+		{
+			name:      "empty discount set is allowed",
+			discounts: map[string]float64{},
+		},
+		{
+			name:      "nil discount set is allowed",
+			discounts: nil,
+		},
+		{
+			name:      "at the floor passes",
+			discounts: map[string]float64{"gpt-4o": 0.8},
+		},
+		{
+			name:      "above the floor passes",
+			discounts: map[string]float64{"gpt-4o": 0.9, "claude-3-5-sonnet": 1},
+		},
+		{
+			// 二进制浮点尾差不能把“恰好等于下限”误判成越界。
+			name:      "floor equality survives float noise",
+			discounts: map[string]float64{"gpt-4o": 0.8000000001},
+		},
+		{
+			name:      "below the floor rejected",
+			discounts: map[string]float64{"gpt-4o": 0.7999},
+			wantModel: "gpt-4o",
+			wantErr:   ErrAgentDiscountBelowFloor,
+		},
+		{
+			name:      "zero rejected as below floor",
+			discounts: map[string]float64{"claude-3-5-sonnet": 0},
+			wantModel: "claude-3-5-sonnet",
+			wantErr:   ErrAgentDiscountBelowFloor,
+		},
+		{
+			name:      "unauthorized model rejected",
+			discounts: map[string]float64{"gpt-4o-mini": 1},
+			wantModel: "gpt-4o-mini",
+			wantErr:   ErrAgentModelNotAuthorized,
+		},
+		{
+			name:      "unauthorized model rejected even at full price",
+			discounts: map[string]float64{"gpt-4o": 0.9, "doubao-seedance": 1},
+			wantModel: "doubao-seedance",
+			wantErr:   ErrAgentModelNotAuthorized,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			model, err := ValidateModelDiscountsWithinFloors(tc.discounts, floors)
+			if tc.wantErr == nil {
+				assert.NoError(t, err)
+				assert.Empty(t, model)
+				return
+			}
+			assert.ErrorIs(t, err, tc.wantErr)
+			assert.Equal(t, tc.wantModel, model, "the offending model name feeds the i18n placeholder")
+		})
+	}
+
+	// 授权清单为空（代理配置损坏）时任何折扣都算未授权，而不是全部放行。
+	model, err := ValidateModelDiscountsWithinFloors(map[string]float64{"gpt-4o": 1}, nil)
+	assert.ErrorIs(t, err, ErrAgentModelNotAuthorized)
+	assert.Equal(t, "gpt-4o", model)
+}
+
 // TestApplyModelDiscount 校验计费不变量：折扣只减不增、非法折扣与
 // 非正额度原样返回（绝不产生负扣费或免费额度）。
 func TestApplyModelDiscount(t *testing.T) {

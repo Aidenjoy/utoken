@@ -16,39 +16,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
-import { getAgentProfile } from '@/features/agents/api'
 
 import { AgentCodesTable } from './components/agent-codes-table'
 
 /**
- * The promoted agent's own discount codes. Creation is clamped to the
- * allowed discount range reported by the agent profile.
+ * The promoted agent's own invite codes. Codes no longer carry a discount, so
+ * this page needs nothing from the agent profile — it only lists and edits the
+ * codes that bind new registrations to this agent.
  */
 export function AgentCodes() {
   const { t } = useTranslation()
 
-  const { data: profile } = useQuery({
-    queryKey: ['agent-profile'],
-    queryFn: async () => {
-      const res = await getAgentProfile()
-      return res.success ? res.data : undefined
-    },
-  })
-
-  const range = {
-    min: profile?.min_discount ?? 0.01,
-    max: profile?.max_discount ?? 1,
-  }
-
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t('Discount Codes')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Invite Codes')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <AgentCodesTable range={range} />
+        <AgentCodesTable />
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

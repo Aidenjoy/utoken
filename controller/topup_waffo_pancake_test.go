@@ -56,7 +56,6 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 		amount           int64
 		group            string
 		quotaDisplayType string
-		userDiscount     float64
 		expected         float64
 	}{
 		{
@@ -64,7 +63,6 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 			amount:           10,
 			group:            "vip",
 			quotaDisplayType: operation_setting.QuotaDisplayTypeUSD,
-			userDiscount:     1.0,
 			expected:         24,
 		},
 		{
@@ -72,7 +70,6 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 			amount:           int64(common.QuotaPerUnit * 3),
 			group:            "vip",
 			quotaDisplayType: operation_setting.QuotaDisplayTypeTokens,
-			userDiscount:     1.0,
 			expected:         4.5,
 		},
 		{
@@ -80,23 +77,14 @@ func TestGetWaffoPancakePayMoney(t *testing.T) {
 			amount:           20,
 			group:            "default",
 			quotaDisplayType: operation_setting.QuotaDisplayTypeUSD,
-			userDiscount:     1.0,
 			expected:         50,
-		},
-		{
-			name:             "user discount stacks multiplicatively with preset discount",
-			amount:           10,
-			group:            "vip",
-			quotaDisplayType: operation_setting.QuotaDisplayTypeUSD,
-			userDiscount:     0.6,
-			expected:         14.4,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			operation_setting.GetGeneralSetting().QuotaDisplayType = tc.quotaDisplayType
-			actual := getWaffoPancakePayMoney(tc.amount, tc.group, tc.userDiscount)
+			actual := getWaffoPancakePayMoney(tc.amount, tc.group)
 			require.InDelta(t, tc.expected, actual, 0.000001)
 		})
 	}

@@ -52,21 +52,27 @@ type User struct {
 	DeletedAt        gorm.DeletedAt `gorm:"index"`
 	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
-	// ModelDiscounts 按模型折扣（管理员配置，JSON：{"模型名":0.8}，值域 (0,1]）。
+	// ModelDiscounts 按模型折扣（管理员或所属代理商配置，JSON：{"模型名":0.8}，值域 (0,1]）。
 	// 空字符串 = 无折扣（原价）。仅 model_discounts 专用接口可写，通用更新路径不得覆盖。
-	ModelDiscounts        string                     `json:"model_discounts,omitempty" gorm:"type:text;column:model_discounts"`
-	Remark                string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	TokenRate             float64                    `json:"token_rate" gorm:"default:0;column:token_rate"`                                // token 消耗费率（=期望折扣/采购折扣），0=未设置（等效 1.0）
-	ExpectedDiscount      float64                    `json:"expected_discount" gorm:"default:0;column:expected_discount"`                  // 期望折扣（费率分子），0=未设置；服务端由 num/denom 反算 token_rate
-	PurchaseDiscount      float64                    `json:"purchase_discount" gorm:"default:0;column:purchase_discount"`                  // 采购折扣（费率分母），0=未设置；服务端由 num/denom 反算 token_rate
-	RechargeDiscount      float64                    `json:"recharge_discount" gorm:"default:0;column:recharge_discount"`                  // 充值折扣乘数，0=无折扣（等效 1.0），有效区间 (0,1]，注册时绑定后永久生效
-	RechargeDiscountCode  string                     `json:"recharge_discount_code" gorm:"type:varchar(32);column:recharge_discount_code"` // 注册时绑定的折扣邀请码，审计/统计用
-	RechargeDiscountOwner string                     `json:"recharge_discount_owner" gorm:"-"`                                             // 折扣码归属用户名（列表返回时回填，不落库）
-	DiscountCode          string                     `json:"discount_code" gorm:"-:all"`                                                   // 注册请求透传的折扣邀请码，不落库
-	StripeCustomer        string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt             int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt           int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
-	AdminPermissions      map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	ModelDiscounts   string  `json:"model_discounts,omitempty" gorm:"type:text;column:model_discounts"`
+	Remark           string  `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	TokenRate        float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // token 消耗费率（=期望折扣/采购折扣），0=未设置（等效 1.0）
+	ExpectedDiscount float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 期望折扣（费率分子），0=未设置；服务端由 num/denom 反算 token_rate
+	PurchaseDiscount float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 采购折扣（费率分母），0=未设置；服务端由 num/denom 反算 token_rate
+	// AgentId 是所属代理商（agents.id），0 = 无代理归属。
+	// 由注册时消费邀请码写入，是模型白名单的唯一依据：大于 0 时该用户只能调用
+	// 代理商授权清单内的模型。与 model_discounts 同属权限字段，通用更新路径不得覆盖，
+	// 否则用户自己 PUT 一个 agent_id=0 就能绕开白名单。仅注册绑定与删除代理商时解绑可写。
+	AgentId int `json:"agent_id" gorm:"type:int;index;default:0;column:agent_id"`
+	// 已废弃：recharge_discount / recharge_discount_code 两列曾是「折扣邀请码 + 充值立减」
+	// 的落库字段，该功能已由按模型折扣取代。结构体不再声明这两个字段，GORM AutoMigrate
+	// 不会删列，故它们作为孤儿列留在库里，无任何代码读写。
+	AgentUsername    string                     `json:"agent_username" gorm:"-"`  // 所属代理商用户名（列表返回时回填，不落库）
+	InviteCode       string                     `json:"invite_code" gorm:"-:all"` // 注册请求透传的邀请码，不落库
+	StripeCustomer   string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -80,6 +86,7 @@ func (user *User) ToBaseUser() *UserBase {
 		ModelDiscounts: user.ModelDiscounts,
 		Email:          user.Email,
 		OrgId:          user.OrgId,
+		AgentId:        user.AgentId,
 	}
 	return cache
 }
@@ -372,7 +379,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		return nil, 0, err
 	}
 
-	if err = AttachDiscountCodeOwners(users); err != nil {
+	if err = AttachAgentOwners(users); err != nil {
 		return nil, 0, err
 	}
 
@@ -425,8 +432,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, referrer 
 		}
 	}
 	if referrer != "" {
-		// 发展关系：由该用户邀请，或注册时绑定了该用户拥有的折扣码。
-		query = query.Where("(inviter_id = (SELECT id FROM users WHERE username = ?) OR recharge_discount_code IN (SELECT code FROM discount_invite_codes WHERE owner_user_id = (SELECT id FROM users WHERE username = ?)))", referrer, referrer)
+		// 发展关系：由该用户直接邀请（inviter_id），或注册时用该用户名下代理商的邀请码
+		// 绑定进了其代理体系（agent_id 存的是 agents.id，需经 agents.user_id 反查归属人）。
+		query = query.Where("(inviter_id = (SELECT id FROM users WHERE username = ?) OR agent_id = (SELECT id FROM agents WHERE user_id = (SELECT id FROM users WHERE username = ?)))", referrer, referrer)
 	}
 
 	// 获取总数
@@ -456,7 +464,7 @@ func SearchUsers(keyword string, group string, role *int, status *int, referrer 
 		return nil, 0, err
 	}
 
-	if err = AttachDiscountCodeOwners(users); err != nil {
+	if err = AttachAgentOwners(users); err != nil {
 		return nil, 0, err
 	}
 
@@ -495,39 +503,39 @@ func AttachOrgNames(users []*User) error {
 	return nil
 }
 
-// AttachDiscountCodeOwners 为列表中绑定了折扣邀请码的用户批量回填码归属用户名：
-// 先按去重后的码查折扣码表拿到 owner_user_id，再查用户表拿到用户名，避免 N+1。
-// 码已被删除或归属用户不存在时保持空串。
-func AttachDiscountCodeOwners(users []*User) error {
-	codeSet := make(map[string]struct{}, len(users))
-	codes := make([]string, 0, len(users))
+// AttachAgentOwners 为列表中归属代理商的用户批量回填代理商用户名：
+// 先按去重后的 agent_id 查 agents 表拿到 user_id，再查用户表拿到用户名，避免 N+1。
+// 代理商已被删除或归属用户不存在时保持空串。
+func AttachAgentOwners(users []*User) error {
+	agentSet := make(map[int]struct{}, len(users))
+	agentIds := make([]int, 0, len(users))
 	for _, u := range users {
-		if u.RechargeDiscountCode == "" {
+		if u.AgentId <= 0 {
 			continue
 		}
-		if _, ok := codeSet[u.RechargeDiscountCode]; !ok {
-			codeSet[u.RechargeDiscountCode] = struct{}{}
-			codes = append(codes, u.RechargeDiscountCode)
+		if _, ok := agentSet[u.AgentId]; !ok {
+			agentSet[u.AgentId] = struct{}{}
+			agentIds = append(agentIds, u.AgentId)
 		}
 	}
-	if len(codes) == 0 {
+	if len(agentIds) == 0 {
 		return nil
 	}
-	var discountCodes []DiscountInviteCode
-	if err := DB.Select("code, owner_user_id").Where("code IN ?", codes).Find(&discountCodes).Error; err != nil {
+	var agents []Agent
+	if err := DB.Select("id, user_id").Where("id IN ?", agentIds).Find(&agents).Error; err != nil {
 		return err
 	}
-	if len(discountCodes) == 0 {
+	if len(agents) == 0 {
 		return nil
 	}
-	ownerIdByCode := make(map[string]int, len(discountCodes))
-	idSet := make(map[int]struct{}, len(discountCodes))
-	ownerIds := make([]int, 0, len(discountCodes))
-	for _, dc := range discountCodes {
-		ownerIdByCode[dc.Code] = dc.OwnerUserId
-		if _, ok := idSet[dc.OwnerUserId]; !ok {
-			idSet[dc.OwnerUserId] = struct{}{}
-			ownerIds = append(ownerIds, dc.OwnerUserId)
+	ownerIdByAgent := make(map[int]int, len(agents))
+	idSet := make(map[int]struct{}, len(agents))
+	ownerIds := make([]int, 0, len(agents))
+	for _, a := range agents {
+		ownerIdByAgent[a.Id] = a.UserId
+		if _, ok := idSet[a.UserId]; !ok {
+			idSet[a.UserId] = struct{}{}
+			ownerIds = append(ownerIds, a.UserId)
 		}
 	}
 	var owners []User
@@ -539,8 +547,8 @@ func AttachDiscountCodeOwners(users []*User) error {
 		nameById[o.Id] = o.Username
 	}
 	for _, u := range users {
-		if ownerId, ok := ownerIdByCode[u.RechargeDiscountCode]; ok {
-			u.RechargeDiscountOwner = nameById[ownerId]
+		if ownerId, ok := ownerIdByAgent[u.AgentId]; ok {
+			u.AgentUsername = nameById[ownerId]
 		}
 	}
 	return nil
@@ -636,22 +644,6 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 		err = DB.Omit("password", "access_token").First(&user, "id = ?", id).Error
 	}
 	return &user, err
-}
-
-// GetUserRechargeDiscount 返回用户充值的折扣乘数（唯一解析入口，被各支付渠道复用）。
-// 未设置或非法值一律回落到 1.0（无折扣）；有效区间 (0,1]，数值越小折扣越大。
-func GetUserRechargeDiscount(id int) float64 {
-	if id <= 0 {
-		return 1.0
-	}
-	var user User
-	if err := DB.Select("recharge_discount").First(&user, "id = ?", id).Error; err != nil {
-		return 1.0
-	}
-	if user.RechargeDiscount <= 0 || user.RechargeDiscount > 1 {
-		return 1.0
-	}
-	return user.RechargeDiscount
 }
 
 func GetUserIdByAffCode(affCode string) (int, error) {
@@ -916,9 +908,9 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
-	// model_discounts 与额度同属资金相关字段：通用更新路径（管理员 PUT /api/user/）
+	// model_discounts 与 agent_id 同属资金/权限相关字段：通用更新路径（管理员 PUT /api/user/）
 	// 不得覆盖，否则请求体里带上该字段就能绕过专用接口的校验与审计。
-	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "model_discounts").Updates(newUser).Error; err != nil {
+	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "model_discounts", "agent_id").Updates(newUser).Error; err != nil {
 		return err
 	}
 	return tx.First(user, user.Id).Error

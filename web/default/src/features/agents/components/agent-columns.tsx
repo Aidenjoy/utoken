@@ -17,15 +17,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Pencil, Power, Trash2 } from 'lucide-react'
 import type { TFunction } from 'i18next'
+import { Pencil, Power, Trash2 } from 'lucide-react'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { formatDiscount } from '@/lib/discount'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { formatModelDiscount } from '@/lib/discount'
 
 import { AGENT_STATUS, type Agent } from '../types'
 
@@ -36,9 +42,9 @@ export type AgentActions = {
 }
 
 /**
- * Columns for the reseller (agent) management list. The discount range shows
- * the deepest allowed discount first (min multiplier) then the shallowest
- * (max multiplier); a max of 1.0 renders as "No discount".
+ * Columns for the reseller (agent) management list. The authorization column
+ * shows how many models the agent may resell; hovering lists each model with
+ * the deepest discount the agent may grant for it (0.8 → 80%).
  */
 export function useAgentColumns(
   actions: AgentActions,
@@ -78,35 +84,62 @@ export function useAgentColumns(
       size: 220,
     },
     {
-      id: 'discount_range',
-      accessorKey: 'min_discount',
-      header: t('Discount Range'),
+      id: 'authorized_models',
+      accessorKey: 'model_discounts',
+      header: t('Authorized Models'),
       meta: { mobileBadge: true },
       cell: ({ row }) => {
-        const min = row.original.min_discount
-        const max = row.original.max_discount
-        return (
+        // 键集合就是授权清单，排序后展示以免每次渲染都换序。
+        const entries = Object.entries(row.original.model_discounts ?? {}).sort(
+          ([a], [b]) => a.localeCompare(b)
+        )
+        const badge = (
           <StatusBadge
-            label={`${formatDiscount(min, language, t)} – ${formatDiscount(
-              max,
-              language,
-              t
-            )}`}
-            variant='info'
+            label={t('{{total}} models', { total: entries.length })}
+            variant={entries.length > 0 ? 'info' : 'danger'}
             copyable={false}
           />
+        )
+        if (entries.length === 0) {
+          // 空授权是个陷阱（成员一个模型都调不通），单独标红而不是隐藏。
+          return badge
+        }
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger render={<span />}>{badge}</TooltipTrigger>
+              <TooltipContent side='top' className='max-w-xs'>
+                <ul className='space-y-0.5'>
+                  {entries.map(([model, floor]) => (
+                    <li key={model} className='flex items-center gap-2'>
+                      <span className='font-mono'>{model}</span>
+                      {/* “≥ 80%” is the same glyph sequence in every supported
+                          language, so it is rendered directly rather than going
+                          through t() — a translation key here would produce
+                          seven identical values that the sync script flags as
+                          untranslated. */}
+                      <span className='text-background/70 ml-auto font-mono tabular-nums'>
+                        {'≥ '}
+                        {formatModelDiscount(floor, language)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )
       },
       size: 180,
     },
     {
-      accessorKey: 'code_count',
-      header: t('Codes'),
+      accessorKey: 'invite_count',
+      header: t('Invite Codes'),
       meta: { mobileHidden: true },
       cell: ({ row }) => (
-        <span className='tabular-nums'>{row.original.code_count ?? 0}</span>
+        <span className='tabular-nums'>{row.original.invite_count ?? 0}</span>
       ),
-      size: 90,
+      size: 110,
     },
     {
       accessorKey: 'status',
@@ -114,7 +147,11 @@ export function useAgentColumns(
       meta: { mobileBadge: true },
       cell: ({ row }) =>
         row.original.status === AGENT_STATUS.ENABLED ? (
-          <StatusBadge label={t('Enabled')} variant='success' copyable={false} />
+          <StatusBadge
+            label={t('Enabled')}
+            variant='success'
+            copyable={false}
+          />
         ) : (
           <StatusBadge
             label={t('Disabled')}
@@ -146,9 +183,7 @@ export function useAgentColumns(
               {t('Edit')}
               <Pencil size={16} />
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => actions.onToggleStatus(agent)}
-            >
+            <DropdownMenuItem onClick={() => actions.onToggleStatus(agent)}>
               {enabled ? t('Disable') : t('Enable')}
               <Power size={16} />
             </DropdownMenuItem>

@@ -146,7 +146,11 @@ func GetEpayClient() *epay.Client {
 	return withUrl
 }
 
-func getPayMoney(amount int64, group string, userDiscount float64) float64 {
+// getPayMoney 计算充值的实付金额。
+// 只保留两个乘数：分组倍率与全局档位折扣（payment_setting.amount_discount，按充值面值配）。
+// 历史上的「用户个人充值立减」已下线：粒度更细的按模型折扣（users.model_discounts）
+// 已能覆盖同一诉求，两套并存只会让价格来源无法追溯。
+func getPayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
@@ -168,10 +172,6 @@ func getPayMoney(amount int64, group string, userDiscount float64) float64 {
 		if ds > 0 {
 			discount = ds
 		}
-	}
-	// 叠加用户个人折扣（折扣邀请码注册绑定，永久生效）：只降实付金额，额度仍按面值入账。
-	if userDiscount > 0 && userDiscount <= 1 {
-		discount *= userDiscount
 	}
 	dDiscount := decimal.NewFromFloat(discount)
 
@@ -208,7 +208,7 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group, model.GetUserRechargeDiscount(id))
+	payMoney := getPayMoney(req.Amount, group)
 	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -434,7 +434,7 @@ func RequestAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group, model.GetUserRechargeDiscount(id))
+	payMoney := getPayMoney(req.Amount, group)
 	if payMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return

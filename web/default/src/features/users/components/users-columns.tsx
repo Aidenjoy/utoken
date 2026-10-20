@@ -32,7 +32,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatQuota, formatTimestamp } from '@/lib/format'
-import { formatDiscount, hasRechargeDiscount } from '@/lib/discount'
 import { cn } from '@/lib/utils'
 
 import {
@@ -51,7 +50,7 @@ function getQuotaProgressColor(percentage: number): string {
 }
 
 export function useUsersColumns(): ColumnDef<User>[] {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   return [
     {
       id: 'select',
@@ -389,40 +388,16 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { mobileHidden: true },
     },
     {
-      id: 'discount',
-      header: t('Discount'),
+      id: 'agent',
+      accessorKey: 'agent_username',
+      header: t('Agent'),
       cell: ({ row }) => {
-        const user = row.original
-        const discount = user.recharge_discount
-        const code = user.recharge_discount_code
-        const owner = user.recharge_discount_owner
-        if (!hasRechargeDiscount(discount) && !code) {
+        // 归属代理商决定该用户能调用哪些模型，因此列在这里而不只是备注信息。
+        const agent = row.original.agent_username
+        if (!agent) {
           return <span className='text-muted-foreground text-sm'>-</span>
         }
-        return (
-          <div className='flex flex-col gap-1'>
-            {hasRechargeDiscount(discount) && (
-              <StatusBadge
-                label={formatDiscount(discount, i18n.language, t)}
-                variant='info'
-                copyable={false}
-              />
-            )}
-            {code && (
-              <div className='flex min-w-0 items-center gap-1.5'>
-                <StatusBadge label={code} variant='purple' copyable />
-                {owner && (
-                  <span
-                    className='text-muted-foreground max-w-[100px] truncate text-xs'
-                    title={`${t('Code owner')}: ${owner}`}
-                  >
-                    {owner}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )
+        return <StatusBadge label={agent} variant='purple' copyable={false} />
       },
       enableSorting: false,
       size: 160,

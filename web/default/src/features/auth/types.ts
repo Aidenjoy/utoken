@@ -38,7 +38,13 @@ export interface RegisterPayload {
   email?: string
   verification_code?: string
   aff_code?: string
-  discount_code?: string
+  /**
+   * Invite code captured from the `?invite=` (legacy `?discount=`) query param
+   * or typed by hand. It carries no discount — registering with it only binds
+   * the new account to the code's owner, which for an agent-issued code also
+   * confines the account to that agent's authorized models.
+   */
+  invite_code?: string
   turnstile?: string
 }
 
@@ -80,21 +86,6 @@ export interface ApiResponse {
   success: boolean
   message: string
   data?: unknown
-}
-
-// Anonymous read-only preview of a discount invite code, used on the sign-up
-// page to show the discount before the user registers. `discount` is the pay
-// multiplier in (0, 1]; `owner_type` is 'agent' | 'admin'.
-export interface DiscountCodePreview {
-  valid: boolean
-  discount: number
-  owner_type: string
-}
-
-export interface DiscountCodePreviewResponse {
-  success: boolean
-  message: string
-  data?: DiscountCodePreview
 }
 
 // ============================================================================

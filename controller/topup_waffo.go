@@ -86,7 +86,8 @@ func formatWaffoAmount(amount float64, currency string) string {
 // getWaffoPayMoney converts the user-facing amount to USD for Waffo payment.
 // Waffo only accepts USD, so this function handles the conversion from different
 // display types (USD/CNY/TOKENS) to the actual USD amount to charge.
-func getWaffoPayMoney(amount float64, group string, userDiscount float64) float64 {
+// 只保留分组倍率与全局档位折扣；用户个人充值立减已下线（见 getPayMoney 注释）。
+func getWaffoPayMoney(amount float64, group string) float64 {
 	originalAmount := amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		amount = amount / common.QuotaPerUnit
@@ -100,10 +101,6 @@ func getWaffoPayMoney(amount float64, group string, userDiscount float64) float6
 		if ds > 0 {
 			discount = ds
 		}
-	}
-	// 叠加用户个人折扣（折扣邀请码注册绑定，永久生效）：只降实付金额，额度仍按面值入账。
-	if userDiscount > 0 && userDiscount <= 1 {
-		discount *= userDiscount
 	}
 	return amount * setting.WaffoUnitPrice * topupGroupRatio * discount
 }
@@ -135,7 +132,7 @@ func RequestWaffoAmount(c *gin.Context) {
 		return
 	}
 
-	payMoney := getWaffoPayMoney(float64(req.Amount), group, model.GetUserRechargeDiscount(id))
+	payMoney := getWaffoPayMoney(float64(req.Amount), group)
 	if payMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -202,7 +199,7 @@ func RequestWaffoPay(c *gin.Context) {
 	// resolvedPayMethodType/Name 为空时，Waffo 自动选择支付方式
 
 	group, _ := model.GetUserGroup(id, true)
-	payMoney := getWaffoPayMoney(float64(req.Amount), group, model.GetUserRechargeDiscount(id))
+	payMoney := getWaffoPayMoney(float64(req.Amount), group)
 	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return

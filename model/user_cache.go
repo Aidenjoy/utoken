@@ -30,6 +30,17 @@ type UserBase struct {
 	// 两者随用户缓存一起失效（成员变更时调 invalidateUserCache）。
 	OrgId   int    `json:"org_id"`
 	OrgRole string `json:"org_role"`
+	// AgentId / AllowedModels 是代理商授权上下文：AgentId=0 表示无代理归属，
+	// 模型访问不受限；AllowedModels 是代理商授权模型清单的 JSON 数组。
+	//
+	// AllowedModels 不在 users 表上，仅缓存 miss 时回查 agents 表一次（与 OrgRole 同理），
+	// 因此分发层每个请求零额外查库。代理商授权变更时由 InvalidateAgentMembersCache
+	// 批量删键，共享 Redis 使各节点立即一致。
+	//
+	// AgentId>0 而 AllowedModels 为空表示代理行缺失或配置损坏，
+	// 分发层据此走 fail-open（放行 + 记录错误）而不是把全部流量拦下。
+	AgentId       int    `json:"agent_id"`
+	AllowedModels string `json:"allowed_models"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -44,6 +55,9 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	// 企业维度计费与日志归属依赖这两个 key，因此必须在这里一并写入。
 	common.SetContextKey(c, constant.ContextKeyUserOrgId, user.OrgId)
 	common.SetContextKey(c, constant.ContextKeyUserOrgRole, user.OrgRole)
+	// 代理商授权上下文：分发层的模型白名单与模型列表过滤都读这两个 key。
+	common.SetContextKey(c, constant.ContextKeyUserAgentId, user.AgentId)
+	common.SetContextKey(c, constant.ContextKeyUserAllowedModels, user.AllowedModels)
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
@@ -148,6 +162,15 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	if user.OrgId > 0 {
 		if member, memberErr := GetOrgMember(user.OrgId, userId); memberErr == nil {
 			userCache.OrgRole = member.OrgRole
+		}
+	}
+	// 代理商授权清单同样不在 users 表上，仅缓存 miss 时回查。
+	// 查不到（代理行已删）时保持空串，分发层会 fail-open 并记录错误。
+	if user.AgentId > 0 {
+		if agent, agentErr := GetAgentById(user.AgentId); agentErr == nil {
+			userCache.AllowedModels = agent.AllowedModelsJSON()
+		} else {
+			common.SysError(fmt.Sprintf("user %d references missing agent %d: %v", userId, user.AgentId, agentErr))
 		}
 	}
 

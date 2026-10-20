@@ -322,7 +322,7 @@ export function useSidebarData(): SidebarData {
               title: t('Agent'),
               items: [
                 {
-                  title: t('Discount Codes'),
+                  title: t('Invite Codes'),
                   url: '/agent/codes',
                   icon: Ticket,
                 },

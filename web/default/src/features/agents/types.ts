@@ -17,13 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-// A reseller (agent) is a registered user promoted by an admin with an allowed
-// discount range. Discounts are pay multipliers in (0, 1]: 0.6 means pay 60%.
+// A reseller (agent) is a registered user promoted by an admin with a set of
+// authorized models. `model_discounts` maps an exact model name to the deepest
+// discount (pay multiplier in (0, 1]) the agent may grant for it: 0.8 means the
+// agent may price that model anywhere in [80%, 100%]. The keys double as the
+// allowlist — users bound to this agent can only call those models.
 export interface Agent {
   id: number
   user_id: number
-  min_discount: number
-  max_discount: number
+  model_discounts: Record<string, number>
   status: number
   remark?: string
   created_by?: number
@@ -33,15 +35,17 @@ export interface Agent {
   username?: string
   display_name?: string
   email?: string
-  code_count?: number
+  invite_count?: number
 }
 
-export interface DiscountCode {
+// An invite code only binds a registering user to its owner; it carries no
+// discount of its own. `used_count` is therefore the number of users who
+// successfully registered with it.
+export interface InviteCode {
   id: number
   code: string
   owner_type: string
   owner_user_id: number
-  discount: number
   max_uses: number
   used_count: number
   expires_at: number
@@ -52,26 +56,25 @@ export interface DiscountCode {
   // Backfilled for display, not persisted
   owner_username?: string
   owner_email?: string
-  invited_user_count?: number
-  invited_recharge?: number
 }
 
 export interface AgentProfile {
-  min_discount: number
-  max_discount: number
+  /** Authorized models mapped to the deepest discount the agent may grant. */
+  model_discounts: Record<string, number>
+  /** Same key set as `model_discounts`, pre-sorted for stable dropdowns. */
+  allowed_models: string[]
   code_count: number
   total_used: number
-  invited_users: number
+  member_count: number
   total_recharge: number
 }
 
-// A member is a user who registered with one of the agent's invite codes.
+// A member is a user bound to this agent at registration.
 export interface AgentMember {
   user_id: number
   username: string
   display_name: string
-  discount: number
-  code: string
+  model_discounts: Record<string, number>
   created_at: number
   total_recharge: number
 }
@@ -88,12 +91,18 @@ export interface AgentRechargeRecord {
   trade_no: string
 }
 
+/** A member's per-model discounts plus the floors the agent must stay above. */
+export interface AgentMemberDiscounts {
+  discounts: Record<string, number>
+  floors: Record<string, number>
+}
+
 export const AGENT_STATUS = {
   ENABLED: 1,
   DISABLED: 2,
 } as const
 
-export const DISCOUNT_CODE_STATUS = {
+export const INVITE_CODE_STATUS = {
   ENABLED: 1,
   DISABLED: 2,
 } as const

@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useMemo, useState } from 'react'
+import { Percent } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -27,22 +28,42 @@ import {
   TruncatedCell,
   useDataTable,
 } from '@/components/data-table'
+import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { SectionPageLayout } from '@/components/layout'
-import { formatTimestampToDate } from '@/lib/format'
-import { formatDiscount } from '@/lib/discount'
-
+import { StatusBadge } from '@/components/status-badge'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { listMyMembers } from '@/features/agents/api'
 import type { AgentMember } from '@/features/agents/types'
+import { formatModelDiscount } from '@/lib/discount'
+import { formatTimestampToDate } from '@/lib/format'
+
+import { MemberDiscountDialog } from './components/member-discount-dialog'
 
 /**
- * Users who registered with one of this agent's invite codes, together with
- * each member's lifetime successful recharge (face value).
+ * Users who registered with one of this agent's invite codes, together with the
+ * per-model discounts granted to each and their lifetime successful recharge
+ * (face value). Membership is what confines these users to the agent's
+ * authorized models, so the discount editor is offered right here.
  */
 export function AgentMembers() {
   const { t, i18n } = useTranslation()
+  const queryClient = useQueryClient()
 
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(20)
+  const [editing, setEditing] = useState<AgentMember | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+
+  const openDiscountEditor = useCallback((member: AgentMember) => {
+    setEditing(member)
+    setDialogOpen(true)
+  }, [])
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['my-agent-members', pageIndex, pageSize],
@@ -81,22 +102,48 @@ export function AgentMembers() {
         size: 200,
       },
       {
-        accessorKey: 'discount',
-        header: t('Discount'),
-        cell: ({ row }) => (
-          <span className='font-mono text-sm tabular-nums'>
-            {formatDiscount(row.original.discount, i18n.language, t)}
-          </span>
-        ),
-        size: 110,
-      },
-      {
-        accessorKey: 'code',
-        header: t('Invite Code'),
-        cell: ({ row }) => (
-          <span className='font-mono text-xs'>{row.original.code}</span>
-        ),
-        size: 130,
+        id: 'model_discounts',
+        accessorKey: 'model_discounts',
+        header: t('Model Discounts'),
+        cell: ({ row }) => {
+          // 只列本代理有权设置的折扣（后端已按授权清单过滤），排序以免每次渲染换序。
+          const entries = Object.entries(
+            row.original.model_discounts ?? {}
+          ).sort(([a], [b]) => a.localeCompare(b))
+          if (entries.length === 0) {
+            return (
+              <span className='text-muted-foreground text-xs'>
+                {t('Original price')}
+              </span>
+            )
+          }
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger render={<span />}>
+                  <StatusBadge
+                    label={t('{{total}} discounted', { total: entries.length })}
+                    variant='info'
+                    copyable={false}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side='top' className='max-w-xs'>
+                  <ul className='space-y-0.5'>
+                    {entries.map(([model, ratio]) => (
+                      <li key={model} className='flex items-center gap-2'>
+                        <span className='font-mono'>{model}</span>
+                        <span className='text-background/70 ml-auto font-mono tabular-nums'>
+                          {formatModelDiscount(ratio, i18n.language)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )
+        },
+        size: 150,
       },
       {
         accessorKey: 'created_at',
@@ -119,8 +166,23 @@ export function AgentMembers() {
         ),
         size: 150,
       },
+      {
+        id: 'actions',
+        cell: ({ row }) => (
+          <DataTableRowActionMenu ariaLabel={t('Open menu')} modal={false}>
+            <DropdownMenuItem onClick={() => openDiscountEditor(row.original)}>
+              {t('Set Discounts')}
+              <Percent size={16} />
+            </DropdownMenuItem>
+          </DataTableRowActionMenu>
+        ),
+        enableSorting: false,
+        enableHiding: false,
+        meta: { align: 'right' },
+        size: 70,
+      },
     ],
-    [t, i18n.language]
+    [t, i18n.language, openDiscountEditor]
   )
 
   const { table } = useDataTable({
@@ -157,6 +219,17 @@ export function AgentMembers() {
           toolbarProps={{ hideViewOptions: true }}
         />
       </SectionPageLayout.Content>
+
+      <MemberDiscountDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        member={editing}
+        onSuccess={() =>
+          void queryClient.invalidateQueries({
+            queryKey: ['my-agent-members'],
+          })
+        }
+      />
     </SectionPageLayout>
   )
 }

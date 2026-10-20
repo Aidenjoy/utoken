@@ -320,10 +320,16 @@ func migrateDB() error {
 		&Organization{},
 		&OrgMember{},
 		&Agent{},
-		&DiscountInviteCode{},
+		&InviteCode{},
 		&PromptTemplate{},
 	)
 	if err != nil {
+		return err
+	}
+	// 「折扣邀请码」已降级为纯邀请码：码不再携带折扣，改由代理商的按模型授权决定
+	// 成员能调哪些模型、能享多少折扣。旧表 discount_invite_codes 的 discount 列已无意义，
+	// 整体废弃并换成新表 invite_codes。
+	if err := dropObsoleteDiscountCodeTable(); err != nil {
 		return err
 	}
 	// 「设置费率」由单字段改为期望折扣/采购折扣两字段：为已有 token_rate 的旧数据反推分子分母
@@ -350,6 +356,21 @@ func migrateDB() error {
 		return err
 	}
 	return dropDirectorRedundantColumns()
+}
+
+// dropObsoleteDiscountCodeTable 删除废弃的 discount_invite_codes 表。
+// 该表在下线前已整体清空（折扣码功能改由 invite_codes 承接），因此直接删表而非迁移数据；
+// 幂等：表不存在时跳过。Migrator.DropTable 按方言生成 DROP TABLE，三库通用。
+func dropObsoleteDiscountCodeTable() error {
+	m := DB.Migrator()
+	if !m.HasTable("discount_invite_codes") {
+		return nil
+	}
+	if err := m.DropTable("discount_invite_codes"); err != nil {
+		return fmt.Errorf("drop table discount_invite_codes: %w", err)
+	}
+	common.SysLog("dropped obsolete table: discount_invite_codes")
+	return nil
 }
 
 // dropDirectorRedundantColumns 清理云导演实体表的冗余列（外观/描述等已统一合并进 prompt 列）。

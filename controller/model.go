@@ -268,6 +268,14 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 	}
 
+	// 代理商授权模型白名单：剔除未授权模型，使 /v1/models 的返回与分发层的
+	// 实际拦截能力一致（同一份 AllowedModels 快照、同一个 ResolveAllowedModels）。
+	// Filter 对空清单原样返回，因此无代理归属与 fail-open 两种情况都不需额外分支。
+	userModelNames = model.ResolveAllowedModels(
+		common.GetContextKeyInt(c, constant.ContextKeyUserAgentId),
+		common.GetContextKeyString(c, constant.ContextKeyUserAllowedModels),
+	).Filter(userModelNames)
+
 	ownerByModel := map[string]string{}
 	if len(ownerGroups) > 0 {
 		ownerByModel = getPreferredModelOwners(userModelNames, ownerGroups)
@@ -279,20 +287,27 @@ func ListModels(c *gin.Context, modelType int) {
 
 	switch modelType {
 	case constant.ChannelTypeAnthropic:
-		useranthropicModels := make([]dto.AnthropicModel, len(userOpenAiModels))
-		for i, model := range userOpenAiModels {
-			useranthropicModels[i] = dto.AnthropicModel{
+		useranthropicModels := make([]dto.AnthropicModel, 0, len(userOpenAiModels))
+		for _, model := range userOpenAiModels {
+			useranthropicModels = append(useranthropicModels, dto.AnthropicModel{
 				ID:          model.Id,
 				CreatedAt:   time.Unix(int64(model.Created), 0).UTC().Format(time.RFC3339),
 				DisplayName: model.Id,
 				Type:        "model",
-			}
+			})
+		}
+		// 列表可能为空（令牌未开放任何模型，或代理商白名单过滤后无交集），
+		// 此时 first_id/last_id 无值可取，返回空串而不是取下标越界 panic。
+		firstId, lastId := "", ""
+		if len(useranthropicModels) > 0 {
+			firstId = useranthropicModels[0].ID
+			lastId = useranthropicModels[len(useranthropicModels)-1].ID
 		}
 		c.JSON(200, gin.H{
 			"data":     useranthropicModels,
-			"first_id": useranthropicModels[0].ID,
+			"first_id": firstId,
 			"has_more": false,
-			"last_id":  useranthropicModels[len(useranthropicModels)-1].ID,
+			"last_id":  lastId,
 		})
 	case constant.ChannelTypeGemini:
 		userGeminiModels := make([]dto.GeminiModel, len(userOpenAiModels))

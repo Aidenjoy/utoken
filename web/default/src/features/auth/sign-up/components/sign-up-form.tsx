@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2, TicketPercent } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { register, wechatLoginByCode, previewDiscountCode } from '@/features/auth/api'
+import { register, wechatLoginByCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { registerFormSchema } from '@/features/auth/constants'
@@ -47,27 +47,22 @@ import { useEmailVerification } from '@/features/auth/hooks/use-email-verificati
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import {
   getAffiliateCode,
-  getDiscountCode,
+  getInviteCode,
   saveAffiliateCode,
-  saveDiscountCode,
+  saveInviteCode,
 } from '@/features/auth/lib/storage'
-import type { DiscountCodePreview } from '@/features/auth/types'
 import { useStatus } from '@/hooks/use-status'
-import { formatDiscount } from '@/lib/discount'
 import { cn } from '@/lib/utils'
 
 export function SignUpForm({
   className,
   ...props
 }: React.HTMLAttributes<HTMLFormElement>) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
   const [agreedToLegal, setAgreedToLegal] = useState(false)
-  const [discountPreview, setDiscountPreview] =
-    useState<DiscountCodePreview | null>(null)
-  const [discountCode, setDiscountCode] = useState(() => getDiscountCode())
-  const [discountChecking, setDiscountChecking] = useState(false)
+  const [inviteCode, setInviteCode] = useState(() => getInviteCode())
   const [wechatCode, setWeChatCode] = useState('')
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
@@ -142,40 +137,18 @@ export function SignUpForm({
     if (aff) {
       saveAffiliateCode(aff)
     }
-    // Capture the discount invite code from `?discount=` (agent/admin invite
-    // links), persist it, and pre-fill the editable discount field below so
-    // registration binds the permanent discount.
-    const discount = params.get('discount')?.trim()
-    if (discount) {
-      saveDiscountCode(discount)
-      setDiscountCode(discount)
+    // Capture the invite code from `?invite=` (agent/admin invite links) and
+    // pre-fill the editable field below so registration binds the new account
+    // to the code's owner. `?discount=` is the pre-rename spelling of the same
+    // link and is still honoured so old bookmarks keep working; every code it
+    // carries is dead now, but rejecting it here would only surface a confusing
+    // error at submit time instead.
+    const invite = (params.get('invite') ?? params.get('discount'))?.trim()
+    if (invite) {
+      saveInviteCode(invite)
+      setInviteCode(invite)
     }
   }, [])
-
-  // Preview the discount code (read-only, no consumption) so the user sees the
-  // recharge discount before registering. Debounced because it can be typed.
-  useEffect(() => {
-    const code = discountCode.trim()
-    if (!code) {
-      setDiscountPreview(null)
-      setDiscountChecking(false)
-      return
-    }
-    let cancelled = false
-    setDiscountChecking(true)
-    const timer = setTimeout(() => {
-      void (async () => {
-        const res = await previewDiscountCode(code)
-        if (cancelled) return
-        setDiscountPreview(res.success && res.data?.valid ? res.data : null)
-        setDiscountChecking(false)
-      })()
-    }, 400)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [discountCode])
 
   async function onSubmit(data: z.infer<typeof registerFormSchema>) {
     if (requiresLegalConsent && !agreedToLegal) {
@@ -199,15 +172,15 @@ export function SignUpForm({
 
     setIsLoading(true)
     try {
-      const typedDiscount = discountCode.trim()
-      saveDiscountCode(typedDiscount)
+      const typedInvite = inviteCode.trim()
+      saveInviteCode(typedInvite)
       const res = await register({
         username: data.username,
         password: data.password,
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
         aff_code: getAffiliateCode(),
-        discount_code: typedDiscount,
+        invite_code: typedInvite,
         turnstile: turnstileToken,
       })
 
@@ -266,34 +239,6 @@ export function SignUpForm({
     } finally {
       setIsWeChatSubmitting(false)
     }
-  }
-
-  // Discount field hint: checking / valid preview / invalid, computed with
-  // if-else (not a ternary chain) to keep it readable and lint-clean.
-  const trimmedDiscount = discountCode.trim()
-  let discountHint: React.ReactNode = null
-  if (discountChecking) {
-    discountHint = (
-      <p className='text-muted-foreground flex items-center gap-1.5 text-xs'>
-        <Loader2 className='size-3 animate-spin' />
-        {t('Checking code...')}
-      </p>
-    )
-  } else if (discountPreview) {
-    discountHint = (
-      <div className='bg-primary/10 text-primary flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium'>
-        <TicketPercent className='size-4 shrink-0' />
-        {t('You will enjoy {{discount}} on every recharge', {
-          discount: formatDiscount(discountPreview.discount, i18n.language, t),
-        })}
-      </div>
-    )
-  } else if (trimmedDiscount) {
-    discountHint = (
-      <p className='text-destructive text-xs'>
-        {t('Invalid or unavailable discount code')}
-      </p>
-    )
   }
 
   return (
@@ -418,18 +363,18 @@ export function SignUpForm({
           </div>
         )}
 
-        {/* Discount invite code (optional). Pre-filled from ?discount= invite
-            links; users may also type a code they received. */}
+        {/* Invite code (optional). Pre-filled from ?invite= links; users may
+            also type a code they received. It carries no discount — it only
+            binds this new account to whoever issued the code. */}
         <div className='space-y-2'>
-          <Label htmlFor='discount-code'>{t('Discount code (optional)')}</Label>
+          <Label htmlFor='invite-code'>{t('Invite code (optional)')}</Label>
           <Input
-            id='discount-code'
-            placeholder={t('Enter discount code')}
-            value={discountCode}
-            onChange={(event) => setDiscountCode(event.target.value)}
+            id='invite-code'
+            placeholder={t('Enter invite code')}
+            value={inviteCode}
+            onChange={(event) => setInviteCode(event.target.value)}
             autoComplete='off'
           />
-          {discountHint}
         </div>
 
         <LegalConsent

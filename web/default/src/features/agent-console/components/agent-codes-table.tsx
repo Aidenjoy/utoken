@@ -34,42 +34,40 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-
+import { listMyInviteCodes, updateMyInviteCode } from '@/features/agents/api'
 import { useCodeColumns } from '@/features/agents/components/code-columns'
 import { SetCodeDialog } from '@/features/agents/components/set-code-dialog'
-import { DISCOUNT_CODE_STATUS, type DiscountCode } from '@/features/agents/types'
-import { listMyCodes, updateMyCode } from '@/features/agents/api'
+import { INVITE_CODE_STATUS, type InviteCode } from '@/features/agents/types'
 
-type PendingAction = { kind: 'status'; code: DiscountCode } | null
-
-type Props = {
-  /** Allowed discount range for this agent, clamping the create/edit dialog. */
-  range: { min: number; max: number }
-}
+type PendingAction = { kind: 'status'; code: InviteCode } | null
 
 /**
- * The promoted agent's own invite codes. Creation is clamped server-side (and
- * in the dialog) to the agent's allowed discount range.
+ * The promoted agent's own invite codes. A code carries no discount — whoever
+ * registers with it is bound to this agent, which both counts as a recruited
+ * member and confines that user to the agent's authorized models.
  */
-export function AgentCodesTable({ range }: Props) {
-  const { t, i18n } = useTranslation()
+export function AgentCodesTable() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
 
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(20)
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<DiscountCode | null>(null)
+  const [editing, setEditing] = useState<InviteCode | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [isWorking, setIsWorking] = useState(false)
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['my-agent-codes', pageIndex, pageSize],
     queryFn: async () => {
-      const result = await listMyCodes({ p: pageIndex + 1, page_size: pageSize })
+      const result = await listMyInviteCodes({
+        p: pageIndex + 1,
+        page_size: pageSize,
+      })
       if (!result.success) {
         toast.error(result.message || t('Failed to load codes'))
-        return { items: [] as DiscountCode[], total: 0 }
+        return { items: [] as InviteCode[], total: 0 }
       }
       return {
         items: result.data?.items ?? [],
@@ -84,7 +82,7 @@ export function AgentCodesTable({ range }: Props) {
     void queryClient.invalidateQueries({ queryKey: ['agent-profile'] })
   }, [queryClient])
 
-  const openEdit = useCallback((code: DiscountCode | null) => {
+  const openEdit = useCallback((code: InviteCode | null) => {
     setEditing(code)
     setDialogOpen(true)
   }, [])
@@ -92,14 +90,13 @@ export function AgentCodesTable({ range }: Props) {
   const columns = useCodeColumns(
     useMemo(
       () => ({
-        onEdit: (code: DiscountCode) => openEdit(code),
-        onToggleStatus: (code: DiscountCode) =>
+        onEdit: (code: InviteCode) => openEdit(code),
+        onToggleStatus: (code: InviteCode) =>
           setPendingAction({ kind: 'status', code }),
       }),
       [openEdit]
     ),
-    t,
-    i18n.language
+    t
   )
 
   const { table } = useDataTable({
@@ -124,10 +121,10 @@ export function AgentCodesTable({ range }: Props) {
     setIsWorking(true)
     try {
       const nextStatus =
-        code.status === DISCOUNT_CODE_STATUS.ENABLED
-          ? DISCOUNT_CODE_STATUS.DISABLED
-          : DISCOUNT_CODE_STATUS.ENABLED
-      const result = await updateMyCode(code.id, { status: nextStatus })
+        code.status === INVITE_CODE_STATUS.ENABLED
+          ? INVITE_CODE_STATUS.DISABLED
+          : INVITE_CODE_STATUS.ENABLED
+      const result = await updateMyInviteCode(code.id, { status: nextStatus })
       if (!result.success) {
         toast.error(result.message || t('Failed to update code'))
         return
@@ -143,11 +140,11 @@ export function AgentCodesTable({ range }: Props) {
   const primaryButtons = (
     <Button size='sm' onClick={() => openEdit(null)}>
       <Plus className='size-4' />
-      {t('Create Discount Code')}
+      {t('Create Invite Code')}
     </Button>
   )
 
-  const isEnabled = pendingAction?.code.status === DISCOUNT_CODE_STATUS.ENABLED
+  const isEnabled = pendingAction?.code.status === INVITE_CODE_STATUS.ENABLED
   const pendingDescription = isEnabled
     ? t('Disable code {{code}}?', { code: pendingAction?.code.code ?? '' })
     : t('Enable code {{code}}?', { code: pendingAction?.code.code ?? '' })
@@ -160,9 +157,9 @@ export function AgentCodesTable({ range }: Props) {
         columns={columns}
         isLoading={isLoading}
         isFetching={isFetching}
-        emptyTitle={t('No Discount Codes Found')}
+        emptyTitle={t('No Invite Codes Found')}
         emptyDescription={t(
-          'Create a discount code and share your invite link to bring in users.'
+          'Create an invite code and share your invite link to bring in users.'
         )}
         emptyAction={primaryButtons}
         skeletonKeyPrefix='my-agent-codes-skeleton'
@@ -181,7 +178,6 @@ export function AgentCodesTable({ range }: Props) {
           if (!open) refresh()
         }}
         mode='agent'
-        range={range}
         queryKey='my-agent-codes'
       />
 

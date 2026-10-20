@@ -29,6 +29,12 @@ var (
 	errModelDiscountKeyTooLong  = errors.New("模型名过长")
 	errModelDiscountTooMany     = errors.New("折扣条目数量超过上限")
 	errModelDiscountInvalidRate = errors.New("折扣必须在 0 到 100% 之间（不含 0）")
+	// 代理商授权专用错误：管理员配的授权清单不能为空、不能带通配，
+	// 代理给成员设的折扣不能超出授权范围、不能低于授权下限。
+	ErrAgentModelsEmpty        = errors.New("至少需要授权一个模型")
+	errAgentModelWildcard      = errors.New("授权模型不支持通配（*），请填完整模型名")
+	ErrAgentModelNotAuthorized = errors.New("模型不在该代理商的授权范围内")
+	ErrAgentDiscountBelowFloor = errors.New("折扣低于该模型允许的下限")
 )
 
 // ParseModelDiscounts 解析折扣 JSON；空串或解析失败返回 nil（等同无折扣）。
@@ -118,7 +124,7 @@ func NormalizeModelDiscounts(discounts map[string]float64) (map[string]float64, 
 		if _, exists := normalized[key]; exists {
 			return nil, fmt.Errorf("模型折扣重复配置：%s", key)
 		}
-		normalized[key] = math.Round(ratio*modelDiscountPrecision) / modelDiscountPrecision
+		normalized[key] = roundModelDiscount(ratio)
 	}
 	return normalized, nil
 }
@@ -127,4 +133,68 @@ func NormalizeModelDiscounts(discounts map[string]float64) (map[string]float64, 
 // 这些值一旦进入计费乘法会产生负扣费或额度膨胀。
 func isValidModelDiscount(ratio float64) bool {
 	return ratio > 0 && ratio <= 1 && !math.IsNaN(ratio) && !math.IsInf(ratio, 0)
+}
+
+// NormalizeAgentModelFloors 校验并规范化管理员提交的代理商授权配置：
+// {"模型名": 折扣下限}。键即授权模型清单，值即代理能给该模型设的最低折扣。
+//
+// 与 NormalizeModelDiscounts 的两处关键差异：
+//   - 不允许为空：空授权等于“成员一个模型都调不通”，是个陷井，因此在写入时就拦住；
+//   - 不允许通配键：白名单语义下通配会过度放行，模型名必须是精确值。
+func NormalizeAgentModelFloors(floors map[string]float64) (map[string]float64, error) {
+	if len(floors) == 0 {
+		return nil, ErrAgentModelsEmpty
+	}
+	if len(floors) > MaxModelDiscountEntries {
+		return nil, fmt.Errorf("%w（%d/%d）", errModelDiscountTooMany, len(floors), MaxModelDiscountEntries)
+	}
+
+	normalized := make(map[string]float64, len(floors))
+	for rawKey, ratio := range floors {
+		key := strings.TrimSpace(rawKey)
+		if key == "" {
+			return nil, errModelDiscountEmptyKey
+		}
+		if strings.Contains(key, "*") {
+			return nil, errAgentModelWildcard
+		}
+		if len(key) > MaxModelDiscountKeyLength {
+			return nil, fmt.Errorf("%w（%d）", errModelDiscountKeyTooLong, len(key))
+		}
+		if !isValidModelDiscount(ratio) {
+			return nil, errModelDiscountInvalidRate
+		}
+		if _, exists := normalized[key]; exists {
+			return nil, fmt.Errorf("授权模型重复配置：%s", key)
+		}
+		normalized[key] = roundModelDiscount(ratio)
+	}
+	return normalized, nil
+}
+
+// ValidateModelDiscountsWithinFloors 校验代理商给成员设的折扣是否落在授权范围内：
+// 每个模型必须在 floors 里（即已授权），且折扣值 >= 该模型的下限。
+// 入参 discounts 应已经过 NormalizeModelDiscounts，故此处不再重复检查值域与条目数。
+//
+// 返回出错的模型名 + 对应的哨兵错误（ErrAgentModelNotAuthorized / ErrAgentDiscountBelowFloor），
+// 调用方据模型名填充 i18n 的 {{.Model}} 占位；无错误时返回 "" 与 nil。
+//
+// 浮点比较前两边都过 roundModelDiscount，避免 0.8 与 0.7999999999 这类
+// 表示误差把合法的“恰好等于下限”误判为越界。
+func ValidateModelDiscountsWithinFloors(discounts map[string]float64, floors map[string]float64) (string, error) {
+	for model, ratio := range discounts {
+		floor, ok := floors[model]
+		if !ok {
+			return model, fmt.Errorf("%w：%s", ErrAgentModelNotAuthorized, model)
+		}
+		if roundModelDiscount(ratio) < roundModelDiscount(floor) {
+			return model, fmt.Errorf("%w：%s", ErrAgentDiscountBelowFloor, model)
+		}
+	}
+	return "", nil
+}
+
+// roundModelDiscount 按 modelDiscountPrecision 归一折扣值，消除二进制浮点尾差。
+func roundModelDiscount(ratio float64) float64 {
+	return math.Round(ratio*modelDiscountPrecision) / modelDiscountPrecision
 }

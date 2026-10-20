@@ -15,37 +15,40 @@ import (
 // 代理商（Reseller）后台接口。
 //
 // 分两层，与系统角色解耦：
-//   - 系统管理员（AdminAuth）：/api/agent/admin 下提升代理商、设定折扣范围，
-//     以及无范围限制地创建/管理折扣码。
-//   - 代理商（AgentAuth）：/api/agent 下在被允许的折扣范围内自建/管理折扣码，
-//     并查看导流统计（见 controller/agent_self.go）。
+//   - 系统管理员（AdminAuth）：/api/agent/admin 下提升代理商、配置其授权模型清单与
+//     每个模型的折扣下限，以及创建/管理邀请码。
+//   - 代理商（AgentAuth）：/api/agent 下自建/管理邀请码、查看导流统计，并在授权下限
+//     之上为自己的成员单独设置按模型折扣（见 controller/agent_self.go）。
 //
-// 折扣只降低实付金额，额度一律按面值入账；代理商体系无佣金、不改 InviterId。
+// 折扣只作用于钱包扣费，额度一律按面值入账；代理商体系无佣金、不改 InviterId。
 
-// respondAgentModelError 统一把代理商/折扣码模型错误映射为 i18n 响应，
+// respondAgentModelError 统一把代理商/邀请码模型错误映射为 i18n 响应，
 // 供管理员与代理商两组 controller 复用。
+//
+// 成员折扣越界（未授权模型 / 低于下限）不走这里：那两条消息带 {{.Model}} 占位，
+// 需要调用方把出错的模型名传进去，故在 agent_self.go 内联处理。
 func respondAgentModelError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, model.ErrAgentNotFound):
 		common.ApiErrorI18n(c, i18n.MsgAgentNotFound)
 	case errors.Is(err, model.ErrAgentAlreadyExists):
 		common.ApiErrorI18n(c, i18n.MsgAgentAlreadyExists)
-	case errors.Is(err, model.ErrAgentDiscountRange):
-		common.ApiErrorI18n(c, i18n.MsgAgentDiscountRange)
-	case errors.Is(err, model.ErrDiscountCodeNotFound):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeNotFound)
-	case errors.Is(err, model.ErrDiscountCodeDisabled):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeDisabled)
-	case errors.Is(err, model.ErrDiscountCodeExpired):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeExpired)
-	case errors.Is(err, model.ErrDiscountCodeExhausted):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeExhausted)
-	case errors.Is(err, model.ErrDiscountInvalid):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeInvalid)
-	case errors.Is(err, model.ErrDiscountOutOfRange):
-		common.ApiErrorI18n(c, i18n.MsgAgentDiscountOutOfRang)
-	case errors.Is(err, model.ErrDiscountCodeGenerate):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeGenerateErr)
+	case errors.Is(err, common.ErrAgentModelsEmpty):
+		common.ApiErrorI18n(c, i18n.MsgAgentModelDiscountsEmpty)
+	case errors.Is(err, model.ErrAgentModelDiscountsInvalid):
+		common.ApiErrorI18n(c, i18n.MsgAgentModelDiscountInvalid)
+	case errors.Is(err, model.ErrInviteCodeNotFound):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeNotFound)
+	case errors.Is(err, model.ErrInviteCodeDisabled):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeDisabled)
+	case errors.Is(err, model.ErrInviteCodeExpired):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeExpired)
+	case errors.Is(err, model.ErrInviteCodeExhausted):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeExhausted)
+	case errors.Is(err, model.ErrInviteCodeStatus):
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+	case errors.Is(err, model.ErrInviteCodeGenerate):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeGenerateErr)
 	default:
 		common.ApiError(c, err)
 	}
@@ -61,45 +64,37 @@ func parseAgentPathId(c *gin.Context) (int, bool) {
 	return id, true
 }
 
-// attachDiscountCodeStats 批量回填折扣码的导流统计（绑定用户数与充值面值总额）。
-func attachDiscountCodeStats(codes []*model.DiscountInviteCode) {
-	if len(codes) == 0 {
-		return
-	}
-	codeStrs := make([]string, 0, len(codes))
-	for _, dc := range codes {
-		codeStrs = append(codeStrs, dc.Code)
-	}
-	stats, err := model.GetDiscountCodeStats(codeStrs)
+// normalizeAgentModelDiscounts 校验管理员提交的授权配置并序列化成落库 JSON。
+// 空配置在这里就被拦下：授权清单为空等于「成员一个模型都调不通」，是个陷井。
+func normalizeAgentModelDiscounts(discounts map[string]float64) (string, error) {
+	normalized, err := common.NormalizeAgentModelFloors(discounts)
 	if err != nil {
-		return
+		return "", err
 	}
-	for _, dc := range codes {
-		if s, ok := stats[dc.Code]; ok {
-			dc.InvitedUserCount = s.UserCount
-			dc.InvitedRecharge = s.TotalRecharge
-		}
+	payload, err := common.Marshal(normalized)
+	if err != nil {
+		return "", err
 	}
+	return string(payload), nil
 }
 
 func isValidAgentStatus(status int) bool {
 	return status == model.AgentStatusEnabled || status == model.AgentStatusDisabled
 }
 
-func isValidDiscountCodeStatus(status int) bool {
-	return status == model.DiscountCodeStatusEnabled || status == model.DiscountCodeStatusDisabled
+func isValidInviteCodeStatus(status int) bool {
+	return status == model.InviteCodeStatusEnabled || status == model.InviteCodeStatusDisabled
 }
 
 // ---- 管理员：代理商 CRUD ----
 
 type adminCreateAgentRequest struct {
-	UserId      int     `json:"user_id"`
-	MinDiscount float64 `json:"min_discount"`
-	MaxDiscount float64 `json:"max_discount"`
-	Remark      string  `json:"remark"`
+	UserId         int                `json:"user_id"`
+	ModelDiscounts map[string]float64 `json:"model_discounts"`
+	Remark         string             `json:"remark"`
 }
 
-// AdminListAgents 代理商列表（含用户名/邮箱与其名下折扣码数量）。
+// AdminListAgents 代理商列表（含用户名/邮箱与其名下邀请码数量）。
 func AdminListAgents(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	agents, total, err := model.ListAgents(pageInfo)
@@ -112,7 +107,7 @@ func AdminListAgents(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
-// AdminCreateAgent 把已注册用户提升为代理商并设定折扣范围。
+// AdminCreateAgent 把已注册用户提升为代理商并配置授权模型清单与折扣下限。
 func AdminCreateAgent(c *gin.Context) {
 	var req adminCreateAgentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -127,17 +122,17 @@ func AdminCreateAgent(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgAgentUserNotFound)
 		return
 	}
-	if err := model.ValidateAgentDiscountRange(req.MinDiscount, req.MaxDiscount); err != nil {
+	modelDiscounts, err := normalizeAgentModelDiscounts(req.ModelDiscounts)
+	if err != nil {
 		respondAgentModelError(c, err)
 		return
 	}
 	agent := &model.Agent{
-		UserId:      req.UserId,
-		MinDiscount: req.MinDiscount,
-		MaxDiscount: req.MaxDiscount,
-		Status:      model.AgentStatusEnabled,
-		Remark:      strings.TrimSpace(req.Remark),
-		CreatedBy:   c.GetInt("id"),
+		UserId:         req.UserId,
+		ModelDiscounts: modelDiscounts,
+		Status:         model.AgentStatusEnabled,
+		Remark:         strings.TrimSpace(req.Remark),
+		CreatedBy:      c.GetInt("id"),
 	}
 	if err := model.CreateAgent(agent); err != nil {
 		respondAgentModelError(c, err)
@@ -147,20 +142,20 @@ func AdminCreateAgent(c *gin.Context) {
 }
 
 type adminUpdateAgentRequest struct {
-	MinDiscount *float64 `json:"min_discount"`
-	MaxDiscount *float64 `json:"max_discount"`
-	Status      *int     `json:"status"`
-	Remark      *string  `json:"remark"`
+	ModelDiscounts *map[string]float64 `json:"model_discounts"`
+	Status         *int                `json:"status"`
+	Remark         *string             `json:"remark"`
 }
 
-// AdminUpdateAgent 修改代理商折扣范围/状态/备注。范围变更按合并后的最终值校验。
+// AdminUpdateAgent 修改代理商授权配置/状态/备注。
+// 授权配置整体替换而非合并：前端编辑器提交的就是完整清单，
+// 按模型逐个 merge 会让「删掉一个模型」无法表达。
 func AdminUpdateAgent(c *gin.Context) {
 	id, ok := parseAgentPathId(c)
 	if !ok {
 		return
 	}
-	agent, err := model.GetAgentById(id)
-	if err != nil {
+	if _, err := model.GetAgentById(id); err != nil {
 		respondAgentModelError(c, err)
 		return
 	}
@@ -170,26 +165,21 @@ func AdminUpdateAgent(c *gin.Context) {
 		return
 	}
 	fields := make(map[string]interface{})
-	newMin, newMax := agent.MinDiscount, agent.MaxDiscount
-	if req.MinDiscount != nil {
-		newMin = *req.MinDiscount
-		fields["min_discount"] = newMin
-	}
-	if req.MaxDiscount != nil {
-		newMax = *req.MaxDiscount
-		fields["max_discount"] = newMax
-	}
-	if req.MinDiscount != nil || req.MaxDiscount != nil {
-		if err := model.ValidateAgentDiscountRange(newMin, newMax); err != nil {
+	if req.ModelDiscounts != nil {
+		modelDiscounts, err := normalizeAgentModelDiscounts(*req.ModelDiscounts)
+		if err != nil {
 			respondAgentModelError(c, err)
 			return
 		}
+		fields["model_discounts"] = modelDiscounts
 	}
 	if req.Status != nil {
 		if !isValidAgentStatus(*req.Status) {
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
 		}
+		// 状态只冻结代理商自己的控制台（AgentAuth 会拒绝 Disabled），
+		// 不影响其成员的模型访问——成员是付过费的终端用户，不应因代理被禁用而断服。
 		fields["status"] = *req.Status
 	}
 	if req.Remark != nil {
@@ -206,7 +196,8 @@ func AdminUpdateAgent(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 }
 
-// AdminDeleteAgent 删除代理商记录（不影响其历史折扣码与已绑定用户的既有折扣）。
+// AdminDeleteAgent 删除代理商记录。其成员的 agent_id 会被解绑（置 0），
+// 成员随即恢复全模型访问；已设置的按模型折扣保留不动，历史邀请码也保留。
 func AdminDeleteAgent(c *gin.Context) {
 	id, ok := parseAgentPathId(c)
 	if !ok {
@@ -219,71 +210,63 @@ func AdminDeleteAgent(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgDeleteSuccess, nil)
 }
 
-// ---- 管理员：折扣码 CRUD（无折扣范围限制） ----
+// ---- 管理员：邀请码 CRUD ----
 
-type adminCreateDiscountCodeRequest struct {
-	Discount  float64 `json:"discount"`
-	MaxUses   int     `json:"max_uses"`
-	ExpiresAt int64   `json:"expires_at"`
-	Remark    string  `json:"remark"`
+type adminCreateInviteCodeRequest struct {
+	MaxUses   int    `json:"max_uses"`
+	ExpiresAt int64  `json:"expires_at"`
+	Remark    string `json:"remark"`
 }
 
-// AdminListDiscountCodes 全部折扣码，可按 owner_user_id / owner_type 过滤。
-func AdminListDiscountCodes(c *gin.Context) {
+// AdminListInviteCodes 全部邀请码，可按 owner_user_id / owner_type 过滤。
+func AdminListInviteCodes(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	ownerUserId, _ := strconv.Atoi(c.Query("owner_user_id"))
 	ownerType := strings.TrimSpace(c.Query("owner_type"))
-	codes, total, err := model.ListDiscountCodes(pageInfo, ownerUserId, ownerType)
+	codes, total, err := model.ListInviteCodes(pageInfo, ownerUserId, ownerType)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	attachDiscountCodeStats(codes)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(codes)
 	common.ApiSuccess(c, pageInfo)
 }
 
-// AdminCreateDiscountCode 管理员建码：仅校验 0 < discount <= 1，无范围限制。
-func AdminCreateDiscountCode(c *gin.Context) {
-	var req adminCreateDiscountCodeRequest
+// AdminCreateInviteCode 管理员建码。码归属管理员，注册后只记录引流、不绑定代理商，
+// 因此被邀请用户不受任何模型白名单限制。
+func AdminCreateInviteCode(c *gin.Context) {
+	var req adminCreateInviteCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if err := model.ValidateDiscountValue(req.Discount); err != nil {
-		respondAgentModelError(c, err)
-		return
-	}
-	dc := &model.DiscountInviteCode{
+	ic := &model.InviteCode{
 		OwnerType:   model.OwnerTypeAdmin,
 		OwnerUserId: c.GetInt("id"),
-		Discount:    req.Discount,
 		MaxUses:     req.MaxUses,
 		ExpiresAt:   req.ExpiresAt,
-		Status:      model.DiscountCodeStatusEnabled,
+		Status:      model.InviteCodeStatusEnabled,
 		Remark:      strings.TrimSpace(req.Remark),
 	}
-	if err := model.CreateDiscountCode(dc); err != nil {
+	if err := model.CreateInviteCode(ic); err != nil {
 		respondAgentModelError(c, err)
 		return
 	}
-	common.ApiSuccessI18n(c, i18n.MsgCreateSuccess, dc)
+	common.ApiSuccessI18n(c, i18n.MsgCreateSuccess, ic)
 }
 
-// updateDiscountCodeRequest 折扣码更新请求。折扣值（discount）创建后不可修改，
-// 故此处不接受该字段：用户注册时已将折扣快照绑定到其账户，改动码面折扣只会让
-// 同一个码在不同时间代表不同折扣、并与老用户的快照产生歧义。如需不同折扣请另建码。
-type updateDiscountCodeRequest struct {
+// updateInviteCodeRequest 邀请码更新请求。邀请码不携带折扣，可改的只有
+// 次数/有效期/状态/备注四项。
+type updateInviteCodeRequest struct {
 	MaxUses   *int    `json:"max_uses"`
 	ExpiresAt *int64  `json:"expires_at"`
 	Status    *int    `json:"status"`
 	Remark    *string `json:"remark"`
 }
 
-// buildDiscountCodeUpdateFields 从更新请求构造字段白名单并做通用校验（次数/有效期/状态/备注）。
-// 折扣值不在可更新范围内（见 updateDiscountCodeRequest 注释）。
-func buildDiscountCodeUpdateFields(req *updateDiscountCodeRequest) (map[string]interface{}, error) {
+// buildInviteCodeUpdateFields 从更新请求构造字段白名单并做通用校验。
+func buildInviteCodeUpdateFields(req *updateInviteCodeRequest) (map[string]interface{}, error) {
 	fields := make(map[string]interface{})
 	if req.MaxUses != nil {
 		maxUses := *req.MaxUses
@@ -300,8 +283,8 @@ func buildDiscountCodeUpdateFields(req *updateDiscountCodeRequest) (map[string]i
 		fields["expires_at"] = expiresAt
 	}
 	if req.Status != nil {
-		if !isValidDiscountCodeStatus(*req.Status) {
-			return nil, model.ErrDiscountInvalid
+		if !isValidInviteCodeStatus(*req.Status) {
+			return nil, model.ErrInviteCodeStatus
 		}
 		fields["status"] = *req.Status
 	}
@@ -311,22 +294,22 @@ func buildDiscountCodeUpdateFields(req *updateDiscountCodeRequest) (map[string]i
 	return fields, nil
 }
 
-// AdminUpdateDiscountCode 管理员改任意折扣码（无范围限制）。
-func AdminUpdateDiscountCode(c *gin.Context) {
+// AdminUpdateInviteCode 管理员改任意邀请码（不限归属）。
+func AdminUpdateInviteCode(c *gin.Context) {
 	id, ok := parseAgentPathId(c)
 	if !ok {
 		return
 	}
-	if _, err := model.GetDiscountCodeById(id); err != nil {
+	if _, err := model.GetInviteCodeById(id); err != nil {
 		respondAgentModelError(c, err)
 		return
 	}
-	var req updateDiscountCodeRequest
+	var req updateInviteCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	fields, err := buildDiscountCodeUpdateFields(&req)
+	fields, err := buildInviteCodeUpdateFields(&req)
 	if err != nil {
 		respondAgentModelError(c, err)
 		return
@@ -335,7 +318,7 @@ func AdminUpdateDiscountCode(c *gin.Context) {
 		common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 		return
 	}
-	if err := model.UpdateDiscountCodeFields(id, fields); err != nil {
+	if err := model.UpdateInviteCodeFields(id, fields); err != nil {
 		respondAgentModelError(c, err)
 		return
 	}

@@ -29,8 +29,8 @@ type AgentScope = 'agents' | 'codes'
 
 /**
  * System-administrator reseller management. Promote registered users to agents
- * with an allowed discount range, and manage every discount invite code
- * (admin- and agent-issued). Admins may also create codes with no range limit.
+ * with a set of authorized models (each with the deepest discount the agent may
+ * grant), and manage every invite code (admin- and agent-issued).
  */
 export function Agents() {
   const { t } = useTranslation()
@@ -47,7 +47,7 @@ export function Agents() {
           >
             <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
               <TabsTrigger value='agents'>{t('Agents')}</TabsTrigger>
-              <TabsTrigger value='codes'>{t('Discount Codes')}</TabsTrigger>
+              <TabsTrigger value='codes'>{t('Invite Codes')}</TabsTrigger>
             </TabsList>
           </Tabs>
           <div className='min-h-0 flex-1'>

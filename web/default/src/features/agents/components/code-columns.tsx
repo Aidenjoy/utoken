@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Link2, Pencil, Power } from 'lucide-react'
 import type { TFunction } from 'i18next'
+import { Link2, Pencil, Power } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
@@ -26,29 +26,28 @@ import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { formatTimestampToDate } from '@/lib/format'
-import { formatDiscount } from '@/lib/discount'
 
-import { DISCOUNT_CODE_STATUS, OWNER_TYPE, type DiscountCode } from '../types'
+import { INVITE_CODE_STATUS, OWNER_TYPE, type InviteCode } from '../types'
 
 export type CodeActions = {
-  onEdit: (code: DiscountCode) => void
-  onToggleStatus: (code: DiscountCode) => void
+  onEdit: (code: InviteCode) => void
+  onToggleStatus: (code: InviteCode) => void
 }
 
 /**
- * Columns for the discount invite code list. `discount` is a pay multiplier
- * rendered locally (zh shows "X 折", others "X% off"); `max_uses` of 0 means
- * unlimited. Used count doubles as the number of registrations bound to the
- * code. Owner and invited stats are only meaningful in the admin view.
+ * Columns for the invite code list. A code carries no discount of its own — it
+ * only binds whoever registers with it to the code's owner, which is what puts
+ * that user inside the owner agent's model allowlist. `max_uses` of 0 means
+ * unlimited; used count therefore doubles as the number of members recruited.
+ * Owner is only meaningful in the admin view, which lists every code at once.
  */
 export function useCodeColumns(
   actions: CodeActions,
   t: TFunction,
-  language: string | undefined,
   options: { showOwner?: boolean } = {}
-): ColumnDef<DiscountCode>[] {
+): ColumnDef<InviteCode>[] {
   const { showOwner = false } = options
-  const columns: ColumnDef<DiscountCode>[] = [
+  const columns: ColumnDef<InviteCode>[] = [
     {
       accessorKey: 'id',
       header: t('ID'),
@@ -63,26 +62,9 @@ export function useCodeColumns(
       header: t('Code'),
       meta: { mobileTitle: true },
       cell: ({ row }) => (
-        <StatusBadge
-          label={row.original.code}
-          variant='purple'
-          copyable
-        />
+        <StatusBadge label={row.original.code} variant='purple' copyable />
       ),
       size: 140,
-    },
-    {
-      accessorKey: 'discount',
-      header: t('Discount'),
-      meta: { mobileBadge: true },
-      cell: ({ row }) => (
-        <StatusBadge
-          label={formatDiscount(row.original.discount, language, t)}
-          variant='info'
-          copyable={false}
-        />
-      ),
-      size: 120,
     },
     {
       id: 'usage',
@@ -92,7 +74,7 @@ export function useCodeColumns(
       cell: ({ row }) => {
         const { used_count: used, max_uses: max } = row.original
         return (
-          <span className='tabular-nums text-sm'>
+          <span className='text-sm tabular-nums'>
             {used} / {max > 0 ? max : t('Unlimited')}
           </span>
         )
@@ -118,10 +100,18 @@ export function useCodeColumns(
       header: t('Status'),
       meta: { mobileBadge: true },
       cell: ({ row }) =>
-        row.original.status === DISCOUNT_CODE_STATUS.ENABLED ? (
-          <StatusBadge label={t('Enabled')} variant='success' copyable={false} />
+        row.original.status === INVITE_CODE_STATUS.ENABLED ? (
+          <StatusBadge
+            label={t('Enabled')}
+            variant='success'
+            copyable={false}
+          />
         ) : (
-          <StatusBadge label={t('Disabled')} variant='neutral' copyable={false} />
+          <StatusBadge
+            label={t('Disabled')}
+            variant='neutral'
+            copyable={false}
+          />
         ),
       size: 110,
     },
@@ -140,23 +130,9 @@ export function useCodeColumns(
           ownerType === OWNER_TYPE.ADMIN
             ? t('Admin')
             : ownerUsername || t('Agent')
-        return (
-          <StatusBadge label={label} variant='neutral' copyable={false} />
-        )
+        return <StatusBadge label={label} variant='neutral' copyable={false} />
       },
       size: 140,
-    })
-    columns.push({
-      id: 'invited',
-      accessorKey: 'invited_user_count',
-      header: t('Invited'),
-      meta: { mobileHidden: true },
-      cell: ({ row }) => (
-        <span className='tabular-nums text-sm'>
-          {row.original.invited_user_count ?? 0}
-        </span>
-      ),
-      size: 100,
     })
   }
 
@@ -176,12 +152,12 @@ export function useCodeColumns(
     id: 'actions',
     cell: ({ row }) => {
       const code = row.original
-      const enabled = code.status === DISCOUNT_CODE_STATUS.ENABLED
+      const enabled = code.status === INVITE_CODE_STATUS.ENABLED
       return (
         <DataTableRowActionMenu ariaLabel={t('Open menu')} modal={false}>
           <DropdownMenuItem
             onClick={() => {
-              const url = `${window.location.origin}/sign-up?discount=${code.code}`
+              const url = `${window.location.origin}/sign-up?invite=${code.code}`
               navigator.clipboard
                 .writeText(url)
                 .then(() => toast.success(t('Invite link copied')))

@@ -36,8 +36,8 @@ import {
 import { Button } from '@/components/ui/button'
 
 import { deleteAgent, listAgents, updateAgent } from '../api'
-import { useAgentColumns } from './agent-columns'
 import { AGENT_STATUS, type Agent } from '../types'
+import { useAgentColumns } from './agent-columns'
 import { SetAgentDialog } from './set-agent-dialog'
 
 type PendingAction =
@@ -46,9 +46,11 @@ type PendingAction =
   | null
 
 /**
- * System-administrator reseller list: promote a user to an agent, edit their
- * allowed discount range, toggle status and delete. Deletion is a hard confirm
- * because it drops the agent's authority to manage invite codes.
+ * System-administrator reseller list: promote a user to an agent, edit which
+ * models they may resell (and the deepest discount allowed for each), toggle
+ * status and delete. Deletion is a hard confirm because it drops the agent's
+ * authority to manage invite codes and unbinds every member they recruited,
+ * restoring those members' full model access.
  */
 export function AgentsTable() {
   const { t, i18n } = useTranslation()
@@ -185,7 +187,7 @@ export function AgentsTable() {
         isFetching={isFetching}
         emptyTitle={t('No Agents Found')}
         emptyDescription={t(
-          'Promote a registered user to an agent so they can issue discount invite codes.'
+          'Promote a registered user to an agent so they can issue invite codes and resell the models you authorize.'
         )}
         emptyAction={primaryButtons}
         skeletonKeyPrefix='agents-skeleton'

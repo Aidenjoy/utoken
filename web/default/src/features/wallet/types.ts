@@ -242,11 +242,6 @@ export interface UserWalletData {
   aff_count: number
   /** User group */
   group: string
-  /**
-   * Permanent recharge discount bound at registration via a discount invite
-   * code. Pay multiplier in (0, 1]; 0 (unset) means no discount (equiv. 1.0).
-   */
-  recharge_discount?: number
 }
 
 /**

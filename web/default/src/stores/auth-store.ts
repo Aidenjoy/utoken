@@ -70,15 +70,15 @@ export interface AuthUser {
   org_quota_limit?: number
   org_quota_used?: number
   /**
-   * Recharge discount pushed by `/api/user/self`. `recharge_discount` is the
-   * pay multiplier in (0, 1] bound at registration via a discount invite code;
-   * 0 (unset) means no discount (equivalent to 1.0). `is_agent` marks a user
-   * promoted to reseller, gating the agent-console entry (independent of role).
+   * Reseller context pushed by `/api/user/self`. `is_agent` marks a user
+   * promoted to reseller, gating the agent-console entry (independent of
+   * `role`). `agent_model_discounts` is that agent's own authorization config
+   * — `{model name: deepest discount it may grant}` — and is an empty object
+   * for everyone else. The agent console uses it to constrain the member
+   * discount editor's model picker and per-model percentage floor.
    */
-  recharge_discount?: number
   is_agent?: boolean
-  agent_min_discount?: number
-  agent_max_discount?: number
+  agent_model_discounts?: Record<string, number>
   /**
    * Whether an admin configured at least one effective per-model discount
    * (ratio < 1) for this user. Pushed by `/api/user/self`; the discount details

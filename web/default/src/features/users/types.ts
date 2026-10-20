@@ -66,9 +66,14 @@ export const userSchema = z.object({
   token_rate: z.number().optional(),
   expected_discount: z.number().optional(),
   purchase_discount: z.number().optional(),
-  recharge_discount: z.number().optional(),
-  recharge_discount_code: z.string().optional(),
-  recharge_discount_owner: z.string().optional(),
+  /**
+   * Owning reseller (`agents.id`), 0 when the user registered without an
+   * agent-issued invite code. Non-zero confines the user to that agent's
+   * authorized models, so it is a permission field rather than a label.
+   */
+  agent_id: z.number().optional(),
+  /** Owning reseller's username, backfilled for the user list only. */
+  agent_username: z.string().optional(),
   admin_permissions: z
     .record(z.string(), z.record(z.string(), z.boolean()))
     .optional(),

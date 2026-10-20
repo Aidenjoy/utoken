@@ -240,15 +240,32 @@ func Register(c *gin.Context) {
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
-	// 折扣邀请码：注册时原子消费并永久绑定折扣。仅提供折扣、无佣金，故不改 InviterId、不触发 aff 奖励。
-	var consumedDiscountCode *model.DiscountInviteCode
-	if code := strings.TrimSpace(user.DiscountCode); code != "" {
-		dc, consumeErr := model.ConsumeDiscountInviteCode(code)
+	// 邀请码：注册时原子消费，把新用户绑定到码归属的代理商。码本身不带折扣、不发佣金，
+	// 因此不改 InviterId、不触发 aff 奖励；绑定后该用户能调哪些模型、能享多少折扣，
+	// 全由代理商的授权配置与其为成员单独设置的按模型折扣决定。
+	// 归属管理员的码只做引流记录，agentId 保持 0（不受模型白名单限制）。
+	var consumedInviteCode *model.InviteCode
+	agentId := 0
+	if code := strings.TrimSpace(user.InviteCode); code != "" {
+		ic, consumeErr := model.ConsumeInviteCode(code)
 		if consumeErr != nil {
-			respondDiscountCodeError(c, consumeErr)
+			respondInviteCodeError(c, consumeErr)
 			return
 		}
-		consumedDiscountCode = dc
+		consumedInviteCode = ic
+		if ic.OwnerType == model.OwnerTypeAgent {
+			// 存 agents 表主键而不是 user_id：它才是 DeleteAgent 解绑与
+			// InvalidateAgentMembersCache 失效缓存所用的同一个键。
+			if agent, agentErr := model.GetAgentByUserId(ic.OwnerUserId); agentErr != nil {
+				// 码还挂在一个已被删除的代理商名下：不阻断注册，按无归属处理并回滚码次数。
+				// 否则用户会被绑到一个不存在的代理，白名单只能永远 fail-open。
+				common.SysLog(fmt.Sprintf("invite code %s references missing agent (owner user %d): %s", ic.Code, ic.OwnerUserId, agentErr.Error()))
+				model.ReleaseInviteCode(ic.Id)
+				consumedInviteCode = nil
+			} else {
+				agentId = agent.Id
+			}
+		}
 	}
 	cleanUser := model.User{
 		Username:    user.Username,
@@ -256,10 +273,7 @@ func Register(c *gin.Context) {
 		DisplayName: user.Username,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
-	}
-	if consumedDiscountCode != nil {
-		cleanUser.RechargeDiscount = consumedDiscountCode.Discount
-		cleanUser.RechargeDiscountCode = consumedDiscountCode.Code
+		AgentId:     agentId,
 	}
 	// 邀请人在企业内时，新用户继承企业归属与分组并登记为普通成员。
 	// 邀请裂变是企业扩员的主要来源；成员登记失败只记日志，不阻断注册。
@@ -277,9 +291,9 @@ func Register(c *gin.Context) {
 		cleanUser.Email = user.Email
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
-		// 注册失败，补偿回滚已消费的折扣码次数，避免占用名额。
-		if consumedDiscountCode != nil {
-			model.ReleaseDiscountInviteCode(consumedDiscountCode.Id)
+		// 注册失败，补偿回滚已消费的邀请码次数，避免占用名额。
+		if consumedInviteCode != nil {
+			model.ReleaseInviteCode(consumedInviteCode.Id)
 		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
@@ -341,47 +355,20 @@ func Register(c *gin.Context) {
 	return
 }
 
-// respondDiscountCodeError 把折扣码类型化错误映射为 i18n 响应，供注册与预览端点复用。
-func respondDiscountCodeError(c *gin.Context, err error) {
+// respondInviteCodeError 把邀请码类型化错误映射为 i18n 响应。
+func respondInviteCodeError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, model.ErrDiscountCodeNotFound):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeNotFound)
-	case errors.Is(err, model.ErrDiscountCodeDisabled):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeDisabled)
-	case errors.Is(err, model.ErrDiscountCodeExpired):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeExpired)
-	case errors.Is(err, model.ErrDiscountCodeExhausted):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeExhausted)
-	case errors.Is(err, model.ErrDiscountInvalid):
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeInvalid)
+	case errors.Is(err, model.ErrInviteCodeNotFound):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeNotFound)
+	case errors.Is(err, model.ErrInviteCodeDisabled):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeDisabled)
+	case errors.Is(err, model.ErrInviteCodeExpired):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeExpired)
+	case errors.Is(err, model.ErrInviteCodeExhausted):
+		common.ApiErrorI18n(c, i18n.MsgInviteCodeExhausted)
 	default:
 		common.ApiError(c, err)
 	}
-}
-
-// PreviewDiscountCode 匿名预览折扣码：只读校验是否可用并返回折扣，不消费。
-// 供注册页在提交前展示"你将享受 X 折充值优惠"。
-func PreviewDiscountCode(c *gin.Context) {
-	code := strings.TrimSpace(c.Param("code"))
-	if code == "" {
-		common.ApiErrorI18n(c, i18n.MsgDiscountCodeNotFound)
-		return
-	}
-	dc, err := model.GetDiscountCodeByCode(code)
-	if err != nil {
-		respondDiscountCodeError(c, err)
-		return
-	}
-	if err := dc.CheckUsable(common.GetTimestamp()); err != nil {
-		respondDiscountCodeError(c, err)
-		return
-	}
-	common.ApiSuccess(c, gin.H{
-		"valid":      true,
-		"discount":   dc.Discount,
-		"owner_type": dc.OwnerType,
-	})
-	return
 }
 
 func GetAllUsers(c *gin.Context) {
@@ -585,15 +572,16 @@ func GetSelf(c *gin.Context) {
 		orgQuotaUsed = member.QuotaUsed
 	}
 
-	// 代理商身份：前端据此决定是否展示"代理商控制台"入口（按 is_agent 而非角色 gating）。
+	// 代理商身份：前端据此决定是否展示"代理商控制台"入口（按 is_agent 而非角色 gating），
+	// 并拿到自己的授权配置（授权模型清单 + 每模型折扣下限）用于成员折扣编辑器。
 	// 仅启用状态的代理商才算数；查不到或已禁用一律按普通用户处理，不阻断。
 	isAgent := false
-	agentMinDiscount := 0.0
-	agentMaxDiscount := 0.0
+	agentModelDiscounts := map[string]float64{}
 	if agent, agentErr := model.GetAgentByUserId(id); agentErr == nil && agent != nil && agent.Status == model.AgentStatusEnabled {
 		isAgent = true
-		agentMinDiscount = agent.MinDiscount
-		agentMaxDiscount = agent.MaxDiscount
+		if floors := agent.ModelFloors(); floors != nil {
+			agentModelDiscounts = floors
+		}
 	}
 
 	// 构建响应数据，包含用户信息和权限
@@ -628,13 +616,13 @@ func GetSelf(c *gin.Context) {
 		"org_role":          orgRole,
 		"org_quota_limit":   orgQuotaLimit,
 		"org_quota_used":    orgQuotaUsed,
-		"recharge_discount": user.RechargeDiscount,
 		// has_model_discount 仅告知本人“是否配有模型折扣”，前端据此决定使用日志
 		// 原价/折扣两列是否默认显示；折扣明细不下发给普通用户。
 		"has_model_discount": common.HasModelDiscounts(user.ModelDiscounts),
 		"is_agent":           isAgent,
-		"agent_min_discount": agentMinDiscount,
-		"agent_max_discount": agentMaxDiscount,
+		// agent_model_discounts 是本人作为代理商的授权配置 {模型名: 折扣下限}，
+		// 非代理商时为空对象。前端用它约束「成员折扣编辑器」的模型下拉与百分比下限。
+		"agent_model_discounts": agentModelDiscounts,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -778,6 +766,10 @@ func GetUserModels(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 代理商授权模型白名单：取**目标用户**的快照而不是当前请求者的上下文，
+	// 否则管理员代查成员可用模型时会看到自己的白名单。
+	// 过滤后的结果与分发层的拦截口径一致，避免“列表里能选、调用却 403”。
+	allowed := model.ResolveAllowedModels(user.AgentId, user.AllowedModels)
 	groups := service.GetUserUsableGroups(user.Group)
 	group := c.Query("group")
 	if group != "" {
@@ -793,7 +785,7 @@ func GetUserModels(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",
-			"data":    model.GetGroupEnabledModels(group),
+			"data":    allowed.Filter(model.GetGroupEnabledModels(group)),
 		})
 		return
 	}
@@ -809,7 +801,7 @@ func GetUserModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    models,
+		"data":    allowed.Filter(models),
 	})
 	return
 }

@@ -76,8 +76,6 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, controller.EpayNotify)
 			userRoute.GET("/epay/notify", controller.EpayNotify)
 			userRoute.GET("/groups", controller.GetUserGroups)
-			// 匿名预览折扣码（注册页展示折扣用），只读校验不消费
-			userRoute.GET("/discount_code/:code", middleware.CriticalRateLimit(), controller.PreviewDiscountCode)
 
 			selfRoute := userRoute.Group("/")
 			selfRoute.Use(middleware.UserAuth())
@@ -161,7 +159,8 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
-		// 代理商（Reseller）折扣邀请：管理员管理代理商与折扣码，代理商在被允许范围内自建码。
+		// 代理商（Reseller）邀请引流：管理员管理代理商（授权模型 + 折扣下限）与邀请码，
+		// 代理商自建邀请码并在授权下限之上为自己的成员单独设置按模型折扣。
 		// /agent/admin/* 与 /agent/profile、/agent/codes 为不同静态段，路由树无冲突。
 		agentAdminRoute := apiRouter.Group("/agent/admin")
 		agentAdminRoute.Use(middleware.AdminAuth())
@@ -170,19 +169,22 @@ func SetApiRouter(router *gin.Engine) {
 			agentAdminRoute.POST("/agents", controller.AdminCreateAgent)
 			agentAdminRoute.PUT("/agents/:id", controller.AdminUpdateAgent)
 			agentAdminRoute.DELETE("/agents/:id", controller.AdminDeleteAgent)
-			agentAdminRoute.GET("/codes", controller.AdminListDiscountCodes)
-			agentAdminRoute.POST("/codes", controller.AdminCreateDiscountCode)
-			agentAdminRoute.PUT("/codes/:id", controller.AdminUpdateDiscountCode)
+			agentAdminRoute.GET("/codes", controller.AdminListInviteCodes)
+			agentAdminRoute.POST("/codes", controller.AdminCreateInviteCode)
+			agentAdminRoute.PUT("/codes/:id", controller.AdminUpdateInviteCode)
 		}
 
 		agentSelfRoute := apiRouter.Group("/agent")
 		agentSelfRoute.Use(middleware.UserAuth(), middleware.AgentAuth())
 		{
 			agentSelfRoute.GET("/profile", controller.GetAgentProfile)
-			agentSelfRoute.GET("/codes", controller.ListAgentCodes)
-			agentSelfRoute.POST("/codes", controller.CreateAgentCode)
-			agentSelfRoute.PUT("/codes/:id", controller.UpdateAgentCode)
+			agentSelfRoute.GET("/codes", controller.ListAgentInviteCodes)
+			agentSelfRoute.POST("/codes", controller.CreateAgentInviteCode)
+			agentSelfRoute.PUT("/codes/:id", controller.UpdateAgentInviteCode)
 			agentSelfRoute.GET("/members", controller.ListAgentMembers)
+			// 成员折扣只读写「授权范围内」的部分，下限由服务端 Agent 记录决定。
+			agentSelfRoute.GET("/members/:id/model_discounts", controller.GetAgentMemberModelDiscounts)
+			agentSelfRoute.PUT("/members/:id/model_discounts", controller.UpdateAgentMemberModelDiscounts)
 			agentSelfRoute.GET("/recharge", controller.ListAgentRecharge)
 		}
 
