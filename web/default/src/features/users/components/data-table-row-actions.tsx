@@ -31,6 +31,7 @@ import {
   CirclePlus,
   KeySquare,
   Percent,
+  Mail,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -64,6 +65,7 @@ import type { User, ManageUserAction } from '../types'
 import { UserApiKeyCreateDialog } from './dialogs/user-api-key-create-dialog'
 import { UserApiKeysDialog } from './dialogs/user-api-keys-dialog'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
+import { UserEmailBindDialog } from './dialogs/user-email-bind-dialog'
 import { UserModelDiscountDialog } from './dialogs/user-model-discount-dialog'
 import { useUsers } from './users-provider'
 
@@ -82,6 +84,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false)
   const [apiKeysDialogOpen, setApiKeysDialogOpen] = useState(false)
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false)
+  const [emailBindOpen, setEmailBindOpen] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -139,6 +142,14 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     } finally {
       setResetTwoFAOpen(false)
     }
+  }
+
+  const handleOpenEmailBind = () => {
+    if (user.email) {
+      toast.error(t('This user has already bound an email'))
+      return
+    }
+    setEmailBindOpen(true)
   }
 
   const isDisabled = user.status === USER_STATUS.DISABLED
@@ -280,6 +291,18 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
                 <KeySquare size={16} />
               </DropdownMenuShortcut>
             </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                handleOpenEmailBind()
+              }}
+            >
+              {t('Bind Email')}
+              <DropdownMenuShortcut>
+                <Mail size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
           </>
         )}
 
@@ -377,6 +400,13 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         open={apiKeysDialogOpen}
         onOpenChange={setApiKeysDialogOpen}
         user={{ id: user.id, username: user.username }}
+      />
+
+      <UserEmailBindDialog
+        open={emailBindOpen}
+        onOpenChange={setEmailBindOpen}
+        user={{ id: user.id, username: user.username }}
+        onSuccess={triggerRefresh}
       />
 
       <UserModelDiscountDialog

@@ -252,3 +252,20 @@ export async function adminUnbindCustomOAuth(
   )
   return res.data
 }
+
+/**
+ * Bind an email for a user on behalf of an admin. Only accounts without an
+ * email can be bound; an already-bound account gets a business error from the
+ * server, which the caller toasts itself, hence the interceptor is silenced.
+ */
+export async function adminBindUserEmail(
+  userId: number,
+  email: string
+): Promise<ApiResponse> {
+  const res = await api.put(
+    `/api/user/${userId}/email`,
+    { email },
+    { skipBusinessError: true }
+  )
+  return res.data
+}

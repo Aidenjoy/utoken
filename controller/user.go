@@ -925,6 +925,56 @@ func AdminClearUserBinding(c *gin.Context) {
 	})
 }
 
+type adminBindUserEmailRequest struct {
+	Email string `json:"email"`
+}
+
+// AdminBindUserEmail 管理员为未绑定邮箱的账号（如管理员代创建的账号）补绑邮箱。
+// 已绑定的账号直接拒绝：邮箱是登录与找回密码的凭据，静默改写等于接管账号。
+func AdminBindUserEmail(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req adminBindUserEmailRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	email := model.NormalizeEmail(req.Email)
+	if err := common.Validate.Var(email, "required,email"); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !canManageTargetRole(c.GetInt("role"), user.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+	if user.Email != "" {
+		common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyBound)
+		return
+	}
+	if err := model.BindEmailToUser(user, email); err != nil {
+		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAuditFor(c, user.Id, "user.email_bind", map[string]interface{}{
+		"username": user.Username,
+		"email":    email,
+	})
+	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
+}
+
 func UpdateSelf(c *gin.Context) {
 	var requestData map[string]interface{}
 	if err := common.DecodeJson(c.Request.Body, &requestData); err != nil {
