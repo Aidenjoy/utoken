@@ -45,11 +45,16 @@ export type AgentActions = {
  * Columns for the reseller (agent) management list. The authorization column
  * shows how many models the agent may resell; hovering lists each model with
  * the deepest discount the agent may grant for it (0.8 → 80%).
+ *
+ * `locale` must be a BCP-47 tag (run `toIntlLocale` on it first): the i18next
+ * codes this project uses (`zhCN` / `zhTW`) make `Intl.NumberFormat` throw, and
+ * because the discount is formatted while building the tooltip elements the
+ * throw happens during row render — the error boundary replaces the whole page.
  */
 export function useAgentColumns(
   actions: AgentActions,
   t: TFunction,
-  language: string | undefined
+  locale: string | undefined
 ): ColumnDef<Agent>[] {
   return [
     {
@@ -120,7 +125,7 @@ export function useAgentColumns(
                           untranslated. */}
                       <span className='text-background/70 ml-auto font-mono tabular-nums'>
                         {'≥ '}
-                        {formatModelDiscount(floor, language)}
+                        {formatModelDiscount(floor, locale)}
                       </span>
                     </li>
                   ))}

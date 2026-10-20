@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { toIntlLocale } from '@/i18n/languages'
 
 import { deleteAgent, listAgents, updateAgent } from '../api'
 import { AGENT_STATUS, type Agent } from '../types'
@@ -100,7 +101,9 @@ export function AgentsTable() {
       [openEdit]
     ),
     t,
-    i18n.language
+    // Intl 只认 BCP-47：直传 i18n.language 的 'zhCN' 会在渲染折扣列时抛
+    // RangeError，被错误边界换成整页 500。
+    toIntlLocale(i18n.resolvedLanguage || i18n.language)
   )
 
   const { table } = useDataTable({

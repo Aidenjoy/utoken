@@ -34,6 +34,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { toIntlLocale } from '@/i18n/languages'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatModelDiscount } from '@/lib/discount'
@@ -294,6 +295,8 @@ function buildTypeDetailSegments(
 
 export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
   const { t, i18n } = useTranslation()
+  // Intl 只认 BCP-47，'zhCN' 直接传给 Intl.NumberFormat 会抛 RangeError。
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const columns: ColumnDef<UsageLog>[] = [
     {
       accessorKey: 'created_at',
@@ -811,7 +814,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         }
         return (
           <span className='font-mono text-xs tabular-nums'>
-            {formatModelDiscount(other?.discount, i18n.language)}
+            {formatModelDiscount(other?.discount, locale)}
           </span>
         )
       },

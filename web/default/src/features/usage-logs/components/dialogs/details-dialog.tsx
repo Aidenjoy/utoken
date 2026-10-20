@@ -39,6 +39,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatModelDiscount } from '@/lib/discount'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
@@ -160,6 +161,8 @@ function BillingBreakdown(props: {
 }) {
   const { t, i18n } = useTranslation()
   const { log, other, isAdmin } = props
+  // Intl 只认 BCP-47，'zhCN' 直接传给 Intl.NumberFormat 会抛 RangeError。
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const isPerCall = isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
@@ -338,7 +341,7 @@ function BillingBreakdown(props: {
   if (other.discount != null) {
     rows.push({
       label: t('Discount (%)'),
-      value: formatModelDiscount(other.discount, i18n.language),
+      value: formatModelDiscount(other.discount, locale),
     })
   }
 
