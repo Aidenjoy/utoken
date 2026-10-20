@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/tooltip'
 import { listMyMembers } from '@/features/agents/api'
 import type { AgentMember } from '@/features/agents/types'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatModelDiscount } from '@/lib/discount'
 import { formatTimestampToDate } from '@/lib/format'
 
@@ -54,6 +55,8 @@ import { MemberDiscountDialog } from './components/member-discount-dialog'
 export function AgentMembers() {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
+  // Intl 只认 BCP-47，'zhCN' 直接传给 Intl.NumberFormat 会抛 RangeError。
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
 
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(20)
@@ -133,7 +136,7 @@ export function AgentMembers() {
                       <li key={model} className='flex items-center gap-2'>
                         <span className='font-mono'>{model}</span>
                         <span className='text-background/70 ml-auto font-mono tabular-nums'>
-                          {formatModelDiscount(ratio, i18n.language)}
+                          {formatModelDiscount(ratio, locale)}
                         </span>
                       </li>
                     ))}
@@ -182,7 +185,7 @@ export function AgentMembers() {
         size: 70,
       },
     ],
-    [t, i18n.language, openDiscountEditor]
+    [t, locale, openDiscountEditor]
   )
 
   const { table } = useDataTable({
@@ -218,18 +221,20 @@ export function AgentMembers() {
           applyHeaderSize
           toolbarProps={{ hideViewOptions: true }}
         />
+        {/* 必须待在 Content 里：SectionPageLayout 只认自己的四个插槽子节点，
+            放在它旁边会被静默丢弃，弹窗永远不会挂载（弹窗自身 portal 到 body，
+            不受这里的 overflow-auto 影响）。 */}
+        <MemberDiscountDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          member={editing}
+          onSuccess={() =>
+            void queryClient.invalidateQueries({
+              queryKey: ['my-agent-members'],
+            })
+          }
+        />
       </SectionPageLayout.Content>
-
-      <MemberDiscountDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        member={editing}
-        onSuccess={() =>
-          void queryClient.invalidateQueries({
-            queryKey: ['my-agent-members'],
-          })
-        }
-      />
     </SectionPageLayout>
   )
 }

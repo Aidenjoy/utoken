@@ -83,6 +83,15 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
       content = child.props.children
     } else if (child.type === SectionPageLayoutBreadcrumb) {
       breadcrumb = child.props.children
+    } else if (import.meta.env.DEV) {
+      // 非插槽子节点会被静默丢弃：弹窗/抽屉写在 Content 外面就等于没渲染，
+      // 表现为“点了没反应”且毫无报错，开发期直接喊出来。
+      const childType = child.type as { displayName?: string; name?: string }
+      console.warn(
+        `[SectionPageLayout] dropped non-slot child "${
+          childType.displayName ?? childType.name ?? String(child.type)
+        }"; move it inside <SectionPageLayout.Content>.`
+      )
     }
   })
 
