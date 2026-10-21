@@ -96,7 +96,7 @@ func sweepTimedOutTasks(ctx context.Context) {
 		}
 
 		// 阶段1：先回源解析（复用补录链路，CAS 保证计费恰好一次）
-		err := RefetchAndSettleTask(ctx, task)
+		_, err := RefetchAndSettleTask(ctx, task)
 		// 回源后按 DB 实际状态分类（多节点安全）：已终态则结算/退款已由 ApplyUpstreamTaskResult 完成
 		var reloaded model.Task
 		reloadErr := model.DB.First(&reloaded, task.ID).Error
@@ -515,26 +515,48 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 // 组装与后台轮询相同的 adaptor/渠道上下文后复用 updateVideoSingleTask，
 // 计费恰好一次由 ApplyUpstreamTaskResult 的 CAS 保证；对已终态任务同样适用
 // （用于找回被超时清扫丢弃的上游成功结果）。
-func RefetchAndSettleTask(ctx context.Context, task *model.Task) error {
+func RefetchAndSettleTask(ctx context.Context, task *model.Task) (string, error) {
 	if task == nil {
-		return errors.New("task is nil")
+		return "", errors.New("task is nil")
 	}
 	if GetTaskAdaptorFunc == nil {
-		return errors.New("task adaptor not initialized")
+		return "", errors.New("task adaptor not initialized")
 	}
 	adaptor := GetTaskAdaptorFunc(task.Platform)
 	if adaptor == nil {
-		return fmt.Errorf("no adaptor for platform %s", task.Platform)
+		return "", fmt.Errorf("no adaptor for platform %s", task.Platform)
 	}
 	ch, err := model.GetChannelById(task.ChannelId, true)
 	if err != nil {
-		return fmt.Errorf("load channel %d: %w", task.ChannelId, err)
+		return "", fmt.Errorf("load channel %d: %w", task.ChannelId, err)
 	}
 	upstreamID := task.GetUpstreamTaskID()
 	if upstreamID == "" {
-		return errors.New("task has no upstream id")
+		return "", errors.New("task has no upstream id")
 	}
-	return updateVideoSingleTask(ctx, adaptor, ch, upstreamID, map[string]*model.Task{upstreamID: task})
+	beforeStatus := task.Status
+	beforeQuota := task.Quota
+	if err := updateVideoSingleTask(ctx, adaptor, ch, upstreamID, map[string]*model.Task{upstreamID: task}); err != nil {
+		return "", err
+	}
+	latest, exist, err := model.GetByOnlyTaskId(task.TaskID)
+	if err != nil || !exist || latest == nil {
+		latest = task
+	}
+	switch {
+	case latest.Status == model.TaskStatusFailure && beforeStatus != model.TaskStatusFailure:
+		return "refunded", nil
+	case beforeStatus == model.TaskStatusSuccess && latest.Status == model.TaskStatusSuccess:
+		return "already_settled", nil
+	case latest.Status == model.TaskStatusSuccess && latest.Quota != beforeQuota:
+		return "settled_adjusted", nil
+	case latest.Status == model.TaskStatusSuccess:
+		return "settled_exact", nil
+	case latest.Status == beforeStatus:
+		return "no_terminal", nil
+	default:
+		return "status_changed", nil
+	}
 }
 
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
@@ -796,6 +818,10 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
 		return
 	}
+	// 0.5 回填预扣消费日志的真实 tokens/耗时：差额为 0（预扣准确）时
+	// RecalculateTaskQuota 不写差额行，tokens 会完全丢失；差额非 0 时原预扣行
+	// 也仍是 0。统一在此补展示字段（不改资金），使日志页原行反映真实消耗。
+	backfillPreConsumeLogUsage(ctx, task, taskResult)
 	// 1. 优先让 adaptor 决定最终额度
 	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {
 		promptTokens, completionTokens := splitTaskUsageTokens(taskResult)
@@ -808,4 +834,30 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		return
 	}
 	// 3. 无调整，保持预扣额度
+}
+
+// backfillPreConsumeLogUsage 把上游终态的真实 tokens 与耗时回填到提交时的预扣
+// 消费日志行，仅补展示字段。耗时优先采用上游终态时刻与提交时刻之差。
+func backfillPreConsumeLogUsage(ctx context.Context, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	promptTokens, completionTokens := splitTaskUsageTokens(taskResult)
+	now := time.Now().Unix()
+	finishAt := now
+	if ts := taskResult.FinishTime; ts > 0 && ts <= now && ts >= task.SubmitTime {
+		finishAt = ts
+	}
+	useTime := int(finishAt - task.SubmitTime)
+	if useTime < 0 {
+		useTime = 0
+	}
+	if promptTokens+completionTokens <= 0 && useTime <= 0 {
+		return
+	}
+	n, err := model.UpdateTaskConsumeLogUsage(task.TaskID, promptTokens, completionTokens, useTime)
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("回填预扣消费日志失败 task %s: %s", task.TaskID, err.Error()))
+		return
+	}
+	if n > 0 {
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 回填预扣消费日志 tokens=%d+%d 耗时=%ds", task.TaskID, promptTokens, completionTokens, useTime))
+	}
 }

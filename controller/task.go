@@ -82,7 +82,8 @@ func AdminRefetchTask(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if err := service.RefetchAndSettleTask(c.Request.Context(), task); err != nil {
+	summary, err := service.RefetchAndSettleTask(c.Request.Context(), task)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -90,7 +91,7 @@ func AdminRefetchTask(c *gin.Context) {
 	if latest == nil {
 		latest = task
 	}
-	common.ApiSuccess(c, relay.TaskModel2Dto(latest))
+	common.ApiSuccess(c, gin.H{"task": relay.TaskModel2Dto(latest), "result": summary})
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {

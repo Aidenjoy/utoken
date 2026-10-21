@@ -511,6 +511,64 @@ func TestApplyUpstreamTaskResultIgnoresFailureAfterSettledSuccess(t *testing.T) 
 	assert.Equal(t, int64(0), refundLogs, "不得产生退款日志")
 }
 
+// TestSettleBackfillsPreConsumeLogUsageOnZeroDelta 锁定差额为 0（预扣准确）时
+// 结算不写差额行，但必须把上游真实 tokens/耗时回填到提交预扣消费日志行；
+// 否则 tokens 完全丢失、日志页原行永远 0+0，对账时看不到真实消耗。
+func TestSettleBackfillsPreConsumeLogUsageOnZeroDelta(t *testing.T) {
+	truncate(t)
+
+	const (
+		userID    = 9401
+		tokenID   = 9402
+		channelID = 9403
+		initQuota = 20000
+		quota     = 5000 // 预扣==实际 → delta=0，不写差额日志
+	)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-ark-backfill", initQuota)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, quota, tokenID, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusInProgress
+	require.NoError(t, model.DB.Create(task).Error)
+
+	// 提交预扣消费日志（tokens=0），other 带 task_id 供结算回填定位
+	preLog := &model.Log{
+		UserId:    userID,
+		CreatedAt: task.SubmitTime,
+		Type:      model.LogTypeConsume,
+		ModelName: "video-model",
+		Quota:     quota,
+		TokenId:   tokenID,
+		Other:     `{"is_task":true,"task_id":"` + task.TaskID + `"}`,
+	}
+	require.NoError(t, model.DB.Create(preLog).Error)
+
+	adaptor := &fixedSettleAdaptor{quota: quota}
+	result := &relaycommon.TaskInfo{
+		Status:           model.TaskStatusSuccess,
+		Progress:         "100%",
+		TotalTokens:      100,
+		CompletionTokens: 100,
+		FinishTime:       task.SubmitTime + 60,
+		Url:              "https://upstream/video.mp4",
+	}
+	require.NoError(t, ApplyUpstreamTaskResult(context.Background(), adaptor, task, result, []byte(`{"status":"succeeded"}`)))
+
+	// delta=0：不新增差额/退款行，仅保留原预扣行
+	var logCount int64
+	require.NoError(t, model.DB.Model(&model.Log{}).Where("type IN ?", []int{model.LogTypeConsume, model.LogTypeRefund}).Count(&logCount).Error)
+	assert.Equal(t, int64(1), logCount, "delta=0 不应新增差额行")
+
+	// 原预扣行 tokens/耗时被回填
+	var backfilled model.Log
+	require.NoError(t, model.DB.First(&backfilled, preLog.Id).Error)
+	assert.Equal(t, 0, backfilled.PromptTokens)
+	assert.Equal(t, 100, backfilled.CompletionTokens, "差额为 0 时 tokens 仍须回填到预扣行")
+	assert.Equal(t, 60, backfilled.UseTime, "耗时按上游终态-提交时刻回填")
+	assert.Equal(t, quota, backfilled.Quota, "回填不得改动资金字段")
+}
+
 // TestSplitTaskUsageTokens 锁定结算日志 token 拆分语义：方舟视频 completion=total
 // 全记 completion；有独立 completion 时 prompt=total-completion；异常输入归零。
 func TestSplitTaskUsageTokens(t *testing.T) {

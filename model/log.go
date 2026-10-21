@@ -519,6 +519,34 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
+// UpdateTaskConsumeLogUsage 回填任务预扣消费日志的真实 token 用量与耗时。
+// 异步任务提交时预扣消费日志 tokens=0，结算差额另起新行，原行永远显示 0；
+// 差额为 0（预扣准确）时甚至没有差额行，tokens 完全丢失，用户在对账时看不到
+// 真实消耗。此函数按 other.task_id 定位该任务最早一条 consume 日志（即预扣行），
+// 仅补展示字段（tokens/耗时），不改动 quota 等资金字段，返回影响行数。
+func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, useTime int) (int64, error) {
+	if taskID == "" {
+		return 0, nil
+	}
+	var pre Log
+	err := LOG_DB.Where("type = ?", LogTypeConsume).
+		Where("other LIKE ?", fmt.Sprintf(`%%"task_id":"%s"%%`, taskID)).
+		Order("id ASC").
+		First(&pre).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	res := LOG_DB.Model(&Log{}).Where("id = ?", pre.Id).Updates(map[string]any{
+		"prompt_tokens":     promptTokens,
+		"completion_tokens": completionTokens,
+		"use_time":          useTime,
+	})
+	return res.RowsAffected, res.Error
+}
+
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
