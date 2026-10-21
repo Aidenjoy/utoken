@@ -461,6 +461,56 @@ func TestApplyUpstreamTaskResultRefundsFailedTaskOnce(t *testing.T) {
 	assert.Equal(t, 0, reloaded.Quota, "预扣额度已被退款认领置零")
 }
 
+// TestApplyUpstreamTaskResultIgnoresFailureAfterSettledSuccess 锁定补录幂等：
+// 已成功结算的任务再次补录时，若上游记录已过期/查询报错被解析为 FAILURE，
+// 不得改判状态或全额退款（错误退款数据）；状态、额度与日志均保持结算后不变。
+func TestApplyUpstreamTaskResultIgnoresFailureAfterSettledSuccess(t *testing.T) {
+	truncate(t)
+
+	const (
+		userID    = 9301
+		tokenID   = 9302
+		channelID = 9303
+		initQuota = 20000
+		quota     = 5000 // 预扣==实际，结算 delta=0，不产生结算日志
+	)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-ark-idem", initQuota)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, quota, tokenID, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusSuccess
+	task.Progress = "100%"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	adaptor := &fixedSettleAdaptor{quota: quota}
+	successResult := &relaycommon.TaskInfo{
+		Status:           model.TaskStatusSuccess,
+		Progress:         "100%",
+		TotalTokens:      100,
+		CompletionTokens: 100,
+		Url:              "https://upstream/video.mp4",
+	}
+	body := []byte(`{"id":"upstream_1","status":"succeeded"}`)
+	require.NoError(t, ApplyUpstreamTaskResult(context.Background(), adaptor, task, successResult, body))
+	quotaAfterSettle := getUserQuota(t, userID)
+
+	// 再次补录：上游记录过期，查询报错被解析为 FAILURE
+	var fresh model.Task
+	require.NoError(t, model.DB.First(&fresh, task.ID).Error)
+	failedResult := &relaycommon.TaskInfo{Status: model.TaskStatusFailure, Reason: "task not found"}
+	require.NoError(t, ApplyUpstreamTaskResult(context.Background(), adaptor, &fresh, failedResult, []byte(`{"error":"not found"}`)))
+
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusSuccess, reloaded.Status, "已结算成功不得被改判失败")
+	assert.Equal(t, quota, reloaded.Quota, "额度保持结算后不变")
+	assert.Equal(t, quotaAfterSettle, getUserQuota(t, userID), "不得错误退款")
+	var refundLogs int64
+	require.NoError(t, model.DB.Model(&model.Log{}).Where("type = ?", model.LogTypeRefund).Count(&refundLogs).Error)
+	assert.Equal(t, int64(0), refundLogs, "不得产生退款日志")
+}
+
 // TestSplitTaskUsageTokens 锁定结算日志 token 拆分语义：方舟视频 completion=total
 // 全记 completion；有独立 completion 时 prompt=total-completion；异常输入归零。
 func TestSplitTaskUsageTokens(t *testing.T) {
@@ -504,4 +554,220 @@ func TestSplitTaskUsageTokens(t *testing.T) {
 			assert.Equal(t, tc.wantCompletion, completion)
 		})
 	}
+}
+
+// scriptedResolveAdaptor 为超时回源测试提供可编排的上游响应：
+// FetchTask 返回指定 HTTP 状态码与 New API 格式的任务状态；AdjustBillingOnComplete 返回预设实际额度。
+type scriptedResolveAdaptor struct {
+	status   model.TaskStatus
+	quota    int
+	httpCode int
+}
+
+func (a *scriptedResolveAdaptor) Init(_ *relaycommon.RelayInfo) {}
+
+func (a *scriptedResolveAdaptor) FetchTask(string, string, map[string]any, string) (*http.Response, error) {
+	code := a.httpCode
+	if code == 0 {
+		code = http.StatusOK
+	}
+	resp := dto.TaskResponse[model.Task]{
+		Code: dto.TaskSuccessCode,
+		Data: model.Task{TaskID: "up", Status: a.status},
+	}
+	body, _ := common.Marshal(resp)
+	return &http.Response{StatusCode: code, Body: io.NopCloser(bytes.NewReader(body))}, nil
+}
+
+func (a *scriptedResolveAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
+	return &relaycommon.TaskInfo{Status: string(a.status)}, nil
+}
+
+func (a *scriptedResolveAdaptor) AdjustBillingOnComplete(*model.Task, *relaycommon.TaskInfo) int {
+	return a.quota
+}
+
+func setSweepTestConfig(t *testing.T, timeoutMin, intervalMin, capHours int) {
+	t.Helper()
+	oldT, oldI, oldC := constant.TaskTimeoutMinutes, constant.TaskTimeoutResolveIntervalMinutes, constant.TaskTimeoutUnresolvedAfterHours
+	constant.TaskTimeoutMinutes = timeoutMin
+	constant.TaskTimeoutResolveIntervalMinutes = intervalMin
+	constant.TaskTimeoutUnresolvedAfterHours = capHours
+	t.Cleanup(func() {
+		constant.TaskTimeoutMinutes, constant.TaskTimeoutResolveIntervalMinutes, constant.TaskTimeoutUnresolvedAfterHours = oldT, oldI, oldC
+	})
+}
+
+func injectResolveAdaptor(t *testing.T, a TaskPollingAdaptor) {
+	t.Helper()
+	prev := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return a }
+	t.Cleanup(func() { GetTaskAdaptorFunc = prev })
+}
+
+func countRefundLogs(t *testing.T) int64 {
+	t.Helper()
+	var n int64
+	require.NoError(t, model.DB.Model(&model.Log{}).Where("type = ?", model.LogTypeRefund).Count(&n).Error)
+	return n
+}
+
+// TestSweepTimedOutTasksResolvesUpstreamSuccessInsteadOfRefund 锁定超时"先回源"：
+// 上游实际已成功时，超时清扫必须结算为 SUCCESS（按实际额度差额结算），
+// 而不是旧逻辑那样盲判 FAILURE+全额退款（少收费）。
+func TestSweepTimedOutTasksResolvesUpstreamSuccessInsteadOfRefund(t *testing.T) {
+	truncate(t)
+	setSweepTestConfig(t, 1, 30, 168)
+
+	const (
+		userID      = 9401
+		tokenID     = 9402
+		channelID   = 9403
+		initQuota   = 20000
+		preConsumed = 3000
+		actualQuota = 1000
+	)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-sweep-ok", initQuota)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusInProgress
+	task.Progress = "30%"
+	task.SubmitTime = time.Now().Unix() - 120
+	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, model.DecreaseUserQuota(userID, preConsumed, false))
+
+	injectResolveAdaptor(t, &scriptedResolveAdaptor{status: model.TaskStatusSuccess, quota: actualQuota})
+
+	sweepTimedOutTasks(context.Background())
+
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusSuccess, reloaded.Status, "上游成功应结算为 SUCCESS而非超时失败")
+	assert.Equal(t, actualQuota, reloaded.Quota)
+	// 差额退款=preConsumed-actual，用户净扣 actual（而非旧逻辑的全退）
+	assert.Equal(t, initQuota-actualQuota, getUserQuota(t, userID))
+}
+
+// TestSweepTimedOutTasks404KeepsUnresolvedNoRefund 锁定决策 B：上游 404/过期
+// 无法判定成败时，不得误判 FAILURE+退款，而是保持未完成并退避重试。
+func TestSweepTimedOutTasks404KeepsUnresolvedNoRefund(t *testing.T) {
+	truncate(t)
+	setSweepTestConfig(t, 1, 30, 168)
+
+	const (userID = 9411; tokenID = 9412; channelID = 9413; initQuota = 20000; preConsumed = 3000)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-sweep-404", initQuota)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusInProgress
+	task.Progress = "30%"
+	task.SubmitTime = time.Now().Unix() - 120
+	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, model.DecreaseUserQuota(userID, preConsumed, false))
+
+	injectResolveAdaptor(t, &scriptedResolveAdaptor{status: model.TaskStatusInProgress, httpCode: http.StatusNotFound})
+
+	sweepTimedOutTasks(context.Background())
+
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusInProgress, reloaded.Status, "404 不得误判失败")
+	assert.NotEqualValues(t, model.TaskStatusTimeoutUnresolved, reloaded.Status, "未超硬上限不应挂起")
+	assert.Equal(t, 1, reloaded.ResolveAttempts)
+	assert.Greater(t, reloaded.NextResolveAt, time.Now().Unix())
+	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID), "不得退款")
+	assert.Equal(t, int64(0), countRefundLogs(t))
+}
+
+// TestSweepTimedOutTasksCapsToUnresolvedNoRefund 锁定阶段3：账龄超硬上限且始终
+// 解析不了→挂起标记 TIMEOUT_UNRESOLVED（保留预扣、不退款、停止自动轮询）。
+func TestSweepTimedOutTasksCapsToUnresolvedNoRefund(t *testing.T) {
+	truncate(t)
+	setSweepTestConfig(t, 1, 30, 1) // 硬上限 1 小时
+
+	const (userID = 9421; tokenID = 9422; channelID = 9423; initQuota = 20000; preConsumed = 3000)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-sweep-cap", initQuota)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusInProgress
+	task.Progress = "30%"
+	task.SubmitTime = time.Now().Unix() - 7200 // 2h > 1h 上限
+	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, model.DecreaseUserQuota(userID, preConsumed, false))
+
+	injectResolveAdaptor(t, &scriptedResolveAdaptor{status: model.TaskStatusInProgress})
+
+	sweepTimedOutTasks(context.Background())
+
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusTimeoutUnresolved, reloaded.Status)
+	assert.Equal(t, preConsumed, reloaded.Quota, "保留预扣估值")
+	assert.Contains(t, reloaded.FailReason, "未解析")
+	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID), "不得退款")
+	assert.Equal(t, int64(0), countRefundLogs(t))
+	// 挂起后不再被自动轮询捞起
+	assert.False(t, model.HasUnfinishedSyncTasks())
+	assert.Empty(t, model.GetAllUnFinishSyncTasks(10))
+}
+
+// TestSweepTimedOutTasksFlagsWhenChannelDeleted 锁定 D2：渠道被删除时无法回源，
+// 直接挂起标记（保留预扣、不退款），而不是旧逻辑的"标 FAILURE 且不退款"。
+func TestSweepTimedOutTasksFlagsWhenChannelDeleted(t *testing.T) {
+	truncate(t)
+	setSweepTestConfig(t, 1, 30, 168)
+
+	const (userID = 9431; tokenID = 9432; channelID = 9433; initQuota = 20000; preConsumed = 3000)
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-sweep-nochannel", initQuota)
+	// 故意不 seedChannel：模拟渠道已被删除
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusInProgress
+	task.Progress = "30%"
+	task.SubmitTime = time.Now().Unix() - 120
+	require.NoError(t, model.DB.Create(task).Error)
+	require.NoError(t, model.DecreaseUserQuota(userID, preConsumed, false))
+
+	injectResolveAdaptor(t, &scriptedResolveAdaptor{status: model.TaskStatusSuccess, quota: preConsumed})
+
+	sweepTimedOutTasks(context.Background())
+
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusTimeoutUnresolved, reloaded.Status)
+	assert.Contains(t, reloaded.FailReason, "渠道")
+	assert.Equal(t, preConsumed, reloaded.Quota)
+	assert.Equal(t, initQuota-preConsumed, getUserQuota(t, userID), "不得退款")
+}
+
+// TestDeleteChannelBlockedWhileTaskInFlight 锁定 D3 护栏：渠道仍有在途任务时
+// 拒绝硬删除（删除会丢失回源凭证）；任务进入终态后允许删除。
+func TestDeleteChannelBlockedWhileTaskInFlight(t *testing.T) {
+	truncate(t)
+
+	const channelID = 9501
+	seedChannel(t, channelID)
+	task := makeTask(1, channelID, 100, 0, BillingSourceWallet, 0)
+	task.Status = model.TaskStatusInProgress
+	task.Progress = "30%"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	ch := model.Channel{Id: channelID}
+	err := ch.Delete()
+	require.Error(t, err, "有在途任务时禁止删除渠道")
+	assert.Contains(t, err.Error(), "在途")
+
+	// 任务进入终态后，护栏不再拦截（在途计数归零）
+	require.NoError(t, model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Updates(map[string]any{
+		"status": model.TaskStatusSuccess, "progress": "100%",
+	}).Error)
+	cnt, cerr := model.CountInFlightTasksByChannelIDs([]int{channelID})
+	require.NoError(t, cerr)
+	assert.Equal(t, int64(0), cnt, "任务终态后应允许删除")
 }

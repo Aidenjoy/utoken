@@ -37,56 +37,132 @@ type TaskPollingAdaptor interface {
 // 打破 service -> relay -> relay/channel -> service 的循环依赖。
 var GetTaskAdaptorFunc func(platform constant.TaskPlatform) TaskPollingAdaptor
 
-// sweepTimedOutTasks 在主轮询之前独立清理超时任务。
+// sweepTimedOutTasks 在主轮询之前独立处理超时任务。
 // 每次最多处理 100 条，剩余的下个周期继续处理。
-// 使用 per-task CAS (UpdateWithStatus) 防止覆盖被正常轮询已推进的任务。
+//
+// 超时不再"盲判失败+退款"，而是三段式：
+//  1. 先回源（复用补录链路 RefetchAndSettleTask）：上游给出终态就正常结算/退款
+//     （计费恰好一次由 ApplyUpstreamTaskResult 的 CAS 保证）；
+//  2. 解析不了（上游不可达/404过期/仍在途/空状态）→ 不退款、不标失败，按退避间隔重试；
+//  3. 账龄超硬上限（或渠道被删除/旧系统遗留任务）→ CAS 迁到 TIMEOUT_UNRESOLVED 挂起标记：
+//     保留预扣估值、不退款、停止自动轮询，等人工用"重新查询"按钮处理。
+//
+// 使用 per-task CAS (UpdateWithStatus) 防止覆盖被正常轮询/其他节点已推进的任务。
 func sweepTimedOutTasks(ctx context.Context) {
 	if constant.TaskTimeoutMinutes <= 0 {
 		return
 	}
-	cutoff := time.Now().Unix() - int64(constant.TaskTimeoutMinutes)*60
+	now := time.Now().Unix()
+	cutoff := now - int64(constant.TaskTimeoutMinutes)*60
 	tasks := model.GetTimedOutUnfinishedTasks(cutoff, 100)
 	if len(tasks) == 0 {
 		return
 	}
 
 	const legacyTaskCutoff int64 = 1740182400 // 2026-02-22 00:00:00 UTC
-	reason := fmt.Sprintf("任务超时（%d分钟）", constant.TaskTimeoutMinutes)
-	legacyReason := "任务超时（旧系统遗留任务，不进行退款，请联系管理员）"
-	now := time.Now().Unix()
-	timedOutCount := 0
+	resolveIntervalSec := int64(constant.TaskTimeoutResolveIntervalMinutes) * 60
+	if resolveIntervalSec <= 0 {
+		resolveIntervalSec = 30 * 60
+	}
+	capSec := int64(constant.TaskTimeoutUnresolvedAfterHours) * 3600
 
+	resolvedCount, flaggedCount, deferredCount := 0, 0, 0
 	for _, task := range tasks {
+		if ctx.Err() != nil {
+			return
+		}
+		// 退避：未到下次可解析时刻则跳过，约束上游调用频率
+		if task.NextResolveAt > now {
+			deferredCount++
+			continue
+		}
+
 		isLegacy := task.SubmitTime > 0 && task.SubmitTime < legacyTaskCutoff
+		// 渠道被删除 → 物理上无法回源（丢失 key/base_url），直接挂起标记（保留预扣、不退款）
+		_, chErr := model.GetChannelById(task.ChannelId, true)
 
-		oldStatus := task.Status
-		task.Status = model.TaskStatusFailure
-		task.Progress = "100%"
-		task.FinishTime = now
 		if isLegacy {
-			task.FailReason = legacyReason
-		} else {
-			task.FailReason = reason
+			// 旧系统遗留任务：不回源，直接挂起标记（沿用"不退款、联系管理员"原意）
+			if flagTaskTimeoutUnresolved(ctx, task, "任务超时（旧系统遗留任务，未退款，请联系管理员核对）") {
+				flaggedCount++
+			}
+			continue
+		}
+		if chErr != nil {
+			if flagTaskTimeoutUnresolved(ctx, task, fmt.Sprintf("渠道 #%d 已删除，无法回源，待人工核对（未退款）", task.ChannelId)) {
+				flaggedCount++
+			}
+			continue
 		}
 
-		won, err := task.UpdateWithStatus(oldStatus)
+		// 阶段1：先回源解析（复用补录链路，CAS 保证计费恰好一次）
+		err := RefetchAndSettleTask(ctx, task)
+		// 回源后按 DB 实际状态分类（多节点安全）：已终态则结算/退款已由 ApplyUpstreamTaskResult 完成
+		var reloaded model.Task
+		reloadErr := model.DB.First(&reloaded, task.ID).Error
+		if reloadErr == nil && (reloaded.Status == model.TaskStatusSuccess || reloaded.Status == model.TaskStatusFailure) {
+			resolvedCount++
+			continue
+		}
+
+		// 阶段2：未解析（上游不可达/404过期/仍在途/空状态/回源出错）→ 不退款、不标失败
+		attempts := task.ResolveAttempts + 1
+		lastErr := "上游未返回终态"
 		if err != nil {
-			logger.LogError(ctx, fmt.Sprintf("sweepTimedOutTasks CAS update error for task %s: %v", task.TaskID, err))
+			lastErr = err.Error()
+		} else if reloadErr != nil {
+			lastErr = reloadErr.Error()
+		}
+		if len(lastErr) > 255 {
+			lastErr = lastErr[:255]
+		}
+
+		// 阶段3：账龄超硬上限 → 挂起标记（保留预扣、不退款），停止自动轮询
+		if capSec > 0 && task.SubmitTime > 0 && now-task.SubmitTime > capSec {
+			task.ResolveAttempts = attempts
+			task.LastResolveError = lastErr
+			if flagTaskTimeoutUnresolved(ctx, task, fmt.Sprintf("超时回源 %d 次仍未解析，待人工核对（未退款）：%s", attempts, lastErr)) {
+				flaggedCount++
+			}
 			continue
 		}
-		if !won {
-			logger.LogInfo(ctx, fmt.Sprintf("sweepTimedOutTasks: task %s already transitioned, skip", task.TaskID))
-			continue
-		}
-		timedOutCount++
-		if !isLegacy && task.Quota != 0 {
-			RefundTaskQuota(ctx, task, reason)
+
+		// 退避重试：仅更新元数据列（非计费、无需 CAS），下次到点再试
+		if uerr := model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Updates(map[string]any{
+			"resolve_attempts":   attempts,
+			"next_resolve_at":    now + resolveIntervalSec,
+			"last_resolve_error": lastErr,
+		}).Error; uerr != nil {
+			logger.LogError(ctx, fmt.Sprintf("sweepTimedOutTasks: 更新回源退避元数据失败 task %s: %v", task.TaskID, uerr))
+		} else {
+			deferredCount++
 		}
 	}
 
-	if timedOutCount > 0 {
-		logger.LogInfo(ctx, fmt.Sprintf("sweepTimedOutTasks: timed out %d tasks", timedOutCount))
+	if resolvedCount+flaggedCount+deferredCount > 0 {
+		logger.LogInfo(ctx, fmt.Sprintf("sweepTimedOutTasks: resolved=%d flagged=%d deferred=%d (of %d timed-out)",
+			resolvedCount, flaggedCount, deferredCount, len(tasks)))
 	}
+}
+
+// flagTaskTimeoutUnresolved 把超时且无法解析的任务 CAS 迁移到 TIMEOUT_UNRESOLVED 挂起态：
+// 不退款、保留预扣估值、停止自动轮询，等待人工用"重新查询"按钮处理。
+// 返回是否由本次调用完成迁移（CAS 失败说明已被其他进程推进，跳过）。
+func flagTaskTimeoutUnresolved(ctx context.Context, task *model.Task, reason string) bool {
+	oldStatus := task.Status
+	task.Status = model.TaskStatusTimeoutUnresolved
+	task.FailReason = reason
+	won, err := task.UpdateWithStatus(oldStatus)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("sweepTimedOutTasks: 挂起标记 CAS 失败 task %s: %v", task.TaskID, err))
+		return false
+	}
+	if !won {
+		logger.LogInfo(ctx, fmt.Sprintf("sweepTimedOutTasks: task %s 已被其他进程推进，跳过挂起标记", task.TaskID))
+		return false
+	}
+	logger.LogWarn(ctx, fmt.Sprintf("sweepTimedOutTasks: task %s 超时未解析，挂起待人工核对（未退款）：%s", task.TaskID, reason))
+	return true
 }
 
 // TaskPollSummary is the result recorded on an async_task_poll system task row,
@@ -213,21 +289,24 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 	}
 	ch, err := model.CacheGetChannel(channelId)
 	if err != nil {
-		common.SysLog(fmt.Sprintf("CacheGetChannel: %v", err))
-		// Collect DB primary key IDs for bulk update (taskIds are upstream IDs, not task_id column values)
-		var failedIDs []int64
+		// D1 回退：缓存未命中时按主键直读，禁用渠道也能取到凭证继续回源
+		ch, err = model.GetChannelById(channelId, true)
+	}
+	if err != nil {
+		// D2：渠道确已删除，无法回源。挂起标记 TIMEOUT_UNRESOLVED（保留预扣、不退款），
+		// 不再"标 FAILURE 且不退款"。
+		common.SysLog(fmt.Sprintf("channel %d not found (deleted): %v", channelId, err))
+		var flagIDs []int64
 		for _, upstreamID := range taskIds {
 			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
+				flagIDs = append(flagIDs, t.ID)
 			}
 		}
-		err = model.TaskBulkUpdateByID(failedIDs, map[string]any{
-			"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
-			"status":      "FAILURE",
-			"progress":    "100%",
-		})
-		if err != nil {
-			common.SysLog(fmt.Sprintf("UpdateSunoTask error: %v", err))
+		if errUpdate := model.TaskBulkUpdateByID(flagIDs, map[string]any{
+			"status":      model.TaskStatusTimeoutUnresolved,
+			"fail_reason": fmt.Sprintf("渠道 #%d 已删除，无法回源，待人工核对（未退款）", channelId),
+		}); errUpdate != nil {
+			common.SysLog(fmt.Sprintf("UpdateSunoTask flag unresolved error: %v", errUpdate))
 		}
 		return err
 	}
@@ -379,22 +458,26 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	}
 	cacheGetChannel, err := model.CacheGetChannel(channelId)
 	if err != nil {
-		// Collect DB primary key IDs for bulk update (taskIds are upstream IDs, not task_id column values)
-		var failedIDs []int64
+		// D1 回退：缓存未命中（如缓存尚未同步）时按主键直读，禁用渠道也能取到凭证继续回源
+		cacheGetChannel, err = model.GetChannelById(channelId, true)
+	}
+	if err != nil {
+		// D2：渠道确已删除，物理上无法回源。不再"标 FAILURE 且不退款"（最糟组合：用户被扣、
+		// 任务显示失败、又没查过上游），改为挂起标记 TIMEOUT_UNRESOLVED：保留预扣、不退款、
+		// 停止自动轮询，待人工核对。
+		var flagIDs []int64
 		for _, upstreamID := range taskIds {
 			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
+				flagIDs = append(flagIDs, t.ID)
 			}
 		}
-		errUpdate := model.TaskBulkUpdateByID(failedIDs, map[string]any{
-			"fail_reason": fmt.Sprintf("Failed to get channel info, channel ID: %d", channelId),
-			"status":      "FAILURE",
-			"progress":    "100%",
-		})
-		if errUpdate != nil {
-			common.SysLog(fmt.Sprintf("UpdateVideoTask error: %v", errUpdate))
+		if errUpdate := model.TaskBulkUpdateByID(flagIDs, map[string]any{
+			"status":      model.TaskStatusTimeoutUnresolved,
+			"fail_reason": fmt.Sprintf("渠道 #%d 已删除，无法回源，待人工核对（未退款）", channelId),
+		}); errUpdate != nil {
+			common.SysLog(fmt.Sprintf("UpdateVideoTask flag unresolved error: %v", errUpdate))
 		}
-		return fmt.Errorf("CacheGetChannel failed: %w", err)
+		return fmt.Errorf("channel %d not found (deleted): %w", channelId, err)
 	}
 	adaptor := GetTaskAdaptorFunc(platform)
 	if adaptor == nil {
@@ -426,6 +509,32 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 		}
 	}
 	return nil
+}
+
+// RefetchAndSettleTask 供管理员手动补录：对单个任务重新回源上游并结算。
+// 组装与后台轮询相同的 adaptor/渠道上下文后复用 updateVideoSingleTask，
+// 计费恰好一次由 ApplyUpstreamTaskResult 的 CAS 保证；对已终态任务同样适用
+// （用于找回被超时清扫丢弃的上游成功结果）。
+func RefetchAndSettleTask(ctx context.Context, task *model.Task) error {
+	if task == nil {
+		return errors.New("task is nil")
+	}
+	if GetTaskAdaptorFunc == nil {
+		return errors.New("task adaptor not initialized")
+	}
+	adaptor := GetTaskAdaptorFunc(task.Platform)
+	if adaptor == nil {
+		return fmt.Errorf("no adaptor for platform %s", task.Platform)
+	}
+	ch, err := model.GetChannelById(task.ChannelId, true)
+	if err != nil {
+		return fmt.Errorf("load channel %d: %w", task.ChannelId, err)
+	}
+	upstreamID := task.GetUpstreamTaskID()
+	if upstreamID == "" {
+		return errors.New("task has no upstream id")
+	}
+	return updateVideoSingleTask(ctx, adaptor, ch, upstreamID, map[string]*model.Task{upstreamID: task})
 }
 
 func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, taskId string, taskM map[string]*model.Task) error {
@@ -460,6 +569,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
+	}
+
+	// 上游明确返回 404/410（记录不存在/已过期）：无法判定任务真实成败，按"未解析"处理——
+	// 不进入 ApplyUpstreamTaskResult（避免空状态被误判为 FAILURE 并退款），交由超时回源
+	// 退避重试，最终挂起标记待人工核对。
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return fmt.Errorf("upstream task record not found (HTTP %d) for task %s", resp.StatusCode, taskId)
 	}
 
 	logger.LogDebugJSON(ctx, "updateVideoSingleTask response: %s", responseBody)
@@ -579,6 +695,15 @@ func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, ta
 	}
 	if taskResult.Progress != "" {
 		task.Progress = taskResult.Progress
+	}
+
+	// 幂等防回退：已成功结算（SUCCESS）的任务是计费终态。后续重放（重复补录、实时
+	// 旁路、上游记录过期/查询报错被解析为 FAILURE）不得把它改判 FAILURE 触发全额
+	// 退款，否则会产生错误退款数据。SUCCESS→SUCCESS 的漏结算补偿不受影响，仍走
+	// RecalculateTaskQuota 的 delta=0 幂等路径（重复应用不产生第二笔日志/资金变动）。
+	if snap.Status == model.TaskStatusSuccess && task.Status == model.TaskStatusFailure {
+		logger.LogWarn(ctx, fmt.Sprintf("Task %s already settled as SUCCESS, ignore regression to FAILURE", task.TaskID))
+		return nil
 	}
 
 	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure

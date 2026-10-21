@@ -504,6 +504,10 @@ func BatchDeleteChannels(ids []int) error {
 	if len(ids) == 0 {
 		return nil
 	}
+	// D3 护栏：删除会丢失回源凭证，使在途异步任务永远无法解析/对账。有在途任务则拒绝硬删除。
+	if cnt, err := CountInFlightTasksByChannelIDs(ids); err == nil && cnt > 0 {
+		return fmt.Errorf("所选渠道仍有 %d 个在途异步任务，禁止删除；请先禁用渠道，或等待任务完成/挂起后再删除", cnt)
+	}
 	// 使用事务 分批删除channel表和abilities表
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -641,6 +645,10 @@ func (channel *Channel) UpdateBalance(balance float64) {
 }
 
 func (channel *Channel) Delete() error {
+	// D3 护栏：该渠道仍有在途异步任务时拒绝删除（删除后无法回源解析，影响计费对账）。
+	if cnt, err := CountInFlightTasksByChannelIDs([]int{channel.Id}); err == nil && cnt > 0 {
+		return fmt.Errorf("渠道仍有 %d 个在途异步任务，禁止删除；请先禁用渠道，或等待任务完成/挂起后再删除", cnt)
+	}
 	var err error
 	err = DB.Delete(channel).Error
 	if err != nil {
@@ -916,11 +924,27 @@ func updateChannelUsedQuota(id int, quota int) {
 }
 
 func DeleteChannelByStatus(status int64) (int64, error) {
+	// D3 护栏：待删除渠道中若有在途异步任务，拒绝批量删除。
+	var ids []int
+	if err := DB.Model(&Channel{}).Where("status = ?", status).Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if cnt, err := CountInFlightTasksByChannelIDs(ids); err == nil && cnt > 0 {
+		return 0, fmt.Errorf("待删除渠道仍有 %d 个在途异步任务，禁止删除；请等待任务完成/挂起后再删除", cnt)
+	}
 	result := DB.Where("status = ?", status).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
 func DeleteDisabledChannel() (int64, error) {
+	// D3 护栏：禁用渠道仍可能有在途任务（禁用不影响回源），有则拒绝批量删除。
+	var ids []int
+	if err := DB.Model(&Channel{}).Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if cnt, err := CountInFlightTasksByChannelIDs(ids); err == nil && cnt > 0 {
+		return 0, fmt.Errorf("待删除的禁用渠道仍有 %d 个在途异步任务，禁止删除；请等待任务完成/挂起后再删除", cnt)
+	}
 	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }

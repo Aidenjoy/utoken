@@ -397,6 +397,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
+			// 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
+			taskRoute.POST("/:task_id/refetch", middleware.AdminAuth(), controller.AdminRefetchTask)
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")

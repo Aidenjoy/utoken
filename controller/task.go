@@ -6,8 +6,10 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -58,6 +60,37 @@ func GetUserTask(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, false))
 	common.ApiSuccess(c, pageInfo)
+}
+
+// AdminRefetchTask 管理员对单个任务手动「重新查询上游并结算」（补录）。
+// 复用后台轮询同一条链路 service.RefetchAndSettleTask：拉取上游最新状态 ->
+// CAS 推进到终态 -> 结算/退款。计费恰好一次由 ApplyUpstreamTaskResult 的 CAS
+// 保证，因此重复点击不会重复结算；对已终态任务同样适用（用于找回被超时清扫
+// 丢弃的上游成功结果）。
+func AdminRefetchTask(c *gin.Context) {
+	taskId := c.Param("task_id")
+	if taskId == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	task, exist, err := model.GetByOnlyTaskId(taskId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !exist || task == nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if err := service.RefetchAndSettleTask(c.Request.Context(), task); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	latest, _, _ := model.GetByOnlyTaskId(taskId)
+	if latest == nil {
+		latest = task
+	}
+	common.ApiSuccess(c, relay.TaskModel2Dto(latest))
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {

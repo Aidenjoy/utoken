@@ -157,8 +157,14 @@ func initConstantEnv() {
 	constant.ErrorLogEnabled = GetEnvOrDefaultBool("ERROR_LOG_ENABLED", false)
 	// 任务轮询时查询的最大数量
 	constant.TaskQueryLimit = GetEnvOrDefault("TASK_QUERY_LIMIT", 1000)
-	// 异步任务超时时间（分钟），超过此时间未完成的任务将被标记为失败并退款。0 表示禁用。
+	// 异步任务超时时间（分钟）：超过此时间仍未完成的任务进入"超时回源"流程——先查上游，
+	// 能解析出终态就正常结算/退款，解析不了则退避重试，最终挂起标记待人工核对（不退款）。0 表示禁用。
 	constant.TaskTimeoutMinutes = GetEnvOrDefault("TASK_TIMEOUT_MINUTES", 1440)
+	// 超时回源的重试间隔（分钟）：未解析任务两次回源之间的最小间隔，约束上游调用频率。
+	constant.TaskTimeoutResolveIntervalMinutes = GetEnvOrDefault("TASK_TIMEOUT_RESOLVE_INTERVAL_MINUTES", 30)
+	// 超时回源的硬上限（小时）：账龄超过此值仍解析不了，转为 TIMEOUT_UNRESOLVED 挂起标记（保留预扣、不退款），
+	// 停止自动轮询，等待人工用"重新查询"按钮处理。0 表示不设上限（一直退避重试）。
+	constant.TaskTimeoutUnresolvedAfterHours = GetEnvOrDefault("TASK_TIMEOUT_UNRESOLVED_AFTER_HOURS", 168)
 
 	soraPatchStr := GetEnvOrDefaultString("TASK_PRICE_PATCH", "")
 	if soraPatchStr != "" {

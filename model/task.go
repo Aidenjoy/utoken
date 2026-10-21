@@ -26,6 +26,9 @@ func (t TaskStatus) ToVideoStatus() string {
 		status = dto.VideoStatusCompleted
 	case TaskStatusFailure:
 		status = dto.VideoStatusFailed
+	case TaskStatusTimeoutUnresolved:
+		// 超时且上游无法解析、保留预扣待人工核对：对外不谎报成功/失败，按未知处理
+		status = dto.VideoStatusUnknown
 	default:
 		status = dto.VideoStatusUnknown // Default fallback
 	}
@@ -40,6 +43,11 @@ const (
 	TaskStatusFailure               = "FAILURE"
 	TaskStatusSuccess               = "SUCCESS"
 	TaskStatusUnknown               = "UNKNOWN"
+	// TaskStatusTimeoutUnresolved 超时后多轮回源仍无法从上游解析出终态（上游不可达/
+	// 记录过期/渠道被删除等）。它不是 FAILURE：不退款、保留预扣估值，等待人工核对，
+	// 且被排除出自动轮询以约束负载；管理员可用"重新查询"按钮随时解析（成功即结算、
+	// 失败即退款）。
+	TaskStatusTimeoutUnresolved = "TIMEOUT_UNRESOLVED"
 )
 
 type Task struct {
@@ -64,6 +72,12 @@ type Task struct {
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
+	// 超时回源退避元数据（sweepTimedOutTasks 使用）：解析尝试次数、下次可解析时刻、
+	// 最近一次解析失败原因。用独立列而非 PrivateData JSON，避免与在途轮询并发改写
+	// JSON 列时互相覆盖。
+	ResolveAttempts  int    `json:"resolve_attempts" gorm:"column:resolve_attempts"`
+	NextResolveAt    int64  `json:"next_resolve_at" gorm:"column:next_resolve_at;index"`
+	LastResolveError string `json:"last_resolve_error" gorm:"column:last_resolve_error;type:varchar(255)"`
 }
 
 func (t *Task) SetData(data any) {
@@ -296,7 +310,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
 	err := DB.Where("progress != ?", "100%").
-		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
+		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusTimeoutUnresolved}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
 		Limit(limit).
@@ -307,11 +321,27 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	return tasks
 }
 
+// CountInFlightTasksByChannelIDs 统计给定渠道下仍在途（未进入终态、未被挂起标记）的
+// 异步任务数。用于删除渠道前的护栏：删除会丢失回源凭证（key/base_url），使这些
+// 任务永远无法解析。禁用渠道不受影响（缓存仍保留禁用渠道，可继续回源）。
+func CountInFlightTasksByChannelIDs(ids []int) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var count int64
+	err := DB.Model(&Task{}).
+		Where("channel_id in (?)", ids).
+		Where("progress != ?", "100%").
+		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusTimeoutUnresolved}).
+		Count(&count).Error
+	return count, err
+}
+
 func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Where("status != ?", TaskStatusTimeoutUnresolved).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -328,6 +358,7 @@ func HasUnfinishedSyncTasks() bool {
 		Where("progress != ?", "100%").
 		Where("status != ?", TaskStatusFailure).
 		Where("status != ?", TaskStatusSuccess).
+		Where("status != ?", TaskStatusTimeoutUnresolved).
 		Limit(1).
 		Pluck("id", &id).Error
 	return err == nil && id != 0
