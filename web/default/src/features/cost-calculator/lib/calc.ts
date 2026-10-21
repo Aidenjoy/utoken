@@ -49,6 +49,22 @@ export function tokenCost(
   return ((pricePerMillionTokens * tokens) / MILLION) * factor
 }
 
+/**
+ * Volcengine Ark derives video tokens from the output video itself:
+ * tokens per frame = width × height ÷ 1024, frames = fps × seconds + 1.
+ * Returns 0 until every dimension is filled in.
+ */
+export function estimateVideoTokens(
+  width: number,
+  height: number,
+  frameRate: number,
+  seconds: number
+): number {
+  if (width <= 0 || height <= 0 || frameRate <= 0 || seconds <= 0) return 0
+  const tokensPerFrame = (width * height) / 1024
+  return Math.round(tokensPerFrame * (frameRate * seconds + 1))
+}
+
 export function unitCost(
   pricePerUnit: number,
   units: number,

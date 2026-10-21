@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getBillingCurrencySymbol } from '@/lib/currency'
@@ -24,6 +24,7 @@ import { getBillingCurrencySymbol } from '@/lib/currency'
 import {
   discountFactor,
   discountPercent,
+  estimateVideoTokens,
   formatAmount,
   parseAmount,
   tokenCost,
@@ -44,6 +45,23 @@ export function VideoModelCalculator() {
   const [priceWithVideoInput, setPriceWithVideoInput] = useState('')
   const [tokens, setTokens] = useState('')
   const [discount, setDiscount] = useState('100')
+  const [width, setWidth] = useState('')
+  const [height, setHeight] = useState('')
+  const [frameRate, setFrameRate] = useState('')
+  const [seconds, setSeconds] = useState('')
+
+  const estimatedTokens = estimateVideoTokens(
+    parseAmount(width),
+    parseAmount(height),
+    parseAmount(frameRate),
+    parseAmount(seconds)
+  )
+
+  useEffect(() => {
+    if (estimatedTokens > 0) {
+      setTokens(String(estimatedTokens))
+    }
+  }, [estimatedTokens])
 
   const factor = discountFactor(discount)
   const withoutVideoInputCost = tokenCost(
@@ -99,6 +117,48 @@ export function VideoModelCalculator() {
           { label: t('Discount Rate'), value: `${discountPercent(discount)}%` },
         ]}
       />
+      <div className='border-border bg-muted/30 space-y-4 rounded-lg border p-4'>
+        <div className='space-y-2'>
+          <h3 className='text-sm font-medium'>{t('Video Token Estimator')}</h3>
+          <code className='bg-muted block w-fit rounded-md px-3 py-2 font-mono text-sm'>
+            {t('tokens = (width × height ÷ 1024) × (fps × seconds + 1)')}
+          </code>
+        </div>
+        <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+          <CalculatorField
+            label={t('Width')}
+            value={width}
+            onChange={setWidth}
+          />
+          <CalculatorField
+            label={t('Height')}
+            value={height}
+            onChange={setHeight}
+          />
+          <CalculatorField
+            label={t('Frame Rate (fps)')}
+            value={frameRate}
+            onChange={setFrameRate}
+          />
+          <CalculatorField
+            label={t('Duration (seconds)')}
+            value={seconds}
+            onChange={setSeconds}
+          />
+        </div>
+        <p className='text-sm'>
+          {t('Estimated Tokens')}:{' '}
+          <span className='font-medium'>
+            {estimatedTokens.toLocaleString('en-US')}
+          </span>
+          {estimatedTokens > 0 ? (
+            <span className='text-muted-foreground'>
+              {' '}
+              · {t('Auto-filled into Token Count above')}
+            </span>
+          ) : null}
+        </p>
+      </div>
     </div>
   )
 }

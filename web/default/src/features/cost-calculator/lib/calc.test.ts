@@ -4,6 +4,7 @@ import { describe, test } from 'node:test'
 import {
   discountFactor,
   discountPercent,
+  estimateVideoTokens,
   formatAmount,
   parseAmount,
   tokenCost,
@@ -47,5 +48,15 @@ describe('cost calculator math', () => {
   test('formatAmount prefixes the configured currency symbol', () => {
     assert.equal(formatAmount(0.0021, '¥'), '¥0.0021')
     assert.equal(formatAmount(1234.5, '€'), '€1,234.5')
+  })
+
+  test('video tokens follow per-frame tokens times frame count', () => {
+    assert.equal(estimateVideoTokens(1280, 720, 24, 5), 108_900)
+    assert.equal(estimateVideoTokens(1920, 1080, 30, 10), 609_525)
+  })
+
+  test('video token estimate is zero until all dimensions are set', () => {
+    assert.equal(estimateVideoTokens(0, 720, 24, 5), 0)
+    assert.equal(estimateVideoTokens(1280, 720, 24, 0), 0)
   })
 })
