@@ -30,7 +30,7 @@ import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
+import { REFETCH_RESULT_TOAST, TASK_ACTIONS, TASK_STATUS } from '../../constants'
 import { refetchTaskLog } from '../../api'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
 import type { TaskLog } from '../../types'
@@ -108,7 +108,10 @@ function TaskRefetchCell({ log }: { log: TaskLog }) {
     try {
       const res = await refetchTaskLog(log.task_id)
       if (res?.success) {
-        toast.success(t('Task re-queried and settled'))
+        const summary = res.data?.result
+        const toastKey =
+          (summary && REFETCH_RESULT_TOAST[summary]) || 'Task re-queried and settled'
+        toast.success(t(toastKey))
         await queryClient.invalidateQueries({ queryKey: ['logs'] })
       } else {
         toast.error(res?.message || t('Re-query failed'))

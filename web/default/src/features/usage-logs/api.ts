@@ -112,10 +112,17 @@ export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
 
 // 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
+// data.result 为后端结算摘要码（settled_adjusted/settled_exact/refunded/
+// already_settled/no_terminal/status_changed），供 UI 如实提示补录结果。
+export interface TaskRefetchData {
+  task?: unknown
+  result?: string
+}
+
 export async function refetchTaskLog(taskId: string): Promise<{
   success: boolean
   message?: string
-  data?: unknown
+  data?: TaskRefetchData
 }> {
   const res = await api.post(`/api/task/${encodeURIComponent(taskId)}/refetch`)
   return res.data

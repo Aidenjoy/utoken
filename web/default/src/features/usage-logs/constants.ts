@@ -221,6 +221,21 @@ export const TASK_STATUS_FILTERS = [
 ] as const
 
 /**
+ * Maps the backend refetch summary code to a user-facing i18n toast key.
+ * The backend returns a machine-readable result (settled_adjusted / settled_exact /
+ * refunded / already_settled / no_terminal / status_changed) so the UI can report
+ * what actually happened instead of always claiming "settled".
+ */
+export const REFETCH_RESULT_TOAST: Record<string, string> = {
+  refunded: 'Re-query result: upstream failed, pre-charge refunded',
+  already_settled: 'Re-query result: already settled before, no change',
+  settled_adjusted: 'Re-query result: settled, quota adjusted by delta',
+  settled_exact: 'Re-query result: settled, pre-charge exact, usage backfilled',
+  no_terminal: 'Re-query result: upstream not terminal yet, no settlement',
+  status_changed: 'Re-query result: status changed, check task detail',
+}
+
+/**
  * Task platforms
  */
 export const TASK_PLATFORMS = {
