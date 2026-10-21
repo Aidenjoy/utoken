@@ -399,6 +399,7 @@
     "All Projects": "Tất cả dự án",
     "All requests must include": "Mọi yêu cầu phải có header",
     "All Status": "Tất cả trạng thái",
+    "All Statuses": "Tất cả trạng thái",
     "All Sync Status": "Tất cả Trạng thái Đồng bộ",
     "All systems operational": "Tất cả hệ thống hoạt động bình thường",
     "All Tags": "Tất cả Thẻ",
@@ -6142,6 +6143,7 @@
     "Timeline changed; this output is stale. Re-render after editing": "Timeline đã thay đổi; kết quả này đã cũ. Hãy render lại sau khi chỉnh sửa",
     "Timeline duration {{dur}}s (source {{src}}s ÷ {{speed}}x)": "Thời lượng timeline {{dur}}s (nguồn {{src}}s ÷ {{speed}}x)",
     "Timeline saved": "Đã lưu dòng thời gian",
+    "Timeout Unresolved": "Quá hạn chưa xử lý",
     "times": "lần",
     "Timing": "Thời gian",
     "Tip": "Mẹo",
@@ -6992,5 +6994,9 @@
     "图片": "Hình ảnh",
     "视频": "Video",
     "音频": "Âm thanh"
-  }
+  },
+  "Re-query": "Truy vấn lại",
+  "Re-query upstream and settle billing": "Truy vấn lại upstream và quyết toán phí",
+  "Task re-queried and settled": "Tác vụ đã được truy vấn lại và quyết toán",
+  "Re-query failed": "Truy vấn lại thất bại"
 }

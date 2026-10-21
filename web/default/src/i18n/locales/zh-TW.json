@@ -399,6 +399,7 @@
     "All Projects": "全部專案",
     "All requests must include": "所有請求必須攜帶",
     "All Status": "所有狀態",
+    "All Statuses": "所有狀態",
     "All Sync Status": "所有同步狀態",
     "All systems operational": "所有系統正常運作",
     "All Tags": "所有標籤",
@@ -6142,6 +6143,7 @@
     "Timeline changed; this output is stale. Re-render after editing": "時間軸已修改，該成片已失效，修改後需重新渲染",
     "Timeline duration {{dur}}s (source {{src}}s ÷ {{speed}}x)": "時間軸時長 {{dur}}s（源內 {{src}}s ÷ {{speed}}x）",
     "Timeline saved": "時間軸已儲存",
+    "Timeout Unresolved": "逾時未解析",
     "times": "次",
     "Timing": "耗時",
     "Tip": "提示",
@@ -6992,5 +6994,9 @@
     "图片": "Image",
     "视频": "Video",
     "音频": "Audio"
-  }
+  },
+  "Re-query": "重新查詢",
+  "Re-query upstream and settle billing": "重新查詢上游並結算計費",
+  "Task re-queried and settled": "任務已重新查詢並結算",
+  "Re-query failed": "重新查詢失敗"
 }

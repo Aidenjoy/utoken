@@ -19,11 +19,20 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import { type Table } from '@tanstack/react-table'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useIsAdmin } from '@/hooks/use-admin'
 
+import { TASK_STATUS_ALL_VALUE, TASK_STATUS_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
 import type { DrawingLogFilters, LogCategory, TaskLogFilters } from '../types'
@@ -98,6 +107,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         : {
             ...baseFilters,
             ...(searchParams.filter ? { taskId: searchParams.filter } : {}),
+            ...(searchParams.status ? { status: searchParams.status } : {}),
           }
 
     setFilters(next)
@@ -107,6 +117,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     searchParams.endTime,
     searchParams.channel,
     searchParams.filter,
+    searchParams.status,
   ])
 
   const handleChange = useCallback(
@@ -165,7 +176,8 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     props.logCategory === 'drawing'
       ? t('Filter by MjProxy task ID')
       : t('Filter by task ID')
-  const hasAdditionalFilters = !!filterValue || !!filters.channel
+  const hasAdditionalFilters =
+    !!filterValue || !!filters.channel || !!(filters as TaskLogFilters).status
   const dateRangeFilter = (
     <LogsFilterField wide>
       <CompactDateTimeRangePicker
@@ -200,6 +212,54 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     </LogsFilterField>
   ) : null
 
+  const statusItems = useMemo(
+    () =>
+      TASK_STATUS_FILTERS.map((status) => ({
+        value: status.value,
+        label: t(status.label),
+      })),
+    [t]
+  )
+  const statusValue =
+    props.logCategory === 'task'
+      ? (filters as TaskLogFilters).status || TASK_STATUS_ALL_VALUE
+      : TASK_STATUS_ALL_VALUE
+  const statusLabel =
+    statusItems.find((status) => status.value === statusValue)?.label ??
+    t('All Statuses')
+  const statusFilter =
+    props.logCategory === 'task' ? (
+      <LogsFilterField>
+        <Select
+          items={statusItems}
+          value={statusValue}
+          onValueChange={(value) => {
+            const nextStatus =
+              value === null || value === TASK_STATUS_ALL_VALUE
+                ? undefined
+                : value
+            setFilters((prev) => ({
+              ...(prev as TaskLogFilters),
+              status: nextStatus,
+            }))
+          }}
+        >
+          <SelectTrigger aria-label={t('Status')}>
+            <SelectValue>{statusLabel}</SelectValue>
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              {TASK_STATUS_FILTERS.map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {t(status.label)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </LogsFilterField>
+    ) : null
+
   return (
     <LogsFilterToolbar
       table={props.table}
@@ -208,6 +268,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
           {dateRangeFilter}
           {taskIdFilter}
           {channelFilter}
+          {statusFilter}
         </>
       }
       mobilePinnedFilters={dateRangeFilter}
@@ -215,9 +276,16 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         <>
           {taskIdFilter}
           {channelFilter}
+          {statusFilter}
         </>
       }
-      mobileFilterCount={[filterValue, filters.channel].filter(Boolean).length}
+      mobileFilterCount={
+        [
+          filterValue,
+          filters.channel,
+          (filters as TaskLogFilters).status,
+        ].filter(Boolean).length
+      }
       hasActiveFilters={hasAdditionalFilters}
       onSearch={handleApply}
       searchLoading={fetchingLogs > 0}

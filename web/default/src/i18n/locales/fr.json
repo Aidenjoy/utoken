@@ -399,6 +399,7 @@
     "All Projects": "Tous les projets",
     "All requests must include": "Toutes les requêtes doivent inclure",
     "All Status": "Tous les statuts",
+    "All Statuses": "Tous les statuts",
     "All Sync Status": "Tous les statuts de synchronisation",
     "All systems operational": "Tous les systèmes opérationnels",
     "All Tags": "Tous les tags",
@@ -6142,6 +6143,7 @@
     "Timeline changed; this output is stale. Re-render after editing": "Timeline modifiée ; cette sortie est obsolète. Relancez le rendu après modification",
     "Timeline duration {{dur}}s (source {{src}}s ÷ {{speed}}x)": "Durée timeline {{dur}}s (source {{src}}s ÷ {{speed}}x)",
     "Timeline saved": "Timeline enregistrée",
+    "Timeout Unresolved": "Expiré non résolu",
     "times": "Fois",
     "Timing": "Durée",
     "Tip": "Astuce",
@@ -6992,5 +6994,9 @@
     "图片": "Image",
     "视频": "Vidéo",
     "音频": "Audio"
-  }
+  },
+  "Re-query": "Re-interroger",
+  "Re-query upstream and settle billing": "Re-interroger l'amont et régler la facturation",
+  "Task re-queried and settled": "Tâche re-interrogée et réglée",
+  "Re-query failed": "Échec de la re-interrogation"
 }

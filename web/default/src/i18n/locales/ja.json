@@ -399,6 +399,7 @@
     "All Projects": "すべてのプロジェクト",
     "All requests must include": "すべてのリクエストには",
     "All Status": "すべてのステータス",
+    "All Statuses": "すべてのステータス",
     "All Sync Status": "すべての同期状態",
     "All systems operational": "すべて正常稼働中",
     "All Tags": "すべてのタグ",
@@ -6142,6 +6143,7 @@
     "Timeline changed; this output is stale. Re-render after editing": "タイムラインが変更されました。この出力は古くなっています。編集後に再レンダリングしてください",
     "Timeline duration {{dur}}s (source {{src}}s ÷ {{speed}}x)": "タイムライン長 {{dur}}s（ソース {{src}}s ÷ {{speed}}x）",
     "Timeline saved": "タイムラインを保存しました",
+    "Timeout Unresolved": "タイムアウト未解決",
     "times": "回",
     "Timing": "所要時間",
     "Tip": "ヒント",
@@ -6992,5 +6994,9 @@
     "图片": "画像",
     "视频": "動画",
     "音频": "音声"
-  }
+  },
+  "Re-query": "再問い合わせ",
+  "Re-query upstream and settle billing": "上流へ再問い合わせして課金を確定",
+  "Task re-queried and settled": "タスクを再問い合わせして確定しました",
+  "Re-query failed": "再問い合わせに失敗しました"
 }

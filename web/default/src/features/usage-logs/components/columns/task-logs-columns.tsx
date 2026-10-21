@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Music } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Music, RefreshCw } from 'lucide-react'
 /* eslint-disable react-refresh/only-export-components */
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -29,6 +31,7 @@ import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
+import { refetchTaskLog } from '../../api'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
 import type { TaskLog } from '../../types'
 import {
@@ -87,6 +90,47 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
         clips={clips as AudioClip[]}
       />
     </>
+  )
+}
+
+// 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
+function TaskRefetchCell({ log }: { log: TaskLog }) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [loading, setLoading] = useState(false)
+
+  if (!log.task_id) {
+    return <span className='text-muted-foreground/60 text-xs'>-</span>
+  }
+
+  const handleRefetch = async () => {
+    setLoading(true)
+    try {
+      const res = await refetchTaskLog(log.task_id)
+      if (res?.success) {
+        toast.success(t('Task re-queried and settled'))
+        await queryClient.invalidateQueries({ queryKey: ['logs'] })
+      } else {
+        toast.error(res?.message || t('Re-query failed'))
+      }
+    } catch {
+      toast.error(t('Re-query failed'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      type='button'
+      disabled={loading}
+      onClick={handleRefetch}
+      title={t('Re-query upstream and settle billing')}
+      className='text-foreground flex items-center gap-1 text-xs hover:underline disabled:opacity-50'
+    >
+      <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
+      <span>{t('Re-query')}</span>
+    </button>
   )
 }
 
@@ -289,6 +333,15 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
       maxSize: 220,
     }
   )
+
+  if (isAdmin) {
+    columns.push({
+      id: 'actions',
+      header: t('Actions'),
+      cell: ({ row }) => <TaskRefetchCell log={row.original} />,
+      size: 110,
+    })
+  }
 
   return columns
 }

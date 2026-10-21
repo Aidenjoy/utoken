@@ -198,7 +198,27 @@ export const TASK_STATUS = {
   FAILURE: 'FAILURE', // 失败
   QUEUED: 'QUEUED', // 排队中
   UNKNOWN: 'UNKNOWN', // 未知
+  TIMEOUT_UNRESOLVED: 'TIMEOUT_UNRESOLVED', // 超时未解析，挂起待人工核对（未退款）
 } as const
+
+/**
+ * Task status options for the task-logs filter (single select).
+ * TASK_STATUS_ALL_VALUE is a non-empty sentinel for "all statuses"; the
+ * filter bar maps it to an undefined status so no status param is sent to
+ * the backend. Labels mirror TASK_STATUS_MAPPINGS. QUEUED (renders the same
+ * "Queued" label as SUBMITTED) and the UNKNOWN fallback are intentionally
+ * omitted so every dropdown entry maps to a distinct, meaningful status.
+ */
+export const TASK_STATUS_ALL_VALUE = 'all' as const
+
+export const TASK_STATUS_FILTERS = [
+  { label: 'All Statuses', value: TASK_STATUS_ALL_VALUE },
+  { label: 'Queued', value: TASK_STATUS.SUBMITTED },
+  { label: 'In Progress', value: TASK_STATUS.IN_PROGRESS },
+  { label: 'Success', value: TASK_STATUS.SUCCESS },
+  { label: 'Failed', value: TASK_STATUS.FAILURE },
+  { label: 'Timeout Unresolved', value: TASK_STATUS.TIMEOUT_UNRESOLVED },
+] as const
 
 /**
  * Task platforms
@@ -313,6 +333,10 @@ export const TASK_STATUS_MAPPINGS: Record<string, StatusMapping> = {
   [TASK_STATUS.FAILURE]: { label: 'Failed', variant: 'red' },
   [TASK_STATUS.QUEUED]: { label: 'Queued', variant: 'orange' },
   [TASK_STATUS.UNKNOWN]: { label: 'Unknown', variant: 'neutral' },
+  [TASK_STATUS.TIMEOUT_UNRESOLVED]: {
+    label: 'Timeout Unresolved',
+    variant: 'amber',
+  },
 }
 
 /**

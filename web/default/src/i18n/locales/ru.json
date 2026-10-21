@@ -399,6 +399,7 @@
     "All Projects": "Все проекты",
     "All requests must include": "Все запросы должны содержать",
     "All Status": "Все статусы",
+    "All Statuses": "Все статусы",
     "All Sync Status": "Все статусы синхронизации",
     "All systems operational": "Все системы работают штатно",
     "All Tags": "Все теги",
@@ -6142,6 +6143,7 @@
     "Timeline changed; this output is stale. Re-render after editing": "Таймлайн изменён; этот результат устарел. Перерендерьте после редактирования",
     "Timeline duration {{dur}}s (source {{src}}s ÷ {{speed}}x)": "Длительность на таймлайне {{dur}}с (источник {{src}}с ÷ {{speed}}x)",
     "Timeline saved": "Таймлайн сохранён",
+    "Timeout Unresolved": "Тайм-аут не разрешён",
     "times": "раз",
     "Timing": "Время",
     "Tip": "Совет",
@@ -6992,5 +6994,9 @@
     "图片": "Изображение",
     "视频": "Видео",
     "音频": "Аудио"
-  }
+  },
+  "Re-query": "Повторный запрос",
+  "Re-query upstream and settle billing": "Повторно запросить апстрим и произвести расчёт",
+  "Task re-queried and settled": "Задача повторно запрошена и рассчитана",
+  "Re-query failed": "Ошибка повторного запроса"
 }

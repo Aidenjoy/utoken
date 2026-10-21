@@ -110,3 +110,13 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
+
+// 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
+export async function refetchTaskLog(taskId: string): Promise<{
+  success: boolean
+  message?: string
+  data?: unknown
+}> {
+  const res = await api.post(`/api/task/${encodeURIComponent(taskId)}/refetch`)
+  return res.data
+}
