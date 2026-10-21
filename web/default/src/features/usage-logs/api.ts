@@ -24,6 +24,7 @@ import type {
   GetLogsResponse,
   GetLogStatsParams,
   GetLogStatsResponse,
+  GetLogBodiesResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
   UserInfo,
@@ -37,10 +38,11 @@ function buildApiPath(endpoint: string, isAdmin: boolean): string {
   return isAdmin ? endpoint : `${endpoint}/self`
 }
 
-async function fetchLogs<T>(
-  endpoint: string,
-  params: T,
-  isAdmin: boolean
+// Path-based fetchers: the agent endpoints live under /api/agent/* rather than
+// the admin/self pair, so they resolve their own full path.
+async function fetchLogsFromPath<T>(
+  path: string,
+  params: T
 ): Promise<GetLogsResponse> {
   const paramRecord = params as unknown as Record<string, unknown>
   const queryParams = buildQueryParams({
@@ -48,9 +50,27 @@ async function fetchLogs<T>(
     page_size: paramRecord.page_size || 20,
     ...params,
   })
-  const path = buildApiPath(endpoint, isAdmin)
   const res = await api.get(`${path}?${queryParams}`)
   return res.data
+}
+
+async function fetchStatsFromPath<T>(
+  path: string,
+  params: T
+): Promise<GetLogStatsResponse> {
+  const queryParams = buildQueryParams(
+    params as unknown as Record<string, unknown>
+  )
+  const res = await api.get(`${path}?${queryParams}`)
+  return res.data
+}
+
+async function fetchLogs<T>(
+  endpoint: string,
+  params: T,
+  isAdmin: boolean
+): Promise<GetLogsResponse> {
+  return fetchLogsFromPath(buildApiPath(endpoint, isAdmin), params)
 }
 
 async function fetchLogStats<T>(
@@ -58,12 +78,7 @@ async function fetchLogStats<T>(
   params: T,
   isAdmin: boolean
 ): Promise<GetLogStatsResponse> {
-  const queryParams = buildQueryParams(
-    params as unknown as Record<string, unknown>
-  )
-  const path = buildApiPath(endpoint, isAdmin)
-  const res = await api.get(`${path}/stat?${queryParams}`)
-  return res.data
+  return fetchStatsFromPath(`${buildApiPath(endpoint, isAdmin)}/stat`, params)
 }
 
 // ============================================================================
@@ -84,10 +99,30 @@ export const getUserLogStats = (
   params: Omit<GetLogStatsParams, 'username' | 'channel'> = {}
 ) => fetchLogStats('/api/log', params, false)
 
+// Agent-scoped: the server restricts results to the agent's members (+ self)
+// and returns the reduced (self-equivalent) field set. `user_ids` narrows
+// further within that range; the server intersects it and drops foreign ids.
+export const getAgentLogs = (params: GetLogsParams = {}) =>
+  fetchLogsFromPath('/api/agent/logs', params)
+
+export const getAgentLogStats = (params: GetLogStatsParams = {}) =>
+  fetchStatsFromPath('/api/agent/logs/stat', params)
+
 export async function getUserInfo(
   userId: number
 ): Promise<{ success: boolean; message?: string; data?: UserInfo }> {
   const res = await api.get(`/api/user/${userId}`)
+  return res.data
+}
+
+// 使用日志详情：按 request_id 拉取请求/返回体快照（base64 已脱敏、超限已截断）。
+// 可见范围在服务端强制（管理员任意 / 本人自己的 / 代理商名下成员），越权返回空。
+export async function getLogBodies(
+  requestId: string
+): Promise<GetLogBodiesResponse> {
+  const res = await api.get(
+    `/api/log/bodies?request_id=${encodeURIComponent(requestId)}`
+  )
   return res.data
 }
 
@@ -101,6 +136,9 @@ export const getAllMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
 export const getUserMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
   fetchLogs('/api/mj', params, false)
 
+export const getAgentMidjourneyLogs = (params: GetMidjourneyLogsParams) =>
+  fetchLogsFromPath('/api/agent/mj', params)
+
 // ============================================================================
 // Task Logs API
 // ============================================================================
@@ -110,6 +148,9 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
+
+export const getAgentTaskLogs = (params: GetTaskLogsParams) =>
+  fetchLogsFromPath('/api/agent/tasks', params)
 
 // 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
 // data.result 为后端结算摘要码（settled_adjusted/settled_exact/refunded/

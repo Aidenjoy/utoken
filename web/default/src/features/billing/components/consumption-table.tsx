@@ -53,9 +53,13 @@ const EMPTY_ORG_NAMES: Record<string, string> = {}
 
 interface ConsumptionTableProps {
   filter: BillingFilter
+  isAgent?: boolean
 }
 
-export function ConsumptionTable({ filter }: ConsumptionTableProps) {
+export function ConsumptionTable({
+  filter,
+  isAgent = false,
+}: ConsumptionTableProps) {
   const { t } = useTranslation()
   const [exporting, setExporting] = useState(false)
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
@@ -67,6 +71,7 @@ export function ConsumptionTable({ filter }: ConsumptionTableProps) {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'billing-consumption',
+      isAgent,
       filter.userSel,
       filter.orgSel,
       filter.start,
@@ -75,11 +80,14 @@ export function ConsumptionTable({ filter }: ConsumptionTableProps) {
       pagination.pageSize,
     ],
     queryFn: async () => {
-      const result = await getBillingConsumption({
-        ...filter,
-        p: pagination.pageIndex + 1,
-        page_size: pagination.pageSize,
-      })
+      const result = await getBillingConsumption(
+        {
+          ...filter,
+          p: pagination.pageIndex + 1,
+          page_size: pagination.pageSize,
+        },
+        isAgent
+      )
       if (!result.success) {
         toast.error(result.message || t('Failed to load records'))
         return {
@@ -133,20 +141,31 @@ export function ConsumptionTable({ filter }: ConsumptionTableProps) {
         ),
         size: 160,
       },
-      {
-        id: 'organization',
-        header: t('Organization'),
-        cell: ({ row }) => {
-          const orgId = orgOf[String(row.original.user_id)]
-          if (!orgId) return <span className='text-muted-foreground'>-</span>
-          return (
-            <TruncatedCell>
-              {orgNames[String(orgId)] || `#${orgId}`}
-            </TruncatedCell>
-          )
-        },
-        size: 150,
-      },
+      // Organization is an admin-only dimension; agents do not manage orgs and
+      // the scoped endpoint omits the org maps, so the column is hidden.
+      ...(isAgent
+        ? []
+        : [
+            {
+              id: 'organization',
+              header: t('Organization'),
+              cell: ({
+                row,
+              }: {
+                row: { original: BillingConsumptionRow }
+              }) => {
+                const orgId = orgOf[String(row.original.user_id)]
+                if (!orgId)
+                  return <span className='text-muted-foreground'>-</span>
+                return (
+                  <TruncatedCell>
+                    {orgNames[String(orgId)] || `#${orgId}`}
+                  </TruncatedCell>
+                )
+              },
+              size: 150,
+            } satisfies ColumnDef<BillingConsumptionRow>,
+          ]),
       {
         accessorKey: 'token_name',
         header: t('Token'),
@@ -226,7 +245,7 @@ export function ConsumptionTable({ filter }: ConsumptionTableProps) {
         size: 170,
       },
     ],
-    [orgNames, orgOf, t]
+    [orgNames, orgOf, t, isAgent]
   )
 
   const { table } = useDataTable({
@@ -272,7 +291,7 @@ export function ConsumptionTable({ filter }: ConsumptionTableProps) {
   const handleExport = async () => {
     setExporting(true)
     try {
-      await downloadBillingConsumption(filter)
+      await downloadBillingConsumption(filter, isAgent)
     } catch {
       toast.error(t('Export failed'))
     } finally {

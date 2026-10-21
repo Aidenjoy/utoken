@@ -42,7 +42,7 @@ import { listMyMembers } from '@/features/agents/api'
 import type { AgentMember } from '@/features/agents/types'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatModelDiscount } from '@/lib/discount'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatQuota, formatTimestampToDate } from '@/lib/format'
 
 import { MemberDiscountDialog } from './components/member-discount-dialog'
 
@@ -168,6 +168,17 @@ export function AgentMembers() {
           </span>
         ),
         size: 150,
+      },
+      {
+        accessorKey: 'quota',
+        header: t('Balance'),
+        cell: ({ row }) => (
+          <span className='font-mono text-sm font-semibold tabular-nums'>
+            {/* quota is in quota units; formatQuota renders it as currency. */}
+            {formatQuota(row.original.quota ?? 0)}
+          </span>
+        ),
+        size: 130,
       },
       {
         id: 'actions',

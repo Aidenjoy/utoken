@@ -93,6 +93,8 @@ type adminCreateAgentRequest struct {
 	UserId         int                `json:"user_id"`
 	ModelDiscounts map[string]float64 `json:"model_discounts"`
 	Remark         string             `json:"remark"`
+	// MenuVisibility 是该代理商可见的功能菜单键集合，缺省（nil/空）表示全部隐藏。
+	MenuVisibility []string `json:"menu_visibility"`
 }
 
 // AdminListAgents 代理商列表（含用户名/邮箱与其名下邀请码数量）。
@@ -137,9 +139,15 @@ func AdminCreateAgent(c *gin.Context) {
 		respondAgentModelError(c, err)
 		return
 	}
+	menuVisibility, err := model.NormalizeAgentMenuVisibility(req.MenuVisibility)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
 	agent := &model.Agent{
 		UserId:         req.UserId,
 		ModelDiscounts: modelDiscounts,
+		MenuVisibility: menuVisibility,
 		Status:         model.AgentStatusEnabled,
 		Remark:         strings.TrimSpace(req.Remark),
 		CreatedBy:      c.GetInt("id"),
@@ -155,6 +163,8 @@ type adminUpdateAgentRequest struct {
 	ModelDiscounts *map[string]float64 `json:"model_discounts"`
 	Status         *int                `json:"status"`
 	Remark         *string             `json:"remark"`
+	// MenuVisibility 为 nil 表示本次不改动可见菜单；传空数组表示清空（全部隐藏）。
+	MenuVisibility *[]string `json:"menu_visibility"`
 }
 
 // AdminUpdateAgent 修改代理商授权配置/状态/备注。
@@ -194,6 +204,14 @@ func AdminUpdateAgent(c *gin.Context) {
 	}
 	if req.Remark != nil {
 		fields["remark"] = strings.TrimSpace(*req.Remark)
+	}
+	if req.MenuVisibility != nil {
+		menuVisibility, err := model.NormalizeAgentMenuVisibility(*req.MenuVisibility)
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		fields["menu_visibility"] = menuVisibility
 	}
 	if len(fields) == 0 {
 		common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)

@@ -63,8 +63,13 @@ import {
   getLogTypeConfig,
   isPerCallBilling,
 } from '../../lib/utils'
-import type { LogOtherData } from '../../types'
-import { DetailsDialog } from '../dialogs/details-dialog'
+import type { LogOtherData, LogsScope } from '../../types'
+import { useLogBodies } from '../../hooks/use-log-bodies'
+import {
+  RelayDetailsDialog,
+  prettyJson,
+} from '../dialogs/relay-details-dialog'
+import { UsageBillingSections } from '../dialogs/usage-billing-sections'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
@@ -293,7 +298,9 @@ function buildTypeDetailSegments(
   return segments
 }
 
-export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
+export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
+  const isAdmin = scope === 'admin'
+  const isAgent = scope === 'agent'
   const { t, i18n } = useTranslation()
   // Intl 只认 BCP-47，'zhCN' 直接传给 Intl.NumberFormat 会抛 RangeError。
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
@@ -489,62 +496,74 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             </TooltipProvider>
           )
         },
-      },
-      {
-        id: 'user',
-        header: t('User'),
-        accessorFn: (row) => row.username,
-        cell: function UserCell({ row }) {
-          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-            useUsageLogsContext()
-          const log = row.original
-
-          if (!log.username) return null
-
-          return (
-            <button
-              type='button'
-              className='flex items-center gap-1.5 text-left'
-              onClick={(e) => {
-                e.stopPropagation()
-                setSelectedUserId(log.user_id)
-                setUserInfoDialogOpen(true)
-              }}
-            >
-              <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
-                <AvatarFallback
-                  className={cn(
-                    'text-[11px] font-semibold',
-                    !sensitiveVisible && 'bg-muted text-muted-foreground'
-                  )}
-                  style={
-                    sensitiveVisible
-                      ? getUserAvatarStyle(log.username)
-                      : undefined
-                  }
-                >
-                  {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
-                </AvatarFallback>
-              </Avatar>
-              <TooltipProvider delay={300}>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
-                    }
-                  >
-                    {sensitiveVisible ? log.username : '••••'}
-                  </TooltipTrigger>
-                  {sensitiveVisible && log.username.length > 12 && (
-                    <TooltipContent side='top'>{log.username}</TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
-            </button>
-          )
-        },
       }
     )
+  }
+
+  // The member/user column is shown to admins (clickable, opens the user info
+  // dialog) and to agents (plain text only). Agents must not reach the
+  // admin-only /api/user/:id endpoint, so their cell is rendered inert.
+  if (isAdmin || isAgent) {
+    columns.push({
+      id: 'user',
+      header: t('User'),
+      accessorFn: (row) => row.username,
+      cell: function UserCell({ row }) {
+        const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
+          useUsageLogsContext()
+        const log = row.original
+
+        if (!log.username) return null
+
+        if (isAgent) {
+          return (
+            <span className='text-muted-foreground max-w-[120px] truncate text-sm'>
+              {log.username}
+            </span>
+          )
+        }
+
+        return (
+          <button
+            type='button'
+            className='flex items-center gap-1.5 text-left'
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedUserId(log.user_id)
+              setUserInfoDialogOpen(true)
+            }}
+          >
+            <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
+              <AvatarFallback
+                className={cn(
+                  'text-[11px] font-semibold',
+                  !sensitiveVisible && 'bg-muted text-muted-foreground'
+                )}
+                style={
+                  sensitiveVisible ? getUserAvatarStyle(log.username) : undefined
+                }
+              >
+                {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
+              </AvatarFallback>
+            </Avatar>
+            <TooltipProvider delay={300}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
+                  }
+                >
+                  {sensitiveVisible ? log.username : '••••'}
+                </TooltipTrigger>
+                {sensitiveVisible && log.username.length > 12 && (
+                  <TooltipContent side='top'>{log.username}</TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          </button>
+        )
+      },
+    })
   }
 
   columns.push({
@@ -880,6 +899,12 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const [dialogOpen, setDialogOpen] = useState(false)
         const log = row.original
         const other = parseLogOther(log.other)
+        const typeConfig = getLogTypeConfig(log.type)
+        // 传入/传出参数快照仅在详情弹窗打开时按需拉取（大 JSON 存独立表、不进列表）。
+        const { requestData, responseData } = useLogBodies(
+          log.request_id,
+          dialogOpen
+        )
 
         const segments = buildDetailSegments(log, other, t, isAdmin)
         const primary = segments[0]
@@ -919,11 +944,27 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <span className='text-muted-foreground/40'>—</span>
               )}
             </button>
-            <DetailsDialog
-              log={log}
-              isAdmin={isAdmin}
+            <RelayDetailsDialog
               open={dialogOpen}
               onOpenChange={setDialogOpen}
+              title={
+                <>
+                  {t('Log Details')}
+                  <StatusBadge
+                    label={t(typeConfig.label)}
+                    variant={typeConfig.color as StatusBadgeProps['variant']}
+                    size='sm'
+                    copyable={false}
+                  />
+                </>
+              }
+              description={t('View the complete details for this log entry')}
+              requestModel={log.model_name || undefined}
+              requestJson={prettyJson(requestData)}
+              responseJson={prettyJson(responseData)}
+              extraSections={
+                <UsageBillingSections log={log} isAdmin={isAdmin} />
+              }
             />
           </>
         )

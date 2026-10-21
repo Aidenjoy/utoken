@@ -31,6 +31,9 @@ type TaskQueryParams struct {
 	MjID           string
 	StartTimestamp string
 	EndTimestamp   string
+	// UserIDs 将查询范围限定在一组用户 ID（代理商自己 + 其成员）。为空表示不限制。
+	// 代理商 handler 必须在 effectiveIds 为空时提前返回空结果，不能依赖此处的空值放行。
+	UserIDs []int
 }
 
 func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryParams) []*Midjourney {
@@ -79,6 +82,9 @@ func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourn
 	}
 	if queryParams.EndTimestamp != "" {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
+	}
+	if len(queryParams.UserIDs) != 0 {
+		query = query.Where("user_id in (?)", queryParams.UserIDs)
 	}
 
 	// 获取数据
@@ -210,6 +216,9 @@ func CountAllTasks(queryParams TaskQueryParams) int64 {
 	}
 	if queryParams.EndTimestamp != "" {
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
+	}
+	if len(queryParams.UserIDs) != 0 {
+		query = query.Where("user_id in (?)", queryParams.UserIDs)
 	}
 	_ = query.Count(&total).Error
 	return total

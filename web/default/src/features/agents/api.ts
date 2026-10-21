@@ -22,6 +22,7 @@ import type {
   Agent,
   AgentMember,
   AgentMemberDiscounts,
+  AgentMemberOption,
   AgentProfile,
   AgentRechargeRecord,
   ApiResponse,
@@ -44,6 +45,7 @@ export interface AgentPayload {
   user_id: number
   model_discounts: Record<string, number>
   remark?: string
+  menu_visibility?: string[]
 }
 
 /**
@@ -54,6 +56,7 @@ export interface AgentUpdatePayload {
   model_discounts?: Record<string, number>
   status?: number
   remark?: string
+  menu_visibility?: string[]
 }
 
 // Invite codes carry no discount, so creating one only sets its usage limits.
@@ -225,5 +228,18 @@ export async function listMyRecharge(
 ): Promise<PaginatedResponse<AgentRechargeRecord>> {
   const { p = 1, page_size = 20 } = params
   const res = await api.get(`/api/agent/recharge?p=${p}&page_size=${page_size}`)
+  return res.data
+}
+
+/**
+ * Member picker options for the agent-scoped filters (usage logs / billing
+ * center). Lists only the agent's own members; every scoped query independently
+ * enforces the same server-side range, so this list is a picker convenience
+ * rather than a security boundary.
+ */
+export async function listAgentMemberOptions(): Promise<
+  ApiResponse<AgentMemberOption[]>
+> {
+  const res = await api.get('/api/agent/member-options')
   return res.data
 }

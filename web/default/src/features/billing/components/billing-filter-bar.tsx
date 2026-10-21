@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
+import { useAgentMemberOptions } from '@/features/agents/hooks'
 import { getAdminOrganizations } from '@/features/organizations/api'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 import { getUsers } from '@/features/users/api'
@@ -35,6 +36,7 @@ import {
 
 interface BillingFilterBarProps {
   draft: BillingFilterDraft
+  isAgent?: boolean
   onDraftChange: (
     updater: (current: BillingFilterDraft) => BillingFilterDraft
   ) => void
@@ -45,6 +47,10 @@ interface BillingFilterBarProps {
 
 export function BillingFilterBar(props: BillingFilterBarProps) {
   const { t } = useTranslation()
+  const isAgent = props.isAgent ?? false
+
+  // Agent member picker; disabled for non-agents inside the hook.
+  const { options: memberOptions } = useAgentMemberOptions()
 
   const { data: userOptions = [] } = useQuery({
     queryKey: ['billing-user-options'],
@@ -56,6 +62,7 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
       }))
     },
     staleTime: 5 * 60 * 1000,
+    enabled: !isAgent,
   })
 
   const { data: orgOptions = [] } = useQuery({
@@ -68,13 +75,19 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
       }))
     },
     staleTime: 5 * 60 * 1000,
+    enabled: !isAgent,
   })
 
-  const userScopeOptions = [
-    { value: BILLING_SCOPE_ALL, label: t('All') },
-    { value: BILLING_SCOPE_NONE, label: t('None') },
-    ...userOptions,
-  ]
+  // Agents pick only among their own members and cannot exclude by "None"
+  // (the server already forces the member range), so the None sentinel is
+  // dropped from the agent user scope.
+  const userScopeOptions = isAgent
+    ? [{ value: BILLING_SCOPE_ALL, label: t('All') }, ...memberOptions]
+    : [
+        { value: BILLING_SCOPE_ALL, label: t('All') },
+        { value: BILLING_SCOPE_NONE, label: t('None') },
+        ...userOptions,
+      ]
   const orgScopeOptions = [
     { value: BILLING_SCOPE_ALL, label: t('All') },
     { value: BILLING_SCOPE_NONE, label: t('None') },
@@ -94,23 +107,25 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
               userSel: normalizeBillingScope(current.userSel, values),
             }))
           }
-          placeholder={t('Select users')}
+          placeholder={isAgent ? t('Select members') : t('Select users')}
           maxVisibleChips={2}
         />
 
-        <MultiSelect
-          className='min-w-[200px] flex-1'
-          options={orgScopeOptions}
-          selected={props.draft.orgSel}
-          onChange={(values) =>
-            props.onDraftChange((current) => ({
-              ...current,
-              orgSel: normalizeBillingScope(current.orgSel, values),
-            }))
-          }
-          placeholder={t('Select organizations')}
-          maxVisibleChips={2}
-        />
+        {!isAgent && (
+          <MultiSelect
+            className='min-w-[200px] flex-1'
+            options={orgScopeOptions}
+            selected={props.draft.orgSel}
+            onChange={(values) =>
+              props.onDraftChange((current) => ({
+                ...current,
+                orgSel: normalizeBillingScope(current.orgSel, values),
+              }))
+            }
+            placeholder={t('Select organizations')}
+            maxVisibleChips={2}
+          />
+        )}
 
         <CompactDateTimeRangePicker
           start={props.draft.start}

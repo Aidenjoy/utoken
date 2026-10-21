@@ -21,11 +21,11 @@ import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
-import { useIsAdmin } from '@/hooks/use-admin'
+import { useLogsScope } from '@/hooks/use-admin'
 import { formatLogQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { getLogStats, getUserLogStats } from '../api'
+import { getLogStats, getUserLogStats, getAgentLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
 import { buildApiParams } from '../lib/utils'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -50,24 +50,29 @@ function StatBadge(props: {
 
 export function CommonLogsStats() {
   const { t } = useTranslation()
-  const isAdmin = useIsAdmin()
+  const scope = useLogsScope()
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['usage-logs-stats', isAdmin, searchParams],
+    queryKey: ['usage-logs-stats', scope, searchParams],
     queryFn: async () => {
       const params = buildApiParams({
         page: 1,
         pageSize: 1,
         searchParams,
         columnFilters: [],
-        isAdmin,
+        scope,
       })
 
-      const result = isAdmin
-        ? await getLogStats(params)
-        : await getUserLogStats(params)
+      let result
+      if (scope === 'admin') {
+        result = await getLogStats(params)
+      } else if (scope === 'agent') {
+        result = await getAgentLogStats(params)
+      } else {
+        result = await getUserLogStats(params)
+      }
 
       return result.success
         ? result.data || DEFAULT_LOG_STATS

@@ -26,7 +26,12 @@ export const Route = createFileRoute('/_authenticated/billing/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    // Admins see the full billing center; agents see a server-scoped view
+    // limited to their own members. Everyone else is denied.
+    if (
+      !auth.user ||
+      (auth.user.role < ROLE.ADMIN && auth.user.is_agent !== true)
+    ) {
       throw redirect({
         to: '/403',
       })

@@ -191,6 +191,17 @@ func SetApiRouter(router *gin.Engine) {
 			agentSelfRoute.GET("/members/:id/model_discounts", controller.GetAgentMemberModelDiscounts)
 			agentSelfRoute.PUT("/members/:id/model_discounts", controller.UpdateAgentMemberModelDiscounts)
 			agentSelfRoute.GET("/recharge", controller.ListAgentRecharge)
+			// 范围化的使用日志 / 任务日志 / 绘图日志 / 账单中心：均限定在「成员 ∪ 自己」，
+			// 客户端 user_ids 只在此集合内取子集，交集为空即返回空结果（见 controller/agent_self.go）。
+			agentSelfRoute.GET("/logs", controller.GetAgentLogs)
+			agentSelfRoute.GET("/logs/stat", controller.GetAgentLogsStat)
+			agentSelfRoute.GET("/tasks", controller.GetAgentTasks)
+			agentSelfRoute.GET("/mj", controller.GetAgentMidjourney)
+			agentSelfRoute.GET("/member-options", controller.GetAgentMemberOptions)
+			agentSelfRoute.GET("/billing/recharge", controller.GetAgentBillingRecharge)
+			agentSelfRoute.GET("/billing/recharge/export", controller.ExportAgentBillingRecharge)
+			agentSelfRoute.GET("/billing/consumption", controller.GetAgentBillingConsumption)
+			agentSelfRoute.GET("/billing/consumption/export", controller.ExportAgentBillingConsumption)
 		}
 
 		// Subscription billing (plans, purchase, admin management)
@@ -337,6 +348,8 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
+		// 使用日志详情的请求/返回体快照（按需拉取，不进列表 payload），可见范围在 controller 内强制。
+		logRoute.GET("/bodies", middleware.UserAuth(), controller.GetLogBodies)
 
 		billingRoute := apiRouter.Group("/billing")
 		billingRoute.Use(middleware.AdminAuth())

@@ -29,7 +29,7 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
-import { useIsAdmin } from '@/hooks/use-admin'
+import { useIsAdmin, useLogsScope } from '@/hooks/use-admin'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { cn } from '@/lib/utils'
 
@@ -41,7 +41,7 @@ import {
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
-import type { LogCategory } from '../types'
+import type { LogCategory, LogsScope } from '../types'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
@@ -59,9 +59,12 @@ const quotaSaturationRowTint = 'bg-amber-50/60 dark:bg-amber-950/25'
 
 function getColumnVisibilityStorageKey(
   logCategory: LogCategory,
-  isAdmin: boolean
+  scope: LogsScope
 ): string {
-  return `usage-logs:${logCategory}:${isAdmin ? 'admin' : 'user'}:column-visibility`
+  // Preserve the legacy `user` bucket for the self scope so existing column
+  // preferences are not reset when the scope union is introduced.
+  const scopeKey = scope === 'self' ? 'user' : scope
+  return `usage-logs:${logCategory}:${scopeKey}:column-visibility`
 }
 
 // 「原价 / 折扣」两列曾经对未配模型折扣的用户默认隐藏，那份「隐藏」被写进了
@@ -109,6 +112,7 @@ interface UsageLogsTableProps {
 
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
+  const scope = useLogsScope()
   const isAdmin = useIsAdmin()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
@@ -155,7 +159,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     queryKey: [
       'logs',
       logCategory,
-      isAdmin,
+      scope,
       pagination.pageIndex + 1,
       pagination.pageSize,
       columnFilters,
@@ -165,7 +169,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     queryFn: async () => {
       const result = await fetchLogsByCategory({
         logCategory,
-        isAdmin,
+        scope,
         page: pagination.pageIndex + 1,
         pageSize: pagination.pageSize,
         searchParams,
@@ -188,15 +192,15 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const logs = data?.items || []
-  const columns = useColumnsByCategory(logCategory, isAdmin)
+  const columns = useColumnsByCategory(logCategory, scope)
   const isLoadingData = isLoading || (isFetching && !data)
 
   // 先跑一次性迁移再交给 useDataTable，确保它读到的存档已清掉旧的「隐藏」标记。
   const columnVisibilityStorageKey = useMemo(() => {
-    const key = getColumnVisibilityStorageKey(logCategory, isAdmin)
+    const key = getColumnVisibilityStorageKey(logCategory, scope)
     migrateDiscountColumnVisibility(key)
     return key
-  }, [logCategory, isAdmin])
+  }, [logCategory, scope])
 
   const { table } = useDataTable({
     data: logs as Record<string, unknown>[],

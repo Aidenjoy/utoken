@@ -41,15 +41,22 @@ function toQueryParams(filter: BillingQueryParams): Record<string, string> {
   return params
 }
 
+// Agents hit the scoped /api/agent/billing/* endpoints (server restricts to the
+// agent's members and drops admin-only fields); admins use /api/billing/*.
+function billingPath(isAgent: boolean, suffix: string): string {
+  return isAgent ? `/api/agent/billing${suffix}` : `/api/billing${suffix}`
+}
+
 export interface BillingRechargeData {
   records: BillingRechargeRecord[]
   stat: BillingRechargeStat
 }
 
 export async function getBillingRecharge(
-  filter: BillingQueryParams
+  filter: BillingQueryParams,
+  isAgent = false
 ): Promise<BillingApiResponse<BillingRechargeData>> {
-  const res = await api.get('/api/billing/recharge', {
+  const res = await api.get(billingPath(isAgent, '/recharge'), {
     params: toQueryParams(filter),
     disableDuplicate: true,
   })
@@ -65,9 +72,10 @@ export interface BillingConsumptionData {
 }
 
 export async function getBillingConsumption(
-  filter: BillingQueryParams
+  filter: BillingQueryParams,
+  isAgent = false
 ): Promise<BillingApiResponse<BillingConsumptionData>> {
-  const res = await api.get('/api/billing/consumption', {
+  const res = await api.get(billingPath(isAgent, '/consumption'), {
     params: toQueryParams(filter),
     disableDuplicate: true,
   })
@@ -86,9 +94,10 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 }
 
 export async function downloadBillingRecharge(
-  filter: BillingQueryParams
+  filter: BillingQueryParams,
+  isAgent = false
 ): Promise<void> {
-  const res = await api.get('/api/billing/recharge/export', {
+  const res = await api.get(billingPath(isAgent, '/recharge/export'), {
     params: toQueryParams(filter),
     responseType: 'blob',
     disableDuplicate: true,
@@ -97,9 +106,10 @@ export async function downloadBillingRecharge(
 }
 
 export async function downloadBillingConsumption(
-  filter: BillingQueryParams
+  filter: BillingQueryParams,
+  isAgent = false
 ): Promise<void> {
-  const res = await api.get('/api/billing/consumption/export', {
+  const res = await api.get(billingPath(isAgent, '/consumption/export'), {
     params: toQueryParams(filter),
     responseType: 'blob',
     disableDuplicate: true,

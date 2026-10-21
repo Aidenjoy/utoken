@@ -38,3 +38,30 @@ export function useIsSuperAdmin(): boolean {
   const { user } = useAuthStore((state) => state.auth)
   return (user?.role ?? 0) >= ROLE.SUPER_ADMIN
 }
+
+/**
+ * Check if the current user is a reseller/agent (`is_agent`). Agents get scoped
+ * views of the usage/task/drawing logs and the billing center, limited to the
+ * members they recruited (plus themselves). Independent of `role`: an agent is
+ * a normal user promoted to reseller, so `role` stays below ADMIN.
+ */
+export function useIsAgent(): boolean {
+  const { user } = useAuthStore((state) => state.auth)
+  return user?.is_agent === true
+}
+
+/**
+ * Effective visibility scope for the logs/billing features:
+ * - `admin`: full cross-user visibility (role >= ADMIN)
+ * - `agent`: scoped to the agent's own members (+ self), server-enforced
+ * - `self`: only the current user's own records
+ * Admin takes precedence over agent.
+ */
+export type LogsScope = 'admin' | 'agent' | 'self'
+
+export function useLogsScope(): LogsScope {
+  const { user } = useAuthStore((state) => state.auth)
+  if ((user?.role ?? 0) >= ROLE.ADMIN) return 'admin'
+  if (user?.is_agent === true) return 'agent'
+  return 'self'
+}

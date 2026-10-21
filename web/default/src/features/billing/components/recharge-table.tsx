@@ -55,27 +55,29 @@ function formatMoney(money: number): string {
 
 interface RechargeTableProps {
   filter: BillingFilter
+  isAgent?: boolean
 }
 
-export function RechargeTable({ filter }: RechargeTableProps) {
+export function RechargeTable({ filter, isAgent = false }: RechargeTableProps) {
   const { t } = useTranslation()
   const [exporting, setExporting] = useState(false)
 
   const queryKey = useMemo(
     () => [
       'billing-recharge',
+      isAgent,
       filter.userSel,
       filter.orgSel,
       filter.start,
       filter.end,
     ],
-    [filter.userSel, filter.orgSel, filter.start, filter.end]
+    [isAgent, filter.userSel, filter.orgSel, filter.start, filter.end]
   )
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
-      const result = await getBillingRecharge(filter)
+      const result = await getBillingRecharge(filter, isAgent)
       if (!result.success) {
         toast.error(result.message || t('Failed to load records'))
         return { records: [], stat: undefined }
@@ -192,16 +194,22 @@ export function RechargeTable({ filter }: RechargeTableProps) {
         },
         size: 170,
       },
-      {
-        accessorKey: 'operator',
-        header: t('Operator'),
-        cell: ({ row }) => (
-          <TruncatedCell>{row.original.operator || '-'}</TruncatedCell>
-        ),
-        size: 130,
-      },
+      // Operator is an admin-only audit field; hidden for agents (the server
+      // also blanks it, this keeps the column from rendering empty).
+      ...(isAgent
+        ? []
+        : [
+            {
+              accessorKey: 'operator',
+              header: t('Operator'),
+              cell: ({ row }: { row: { original: BillingRechargeRecord } }) => (
+                <TruncatedCell>{row.original.operator || '-'}</TruncatedCell>
+              ),
+              size: 130,
+            } satisfies ColumnDef<BillingRechargeRecord>,
+          ]),
     ],
-    [t]
+    [t, isAgent]
   )
 
   const { table } = useDataTable({
@@ -247,7 +255,7 @@ export function RechargeTable({ filter }: RechargeTableProps) {
   const handleExport = async () => {
     setExporting(true)
     try {
-      await downloadBillingRecharge(filter)
+      await downloadBillingRecharge(filter, isAgent)
     } catch {
       toast.error(t('Export failed'))
     } finally {

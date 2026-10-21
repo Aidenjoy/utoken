@@ -75,6 +75,10 @@ type Task struct {
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
+	// RequestData 用户提交任务时的原始请求体快照（base64 媒体已截断、URL 原样保留），
+	// 与 Data（上游响应快照）对称落库，供管理端任务日志回溯「传入参数」；
+	// 旧任务为空，前端回退展示 properties。
+	RequestData json.RawMessage `json:"request_data,omitempty" gorm:"type:json"`
 	// 超时回源退避元数据（sweepTimedOutTasks 使用）：解析尝试次数、下次可解析时刻、
 	// 最近一次解析失败原因。用独立列而非 PrivateData JSON，避免与在途轮询并发改写
 	// JSON 列时互相覆盖。

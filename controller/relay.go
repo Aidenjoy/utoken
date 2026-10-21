@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -75,6 +76,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError *types.NewAPIError
 		ws          *websocket.Conn
 	)
+
+	// 使用日志「传入/传出参数」快照：包装 c.Writer 旁路捕获写给客户端的字节
+	// （流式 SSE 逐块累积、非流式整包、错误体同样入缓冲），handler 返回后异步落库。
+	// defer 在此注册，早于下方错误输出 defer，故按 LIFO 会在错误体写入之后执行，捕获到真实响应。
+	// realtime(WebSocket) 走二进制帧、非 HTTP body，跳过捕获。
+	if relayFormat != types.RelayFormatOpenAIRealtime {
+		bodyWriter := newRelayBodyWriter(c)
+		defer saveRelayBodySnapshot(c, requestId, bodyWriter)
+	}
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
 		var err error
@@ -621,6 +631,7 @@ func RelayTask(c *gin.Context) {
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData
+		task.RequestData = snapshotRedactedRequestBody(c)
 		task.Action = relayInfo.Action
 		// 消费日志带 task_id，计费视图据此折叠后续结算/退款
 		service.LogTaskConsumption(c, relayInfo, task.TaskID)
@@ -632,6 +643,133 @@ func RelayTask(c *gin.Context) {
 	if taskErr != nil {
 		respondTaskError(c, taskErr)
 	}
+}
+
+// maxTaskRequestSnapshotBytes 传入参数快照的落库上限。RedactBase64 已截断 base64 媒体，
+// 仍设上限兜底（超长 prompt / 大量 URL），超限则放弃快照以免撑爆 tasks 行。
+const maxTaskRequestSnapshotBytes = 256 * 1024
+
+// snapshotRedactedRequestBody 抓取用户提交的原始 JSON 请求体并脱敏后作为「传入参数」快照。
+// 与 task.Data（上游响应快照）对称落库，保证任务 ID 查询结果过期后仍可回溯入参。
+// 仅快照 application/json 请求体（multipart 直传含二进制不入库）；base64 媒体按 DEBUG
+// 日志同一口径截断、URL 原样保留。读取失败/超限时返回 nil（调用方落空列）。
+func snapshotRedactedRequestBody(c *gin.Context) []byte {
+	if !strings.Contains(c.Request.Header.Get("Content-Type"), "application/json") {
+		return nil
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return nil
+	}
+	raw, err := storage.Bytes()
+	if err != nil || len(raw) == 0 {
+		return nil
+	}
+	redacted := logger.RedactBase64(raw)
+	if len(redacted) > maxTaskRequestSnapshotBytes {
+		return nil
+	}
+	return redacted
+}
+
+// maxRelayBodySnapshotBytes 使用日志请求/返回体快照的单侧上限（1MB）。语言模型长上下文
+// 足以覆盖（约 25 万 token）；超限即停抄并加截断标记，log_bodies 字段为跨库大文本
+// （MySQL longtext / PG text / SQLite text），不会溢出报错。
+const maxRelayBodySnapshotBytes = 1 << 20
+
+// relaySnapshotTruncMark 快照超限截断处追加的标记，便于前端/排查者一眼看出内容被裁剪。
+const relaySnapshotTruncMark = "...(truncated)"
+
+// relayBodyWriter 包装 gin.ResponseWriter，把写给客户端的响应字节旁路复制进有限大小
+// 缓冲区（仿 middleware/audit.go 的 auditResponseWriter capped-tee）：流式 SSE 逐块累积、
+// 非流式整包、错误体同样入缓冲；超过上限即停抄，避免大响应占用过多内存。
+type relayBodyWriter struct {
+	gin.ResponseWriter
+	body    *bytes.Buffer
+	maxSize int
+}
+
+func (w *relayBodyWriter) Write(b []byte) (int, error) {
+	w.capture(b)
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *relayBodyWriter) WriteString(s string) (int, error) {
+	w.capture([]byte(s))
+	return w.ResponseWriter.WriteString(s)
+}
+
+func (w *relayBodyWriter) capture(b []byte) {
+	if w.body.Len() >= w.maxSize {
+		return
+	}
+	if remain := w.maxSize - w.body.Len(); len(b) <= remain {
+		w.body.Write(b)
+	} else {
+		w.body.Write(b[:remain])
+	}
+}
+
+// newRelayBodyWriter 在同步中继入口包装 c.Writer 并返回捕获器。realtime(WebSocket)
+// 走二进制帧不适用，调用方需自行跳过。
+func newRelayBodyWriter(c *gin.Context) *relayBodyWriter {
+	w := &relayBodyWriter{
+		ResponseWriter: c.Writer,
+		body:           bytes.NewBuffer(nil),
+		maxSize:        maxRelayBodySnapshotBytes,
+	}
+	c.Writer = w
+	return w
+}
+
+// saveRelayBodySnapshot 在 Relay handler 返回后把请求/返回体快照异步落库，不阻塞响应。
+// 两侧各自 RedactBase64 + 超限截断（追加 ...(truncated) 标记）；requestId 为空或两体皆空
+// 时 SaveLogBody 自身跳过。缓冲在 handler 返回后不再被写入，异步读取安全。
+func saveRelayBodySnapshot(c *gin.Context, requestId string, w *relayBodyWriter) {
+	if w == nil {
+		return
+	}
+	reqBody := truncateRelaySnapshot(snapshotRelayRequestBody(c))
+	respBody := truncateRelaySnapshot(logger.RedactBase64(w.body.Bytes()))
+	if len(reqBody) == 0 && len(respBody) == 0 {
+		return
+	}
+	gopool.Go(func() {
+		if err := model.SaveLogBody(requestId, reqBody, respBody); err != nil {
+			logger.LogError(c, "failed to save relay log body: "+err.Error())
+		}
+	})
+}
+
+// snapshotRelayRequestBody 抓取使用日志的「传入参数」：仅 application/json 请求体
+// （multipart 直传含二进制不入库），base64 媒体按 DEBUG 日志同口径截断、URL 原样保留。
+// 与任务侧 snapshotRedactedRequestBody 的区别：不在超限时返回 nil，交由 truncateRelaySnapshot
+// 按 maxRelayBodySnapshotBytes 截断加标记（长上下文仍需保留可用前缀）。
+func snapshotRelayRequestBody(c *gin.Context) []byte {
+	if !strings.Contains(c.Request.Header.Get("Content-Type"), "application/json") {
+		return nil
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return nil
+	}
+	raw, err := storage.Bytes()
+	if err != nil || len(raw) == 0 {
+		return nil
+	}
+	return logger.RedactBase64(raw)
+}
+
+// truncateRelaySnapshot 按 maxRelayBodySnapshotBytes 截断快照，超限处追加 ...(truncated) 标记。
+// 截断可能破坏 JSON 合法性，但快照仅供查错、前端 pretty 失败时按原文展示即可。
+func truncateRelaySnapshot(b []byte) []byte {
+	if len(b) <= maxRelayBodySnapshotBytes {
+		return b
+	}
+	out := make([]byte, 0, maxRelayBodySnapshotBytes+len(relaySnapshotTruncMark))
+	out = append(out, b[:maxRelayBodySnapshotBytes]...)
+	out = append(out, relaySnapshotTruncMark...)
+	return out
 }
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）

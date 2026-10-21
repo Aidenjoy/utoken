@@ -43,8 +43,12 @@ var (
 type Agent struct {
 	Id     int `json:"id"`
 	UserId int `json:"user_id" gorm:"type:int;uniqueIndex;column:user_id"`
-	// ModelDiscounts 是授权配置的落库文本，JSON 响应里由 ModelDiscountMap 以对象形式下发。
+	// ModelDiscounts 是授权配置的落库文本，JSON 响应里由 ModelDiscountMap  以对象形式下发。
 	ModelDiscounts string `json:"-" gorm:"type:text;column:model_discounts"`
+	// MenuVisibility 是代理商可见功能菜单的落库文本（JSON 字符串数组）。空串表示
+	// 全部隐藏——代理商默认只发展客户、不使用系统功能菜单；要展示哪些由管理员在
+	// 代理商管理里逐个开启。合法键集合见 AgentMenuKeys。
+	MenuVisibility string `json:"-" gorm:"type:text;column:menu_visibility"`
 	Status         int    `json:"status" gorm:"type:int;default:1;column:status"`
 	Remark         string `json:"remark" gorm:"type:varchar(255);column:remark" validate:"max=255"`
 	CreatedBy      int    `json:"created_by" gorm:"type:int;column:created_by"`
@@ -59,16 +63,93 @@ type Agent struct {
 	// ModelDiscountMap 是授权配置的对象视图，前端直接当 Record<string, number> 用，
 	// 不必自己 JSON.parse 一段字符串。永不为 nil（无配置时是空对象）。
 	ModelDiscountMap map[string]float64 `json:"model_discounts" gorm:"-"`
+	// MenuVisibilityList 是 MenuVisibility 的对象视图（string[]），前端直接消费。
+	// 永不为 nil（无配置时是空数组，等价于全部隐藏）。
+	MenuVisibilityList []string `json:"menu_visibility" gorm:"-"`
 }
 
-// syncModelDiscountMap 把落库文本同步到响应字段。凡是写出 Agent 之前都要调一次，
-// 否则响应里会是上一版的授权配置。
-func (a *Agent) syncModelDiscountMap() {
+// syncResponseFields 把落库文本同步到 JSON 响应视图字段（授权折扣 + 可见菜单）。
+// 凡是写出 Agent 之前都要调一次，否则响应里会是上一版的配置。
+func (a *Agent) syncResponseFields() {
 	floors := a.ModelFloors()
 	if floors == nil {
 		floors = map[string]float64{}
 	}
 	a.ModelDiscountMap = floors
+	a.MenuVisibilityList = ParseAgentMenuVisibility(a.MenuVisibility)
+}
+
+// AgentMenuKeys 是代理商可见性可配置的菜单键全集，必须与前端
+// features/agents/types.ts 的 AGENT_MENU_KEYS 保持一致。未列出的键在
+// NormalizeAgentMenuVisibility 里会被拒绝，防止脏数据写入。
+var AgentMenuKeys = []string{
+	"experience",     // 体验 / Test Models
+	"video_factory",  // 视频工厂 / Video Factory
+	"model_styling",  // 模特穿搭 / Model Styling
+	"viral_hero",     // 爆款主图 / Viral Hero Image
+	"viral_design",   // 爆款设计 / Viral Design
+	"asset_library",  // 素材库 / Asset Library
+	"prompt_library", // 提示词库 / Prompt Library
+}
+
+var agentMenuKeySet = func() map[string]bool {
+	set := make(map[string]bool, len(AgentMenuKeys))
+	for _, key := range AgentMenuKeys {
+		set[key] = true
+	}
+	return set
+}()
+
+// ParseAgentMenuVisibility 解析可见菜单落库文本。空串或解析失败返回空数组
+// （等价于全部隐藏），并过滤掉不在 AgentMenuKeys 里的历史脏键。
+func ParseAgentMenuVisibility(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return []string{}
+	}
+	var keys []string
+	if err := common.Unmarshal([]byte(trimmed), &keys); err != nil {
+		common.SysError("failed to unmarshal agent menu visibility: " + err.Error())
+		return []string{}
+	}
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if agentMenuKeySet[key] {
+			out = append(out, key)
+		}
+	}
+	return out
+}
+
+// NormalizeAgentMenuVisibility 校验并序列化可见菜单键为落库文本。出现未知键直接
+// 报错（交由控制器返回参数错误），合法键去重并按 AgentMenuKeys 固定顺序排列，
+// 与前端展示顺序一致。空输入或过滤后为空返回空串（全部隐藏）。
+func NormalizeAgentMenuVisibility(keys []string) (string, error) {
+	requested := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if !agentMenuKeySet[key] {
+			return "", errors.New("unknown agent menu key: " + key)
+		}
+		requested[key] = true
+	}
+	ordered := make([]string, 0, len(AgentMenuKeys))
+	for _, key := range AgentMenuKeys {
+		if requested[key] {
+			ordered = append(ordered, key)
+		}
+	}
+	if len(ordered) == 0 {
+		return "", nil
+	}
+	payload, err := common.Marshal(ordered)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
 }
 
 // AllowedModels 是代理商授权模型清单的内存表示，用于按请求模型名做白名单匹配。
@@ -182,7 +263,7 @@ func GetAgentByUserId(userId int) (*Agent, error) {
 		}
 		return nil, err
 	}
-	agent.syncModelDiscountMap()
+	agent.syncResponseFields()
 	return &agent, nil
 }
 
@@ -198,7 +279,7 @@ func GetAgentById(id int) (*Agent, error) {
 		}
 		return nil, err
 	}
-	agent.syncModelDiscountMap()
+	agent.syncResponseFields()
 	return &agent, nil
 }
 
@@ -222,7 +303,7 @@ func backfillAgentUserInfo(agents []*Agent) {
 	ids := make([]int, 0, len(agents))
 	for _, a := range agents {
 		ids = append(ids, a.UserId)
-		a.syncModelDiscountMap()
+		a.syncResponseFields()
 	}
 
 	var users []User
@@ -281,7 +362,7 @@ func CreateAgent(agent *Agent) error {
 	if err := DB.Create(agent).Error; err != nil {
 		return err
 	}
-	agent.syncModelDiscountMap()
+	agent.syncResponseFields()
 	return nil
 }
 

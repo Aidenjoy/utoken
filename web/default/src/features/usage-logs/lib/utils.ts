@@ -22,10 +22,13 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   getAllLogs,
   getUserLogs,
+  getAgentLogs,
   getAllMidjourneyLogs,
   getUserMidjourneyLogs,
+  getAgentMidjourneyLogs,
   getAllTaskLogs,
   getUserTaskLogs,
+  getAgentTaskLogs,
 } from '../api'
 import {
   LOG_TYPES,
@@ -38,6 +41,7 @@ import type {
   FetchLogsConfig,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
+  LogsScope,
 } from '../types'
 
 // ============================================================================
@@ -145,23 +149,29 @@ export function buildBaseParams(config: {
   page: number
   pageSize: number
   searchParams: Record<string, unknown>
+  scope: LogsScope
   useMilliseconds?: boolean
 }): {
   p: number
   page_size: number
   channel_id?: string
+  user_ids?: string
   start_timestamp?: number
   end_timestamp?: number
 } {
-  const { page, pageSize, searchParams, useMilliseconds = false } = config
+  const { page, pageSize, searchParams, scope, useMilliseconds = false } = config
 
   return {
     p: page,
     page_size: pageSize,
-    ...(searchParams.channel
+    // Channel is an admin-only dimension; agents narrow by member (user_ids).
+    ...(scope === 'admin' && searchParams.channel
       ? {
           channel_id: String(searchParams.channel),
         }
+      : {}),
+    ...(scope === 'agent' && searchParams.userIds
+      ? { user_ids: String(searchParams.userIds) }
       : {}),
     ...buildTimeRangeParams(searchParams, useMilliseconds),
   }
@@ -175,9 +185,10 @@ export function buildApiParams(config: {
   pageSize: number
   searchParams: Record<string, unknown>
   columnFilters?: Array<{ id: string; value: unknown }>
-  isAdmin: boolean
+  scope: LogsScope
 }): GetLogsParams {
-  const { page, pageSize, searchParams, columnFilters = [], isAdmin } = config
+  const { page, pageSize, searchParams, columnFilters = [], scope } = config
+  const isAdmin = scope === 'admin'
 
   // Helper to process type parameter (single value from array)
   const processType = (value: unknown): number | undefined => {
@@ -209,10 +220,13 @@ export function buildApiParams(config: {
     ...(isAdmin && searchParams.username
       ? { username: String(searchParams.username) }
       : {}),
+    ...(scope === 'agent' && searchParams.userIds
+      ? { user_ids: String(searchParams.userIds) }
+      : {}),
     ...(searchParams.requestId
       ? { request_id: String(searchParams.requestId) }
       : {}),
-    ...(searchParams.upstreamRequestId
+    ...(scope !== 'agent' && searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
     ...(searchParams.taskId ? { task_id: String(searchParams.taskId) } : {}),
@@ -260,7 +274,7 @@ export function buildApiParams(config: {
 export async function fetchLogsByCategory(
   config: FetchLogsConfig
 ): Promise<GetLogsResponse> {
-  const { logCategory, isAdmin, page, pageSize, searchParams, columnFilters } =
+  const { logCategory, scope, page, pageSize, searchParams, columnFilters } =
     config
 
   if (logCategory === 'common') {
@@ -269,9 +283,15 @@ export async function fetchLogsByCategory(
       pageSize,
       searchParams,
       columnFilters,
-      isAdmin,
+      scope,
     })
-    return isAdmin ? await getAllLogs(params) : await getUserLogs(params)
+    if (scope === 'admin') {
+      return await getAllLogs(params)
+    }
+    if (scope === 'agent') {
+      return await getAgentLogs(params)
+    }
+    return await getUserLogs(params)
   }
 
   // For drawing and task logs
@@ -279,6 +299,7 @@ export async function fetchLogsByCategory(
     page,
     pageSize,
     searchParams,
+    scope,
     useMilliseconds: logCategory === 'drawing',
   })
 
@@ -297,13 +318,27 @@ export async function fetchLogsByCategory(
   }
 
   if (logCategory === 'drawing') {
-    return isAdmin
-      ? await getAllMidjourneyLogs(paramsWithFilter as GetMidjourneyLogsParams)
-      : await getUserMidjourneyLogs(paramsWithFilter as GetMidjourneyLogsParams)
+    if (scope === 'admin') {
+      return await getAllMidjourneyLogs(
+        paramsWithFilter as GetMidjourneyLogsParams
+      )
+    }
+    if (scope === 'agent') {
+      return await getAgentMidjourneyLogs(
+        paramsWithFilter as GetMidjourneyLogsParams
+      )
+    }
+    return await getUserMidjourneyLogs(
+      paramsWithFilter as GetMidjourneyLogsParams
+    )
   }
 
   // task logs
-  return isAdmin
-    ? await getAllTaskLogs(paramsWithFilter as GetTaskLogsParams)
-    : await getUserTaskLogs(paramsWithFilter as GetTaskLogsParams)
+  if (scope === 'admin') {
+    return await getAllTaskLogs(paramsWithFilter as GetTaskLogsParams)
+  }
+  if (scope === 'agent') {
+    return await getAgentTaskLogs(paramsWithFilter as GetTaskLogsParams)
+  }
+  return await getUserTaskLogs(paramsWithFilter as GetTaskLogsParams)
 }

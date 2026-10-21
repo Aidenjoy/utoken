@@ -43,6 +43,9 @@ export function buildSearchParams(
     ...(filters.startTime && { startTime: filters.startTime.getTime() }),
     ...(filters.endTime && { endTime: filters.endTime.getTime() }),
     ...(filters.channel && { channel: filters.channel }),
+    // Agent scope only: comma-joined member ids persisted to the URL so the
+    // member multi-select survives navigation/refresh. Ignored by other scopes.
+    ...(filters.userIds && { userIds: filters.userIds }),
   }
 
   switch (logCategory) {

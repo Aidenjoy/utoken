@@ -70,6 +70,52 @@ import { useAuthStore } from '@/stores/auth-store'
  * These are shown when the URL does not match any nested sidebar view
  * registered in `layout/lib/sidebar-view-registry.ts`.
  */
+// Sidebar entries an admin can hide for a reseller (agent) account. Agents only
+// develop customers, so every gated menu is hidden unless the agent's
+// `menu_visibility` (configured in Agent Management) explicitly lists its key.
+// Keys mirror `model.AgentMenuKeys` / `AGENT_MENU_KEYS`.
+const AGENT_GATED_GROUP: Record<string, string> = {
+  chat: 'experience',
+  director: 'video_factory',
+  'try-on': 'model_styling',
+  'viral-hero': 'viral_hero',
+  'viral-design': 'viral_design',
+}
+const AGENT_GATED_PERSONAL_ITEM: Record<string, string> = {
+  '/director/assets': 'asset_library',
+  '/prompts': 'prompt_library',
+}
+
+/**
+ * Drop reseller-gated menus for an agent account. `visibleKeys` is null for
+ * non-agents (nothing is ever hidden); for agents it holds the menu keys their
+ * admin enabled, and any gated group / personal item whose key is absent is
+ * removed. Ungated entries (Wallet, Profile, the agent workspace, admin tools)
+ * are always kept.
+ */
+function gateAgentMenus(
+  navGroups: SidebarData['navGroups'],
+  visibleKeys: Set<string> | null
+): SidebarData['navGroups'] {
+  if (visibleKeys === null) return navGroups
+  return navGroups
+    .map((group) =>
+      group.id === 'personal'
+        ? {
+            ...group,
+            items: group.items.filter((item) => {
+              const key = AGENT_GATED_PERSONAL_ITEM[item.url ?? '']
+              return !key || visibleKeys.has(key)
+            }),
+          }
+        : group
+    )
+    .filter((group) => {
+      const key = AGENT_GATED_GROUP[group.id ?? '']
+      return !key || visibleKeys.has(key)
+    })
+}
+
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
@@ -79,8 +125,13 @@ export function useSidebarData(): SidebarData {
   const hasOrganization = (user?.org_id ?? 0) > 0
   const isOrgAdmin = hasOrganization && user?.org_role === ORG_ROLE.ADMIN
 
+  // Only agents get menus gated; everyone else sees the full sidebar.
+  const agentVisibleKeys = user?.is_agent
+    ? new Set(user.agent_menu_visibility ?? [])
+    : null
+
   return {
-    navGroups: [
+    navGroups: gateAgentMenus([
       {
         id: 'chat',
         title: t('Test Models'),
@@ -335,6 +386,11 @@ export function useSidebarData(): SidebarData {
                   url: '/agent/recharge',
                   icon: ReceiptText,
                 },
+                {
+                  title: t('Billing Center'),
+                  url: '/billing',
+                  icon: CreditCard,
+                },
               ],
             },
           ]
@@ -424,6 +480,6 @@ export function useSidebarData(): SidebarData {
           },
         ],
       },
-    ],
+    ], agentVisibleKeys),
   }
 }

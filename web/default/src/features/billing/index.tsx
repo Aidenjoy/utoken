@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useIsAgent } from '@/hooks/use-admin'
 
 import { BillingFilterBar } from './components/billing-filter-bar'
 import { ConsumptionTable } from './components/consumption-table'
@@ -48,6 +49,7 @@ function getDefaultDraft(): BillingFilterDraft {
 
 export function BillingCenter() {
   const { t } = useTranslation()
+  const isAgent = useIsAgent()
   const [tab, setTab] = useState<BillingTab>('recharge')
   const [draft, setDraft] = useState<BillingFilterDraft>(getDefaultDraft)
   const [applied, setApplied] = useState<BillingFilterDraft>(getDefaultDraft)
@@ -77,6 +79,7 @@ export function BillingCenter() {
         <div className='space-y-3'>
           <BillingFilterBar
             draft={draft}
+            isAgent={isAgent}
             onDraftChange={setDraft}
             onSearch={() => setApplied(draft)}
             onReset={() => {
@@ -102,9 +105,9 @@ export function BillingCenter() {
           </Tabs>
 
           {tab === 'recharge' ? (
-            <RechargeTable filter={filter} />
+            <RechargeTable filter={filter} isAgent={isAgent} />
           ) : (
-            <ConsumptionTable filter={filter} />
+            <ConsumptionTable filter={filter} isAgent={isAgent} />
           )}
         </div>
       </SectionPageLayout.Content>

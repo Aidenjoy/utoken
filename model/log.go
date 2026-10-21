@@ -114,7 +114,12 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
-func formatUserLogs(logs []*Log, startIdx int) {
+// StripAdminOnlyLogFields 就地剥离日志中仅供管理员查看的字段：渠道名，以及 Other 内的
+// admin_info（调试信息）、audit_info（操作人/路由审计）、stream_status。普通用户的 self
+// 视图与代理商范围化视图都以此字段口径为基线。与 formatUserLogs 的区别是不重排展示 id，
+// 因此适用于按时间排序、需保持原始 id 的场景（如代理商账单消耗复用 GetBillingConsumption
+// 返回的原始日志）。
+func StripAdminOnlyLogFields(logs []*Log) {
 	for i := range logs {
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
@@ -129,6 +134,10 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
+}
+
+func formatUserLogs(logs []*Log, startIdx int) {
+	StripAdminOnlyLogFields(logs)
 	assignDisplayLogIds(logs, startIdx)
 }
 
@@ -140,6 +149,23 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
+}
+
+// GetLogUserIdByRequestId 按 request_id 查日志行的归属用户，用于 bodies 接口的可见范围鉴权。
+// request_id 为空或查不到日志行时返回 (0, false, nil)。
+func GetLogUserIdByRequestId(requestId string) (int, bool, error) {
+	if requestId == "" {
+		return 0, false, nil
+	}
+	var log Log
+	err := LOG_DB.Select("user_id").Where("request_id = ?", requestId).Limit(1).First(&log).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	return log.UserId, true, nil
 }
 
 func RecordLog(userId int, logType int, content string) {
@@ -711,6 +737,62 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	return logs, total, err
 }
 
+// GetAgentScopedLogs 返回限定在一组用户 ID（代理商自己 + 其成员）内的日志。
+// 与 GetAllLogs 不同，它不接受 channel/username/upstream_request_id 等管理员维度的
+// 自由筛选，范围完全由服务端传入的 userIds 决定；结尾走 formatUserLogs 剥离
+// admin_info/audit_info/stream_status 与渠道名（保留 username/user_id 以区分成员），
+// 因此代理商拿到的字段口径与普通用户的 self 视图一致（最小权限）。
+func GetAgentScopedLogs(userIds []int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, taskID string) (logs []*Log, total int64, err error) {
+	if len(userIds) == 0 {
+		return nil, 0, nil
+	}
+	var tx *gorm.DB
+	if logType == LogTypeUnknown {
+		tx = LOG_DB.Where("logs.user_id IN ?", userIds)
+	} else {
+		tx = LOG_DB.Where("logs.user_id IN ? and logs.type = ?", userIds, logType)
+	}
+
+	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
+		return nil, 0, err
+	}
+	if tokenName != "" {
+		tx = tx.Where("logs.token_name = ?", tokenName)
+	}
+	if requestId != "" {
+		tx = tx.Where("logs.request_id = ?", requestId)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	}
+	if group != "" {
+		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if taskID != "" {
+		tx = tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"task_id":"%s"%%`, taskID))
+	}
+	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
+	if err != nil {
+		common.SysError("failed to count agent scoped logs: " + err.Error())
+		return nil, 0, errors.New("查询日志失败")
+	}
+	order := "logs.id desc"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		order = clickHouseLogOrder("logs.")
+	}
+	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	if err != nil {
+		common.SysError("failed to search agent scoped logs: " + err.Error())
+		return nil, 0, errors.New("查询日志失败")
+	}
+
+	formatUserLogs(logs, startIdx)
+	return logs, total, err
+}
+
 type Stat struct {
 	Quota int `json:"quota"`
 	Rpm   int `json:"rpm"`
@@ -767,6 +849,58 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	return stat, nil
+}
+
+// SumUsedQuotaByUserIds 与 SumUsedQuota 同构，但以 user_id IN (?) 取代 username 文本
+// 过滤，供代理商范围化 stat 端点使用：范围完全由服务端传入的 userIds 决定，不接受
+// channel 等管理员维度筛选。userIds 为空时返回零值 stat（绝不回退为全量）。
+func SumUsedQuotaByUserIds(userIds []int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string) (stat Stat, err error) {
+	if len(userIds) == 0 {
+		return stat, nil
+	}
+	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota").Where("user_id IN ?", userIds)
+
+	// 为rpm和tpm创建单独的查询
+	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm").Where("user_id IN ?", userIds)
+
+	if tokenName != "" {
+		tx = tx.Where("token_name = ?", tokenName)
+		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
+	}
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if tx, err = applyExplicitLogTextFilter(tx, "model_name", modelName); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "model_name", modelName); err != nil {
+		return stat, err
+	}
+	if group != "" {
+		tx = tx.Where(logGroupCol+" = ?", group)
+		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+
+	tx = tx.Where("type = ?", LogTypeConsume)
+	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
+
+	// 只统计最近60秒的rpm和tpm
+	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
+
+	// 执行查询
+	if err := tx.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query agent scoped log stat: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+		common.SysError("failed to query agent scoped rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
 

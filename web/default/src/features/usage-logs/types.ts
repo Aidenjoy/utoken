@@ -19,7 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Type definitions for usage logs
  */
+import type { LogsScope } from '@/hooks/use-admin'
+
 import type { UsageLog } from './data/schema'
+
+// Re-exported so usage-logs modules can source the scope union from '../types'
+// instead of reaching into the hooks layer directly.
+export type { LogsScope }
 
 // ============================================================================
 // Log Category Types
@@ -41,6 +47,9 @@ export interface CommonFilters {
   startTime?: Date
   endTime?: Date
   channel?: string
+  // Agent scope only: comma-joined member user ids to narrow the query. The
+  // server intersects this with the agent's allowed range (members + self).
+  userIds?: string
 }
 
 /**
@@ -299,6 +308,7 @@ export interface TaskLog {
   progress?: string
   progress_message_en?: string
   data?: unknown // upstream response data (JSON object/array or JSON string)
+  request_data?: unknown // user-submitted request body snapshot (base64 redacted)
   fail_reason?: string
   status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, QUEUED, UNKNOWN
   result_url?: string // task result URL (video address, etc.)
@@ -326,6 +336,8 @@ export interface GetLogsParams {
   request_id?: string
   upstream_request_id?: string
   task_id?: string
+  // Agent scope: comma-joined member user ids (server-enforced intersection).
+  user_ids?: string
 }
 
 export interface GetLogsResponse {
@@ -350,6 +362,8 @@ export interface GetLogStatsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  // Agent scope: comma-joined member user ids (server-enforced intersection).
+  user_ids?: string
 }
 
 export interface GetLogStatsResponse {
@@ -369,6 +383,8 @@ export interface GetMidjourneyLogsParams {
   mj_id?: string
   start_timestamp?: number
   end_timestamp?: number
+  // Agent scope: comma-joined member user ids (server-enforced intersection).
+  user_ids?: string
 }
 
 // ============================================================================
@@ -384,6 +400,8 @@ export interface GetTaskLogsParams {
   username?: string
   start_timestamp?: number
   end_timestamp?: number
+  // Agent scope: comma-joined member user ids (server-enforced intersection).
+  user_ids?: string
 }
 
 // ============================================================================
@@ -395,7 +413,7 @@ export interface GetTaskLogsParams {
  */
 export interface FetchLogsConfig {
   logCategory: LogCategory
-  isAdmin: boolean
+  scope: LogsScope
   page: number
   pageSize: number
   searchParams: Record<string, unknown>
@@ -418,4 +436,21 @@ export interface UserInfo {
   aff_count?: number
   aff_quota?: number
   remark?: string
+}
+
+// ============================================================================
+// Log Bodies (request/response snapshot) Types
+// ============================================================================
+
+// 使用日志详情的「传入/传出参数」快照：按 request_id 独立拉取，不进列表 payload。
+// 两侧均为原始字符串（base64 已脱敏、超限已截断），前端 pretty 打印后展示。
+export interface LogBodiesData {
+  request_data: string
+  response_data: string
+}
+
+export interface GetLogBodiesResponse {
+  success: boolean
+  message?: string
+  data?: LogBodiesData
 }

@@ -302,6 +302,8 @@ type AgentMember struct {
 	ModelDiscounts map[string]float64 `json:"model_discounts"`
 	CreatedAt      int64              `json:"created_at"`
 	TotalRecharge  int64              `json:"total_recharge"`
+	// Quota 成员当前钱包余额（quota 单位），供代理商判断催充时机；前端按货币格式化展示。
+	Quota int `json:"quota"`
 }
 
 // AgentRechargeRecord 代理商成员充值视图行：成员的成功充值流水。
@@ -317,8 +319,9 @@ type AgentRechargeRecord struct {
 	TradeNo       string  `json:"trade_no"`
 }
 
-// agentMemberIds 返回该代理商名下全部成员的用户 ID，供成员/充值两个自助查询共用。
-func agentMemberIds(agentId int) ([]int, error) {
+// ListAgentMemberIds 返回该代理商名下全部成员的用户 ID（不设上限），供成员/充值自助查询
+// 与代理商范围化日志/账单的服务端强制范围共用。代理商可见的数据一律限定在这批 ID 之内。
+func ListAgentMemberIds(agentId int) ([]int, error) {
 	if agentId <= 0 {
 		return nil, nil
 	}
@@ -327,6 +330,42 @@ func agentMemberIds(agentId int) ([]int, error) {
 		return nil, err
 	}
 	return userIds, nil
+}
+
+// AgentMemberOption 成员筛选下拉的轻量选项：只含标识与展示名，不携带折扣/充值等字段。
+type AgentMemberOption struct {
+	UserId      int    `json:"user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}
+
+// ListAgentMemberOptions 返回该代理商成员的轻量选项列表，仅供前端筛选下拉使用，
+// 按 id 倒序并设上限（与管理员账单用户选择器一致）。服务端强制范围不依赖此列表，
+// 而是走 ListAgentMemberIds 的全量 ID，故下拉上限不影响数据正确性。
+func ListAgentMemberOptions(agentId int, limit int) ([]*AgentMemberOption, error) {
+	if agentId <= 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+	var users []*User
+	if err := DB.Select("id, username, display_name").
+		Where("agent_id = ?", agentId).
+		Order("id desc").
+		Limit(limit).
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+	options := make([]*AgentMemberOption, 0, len(users))
+	for _, u := range users {
+		options = append(options, &AgentMemberOption{
+			UserId:      u.Id,
+			Username:    u.Username,
+			DisplayName: u.DisplayName,
+		})
+	}
+	return options, nil
 }
 
 // ListAgentMembers 分页返回绑定该代理商的用户（成员），并回填各自的成功充值面值总额
@@ -379,6 +418,7 @@ func ListAgentMembers(agentId int, pageInfo *common.PageInfo) (members []*AgentM
 			ModelDiscounts: discounts,
 			CreatedAt:      u.CreatedAt,
 			TotalRecharge:  rechargeByUser[u.Id],
+			Quota:          u.Quota,
 		})
 	}
 	return members, total, nil
@@ -387,7 +427,7 @@ func ListAgentMembers(agentId int, pageInfo *common.PageInfo) (members []*AgentM
 // ListAgentRechargeRecords 分页返回该代理商成员的成功充值流水，并回填用户名。
 // 先解析成员 id 集合再查充值表，避免跨表 JOIN 以保持三库兼容。
 func ListAgentRechargeRecords(agentId int, pageInfo *common.PageInfo) (records []*AgentRechargeRecord, total int64, err error) {
-	userIds, err := agentMemberIds(agentId)
+	userIds, err := ListAgentMemberIds(agentId)
 	if err != nil {
 		return nil, 0, err
 	}

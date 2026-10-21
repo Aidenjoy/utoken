@@ -41,12 +41,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { searchUsers } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 
 import { createAgent, listServableModels, updateAgent } from '../api'
-import { AGENT_STATUS, type Agent } from '../types'
+import { AGENT_MENU_KEYS, AGENT_STATUS, type Agent } from '../types'
 
 type Props = {
   open: boolean
@@ -142,6 +143,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
   const [rows, setRows] = useState<AuthorizationRow[]>([])
   const [status, setStatus] = useState<number>(AGENT_STATUS.ENABLED)
   const [remark, setRemark] = useState('')
+  const [menuKeys, setMenuKeys] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // 候选取全平台启用模型（/api/agent/admin/models），不按调用者分组过滤。
@@ -183,6 +185,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
     if (agent) {
       setStatus(agent.status)
       setRemark(agent.remark ?? '')
+      setMenuKeys(agent.menu_visibility ?? [])
       setRows(
         Object.entries(agent.model_discounts ?? {})
           .sort(([a], [b]) => a.localeCompare(b))
@@ -196,6 +199,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
     }
     setStatus(AGENT_STATUS.ENABLED)
     setRemark('')
+    setMenuKeys([])
     // 已铺满过就不再重填，避免 servable 后台刷新时覆盖用户的调整。
     if (hasInitializedForCreate.current) return
     const models = servable.data?.data ?? []
@@ -256,6 +260,17 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
     setRows((prev) => prev.filter((row) => row.id !== id))
   }
 
+  // 逐个开/关代理商可见菜单；menuKeys 为空时全部隐藏（默认）。
+  const setMenuKey = (key: string, visible: boolean) => {
+    setMenuKeys((prev) =>
+      visible
+        ? prev.includes(key)
+          ? prev
+          : [...prev, key]
+        : prev.filter((item) => item !== key)
+    )
+  }
+
   // 校验与后端 common.NormalizeAgentModelFloors 对齐，但错误就地提示而不是等 400。
   const seen = new Set<string>()
   let validationError = ''
@@ -307,6 +322,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
           model_discounts: modelDiscounts,
           status,
           remark: remark.trim(),
+          menu_visibility: menuKeys,
         })
         if (!res.success) {
           toast.error(res.message || t('Failed to save'))
@@ -318,6 +334,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
           user_id: selected.id,
           model_discounts: modelDiscounts,
           remark: remark.trim(),
+          menu_visibility: menuKeys,
         })
         if (!res.success) {
           toast.error(res.message || t('Failed to create'))
@@ -597,6 +614,33 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
               value={remark}
               onChange={(event) => setRemark(event.target.value)}
             />
+          </div>
+
+          <div className='space-y-2'>
+            <Label>{t('Menu Settings')}</Label>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Menus shown in the agent sidebar. Everything is hidden by default; enable only what this agent needs.'
+              )}
+            </p>
+            <div className='grid gap-2 sm:grid-cols-2'>
+              {AGENT_MENU_KEYS.map((menu) => (
+                <label
+                  key={menu.key}
+                  className='border-input bg-muted/20 flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2'
+                >
+                  <span className='min-w-0 truncate text-sm'>
+                    {t(menu.labelKey)}
+                  </span>
+                  <Switch
+                    checked={menuKeys.includes(menu.key)}
+                    onCheckedChange={(checked) =>
+                      setMenuKey(menu.key, checked === true)
+                    }
+                  />
+                </label>
+              ))}
+            </div>
           </div>
 
           {validationError ? (

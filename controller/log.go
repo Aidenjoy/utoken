@@ -177,3 +177,76 @@ func DeleteHistoryLogs(c *gin.Context) {
 	})
 	return
 }
+
+// GetLogBodies 使用日志详情的「传入/传出参数」快照查询：GET /api/log/bodies?request_id=...
+// 挂在日志 UserAuth 路由组，可见范围与日志列表一致（管理员任意 / 本人自己的 /
+// 代理商名下成员范围内的）。先按 request_id（已有索引 idx_logs_request_id）定位日志行归属
+// 用户；查不到日志行返回 404，越权返回空数据（不泄露该 request_id 是否有快照）。
+func GetLogBodies(c *gin.Context) {
+	requestId := c.Query("request_id")
+	if requestId == "" {
+		common.ApiErrorMsg(c, "request_id is required")
+		return
+	}
+
+	ownerId, found, err := model.GetLogUserIdByRequestId(requestId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "log not found",
+		})
+		return
+	}
+
+	if !canViewLogBodies(c, ownerId) {
+		// 越权：返回空数据而非 403，不泄露该 request_id 是否存在快照。
+		common.ApiSuccess(c, gin.H{"request_data": "", "response_data": ""})
+		return
+	}
+
+	body, ok, err := model.GetLogBodyByRequestId(requestId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !ok {
+		// 历史日志或未开启快照：无 bodies 行，返回空（前端 JsonBlock 显示「None」）。
+		common.ApiSuccess(c, gin.H{"request_data": "", "response_data": ""})
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"request_data":  body.RequestData,
+		"response_data": body.ResponseData,
+	})
+}
+
+// canViewLogBodies 判定当前登录用户是否可查看 ownerId 的日志快照：管理员放行、本人放行、
+// 代理商放行其名下成员，其余一律拒绝。agent_id 不在 UserAuth 上下文，故按当前用户查
+// agents 表判定身份（与 middleware.AgentAuth 同源）。
+func canViewLogBodies(c *gin.Context, ownerId int) bool {
+	if c.GetInt("role") >= common.RoleAdminUser {
+		return true
+	}
+	selfId := c.GetInt("id")
+	if selfId > 0 && selfId == ownerId {
+		return true
+	}
+	agent, err := model.GetAgentByUserId(selfId)
+	if err != nil || agent.Status != model.AgentStatusEnabled {
+		return false
+	}
+	memberIds, err := model.ListAgentMemberIds(agent.Id)
+	if err != nil {
+		return false
+	}
+	for _, id := range memberIds {
+		if id == ownerId {
+			return true
+		}
+	}
+	return false
+}

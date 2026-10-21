@@ -30,7 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useIsAdmin } from '@/hooks/use-admin'
+import { MultiSelect } from '@/components/multi-select'
+import { useAgentMemberOptions } from '@/features/agents/hooks'
+import { useLogsScope } from '@/hooks/use-admin'
 
 import { TASK_STATUS_ALL_VALUE, TASK_STATUS_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
@@ -79,7 +81,10 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
-  const isAdmin = useIsAdmin()
+  const scope = useLogsScope()
+  const isAdmin = scope === 'admin'
+  const isAgent = scope === 'agent'
+  const { options: memberOptions } = useAgentMemberOptions()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
 
   const [filters, setFilters] = useState<TaskLogsFilters>(() => {
@@ -96,6 +101,9 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
       ...(searchParams.channel
         ? { channel: String(searchParams.channel) }
+        : {}),
+      ...(searchParams.userIds
+        ? { userIds: String(searchParams.userIds) }
         : {}),
     }
     const next: TaskLogsFilters =
@@ -117,6 +125,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     searchParams.startTime,
     searchParams.endTime,
     searchParams.channel,
+    searchParams.userIds,
     searchParams.filter,
     searchParams.status,
     searchParams.username,
@@ -181,6 +190,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   const hasAdditionalFilters =
     !!filterValue ||
     !!filters.channel ||
+    !!filters.userIds ||
     !!(filters as TaskLogFilters).status ||
     !!(filters as TaskLogFilters).username
   const dateRangeFilter = (
@@ -213,6 +223,21 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         value={filters.channel || ''}
         onChange={(e) => handleChange('channel', e.target.value)}
         onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  ) : null
+
+  // Agent scope: narrow by member (both task and drawing categories). The
+  // server intersects this with the agent's allowed range, so the picker is a
+  // convenience rather than a security boundary.
+  const memberFilter = isAgent ? (
+    <LogsFilterField>
+      <MultiSelect
+        options={memberOptions}
+        selected={filters.userIds ? filters.userIds.split(',').filter(Boolean) : []}
+        onChange={(values) => handleChange('userIds', values.join(','))}
+        placeholder={t('Select members')}
+        maxVisibleChips={2}
       />
     </LogsFilterField>
   ) : null
@@ -290,6 +315,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         <>
           {dateRangeFilter}
           {taskIdFilter}
+          {memberFilter}
           {channelFilter}
           {statusFilter}
           {usernameFilter}
@@ -299,6 +325,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       mobileFilters={
         <>
           {taskIdFilter}
+          {memberFilter}
           {channelFilter}
           {statusFilter}
           {usernameFilter}
@@ -307,6 +334,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       mobileFilterCount={
         [
           filterValue,
+          filters.userIds,
           filters.channel,
           (filters as TaskLogFilters).status,
           (filters as TaskLogFilters).username,

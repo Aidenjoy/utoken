@@ -47,7 +47,7 @@ import {
   mjStatusMapper,
   mjSubmitResultMapper,
 } from '../../lib/mappers'
-import type { MidjourneyLog } from '../../types'
+import type { MidjourneyLog, LogsScope } from '../../types'
 import { ImageDialog } from '../dialogs/image-dialog'
 import { PromptDialog } from '../dialogs/prompt-dialog'
 import {
@@ -82,8 +82,9 @@ function getDrawingTypeIcon(action: string): LucideIcon {
 }
 
 export function useDrawingLogsColumns(
-  isAdmin: boolean
+  scope: LogsScope
 ): ColumnDef<MidjourneyLog>[] {
+  const isAdmin = scope === 'admin'
   const { t } = useTranslation()
   const columns: ColumnDef<MidjourneyLog>[] = [
     {

@@ -31,6 +31,12 @@ export interface Agent {
   created_by?: number
   created_at?: number
   updated_at?: number
+  /**
+   * Sidebar feature menus this agent may see. Empty/absent = all hidden (the
+   * default, since agents only develop customers). Keys come from
+   * `AGENT_MENU_KEYS`; the server rejects unknown keys.
+   */
+  menu_visibility?: string[]
   // Backfilled for display, not persisted
   username?: string
   display_name?: string
@@ -77,6 +83,19 @@ export interface AgentMember {
   model_discounts: Record<string, number>
   created_at: number
   total_recharge: number
+  /** Current wallet balance in quota units; format with formatQuota for money. */
+  quota: number
+}
+
+/**
+ * Lightweight member option for the agent-scoped filter pickers (usage logs /
+ * billing center). Carries only identity + display name, never the discount or
+ * recharge fields that the full AgentMember exposes.
+ */
+export interface AgentMemberOption {
+  user_id: number
+  username: string
+  display_name: string
 }
 
 // A successful top-up made by one of the agent's members.
@@ -96,6 +115,26 @@ export interface AgentMemberDiscounts {
   discounts: Record<string, number>
   floors: Record<string, number>
 }
+
+/**
+ * The configurable sidebar menus an admin may reveal for an agent. `key` must
+ * stay in sync with the backend `model.AgentMenuKeys`; `labelKey` reuses the
+ * existing sidebar i18n source string so labels never drift.
+ */
+export interface AgentMenuItem {
+  key: string
+  labelKey: string
+}
+
+export const AGENT_MENU_KEYS: AgentMenuItem[] = [
+  { key: 'experience', labelKey: 'Test Models' },
+  { key: 'video_factory', labelKey: 'Video Factory' },
+  { key: 'model_styling', labelKey: 'Model Styling' },
+  { key: 'viral_hero', labelKey: 'Viral Hero Image' },
+  { key: 'viral_design', labelKey: 'Viral Design' },
+  { key: 'asset_library', labelKey: 'Asset Library' },
+  { key: 'prompt_library', labelKey: 'Prompt Library' },
+]
 
 export const AGENT_STATUS = {
   ENABLED: 1,

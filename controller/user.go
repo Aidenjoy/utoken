@@ -577,11 +577,13 @@ func GetSelf(c *gin.Context) {
 	// 仅启用状态的代理商才算数；查不到或已禁用一律按普通用户处理，不阻断。
 	isAgent := false
 	agentModelDiscounts := map[string]float64{}
+	agentMenuVisibility := []string{}
 	if agent, agentErr := model.GetAgentByUserId(id); agentErr == nil && agent != nil && agent.Status == model.AgentStatusEnabled {
 		isAgent = true
 		if floors := agent.ModelFloors(); floors != nil {
 			agentModelDiscounts = floors
 		}
+		agentMenuVisibility = agent.MenuVisibilityList
 	}
 
 	// 构建响应数据，包含用户信息和权限
@@ -623,6 +625,9 @@ func GetSelf(c *gin.Context) {
 		// agent_model_discounts 是本人作为代理商的授权配置 {模型名: 折扣下限}，
 		// 非代理商时为空对象。前端用它约束「成员折扣编辑器」的模型下拉与百分比下限。
 		"agent_model_discounts": agentModelDiscounts,
+		// agent_menu_visibility 是本人作为代理商被允许在侧栏看到的功能菜单键集合，
+		// 空数组表示全部隐藏（代理商默认只发展客户）。非代理商恒为空数组，前端据此不隐藏任何菜单。
+		"agent_menu_visibility": agentMenuVisibility,
 	}
 
 	c.JSON(http.StatusOK, gin.H{

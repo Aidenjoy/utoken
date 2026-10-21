@@ -50,6 +50,8 @@ type TaskDto struct {
 	Properties any             `json:"properties"`
 	Username   string          `json:"username,omitempty"`
 	Data       json.RawMessage `json:"data"`
+	// RequestData 用户提交任务时的请求体快照（base64 已截断），见 model.Task.RequestData。
+	RequestData json.RawMessage `json:"request_data,omitempty"`
 }
 
 type FetchReq struct {

@@ -80,6 +80,15 @@ export interface AuthUser {
   is_agent?: boolean
   agent_model_discounts?: Record<string, number>
   /**
+   * Sidebar feature menus this agent is allowed to see (keys such as
+   * `experience`, `video_factory`, `model_styling`, `viral_hero`,
+   * `viral_design`, `asset_library`, `prompt_library`). Empty/undefined means
+   * every gated menu is hidden — the default for agents, who only develop
+   * customers. Admins toggle it per agent in Agent Management; non-agents
+   * ignore it entirely (no menu is ever hidden for them).
+   */
+  agent_menu_visibility?: string[]
+  /**
    * Whether an admin configured at least one effective per-model discount
    * (ratio < 1) for this user. Pushed by `/api/user/self`; the discount details
    * themselves stay on the admin-only endpoint. Drives the default visibility

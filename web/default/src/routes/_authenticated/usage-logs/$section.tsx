@@ -44,6 +44,9 @@ const usageLogsSearchSchema = z.object({
   channel: z.string().optional().catch(''),
   group: z.string().optional().catch(''),
   username: z.string().optional().catch(''),
+  // 代理商范围化：按成员筛选（逗号分隔的 user id 列表）。仅 agent scope 会用到，
+  // 服务端会与「成员 ∪ 自己」取交集，越权 id 被剔除。
+  userIds: z.string().optional().catch(''),
   requestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
   taskId: z.string().optional().catch(''),

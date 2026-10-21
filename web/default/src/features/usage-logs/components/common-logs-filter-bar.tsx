@@ -24,6 +24,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { MultiSelect } from '@/components/multi-select'
 import {
   Select,
   SelectContent,
@@ -37,7 +38,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useIsAdmin } from '@/hooks/use-admin'
+import { useAgentMemberOptions } from '@/features/agents/hooks'
+import { useLogsScope } from '@/hooks/use-admin'
 
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
@@ -86,6 +88,7 @@ function buildSearchSourceKey(values: {
   token?: unknown
   group?: unknown
   username?: unknown
+  userIds?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
   taskId?: unknown
@@ -99,6 +102,7 @@ function buildSearchSourceKey(values: {
     values.token,
     values.group,
     values.username,
+    values.userIds,
     values.requestId,
     values.upstreamRequestId,
     values.taskId,
@@ -119,7 +123,10 @@ export function CommonLogsFilterBar<TData>(
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
-  const isAdmin = useIsAdmin()
+  const scope = useLogsScope()
+  const isAdmin = scope === 'admin'
+  const isAgent = scope === 'agent'
+  const { options: memberOptions } = useAgentMemberOptions()
   const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
 
@@ -133,6 +140,7 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token,
       group: searchParams.group,
       username: searchParams.username,
+      userIds: searchParams.userIds,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
       taskId: searchParams.taskId,
@@ -148,6 +156,7 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
       username: searchParams.username || undefined,
+      userIds: searchParams.userIds || undefined,
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
       taskId: searchParams.taskId || undefined,
@@ -165,6 +174,7 @@ export function CommonLogsFilterBar<TData>(
     searchParams.token,
     searchParams.group,
     searchParams.username,
+    searchParams.userIds,
     searchParams.requestId,
     searchParams.upstreamRequestId,
     searchParams.taskId,
@@ -243,6 +253,7 @@ export function CommonLogsFilterBar<TData>(
     !!filters.token ||
     !!filters.username ||
     !!filters.channel ||
+    !!filters.userIds ||
     !!filters.requestId ||
     !!filters.upstreamRequestId ||
     !!filters.taskId
@@ -255,8 +266,9 @@ export function CommonLogsFilterBar<TData>(
     filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
+    isAgent ? filters.userIds : undefined,
     filters.requestId,
-    filters.upstreamRequestId,
+    isAgent ? undefined : filters.upstreamRequestId,
     filters.taskId,
   ].filter(Boolean).length
   const sensitiveType = sensitiveVisible ? 'text' : 'password'
@@ -368,6 +380,19 @@ export function CommonLogsFilterBar<TData>(
   )
   const advancedFilters = (
     <>
+      {isAgent && (
+        <LogsFilterField>
+          <MultiSelect
+            options={memberOptions}
+            selected={
+              filters.userIds ? filters.userIds.split(',').filter(Boolean) : []
+            }
+            onChange={(values) => handleChange('userIds', values.join(','))}
+            placeholder={t('Select members')}
+            maxVisibleChips={2}
+          />
+        </LogsFilterField>
+      )}
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Token Name')}
@@ -406,14 +431,16 @@ export function CommonLogsFilterBar<TData>(
           onKeyDown={handleKeyDown}
         />
       </LogsFilterField>
-      <LogsFilterField>
-        <LogsFilterInput
-          placeholder={t('Upstream Request ID')}
-          value={filters.upstreamRequestId || ''}
-          onChange={(e) => handleChange('upstreamRequestId', e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-      </LogsFilterField>
+      {!isAgent && (
+        <LogsFilterField>
+          <LogsFilterInput
+            placeholder={t('Upstream Request ID')}
+            value={filters.upstreamRequestId || ''}
+            onChange={(e) => handleChange('upstreamRequestId', e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        </LogsFilterField>
+      )}
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Task ID')}

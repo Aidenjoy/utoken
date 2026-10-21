@@ -3,11 +3,18 @@ package controller
 import (
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -288,4 +295,349 @@ func UpdateAgentMemberModelDiscounts(c *gin.Context) {
 		return
 	}
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, gin.H{"discounts": merged})
+}
+
+// ---------------------------------------------------------------------------
+// 代理商范围化的使用日志 / 任务日志 / 绘图日志 / 账单中心
+//
+// 隐私总则：代理商可见的数据一律限定在 allowedIds = 名下成员 ∪ 自己 之内；客户端传入的
+// user_ids 只能在此集合内取子集，交集为空则返回空结果，绝不回退为全量。身份（agent_id
+// 与自己的 user id）一律取自服务端写入的 gin.Context，忽略客户端越权值。字段口径与普通
+// 用户的 self 视图一致（最小权限）：不含 channel、admin_info、操作人、企业归属等内部字段。
+// ---------------------------------------------------------------------------
+
+// agentLogScope 返回当前代理商可见的全部用户 ID：名下成员 ∪ 自己。
+// 这是服务端强制范围的“全集”，客户端 user_ids 只能在其内取子集。
+func agentLogScope(c *gin.Context) ([]int, error) {
+	memberIds, err := model.ListAgentMemberIds(c.GetInt("agent_id"))
+	if err != nil {
+		return nil, err
+	}
+	allowed := make([]int, 0, len(memberIds)+1)
+	seen := make(map[int]bool, len(memberIds)+1)
+	for _, id := range memberIds {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			allowed = append(allowed, id)
+		}
+	}
+	// 并入代理商自己的 user id：代理商本人同样可能产生使用/充值记录。
+	if selfId := c.GetInt("id"); selfId > 0 && !seen[selfId] {
+		allowed = append(allowed, selfId)
+	}
+	return allowed, nil
+}
+
+// effectiveScopeIds 解析客户端 user_ids 并与 allowedIds 取交集：
+//   - 缺省或 "all"：返回全部 allowedIds（整个可见范围）；
+//   - 明确的 id 列表：只保留落在 allowedIds 内的 id；
+//   - 交集为空（请求了非本人成员的 id）或无合法 id：返回空切片。
+//
+// 返回空切片时调用方必须直接返回空结果，绝不能落到“无 user_id 过滤 = 全量”的分支。
+func effectiveScopeIds(c *gin.Context, allowedIds []int) []int {
+	raw := strings.TrimSpace(c.Query("user_ids"))
+	if raw == "" || strings.EqualFold(raw, "all") {
+		return allowedIds
+	}
+	requested := parseIntList(raw) // 仅保留 id>0
+	if len(requested) == 0 {
+		return nil
+	}
+	allowedSet := make(map[int]bool, len(allowedIds))
+	for _, id := range allowedIds {
+		allowedSet[id] = true
+	}
+	effective := make([]int, 0, len(requested))
+	for _, id := range requested {
+		if allowedSet[id] {
+			effective = append(effective, id)
+		}
+	}
+	return effective
+}
+
+// agentBillingFilter 构造代理商账单查询的强制过滤器：用户维度限定为 effectiveIds
+// （为空则 None → 空结果），企业维度恒为 None（代理商不管理企业，也不应看到企业归属）。
+func agentBillingFilter(c *gin.Context, effectiveIds []int) billingFilter {
+	userScope := model.BillingScope{Mode: model.BillingScopeNone}
+	if len(effectiveIds) > 0 {
+		userScope = model.BillingScope{Mode: model.BillingScopeIds, Ids: effectiveIds}
+	}
+	filter := billingFilter{
+		userScope: userScope,
+		orgScope:  model.BillingScope{Mode: model.BillingScopeNone},
+	}
+	filter.start, _ = strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	filter.end, _ = strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	return filter
+}
+
+// GetAgentLogs 代理商范围化的通用使用日志（common）。范围由服务端强制，
+// 不接受 channel/username/upstream_request_id 等管理员维度筛选。
+func GetAgentLogs(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	effectiveIds := effectiveScopeIds(c, allowedIds)
+	pageInfo := common.GetPageQuery(c)
+	if len(effectiveIds) == 0 {
+		pageInfo.SetTotal(0)
+		pageInfo.SetItems([]*model.Log{})
+		common.ApiSuccess(c, pageInfo)
+		return
+	}
+	logType, _ := strconv.Atoi(c.Query("type"))
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	tokenName := c.Query("token_name")
+	modelName := c.Query("model_name")
+	group := c.Query("group")
+	requestId := c.Query("request_id")
+	taskID := c.Query("task_id")
+	logs, total, err := model.GetAgentScopedLogs(effectiveIds, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, taskID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(logs)
+	common.ApiSuccess(c, pageInfo)
+}
+
+// GetAgentLogsStat 代理商范围化日志的额度/rpm/tpm 统计。
+func GetAgentLogsStat(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	effectiveIds := effectiveScopeIds(c, allowedIds)
+	logType, _ := strconv.Atoi(c.Query("type"))
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	tokenName := c.Query("token_name")
+	modelName := c.Query("model_name")
+	group := c.Query("group")
+	stat, err := model.SumUsedQuotaByUserIds(effectiveIds, logType, startTimestamp, endTimestamp, modelName, tokenName, group)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(200, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"quota": stat.Quota,
+			"rpm":   stat.Rpm,
+			"tpm":   stat.Tpm,
+		},
+	})
+}
+
+// GetAgentTasks 代理商范围化的任务日志（同步任务）。以 UserIDs 强制范围，用户名回填
+// （tasksToDto 第二参 true）以便区分成员；不接受 username/channel 文本筛选。
+func GetAgentTasks(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	effectiveIds := effectiveScopeIds(c, allowedIds)
+	pageInfo := common.GetPageQuery(c)
+	if len(effectiveIds) == 0 {
+		pageInfo.SetTotal(0)
+		pageInfo.SetItems([]*dto.TaskDto{})
+		common.ApiSuccess(c, pageInfo)
+		return
+	}
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	queryParams := model.SyncTaskQueryParams{
+		Platform:       constant.TaskPlatform(c.Query("platform")),
+		TaskID:         c.Query("task_id"),
+		Status:         c.Query("status"),
+		Action:         c.Query("action"),
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   endTimestamp,
+		UserIDs:        effectiveIds,
+	}
+	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := model.TaskCountAllTasks(queryParams)
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(tasksToDto(items, true))
+	common.ApiSuccess(c, pageInfo)
+}
+
+// GetAgentMidjourney 代理商范围化的绘图日志（Midjourney）。以 UserIDs 强制范围，
+// 沿用 MjForwardUrlEnabled 的图片地址重写；不接受 channel_id 筛选。
+func GetAgentMidjourney(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	effectiveIds := effectiveScopeIds(c, allowedIds)
+	pageInfo := common.GetPageQuery(c)
+	if len(effectiveIds) == 0 {
+		pageInfo.SetTotal(0)
+		pageInfo.SetItems([]*model.Midjourney{})
+		common.ApiSuccess(c, pageInfo)
+		return
+	}
+	queryParams := model.TaskQueryParams{
+		MjID:           c.Query("mj_id"),
+		StartTimestamp: c.Query("start_timestamp"),
+		EndTimestamp:   c.Query("end_timestamp"),
+		UserIDs:        effectiveIds,
+	}
+	items := model.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	total := model.CountAllTasks(queryParams)
+	if setting.MjForwardUrlEnabled {
+		for i, midjourney := range items {
+			midjourney.ImageUrl = system_setting.ServerAddress + "/mj/image/" + midjourney.MjId
+			items[i] = midjourney
+		}
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+// GetAgentMemberOptions 返回代理商成员的轻量下拉选项，供前端“按成员筛选”使用。
+// 仅供选择器展示，服务端强制范围另走 ListAgentMemberIds 的全量 ID，不受此上限影响。
+func GetAgentMemberOptions(c *gin.Context) {
+	options, err := model.ListAgentMemberOptions(c.GetInt("agent_id"), 1000)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, options)
+}
+
+// GetAgentBillingRecharge 代理商范围化的充值流水。强制 userScope=成员交集、orgScope=None；
+// 相比管理员端点清空 operator（操作人）——代理商无权查看调额操作人等内部信息。
+func GetAgentBillingRecharge(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filter := agentBillingFilter(c, effectiveScopeIds(c, allowedIds))
+	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	for _, record := range records {
+		record.Operator = ""
+	}
+	c.JSON(200, gin.H{
+		"success": true,
+		"message": "",
+		"data":    gin.H{"records": records, "stat": stat},
+	})
+}
+
+// GetAgentBillingConsumption 代理商范围化的消耗明细。强制 userScope=成员交集、orgScope=None；
+// 原始日志经 StripAdminOnlyLogFields 降到 self 口径（剥离渠道名与 admin_info 等），并省略
+// user_org/org_names——代理商不管理企业，也不应看到成员的企业归属。
+func GetAgentBillingConsumption(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filter := agentBillingFilter(c, effectiveScopeIds(c, allowedIds))
+	pageInfo := common.GetPageQuery(c)
+	logs, total, stat, _, _, err := model.GetBillingConsumption(filter.userScope, filter.orgScope, filter.start, filter.end, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.StripAdminOnlyLogFields(logs)
+	c.JSON(200, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"items": logs,
+			"total": total,
+			"stat":  stat,
+		},
+	})
+}
+
+// ExportAgentBillingRecharge 导出代理商范围化充值流水 CSV。相比管理员导出去掉「操作人」列。
+func ExportAgentBillingRecharge(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filter := agentBillingFilter(c, effectiveScopeIds(c, allowedIds))
+	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	header := []string{"时间", "类型", "对象", "金额", "支付金额", "支付方式", "订单号"}
+	rows := make([][]string, 0, len(records)+1)
+	var totalMoney float64
+	for _, record := range records {
+		totalMoney += record.Money
+		rows = append(rows, []string{
+			billingTimestamp(record.CreatedAt),
+			rechargeSourceText(record.Source),
+			rechargeTargetText(record),
+			logger.FormatQuota(record.Quota),
+			logger.FormatLocalCurrency(record.Money),
+			record.PaymentMethod,
+			record.TradeNo,
+		})
+	}
+	rows = append(rows, []string{
+		"合计", "", "",
+		logger.FormatQuota(stat.TotalQuota),
+		logger.FormatLocalCurrency(totalMoney),
+		"", "",
+	})
+	writeBillingCSV(c, "billing-recharge-"+time.Now().Format("20060102-150405")+".csv", header, rows)
+}
+
+// ExportAgentBillingConsumption 导出代理商范围化消耗明细 CSV。相比管理员导出去掉「企业」列。
+func ExportAgentBillingConsumption(c *gin.Context) {
+	allowedIds, err := agentLogScope(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	filter := agentBillingFilter(c, effectiveScopeIds(c, allowedIds))
+	logs, _, _, err := model.GetBillingConsumptionAll(filter.userScope, filter.orgScope, filter.start, filter.end)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	header := []string{"时间", "用户", "令牌", "模型", "类型", "金额", "输入tokens", "输出tokens", "请求ID"}
+	rows := make([][]string, 0, len(logs))
+	for _, log := range logs {
+		quota := log.Quota
+		typeText := "消耗"
+		if log.Type == model.LogTypeRefund {
+			quota = -quota
+			typeText = "退款"
+		}
+		rows = append(rows, []string{
+			billingTimestamp(log.CreatedAt),
+			log.Username,
+			log.TokenName,
+			log.ModelName,
+			typeText,
+			logger.FormatQuota(quota),
+			strconv.Itoa(log.PromptTokens),
+			strconv.Itoa(log.CompletionTokens),
+			log.RequestId,
+		})
+	}
+	writeBillingCSV(c, "billing-consumption-"+time.Now().Format("20060102-150405")+".csv", header, rows)
 }
