@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Check, Cloud, Copy, ExternalLink, Info, LogIn, Monitor } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -32,8 +32,8 @@ import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
 import type { TaskLog } from '../../types'
 
-// Video-generation actions resolve their result through the authenticated
-// /v1/videos/{id}/content proxy, matching the inline preview in the list.
+// Video-generation actions can fall back to the authenticated
+// /v1/videos/{id}/content proxy when no direct result URL is available.
 const VIDEO_ACTIONS = new Set<string>([
   TASK_ACTIONS.GENERATE,
   TASK_ACTIONS.TEXT_GENERATE,
@@ -173,8 +173,23 @@ export function TaskDetailsDialog({
   const isSuccess = log.status === TASK_STATUS.SUCCESS
   const directResultUrl =
     log.result_url && /^https?:\/\//.test(log.result_url) ? log.result_url : ''
-  const videoSrc =
-    isSuccess && isVideoAction && proxyVideoUrl ? proxyVideoUrl : directResultUrl
+  // Prefer the direct result URL: object storage honours Range requests, which
+  // <video> needs to stream and seek. The /content proxy streams the whole body
+  // as a plain 200 (it never forwards Range), so playback stalls at 0:00. Fall
+  // back to the proxy for providers without a direct URL, or when the signed
+  // direct URL has expired and errored.
+  const proxyApplicable = isSuccess && isVideoAction && !!proxyVideoUrl
+  const [videoFallback, setVideoFallback] = useState(false)
+  useEffect(() => {
+    setVideoFallback(false)
+  }, [log.task_id])
+  const baseVideoSrc = directResultUrl || (proxyApplicable ? proxyVideoUrl : '')
+  const videoSrc = videoFallback && proxyApplicable ? proxyVideoUrl : baseVideoSrc
+  const handleVideoError = () => {
+    if (!videoFallback && directResultUrl && proxyApplicable) {
+      setVideoFallback(true)
+    }
+  }
 
   return (
     <Dialog
@@ -188,147 +203,157 @@ export function TaskDetailsDialog({
       }
       description={t('View the full request and response data for this task')}
       titleClassName='flex items-center gap-2'
-      contentClassName='sm:max-w-3xl'
-      contentHeight='auto'
-      bodyClassName='space-y-4'
+      contentClassName='sm:max-w-5xl'
+      contentHeight='calc(100vh - 15rem)'
+      bodyClassName='h-full min-h-0'
     >
-      {/* 1. Basic info */}
-      <DetailSection icon={<Info className='size-3.5' />} label={t('Basic Info')}>
-        <div className='grid gap-1.5 sm:grid-cols-2'>
-          <DetailRow
-            className='sm:col-span-2'
-            label={t('Task ID')}
-            mono
-            value={
-              <span className='inline-flex items-center gap-1.5'>
-                <span className='break-all'>{log.task_id || '-'}</span>
-                {log.task_id && (
-                  <button
-                    type='button'
-                    onClick={() => copyToClipboard(log.task_id)}
-                    title={t('Copy to clipboard')}
-                    className='text-muted-foreground hover:text-foreground shrink-0'
-                  >
-                    {copiedText === log.task_id ? (
-                      <Check className='size-3 text-green-600' />
-                    ) : (
-                      <Copy className='size-3' />
+      <div className='grid min-h-0 gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_minmax(16rem,21rem)]'>
+        {/* Left: scrollable detail sections */}
+        <div className='min-w-0 space-y-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1'>
+          {/* 1. Basic info */}
+          <DetailSection icon={<Info className='size-3.5' />} label={t('Basic Info')}>
+            <div className='grid gap-1.5 sm:grid-cols-2'>
+              <DetailRow
+                className='sm:col-span-2'
+                label={t('Task ID')}
+                mono
+                value={
+                  <span className='inline-flex items-center gap-1.5'>
+                    <span className='break-all'>{log.task_id || '-'}</span>
+                    {log.task_id && (
+                      <button
+                        type='button'
+                        onClick={() => copyToClipboard(log.task_id)}
+                        title={t('Copy to clipboard')}
+                        className='text-muted-foreground hover:text-foreground shrink-0'
+                      >
+                        {copiedText === log.task_id ? (
+                          <Check className='size-3 text-green-600' />
+                        ) : (
+                          <Copy className='size-3' />
+                        )}
+                      </button>
                     )}
-                  </button>
-                )}
-              </span>
-            }
-          />
-          <DetailRow label={t('Platform')} value={t(log.platform) || '-'} />
-          <DetailRow
-            label={t('Action')}
-            value={t(taskActionMapper.getLabel(log.action)) || log.action || '-'}
-          />
-          <DetailRow
-            label={t('Status')}
-            value={
-              <StatusBadge
-                label={t(
-                  taskStatusMapper.getLabel(log.status, log.status || 'Submitting')
-                )}
-                variant={taskStatusMapper.getVariant(log.status)}
-                size='sm'
-                copyable={false}
-                className='-ml-1.5'
+                  </span>
+                }
               />
-            }
-          />
-          <DetailRow label={t('Progress')} value={log.progress || '-'} />
-          <DetailRow label={t('Channel ID')} mono value={log.channel_id || '-'} />
-          <DetailRow
-            label={t('User')}
-            value={log.username || String(log.user_id ?? '-')}
-          />
-          <DetailRow label={t('Group')} value={log.group || '-'} />
-          <DetailRow label={t('Cost')} mono value={formatLogQuota(log.quota ?? 0)} />
-          <DetailRow label={t('Submit Time')} mono value={formatTime(log.submit_time)} />
-          <DetailRow label={t('Start Time')} mono value={formatTime(log.start_time)} />
-          <DetailRow label={t('Finish Time')} mono value={formatTime(log.finish_time)} />
-          <DetailRow
-            label={t('Duration')}
-            mono
-            value={durationSec > 0 ? formatUseTime(durationSec) : '-'}
-          />
+              <DetailRow label={t('Platform')} value={t(log.platform) || '-'} />
+              <DetailRow
+                label={t('Action')}
+                value={t(taskActionMapper.getLabel(log.action)) || log.action || '-'}
+              />
+              <DetailRow
+                label={t('Status')}
+                value={
+                  <StatusBadge
+                    label={t(
+                      taskStatusMapper.getLabel(log.status, log.status || 'Submitting')
+                    )}
+                    variant={taskStatusMapper.getVariant(log.status)}
+                    size='sm'
+                    copyable={false}
+                    className='-ml-1.5'
+                  />
+                }
+              />
+              <DetailRow label={t('Progress')} value={log.progress || '-'} />
+              <DetailRow label={t('Channel ID')} mono value={log.channel_id || '-'} />
+              <DetailRow
+                label={t('User')}
+                value={log.username || String(log.user_id ?? '-')}
+              />
+              <DetailRow label={t('Group')} value={log.group || '-'} />
+              <DetailRow label={t('Cost')} mono value={formatLogQuota(log.quota ?? 0)} />
+              <DetailRow label={t('Submit Time')} mono value={formatTime(log.submit_time)} />
+              <DetailRow label={t('Start Time')} mono value={formatTime(log.start_time)} />
+              <DetailRow label={t('Finish Time')} mono value={formatTime(log.finish_time)} />
+              <DetailRow
+                label={t('Duration')}
+                mono
+                value={durationSec > 0 ? formatUseTime(durationSec) : '-'}
+              />
+            </div>
+          </DetailSection>
+
+          {/* 2. Input parameters */}
+          <DetailSection
+            icon={<LogIn className='size-3.5' />}
+            label={t('Input Parameters')}
+          >
+            <DetailRow label={t('Model')} mono value={model} />
+            {properties.upstream_model_name && (
+              <DetailRow
+                label={t('Upstream Model')}
+                mono
+                value={properties.upstream_model_name}
+              />
+            )}
+            <JsonBlock
+              json={propertiesJson}
+              onCopy={copyToClipboard}
+              copied={copiedText === propertiesJson}
+            />
+          </DetailSection>
+
+          {/* 3. Output parameters */}
+          <DetailSection
+            icon={<Cloud className='size-3.5' />}
+            label={t('Output Parameters')}
+          >
+            {directResultUrl && (
+              <DetailRow
+                className='sm:col-span-1'
+                label={t('Result URL')}
+                value={
+                  <span className='inline-flex min-w-0 items-center gap-1.5'>
+                    <a
+                      href={directResultUrl}
+                      target='_blank'
+                      rel='noopener noreferrer'
+                      className='truncate hover:underline'
+                    >
+                      {directResultUrl}
+                    </a>
+                    <ExternalLink className='text-muted-foreground size-3 shrink-0' />
+                  </span>
+                }
+              />
+            )}
+            {log.fail_reason && (
+              <DetailRow label={t('Fail Reason')} danger value={log.fail_reason} />
+            )}
+            <JsonBlock
+              json={dataJson}
+              onCopy={copyToClipboard}
+              copied={copiedText === dataJson}
+            />
+          </DetailSection>
         </div>
-      </DetailSection>
 
-      {/* 2. Input parameters */}
-      <DetailSection
-        icon={<LogIn className='size-3.5' />}
-        label={t('Input Parameters')}
-      >
-        <DetailRow label={t('Model')} mono value={model} />
-        {properties.upstream_model_name && (
-          <DetailRow
-            label={t('Upstream Model')}
-            mono
-            value={properties.upstream_model_name}
-          />
-        )}
-        <JsonBlock
-          json={propertiesJson}
-          onCopy={copyToClipboard}
-          copied={copiedText === propertiesJson}
-        />
-      </DetailSection>
-
-      {/* 3. Output parameters */}
-      <DetailSection
-        icon={<Cloud className='size-3.5' />}
-        label={t('Output Parameters')}
-      >
-        {directResultUrl && (
-          <DetailRow
-            className='sm:col-span-1'
-            label={t('Result URL')}
-            value={
-              <span className='inline-flex min-w-0 items-center gap-1.5'>
-                <a
-                  href={directResultUrl}
-                  target='_blank'
-                  rel='noopener noreferrer'
-                  className='truncate hover:underline'
-                >
-                  {directResultUrl}
-                </a>
-                <ExternalLink className='text-muted-foreground size-3 shrink-0' />
-              </span>
-            }
-          />
-        )}
-        {log.fail_reason && (
-          <DetailRow label={t('Fail Reason')} danger value={log.fail_reason} />
-        )}
-        <JsonBlock
-          json={dataJson}
-          onCopy={copyToClipboard}
-          copied={copiedText === dataJson}
-        />
-      </DetailSection>
-
-      {/* 4. Video preview */}
-      <DetailSection
-        icon={<Monitor className='size-3.5' />}
-        label={t('Video Preview')}
-      >
-        {videoSrc ? (
-          <video
-            src={videoSrc}
-            controls
-            preload='metadata'
-            className='bg-black w-full rounded-md'
-          />
-        ) : (
-          <p className='text-muted-foreground/60 text-xs'>
-            {t('No video available')}
-          </p>
-        )}
-      </DetailSection>
+        {/* Right: pinned video preview */}
+        <div className='flex min-w-0 flex-col gap-1.5 lg:min-h-0'>
+          <Label className='flex items-center gap-1.5 text-xs font-semibold'>
+            <Monitor className='size-3.5' />
+            {t('Video Preview')}
+          </Label>
+          <div className='bg-muted/30 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md border p-2.5'>
+            {videoSrc ? (
+              <video
+                key={videoSrc}
+                src={videoSrc}
+                controls
+                preload='metadata'
+                onError={handleVideoError}
+                className='max-h-full w-full rounded-md bg-black object-contain'
+              />
+            ) : (
+              <p className='text-muted-foreground/60 text-xs'>
+                {t('No video available')}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </Dialog>
   )
 }
