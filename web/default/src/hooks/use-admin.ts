@@ -29,3 +29,12 @@ export function useIsAdmin(): boolean {
   const { user } = useAuthStore((state) => state.auth)
   return (user?.role ?? 0) >= ROLE.ADMIN
 }
+
+/**
+ * Check if current user is a super admin (root). Gates the most sensitive
+ * admin-only affordances, such as viewing a task's full request/response data.
+ */
+export function useIsSuperAdmin(): boolean {
+  const { user } = useAuthStore((state) => state.auth)
+  return (user?.role ?? 0) >= ROLE.SUPER_ADMIN
+}

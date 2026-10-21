@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
 import { useQueryClient } from '@tanstack/react-query'
-import { Music, RefreshCw } from 'lucide-react'
+import { Info, Music, RefreshCw } from 'lucide-react'
 /* eslint-disable react-refresh/only-export-components */
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,7 @@ import {
   type AudioClip,
 } from '../dialogs/audio-preview-dialog'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
+import { TaskDetailsDialog } from '../dialogs/task-details-dialog'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -137,8 +139,31 @@ function TaskRefetchCell({ log }: { log: TaskLog }) {
   )
 }
 
+// 仅超级管理员可见：查看单个任务的完整请求/响应数据（含提示词、分辨率、
+// 上游返回、视频地址与 token 消耗）。其余角色不渲染该按钮。
+function TaskDetailsCell({ log }: { log: TaskLog }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button
+        type='button'
+        onClick={() => setOpen(true)}
+        title={t('View the full request and response data for this task')}
+        className='text-foreground flex items-center gap-1 text-xs hover:underline'
+      >
+        <Info className='size-3.5' />
+        <span>{t('Details')}</span>
+      </button>
+      <TaskDetailsDialog log={log} open={open} onOpenChange={setOpen} />
+    </>
+  )
+}
+
 export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
   const { t } = useTranslation()
+  const isSuperAdmin = useIsSuperAdmin()
   const columns: ColumnDef<TaskLog>[] = [
     {
       accessorKey: 'submit_time',
@@ -341,8 +366,16 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
     columns.push({
       id: 'actions',
       header: t('Actions'),
-      cell: ({ row }) => <TaskRefetchCell log={row.original} />,
-      size: 110,
+      cell: ({ row }) => {
+        const log = row.original
+        return (
+          <div className='flex items-center gap-3'>
+            <TaskRefetchCell log={log} />
+            {isSuperAdmin && <TaskDetailsCell log={log} />}
+          </div>
+        )
+      },
+      size: isSuperAdmin ? 190 : 110,
     })
   }
 
