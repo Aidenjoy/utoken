@@ -44,8 +44,6 @@ import { Route as AuthenticatedTokenRatesIndexRouteImport } from './routes/_auth
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
-import { Route as AuthenticatedStatisticsIndexRouteImport } from './routes/_authenticated/statistics/index'
-import { Route as AuthenticatedStatisticsLogsIndexRouteImport } from './routes/_authenticated/statistics-logs/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedPromptsIndexRouteImport } from './routes/_authenticated/prompts/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
@@ -284,18 +282,6 @@ const AuthenticatedSubscriptionsIndexRoute =
   AuthenticatedSubscriptionsIndexRouteImport.update({
     id: '/subscriptions/',
     path: '/subscriptions/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedStatisticsIndexRoute =
-  AuthenticatedStatisticsIndexRouteImport.update({
-    id: '/statistics/',
-    path: '/statistics/',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedStatisticsLogsIndexRoute =
-  AuthenticatedStatisticsLogsIndexRouteImport.update({
-    id: '/statistics-logs/',
-    path: '/statistics-logs/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedRedemptionCodesIndexRoute =
@@ -713,8 +699,6 @@ export interface FileRoutesByFullPath {
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/prompts/': typeof AuthenticatedPromptsIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
-  '/statistics-logs/': typeof AuthenticatedStatisticsLogsIndexRoute
-  '/statistics/': typeof AuthenticatedStatisticsIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -807,8 +791,6 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/prompts': typeof AuthenticatedPromptsIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
-  '/statistics-logs': typeof AuthenticatedStatisticsLogsIndexRoute
-  '/statistics': typeof AuthenticatedStatisticsIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
@@ -905,8 +887,6 @@ export interface FileRoutesById {
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/prompts/': typeof AuthenticatedPromptsIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
-  '/_authenticated/statistics-logs/': typeof AuthenticatedStatisticsLogsIndexRoute
-  '/_authenticated/statistics/': typeof AuthenticatedStatisticsIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -1003,8 +983,6 @@ export interface FileRouteTypes {
     | '/profile/'
     | '/prompts/'
     | '/redemption-codes/'
-    | '/statistics-logs/'
-    | '/statistics/'
     | '/subscriptions/'
     | '/system-info/'
     | '/system-settings/'
@@ -1097,8 +1075,6 @@ export interface FileRouteTypes {
     | '/profile'
     | '/prompts'
     | '/redemption-codes'
-    | '/statistics-logs'
-    | '/statistics'
     | '/subscriptions'
     | '/system-info'
     | '/system-settings'
@@ -1194,8 +1170,6 @@ export interface FileRouteTypes {
     | '/_authenticated/profile/'
     | '/_authenticated/prompts/'
     | '/_authenticated/redemption-codes/'
-    | '/_authenticated/statistics-logs/'
-    | '/_authenticated/statistics/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-info/'
     | '/_authenticated/system-settings/'
@@ -1491,20 +1465,6 @@ declare module '@tanstack/react-router' {
       path: '/subscriptions'
       fullPath: '/subscriptions/'
       preLoaderRoute: typeof AuthenticatedSubscriptionsIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/statistics/': {
-      id: '/_authenticated/statistics/'
-      path: '/statistics'
-      fullPath: '/statistics/'
-      preLoaderRoute: typeof AuthenticatedStatisticsIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/statistics-logs/': {
-      id: '/_authenticated/statistics-logs/'
-      path: '/statistics-logs'
-      fullPath: '/statistics-logs/'
-      preLoaderRoute: typeof AuthenticatedStatisticsLogsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/redemption-codes/': {
@@ -2085,8 +2045,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedPromptsIndexRoute: typeof AuthenticatedPromptsIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
-  AuthenticatedStatisticsLogsIndexRoute: typeof AuthenticatedStatisticsLogsIndexRoute
-  AuthenticatedStatisticsIndexRoute: typeof AuthenticatedStatisticsIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
   AuthenticatedTokenRatesIndexRoute: typeof AuthenticatedTokenRatesIndexRoute
@@ -2144,8 +2102,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPromptsIndexRoute: AuthenticatedPromptsIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
-  AuthenticatedStatisticsLogsIndexRoute: AuthenticatedStatisticsLogsIndexRoute,
-  AuthenticatedStatisticsIndexRoute: AuthenticatedStatisticsIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,
   AuthenticatedTokenRatesIndexRoute: AuthenticatedTokenRatesIndexRoute,

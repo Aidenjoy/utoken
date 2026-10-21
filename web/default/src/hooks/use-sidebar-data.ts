@@ -44,7 +44,6 @@ import {
   Radio,
   ReceiptText,
   Scissors,
-  ScrollText,
   ServerCog,
   Settings,
   Settings2,
@@ -384,18 +383,6 @@ export function useSidebarData(): SidebarData {
             title: t('Agent Management'),
             url: '/agents',
             icon: BadgePercent,
-            requiredRole: ROLE.ADMIN,
-          },
-          {
-            title: t('Statistics Data'),
-            url: '/statistics',
-            icon: BarChart3,
-            requiredRole: ROLE.ADMIN,
-          },
-          {
-            title: t('Statistics Logs'),
-            url: '/statistics-logs',
-            icon: ScrollText,
             requiredRole: ROLE.ADMIN,
           },
           {

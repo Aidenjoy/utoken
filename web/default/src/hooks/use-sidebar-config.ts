@@ -67,7 +67,6 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     user: true,
     setting: true,
     subscription: true,
-    log: true,
     organization: true,
   },
 }
@@ -130,8 +129,6 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/users': { section: 'admin', module: 'user' },
   '/token-rates': { section: 'admin', module: 'user' },
   '/agents': { section: 'admin', module: 'user' },
-  '/statistics': { section: 'admin', module: 'user' },
-  '/statistics-logs': { section: 'admin', module: 'log' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },
   '/system-settings': { section: 'admin', module: 'setting' },
