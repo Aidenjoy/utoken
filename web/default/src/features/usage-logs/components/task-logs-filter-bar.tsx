@@ -108,6 +108,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
             ...baseFilters,
             ...(searchParams.filter ? { taskId: searchParams.filter } : {}),
             ...(searchParams.status ? { status: searchParams.status } : {}),
+            ...(searchParams.username ? { username: searchParams.username } : {}),
           }
 
     setFilters(next)
@@ -118,6 +119,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     searchParams.channel,
     searchParams.filter,
     searchParams.status,
+    searchParams.username,
   ])
 
   const handleChange = useCallback(
@@ -177,7 +179,10 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       ? t('Filter by MjProxy task ID')
       : t('Filter by task ID')
   const hasAdditionalFilters =
-    !!filterValue || !!filters.channel || !!(filters as TaskLogFilters).status
+    !!filterValue ||
+    !!filters.channel ||
+    !!(filters as TaskLogFilters).status ||
+    !!(filters as TaskLogFilters).username
   const dateRangeFilter = (
     <LogsFilterField wide>
       <CompactDateTimeRangePicker
@@ -211,6 +216,24 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       />
     </LogsFilterField>
   ) : null
+
+  const usernameFilter =
+    isAdmin && props.logCategory === 'task' ? (
+      <LogsFilterField>
+        <LogsFilterInput
+          aria-label={t('Username')}
+          placeholder={t('Username')}
+          value={(filters as TaskLogFilters).username || ''}
+          onChange={(e) =>
+            setFilters((prev) => ({
+              ...(prev as TaskLogFilters),
+              username: e.target.value,
+            }))
+          }
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
+    ) : null
 
   const statusItems = useMemo(
     () =>
@@ -269,6 +292,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
           {taskIdFilter}
           {channelFilter}
           {statusFilter}
+          {usernameFilter}
         </>
       }
       mobilePinnedFilters={dateRangeFilter}
@@ -277,6 +301,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
           {taskIdFilter}
           {channelFilter}
           {statusFilter}
+          {usernameFilter}
         </>
       }
       mobileFilterCount={
@@ -284,6 +309,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
           filterValue,
           filters.channel,
           (filters as TaskLogFilters).status,
+          (filters as TaskLogFilters).username,
         ].filter(Boolean).length
       }
       hasActiveFilters={hasAdditionalFilters}

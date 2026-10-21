@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
+
+	"gorm.io/gorm"
 )
 
 type TaskStatus string
@@ -180,11 +183,25 @@ type SyncTaskQueryParams struct {
 	ChannelID      string
 	TaskID         string
 	UserID         string
+	Username       string
 	Action         string
 	Status         string
 	StartTimestamp int64
 	EndTimestamp   int64
 	UserIDs        []int
+}
+
+// applyTaskUsernameFilter 按用户名过滤任务。tasks 表只存 user_id，
+// 经 users 表子查询映射；匹配语义与通用日志 applyExplicitLogTextFilter
+// 一致：默认精确，含 % 时 LIKE 模糊。
+func applyTaskUsernameFilter(query *gorm.DB, username string) *gorm.DB {
+	if username == "" {
+		return query
+	}
+	if strings.Contains(username, "%") {
+		return query.Where("user_id IN (SELECT id FROM users WHERE username LIKE ?)", username)
+	}
+	return query.Where("user_id IN (SELECT id FROM users WHERE username = ?)", username)
 }
 
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
@@ -282,6 +299,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	if len(queryParams.UserIDs) != 0 {
 		query = query.Where("user_id in (?)", queryParams.UserIDs)
 	}
+	query = applyTaskUsernameFilter(query, queryParams.Username)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}
@@ -557,6 +575,7 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	if len(queryParams.UserIDs) != 0 {
 		query = query.Where("user_id in (?)", queryParams.UserIDs)
 	}
+	query = applyTaskUsernameFilter(query, queryParams.Username)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}

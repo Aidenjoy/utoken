@@ -290,6 +290,7 @@ export async function fetchLogsByCategory(
       ? {
           task_id: searchParams.filter as string | undefined,
           status: searchParams.status as string | undefined,
+          username: searchParams.username as string | undefined,
         }
       : {}),
   }
