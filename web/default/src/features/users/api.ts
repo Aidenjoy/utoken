@@ -269,3 +269,22 @@ export async function adminBindUserEmail(
   )
   return res.data
 }
+
+/**
+ * Bind (or unbind, with agentId 0) a user to a reseller on behalf of an admin.
+ * Binding mirrors registering with the reseller's invite code: the user becomes
+ * the reseller's member, is confined to its authorized models, and receives the
+ * per-model discounts the reseller configures. Business errors (missing or
+ * disabled reseller) are toasted by the caller, so the interceptor is silenced.
+ */
+export async function adminBindUserAgent(
+  userId: number,
+  agentId: number
+): Promise<ApiResponse> {
+  const res = await api.put(
+    `/api/user/${userId}/agent`,
+    { agent_id: agentId },
+    { skipBusinessError: true }
+  )
+  return res.data
+}

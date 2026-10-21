@@ -139,6 +139,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
 				adminRoute.PUT("/:id/email", controller.AdminBindUserEmail)
+				// 绑定/解绑代理商：等价于用该代理商邀请码注册，受授权模型白名单约束。
+				adminRoute.PUT("/:id/agent", controller.AdminBindUserAgent)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
 
 				// Admin 2FA routes

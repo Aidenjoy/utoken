@@ -975,6 +975,67 @@ func AdminBindUserEmail(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
 }
 
+type adminBindUserAgentRequest struct {
+	// AgentId 是 agents 表主键，0 表示解绑（恢复全模型访问、不再受白名单约束）。
+	AgentId int `json:"agent_id"`
+}
+
+// AdminBindUserAgent 管理员把用户绑定到代理商（agent_id），或传 0 解绑。
+// 绑定等价于该用户用代理商邀请码注册：成为其成员、受授权模型白名单约束、
+// 享受代理商为其配置的按模型折扣。agent_id 是权限字段，故只走此专用端点，
+// 不并入通用 UpdateUser，避免用户自行 PUT agent_id=0 绕开白名单。
+func AdminBindUserAgent(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req adminBindUserAgentRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.AgentId < 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !canManageTargetRole(c.GetInt("role"), user.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+	// 绑定到具体代理商时校验其存在且启用；解绑（0）无需校验。
+	// 与注册消费邀请码不同：那里码已隐含一个有效代理商，这里是管理员直接指定 agent_id。
+	if req.AgentId > 0 {
+		agent, agentErr := model.GetAgentById(req.AgentId)
+		if agentErr != nil {
+			if errors.Is(agentErr, model.ErrAgentNotFound) {
+				common.ApiErrorI18n(c, i18n.MsgAgentNotFound)
+				return
+			}
+			common.ApiError(c, agentErr)
+			return
+		}
+		if agent.Status != model.AgentStatusEnabled {
+			common.ApiErrorI18n(c, i18n.MsgAgentDisabled)
+			return
+		}
+	}
+	if err := model.SetUserAgentBinding(user.Id, req.AgentId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAuditFor(c, user.Id, "user.agent_bind", map[string]interface{}{
+		"username": user.Username,
+		"agent_id": req.AgentId,
+	})
+	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
+}
+
 func UpdateSelf(c *gin.Context) {
 	var requestData map[string]interface{}
 	if err := common.DecodeJson(c.Request.Body, &requestData); err != nil {

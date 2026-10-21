@@ -32,6 +32,7 @@ import {
   KeySquare,
   Percent,
   Mail,
+  Handshake,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -64,6 +65,7 @@ import { getUserActionMessage } from '../lib'
 import type { User, ManageUserAction } from '../types'
 import { UserApiKeyCreateDialog } from './dialogs/user-api-key-create-dialog'
 import { UserApiKeysDialog } from './dialogs/user-api-keys-dialog'
+import { UserAgentBindDialog } from './dialogs/user-agent-bind-dialog'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
 import { UserEmailBindDialog } from './dialogs/user-email-bind-dialog'
 import { UserModelDiscountDialog } from './dialogs/user-model-discount-dialog'
@@ -85,6 +87,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [apiKeysDialogOpen, setApiKeysDialogOpen] = useState(false)
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false)
   const [emailBindOpen, setEmailBindOpen] = useState(false)
+  const [agentBindOpen, setAgentBindOpen] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -303,6 +306,18 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
                 <Mail size={16} />
               </DropdownMenuShortcut>
             </DropdownMenuItem>
+
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault()
+                setAgentBindOpen(true)
+              }}
+            >
+              {t('Bind Agent')}
+              <DropdownMenuShortcut>
+                <Handshake size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
           </>
         )}
 
@@ -406,6 +421,19 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         open={emailBindOpen}
         onOpenChange={setEmailBindOpen}
         user={{ id: user.id, username: user.username }}
+        onSuccess={triggerRefresh}
+      />
+
+      <UserAgentBindDialog
+        open={agentBindOpen}
+        onOpenChange={setAgentBindOpen}
+        user={{
+          id: user.id,
+          username: user.username,
+          display_name: user.display_name,
+          agent_id: user.agent_id,
+          agent_username: user.agent_username,
+        }}
         onSuccess={triggerRefresh}
       />
 

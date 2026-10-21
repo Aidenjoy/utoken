@@ -347,6 +347,24 @@ func DeleteAgent(id int) error {
 	return nil
 }
 
+// SetUserAgentBinding 由管理员手动把用户绑定到代理商（agentId>0）或解绑（agentId=0）。
+// 绑定等价于该用户用代理商邀请码注册：写入 users.agent_id 后即成为该代理商成员，
+// 受授权模型白名单约束、并享受代理商为其配置的按模型折扣。agent_id 是权限字段，
+// 通用更新路径不得覆盖，只走本函数与 DeleteAgent 解绑。改完必须失效该用户缓存，
+// AllowedModels 才能在下次缓存 miss 时按新归属重算（与注册绑定同一口径）。
+func SetUserAgentBinding(userId int, agentId int) error {
+	if userId <= 0 {
+		return errors.New("id 为空！")
+	}
+	if agentId < 0 {
+		agentId = 0
+	}
+	if err := DB.Model(&User{}).Where("id = ?", userId).Update("agent_id", agentId).Error; err != nil {
+		return err
+	}
+	return invalidateUserCache(userId)
+}
+
 // validateAgentModelDiscounts 校验已序列化的授权配置：解析后交给 common 做规则校验。
 // 此处只做校验，不修改入参；序列化由 controller 在拿到规范化结果后完成。
 func validateAgentModelDiscounts(discountsJSON string) error {
