@@ -933,5 +933,26 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     }
   )
 
+  columns.push({
+    id: 'task_id',
+    header: t('Task ID'),
+    accessorFn: (row) => parseLogOther(row.other)?.task_id ?? '',
+    cell: ({ row }) => {
+      const taskId = row.getValue('task_id') as string
+      if (!taskId) {
+        return <span className='text-muted-foreground/60 text-xs'>-</span>
+      }
+      return (
+        <StatusBadge
+          label={taskId}
+          copyText={taskId}
+          variant='neutral'
+          size='sm'
+          className='border-border/60 bg-muted/30 !text-foreground max-w-[170px] truncate rounded-md border px-1.5 py-0.5 font-mono'
+        />
+      )
+    },
+  })
+
   return columns
 }

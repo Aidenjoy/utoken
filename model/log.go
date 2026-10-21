@@ -547,7 +547,7 @@ func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, us
 	return res.RowsAffected, res.Error
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, taskID string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -581,6 +581,9 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if taskID != "" {
+		tx = tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"task_id":"%s"%%`, taskID))
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -648,7 +651,7 @@ func attachLogChannelNames(logs []*Log) error {
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, taskID string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -676,6 +679,9 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if taskID != "" {
+		tx = tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"task_id":"%s"%%`, taskID))
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
