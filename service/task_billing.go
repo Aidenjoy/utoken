@@ -278,6 +278,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 		Other:              other,
 		NodeName:           task.PrivateData.NodeName,
 		QuotaDataCreatedAt: task.SubmitTime,
+		CreatedAt:          task.FinishTime,
 	})
 }
 
@@ -356,6 +357,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		Other:              other,
 		NodeName:           task.PrivateData.NodeName,
 		QuotaDataCreatedAt: task.SubmitTime,
+		CreatedAt:          task.FinishTime,
 	})
 }
 

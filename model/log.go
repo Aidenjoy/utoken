@@ -446,6 +446,12 @@ type RecordTaskBillingLogParams struct {
 	// QuotaDataCreatedAt 为任务提交时刻（task.SubmitTime）。结算修正落到提交
 	// 同一小时桶，避免差额/退款跨桶跨天漂移；为 0 时回退日志时间。
 	QuotaDataCreatedAt int64
+	// CreatedAt 为日志展示时间。结算/退款是异步事件，实际落库时刻可能远晚于
+	// 任务完成时刻（轮询延迟或管理员补录），直接用 now 会让消费记录显示在错误
+	// 日期、远离同任务的预扣行。传任务完成时刻（task.FinishTime）让时间回归真实
+	// 发生点；为 0 时回退当前时间。仅影响展示与时间筛选，不改动额度，统计桶仍由
+	// QuotaDataCreatedAt（提交时刻）决定。
+	CreatedAt int64
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
@@ -459,7 +465,10 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			tokenName = token.Name
 		}
 	}
-	createdAt := common.GetTimestamp()
+	createdAt := params.CreatedAt
+	if createdAt == 0 {
+		createdAt = common.GetTimestamp()
+	}
 	orgId := params.OrgId
 	if orgId == 0 {
 		// 异步任务结算是低频路径，回查一次企业归属的开销可忽略。
