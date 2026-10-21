@@ -31,6 +31,7 @@ import { api } from '@/lib/api'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 import { AuthLayout } from '../auth-layout'
+import { PASSWORD_RESET_COUNTDOWN } from '../constants'
 
 export type ResetPasswordSearchParams = {
   email?: string
@@ -52,7 +53,7 @@ export function ResetPasswordConfirm({
     secondsLeft,
     isActive,
     start: startCountdown,
-  } = useCountdown({ initialSeconds: 30 })
+  } = useCountdown({ initialSeconds: PASSWORD_RESET_COUNTDOWN })
 
   const isValidResetLink = Boolean(email && token)
 
@@ -103,6 +104,15 @@ export function ResetPasswordConfirm({
       )
       setTimeout(() => setCopied(false), 2000)
     }
+  }
+
+  let submitButtonLabel = t('auth.resetPasswordConfirm.confirm')
+  if (newPassword) {
+    submitButtonLabel = t('auth.resetPasswordConfirm.backToLogin')
+  } else if (isActive) {
+    submitButtonLabel = t('auth.resetPasswordConfirm.retry', {
+      seconds: secondsLeft,
+    })
   }
 
   return (
@@ -179,13 +189,7 @@ export function ResetPasswordConfirm({
               newPassword ? false : loading || isActive || !isValidResetLink
             }
           >
-            {newPassword
-              ? t('auth.resetPasswordConfirm.backToLogin')
-              : isActive
-                ? t('auth.resetPasswordConfirm.retry', {
-                    seconds: secondsLeft,
-                  })
-                : t('auth.resetPasswordConfirm.confirm')}
+            {submitButtonLabel}
           </Button>
 
           {!newPassword && (

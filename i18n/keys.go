@@ -87,6 +87,7 @@ const (
 	MsgUserRequire2FA                = "user.require_2fa"
 	MsgUserEmailVerificationRequired = "user.email_verification_required"
 	MsgUserVerificationCodeError     = "user.verification_code_error"
+	MsgUserVerifyCodeSendTooFrequent = "user.verification_code_send_too_frequent"
 	MsgUserEmailAlreadyTaken         = "user.email_already_taken"
 	MsgUserEmailAlreadyBound         = "user.email_already_bound"
 	MsgUserPasswordUnset             = "user.password_unset"

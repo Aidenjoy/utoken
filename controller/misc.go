@@ -305,6 +305,10 @@ func SendEmailVerification(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
 		return
 	}
+	if common.CheckSendInterval(email, common.EmailVerificationPurpose) > 0 {
+		common.ApiErrorI18n(c, i18n.MsgUserVerifyCodeSendTooFrequent)
+		return
+	}
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
 	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
@@ -327,6 +331,10 @@ func SendPasswordResetEmail(c *gin.Context) {
 	email := model.NormalizeEmail(c.Query("email"))
 	if err := common.Validate.Var(email, "required,email"); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if common.CheckSendInterval(email, common.PasswordResetPurpose) > 0 {
+		common.ApiErrorI18n(c, i18n.MsgUserVerifyCodeSendTooFrequent)
 		return
 	}
 	if _, err := model.GetUniqueUserByEmail(email); err == nil {

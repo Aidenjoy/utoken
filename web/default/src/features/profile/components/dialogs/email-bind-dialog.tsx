@@ -25,6 +25,7 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { EMAIL_VERIFICATION_COUNTDOWN } from '@/features/auth/constants'
 import { useCountdown } from '@/hooks/use-countdown'
 
 import { sendEmailVerification, bindEmail } from '../../api'
@@ -57,7 +58,7 @@ export function EmailBindDialog({
     start: startCountdown,
     reset: resetCountdown,
   } = useCountdown({
-    initialSeconds: 60,
+    initialSeconds: EMAIL_VERIFICATION_COUNTDOWN,
   })
 
   const handleSendCode = async () => {
@@ -76,7 +77,7 @@ export function EmailBindDialog({
       } else {
         toast.error(response.message || t('Failed to send verification code'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to send verification code'))
     } finally {
       setSendingCode(false)
@@ -104,7 +105,7 @@ export function EmailBindDialog({
       } else {
         toast.error(response.message || t('Failed to bind email'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to bind email'))
     } finally {
       setLoading(false)
@@ -121,6 +122,13 @@ export function EmailBindDialog({
         resetCountdown()
       }
     }
+  }
+
+  let sendCodeButtonLabel = t('Send')
+  if (isActive) {
+    sendCodeButtonLabel = `${secondsLeft}s`
+  } else if (sendingCode) {
+    sendCodeButtonLabel = t('Sending...')
   }
 
   return (
@@ -189,11 +197,7 @@ export function EmailBindDialog({
               onClick={handleSendCode}
               disabled={sendingCode || isActive || !email}
             >
-              {isActive
-                ? `${secondsLeft}s`
-                : sendingCode
-                  ? t('Sending...')
-                  : t('Send')}
+              {sendCodeButtonLabel}
             </Button>
           </div>
         </div>
