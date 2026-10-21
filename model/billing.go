@@ -13,13 +13,20 @@ import (
 )
 
 // 账单中心：充值/加额流水与消耗明细的查询模型。
-// 充值流水由三类来源合并：在线支付(top_ups)、管理员对用户手动调额、
-// 管理员对企业额度池调额（后两者只有管理审计日志，无独立台账表）。
-
+// 充值流水由四类来源合并：在线支付(top_ups)、管理员对用户手动调额、
+// 管理员对企业额度池调额（后两者只有管理审计日志，无独立台账表）、
+// 用户自助把钱包余额转入企业池(quota_transfers)。
+// 每笔资金按来源定性为线上（用户自助刷卡）、线下（客户线下打款后由管理员调额）
+// 或内部转移（客户账户之间搬运，不产生新资金），三者分开统计才能对得清账。
 const (
 	BillingSourceOnlineTopup = "online_topup"
 	BillingSourceUserAdjust  = "user_adjust"
 	BillingSourceOrgAdjust   = "org_adjust"
+	// 自助转移：用户把自己钱包余额转进企业额度池，一次转移展开成两条明细。
+	// 它不是新的资金流入（钱在入账那行已定性为线上或线下），所以单独归类为
+	// "内部转移"，不计入 InflowQuota/OutflowQuota，避免同一笔钱被重复统计。
+	BillingSourceWalletTransferIn  = "wallet_transfer_in"
+	BillingSourceWalletTransferOut = "wallet_transfer_out"
 )
 
 // billingRechargeCap 单次查询每个来源最多返回的记录数，
@@ -41,12 +48,27 @@ type BillingRechargeRecord struct {
 	Action        string  `json:"action"`
 }
 
+// BillingRechargeStat 充值流水汇总。
+//
+// 口径按资金来源三分，互不重叠：
+//   - 线上 OnlineInflowQuota：用户自助在线支付入账
+//   - 线下 OfflineInflowQuota：客户线下打款后由管理员手动调增
+//   - 内部 TransferInQuota/TransferOutQuota：钱包 ↔ 企业池自助搬运，不产生新资金
+//
+// InflowQuota/OutflowQuota 只统计外部资金（线上+线下），所以"总充值"永远是
+// 真金白银的入口金额，不会被内部转移重复计入。
+// TotalQuota 是全部带符号记录之和：两个维度都在筛选范围内时转移天然净零，
+// 只筛一侧时只剩该侧那条记录，因此 TotalQuota 恒等于所选对象的余额变化。
 type BillingRechargeStat struct {
-	Count        int `json:"count"`
-	TotalQuota   int `json:"total_quota"`
-	InflowQuota  int `json:"inflow_quota"`
-	OutflowQuota int `json:"outflow_quota"`
-	BalanceQuota int `json:"balance_quota"`
+	Count              int `json:"count"`
+	TotalQuota         int `json:"total_quota"`
+	InflowQuota        int `json:"inflow_quota"`
+	OutflowQuota       int `json:"outflow_quota"`
+	OnlineInflowQuota  int `json:"online_inflow_quota"`
+	OfflineInflowQuota int `json:"offline_inflow_quota"`
+	TransferInQuota    int `json:"transfer_in_quota"`
+	TransferOutQuota   int `json:"transfer_out_quota"`
+	BalanceQuota       int `json:"balance_quota"`
 }
 
 type BillingConsumptionStat struct {
@@ -342,11 +364,114 @@ func attachBillingUsernames(records []*BillingRechargeRecord) error {
 	}
 	for _, record := range records {
 		record.Username = nameById[record.UserId]
+		if record.Source == BillingSourceWalletTransferIn || record.Source == BillingSourceWalletTransferOut {
+			// 自助转移没有管理员，操作人就是转出用户本人
+			record.Operator = record.Username
+		}
 	}
 	return nil
 }
 
-// GetBillingRechargeRecords 合并三类充值/加额来源，按时间倒序返回并汇总统计。
+// attachBillingOrgNames 回填企业名（展示名优先，与 orgAuditName 一致）。
+// 管理员调额记录已从审计参数带上操作当时的企业名，只在缺失时补当前名，
+// 不覆盖历史快照。
+func attachBillingOrgNames(records []*BillingRechargeRecord) error {
+	ids := make([]int, 0, len(records))
+	seen := make(map[int]bool)
+	for _, record := range records {
+		if record.OrgId != 0 && record.OrgName == "" && !seen[record.OrgId] {
+			seen[record.OrgId] = true
+			ids = append(ids, record.OrgId)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var orgs []Organization
+	if err := DB.Select("id, name, display_name").Where("id IN ?", ids).Find(&orgs).Error; err != nil {
+		return err
+	}
+	nameById := make(map[int]string, len(orgs))
+	for _, org := range orgs {
+		nameById[org.Id] = org.DisplayName
+		if org.DisplayName == "" {
+			nameById[org.Id] = org.Name
+		}
+	}
+	for _, record := range records {
+		if record.OrgName == "" {
+			record.OrgName = nameById[record.OrgId]
+		}
+	}
+	return nil
+}
+
+// collectWalletTransferRecords 把转移台账展开成成对明细。
+// 两条记录各归属一个筛选维度：转出记录随用户维度、转入记录随企业维度，
+// 所以只筛企业时看得到池的入账、只筛用户时看得到钱包的扣减，互不串台。
+// 两条共用同一个 trade_no，便于在明细与 CSV 里把一对转移配上。
+func collectWalletTransferRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) ([]*BillingRechargeRecord, error) {
+	if userScope.Mode == BillingScopeNone && orgScope.Mode == BillingScopeNone {
+		return nil, nil
+	}
+	transfers, err := GetQuotaTransfers(startTimestamp, endTimestamp, billingRechargeCap)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]*BillingRechargeRecord, 0, len(transfers)*2)
+	for _, transfer := range transfers {
+		tradeNo := "transfer-" + strconv.Itoa(transfer.Id)
+		if userScope.match(transfer.UserId) {
+			records = append(records, &BillingRechargeRecord{
+				Source:    BillingSourceWalletTransferOut,
+				CreatedAt: transfer.CreatedAt,
+				UserId:    transfer.UserId,
+				OrgId:     transfer.OrgId,
+				Quota:     -transfer.Quota,
+				TradeNo:   tradeNo,
+			})
+		}
+		if orgScope.match(transfer.OrgId) {
+			records = append(records, &BillingRechargeRecord{
+				Source:    BillingSourceWalletTransferIn,
+				CreatedAt: transfer.CreatedAt,
+				UserId:    transfer.UserId,
+				OrgId:     transfer.OrgId,
+				Quota:     transfer.Quota,
+				TradeNo:   tradeNo,
+			})
+		}
+	}
+	return records, nil
+}
+
+// accumulateRechargeStat 按资金来源三分累加。
+// 内部转移不计入 Inflow/Outflow：一笔钱在客户自己账户之间搬运不是新资金，
+// 计进去会让"总充值"随转移次数虚增，对账时无法还原真实入账。
+func accumulateRechargeStat(stat *BillingRechargeStat, record *BillingRechargeRecord) {
+	stat.Count++
+	stat.TotalQuota += record.Quota
+	switch record.Source {
+	case BillingSourceOnlineTopup:
+		if record.Quota > 0 {
+			stat.OnlineInflowQuota += record.Quota
+			stat.InflowQuota += record.Quota
+		}
+	case BillingSourceWalletTransferIn:
+		stat.TransferInQuota += record.Quota
+	case BillingSourceWalletTransferOut:
+		stat.TransferOutQuota += record.Quota
+	default:
+		if record.Quota > 0 {
+			stat.OfflineInflowQuota += record.Quota
+			stat.InflowQuota += record.Quota
+		} else {
+			stat.OutflowQuota += record.Quota
+		}
+	}
+}
+
+// GetBillingRechargeRecords 合并四类充值/加额来源，按时间倒序返回并汇总统计。
 // 用户/企业两个维度各自独立纳入记录：全部=该维度全部对象，无=该维度不产生记录。
 func GetBillingRechargeRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) (records []*BillingRechargeRecord, stat BillingRechargeStat, err error) {
 	online, err := collectOnlineTopupRecords(userScope, startTimestamp, endTimestamp)
@@ -357,21 +482,23 @@ func GetBillingRechargeRecords(userScope, orgScope BillingScope, startTimestamp,
 	if err != nil {
 		return nil, stat, err
 	}
+	transfers, err := collectWalletTransferRecords(userScope, orgScope, startTimestamp, endTimestamp)
+	if err != nil {
+		return nil, stat, err
+	}
 	records = append(online, adjusts...)
+	records = append(records, transfers...)
 	if err := attachBillingUsernames(records); err != nil {
+		return nil, stat, err
+	}
+	if err := attachBillingOrgNames(records); err != nil {
 		return nil, stat, err
 	}
 	sort.SliceStable(records, func(i, j int) bool {
 		return records[i].CreatedAt > records[j].CreatedAt
 	})
 	for _, record := range records {
-		stat.Count++
-		stat.TotalQuota += record.Quota
-		if record.Quota > 0 {
-			stat.InflowQuota += record.Quota
-		} else {
-			stat.OutflowQuota += record.Quota
-		}
+		accumulateRechargeStat(&stat, record)
 	}
 	balance, err := computeBillingBalance(userScope, orgScope)
 	if err != nil {

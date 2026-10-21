@@ -28,7 +28,7 @@ import {
   TruncatedCell,
   useDataTable,
 } from '@/components/data-table'
-import { StatusBadge } from '@/components/status-badge'
+import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
@@ -38,14 +38,16 @@ import { downloadBillingRecharge, getBillingRecharge } from '../api'
 import type { BillingFilter, BillingRechargeRecord } from '../types'
 import { BillingStatCards, type BillingStatItem } from './stat-cards'
 
-const SOURCE_META: Record<
-  string,
-  { label: string; variant: 'success' | 'info' | 'warning' }
-> = {
+const SOURCE_META: Record<string, { label: string; variant: StatusVariant }> = {
   online_topup: { label: 'Online Top-up', variant: 'success' },
   user_adjust: { label: 'User Adjust', variant: 'info' },
   org_adjust: { label: 'Org Adjust', variant: 'warning' },
+  wallet_transfer_in: { label: 'Wallet Transfer In', variant: 'neutral' },
+  wallet_transfer_out: { label: 'Wallet Transfer Out', variant: 'neutral' },
 }
+
+/** Sources whose target account is the organization pool rather than a user. */
+const ORG_TARGET_SOURCES = new Set(['org_adjust', 'wallet_transfer_in'])
 
 function formatMoney(money: number): string {
   return money > 0 ? formatLocalCurrencyAmount(money) : '-'
@@ -119,17 +121,24 @@ export function RechargeTable({ filter }: RechargeTableProps) {
         header: t('Target'),
         cell: ({ row }) => {
           const record = row.original
-          const isOrg = record.source === 'org_adjust'
+          const isOrg = ORG_TARGET_SOURCES.has(record.source)
+          // 转移记录在副行标出对手方，一眼看出钱从谁的钱包搬进了哪个企业池
+          let secondary: string
+          if (record.source === 'wallet_transfer_in') {
+            secondary = `← ${record.username}`
+          } else if (record.source === 'wallet_transfer_out') {
+            secondary = `→ ${record.org_name}`
+          } else if (isOrg) {
+            secondary = `${t('Organization')} #${record.org_id}`
+          } else {
+            secondary = `${t('User')} #${record.user_id}`
+          }
           return (
             <div className='flex min-w-[140px] flex-col gap-0.5'>
               <TruncatedCell cellClassName='font-medium'>
                 {isOrg ? record.org_name : record.username}
               </TruncatedCell>
-              <span className='text-muted-foreground text-xs'>
-                {isOrg
-                  ? `${t('Organization')} #${record.org_id}`
-                  : `${t('User')} #${record.user_id}`}
-              </span>
+              <span className='text-muted-foreground text-xs'>{secondary}</span>
             </div>
           )
         },
@@ -204,9 +213,19 @@ export function RechargeTable({ filter }: RechargeTableProps) {
 
   const statItems: BillingStatItem[] = [
     {
-      label: t('Total Recharged'),
-      value: formatLogQuota(stat?.inflow_quota ?? 0),
+      label: t('Online Recharged'),
+      value: formatLogQuota(stat?.online_inflow_quota ?? 0),
       accent: 'bg-emerald-500/70',
+    },
+    {
+      label: t('Offline Recharged'),
+      value: formatLogQuota(stat?.offline_inflow_quota ?? 0),
+      accent: 'bg-teal-500/70',
+    },
+    {
+      label: t('Transferred to Pool'),
+      value: formatLogQuota(stat?.transfer_in_quota ?? 0),
+      accent: 'bg-sky-500/70',
     },
     {
       label: t('Total Deducted'),
@@ -216,7 +235,7 @@ export function RechargeTable({ filter }: RechargeTableProps) {
     {
       label: t('Net Increase'),
       value: formatLogQuota(stat?.total_quota ?? 0),
-      accent: 'bg-sky-500/70',
+      accent: 'bg-indigo-500/70',
     },
     {
       label: t('Current Balance'),

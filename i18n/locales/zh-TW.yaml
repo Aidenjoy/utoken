@@ -326,6 +326,8 @@ org.threshold_invalid: "預警閾值不能為負數"
 org.cache_feature_disabled: "回應快取需要先啟用 Redis"
 org.not_empty: "企業下仍有成員，請先移出成員後再刪除"
 org.member_status_invalid: "企業成員狀態取值無效"
+org.wallet_transfer_invalid: "轉入金額必須大於零"
+org.wallet_insufficient: "個人錢包餘額不足"
 
 agent.not_found: "代理商不存在"
 agent.disabled: "該代理商已被停用"

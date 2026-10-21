@@ -78,6 +78,22 @@ export async function updateOrganization(
   return res.data
 }
 
+/**
+ * Move part of the caller's personal wallet into their own organization pool.
+ * One-way and irreversible. The target organization is derived from the
+ * caller's membership on the server, so no org id is sent.
+ */
+export async function transferWalletToPool(
+  quota: number
+): Promise<ApiResponse<{ quota: number }>> {
+  const res = await api.post(
+    '/api/org/wallet/transfer',
+    { quota },
+    orgRequestConfig
+  )
+  return res.data
+}
+
 export interface OrgMembersParams {
   p?: number
   page_size?: number

@@ -37,6 +37,7 @@ func registerOrgRoutes(apiRouter *gin.RouterGroup) {
 			orgAdminRoute.GET("/usage", controller.GetOrgUsage)
 			orgAdminRoute.GET("/logs", controller.GetOrgLogs)
 			orgAdminRoute.GET("/tokens", middleware.SearchRateLimit(), controller.GetOrgTokens)
+			orgAdminRoute.POST("/wallet/transfer", middleware.CriticalRateLimit(), controller.TransferWalletToPool)
 		}
 
 		// 系统管理员：企业 CRUD、充值调额、禁用与成员查看

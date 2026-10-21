@@ -379,6 +379,8 @@ const (
 	MsgOrgCacheFeatureDisabled   = "org.cache_feature_disabled"
 	MsgOrgNotEmpty               = "org.not_empty"
 	MsgOrgMemberStatusInvalid    = "org.member_status_invalid"
+	MsgOrgWalletTransferInvalid  = "org.wallet_transfer_invalid"
+	MsgOrgWalletInsufficient     = "org.wallet_insufficient"
 )
 
 // Agent (model authorization) related messages

@@ -17,26 +17,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Coins, Gauge, Users, Zap } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { ORG_ROLES } from '@/features/organization/constants'
 import { formatNumber, formatQuota } from '@/lib/format'
 
 import { useOrganization } from './organization-context'
+import { PoolTransferDialog } from './pool-transfer-dialog'
 
 function MetricCard({
   icon: Icon,
   label,
   value,
   hint,
+  action,
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: string
   hint?: string
+  action?: ReactNode
 }) {
   return (
     <Card>
@@ -44,7 +49,10 @@ function MetricCard({
         <CardTitle className='text-muted-foreground text-sm font-medium'>
           {label}
         </CardTitle>
-        <Icon className='text-muted-foreground size-4' />
+        <div className='flex items-center gap-2'>
+          {action}
+          <Icon className='text-muted-foreground size-4' />
+        </div>
       </CardHeader>
       <CardContent>
         <div className='text-2xl font-semibold tabular-nums'>{value}</div>
@@ -64,6 +72,7 @@ function MetricCard({
 export function OrganizationOverview() {
   const { t } = useTranslation()
   const { summary, detail, isOrgAdmin } = useOrganization()
+  const [transferOpen, setTransferOpen] = useState(false)
 
   if (!summary || summary.org_id === 0) return null
 
@@ -139,6 +148,18 @@ export function OrganizationOverview() {
               icon={Coins}
               label={t('Pool Balance')}
               value={formatQuota(summary.pool_quota ?? 0)}
+              action={
+                isOrgAdmin ? (
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className='h-7 px-2 text-xs'
+                    onClick={() => setTransferOpen(true)}
+                  >
+                    {t('Transfer In')}
+                  </Button>
+                ) : null
+              }
             />
             <MetricCard
               icon={Gauge}
@@ -164,6 +185,13 @@ export function OrganizationOverview() {
           }
         />
       </div>
+
+      {isOrgAdmin ? (
+        <PoolTransferDialog
+          open={transferOpen}
+          onOpenChange={setTransferOpen}
+        />
+      ) : null}
     </div>
   )
 }

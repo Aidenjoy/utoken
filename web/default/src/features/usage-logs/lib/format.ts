@@ -404,6 +404,8 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'org.member.update':
     'Updated organization member {{username}} in {{name}} (role {{role}}, sub-quota {{quota_limit}}, status {{status}})',
   'org.member.remove': 'Removed member {{username}} from organization {{name}}',
+  'org.wallet_transfer':
+    'Transferred {{quota}} from personal wallet into organization {{name}} pool (balance {{after}})',
   // Organization alerts
   'alert.org_quota_low':
     'Organization {{name}} quota dropped below warning threshold {{threshold}}',

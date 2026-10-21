@@ -326,6 +326,8 @@ org.threshold_invalid: "预警阈值不能为负数"
 org.cache_feature_disabled: "响应缓存需要先启用 Redis"
 org.not_empty: "企业下仍有成员，请先移出成员后再删除"
 org.member_status_invalid: "企业成员状态取值无效"
+org.wallet_transfer_invalid: "转入金额必须大于零"
+org.wallet_insufficient: "个人钱包余额不足"
 
 agent.not_found: "代理商不存在"
 agent.disabled: "该代理商已被禁用"

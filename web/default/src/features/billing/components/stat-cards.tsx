@@ -30,10 +30,16 @@ interface BillingStatCardsProps {
   isLoading?: boolean
 }
 
+const GRID_COLUMNS: Record<number, string> = {
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+  6: 'lg:grid-cols-6',
+}
+
 export function BillingStatCards({ items, isLoading }: BillingStatCardsProps) {
   const gridClass = cn(
     'grid grid-cols-2 gap-2.5 sm:gap-3',
-    items.length >= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'
+    GRID_COLUMNS[items.length] ?? 'lg:grid-cols-4'
   )
 
   if (isLoading) {

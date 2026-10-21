@@ -319,6 +319,7 @@ func migrateDB() error {
 		&DirectorEntityAsset{},
 		&Organization{},
 		&OrgMember{},
+		&QuotaTransfer{},
 		&Agent{},
 		&InviteCode{},
 		&PromptTemplate{},

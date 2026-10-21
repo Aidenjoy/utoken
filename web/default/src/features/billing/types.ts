@@ -73,6 +73,8 @@ export type BillingRechargeSource =
   | 'online_topup'
   | 'user_adjust'
   | 'org_adjust'
+  | 'wallet_transfer_in'
+  | 'wallet_transfer_out'
 
 export interface BillingRechargeRecord {
   source: BillingRechargeSource | string
@@ -89,11 +91,22 @@ export interface BillingRechargeRecord {
   action: string
 }
 
+/**
+ * Recharge ledger totals, split by funding origin so the books reconcile:
+ * online (self-service card payment), offline (admin adjustment after an
+ * offline bank transfer) and internal (wallet ↔ pool moves, which create no new
+ * money). `inflow_quota`/`outflow_quota` only count the external two, so
+ * "total recharged" never inflates when a customer moves balance around.
+ */
 export interface BillingRechargeStat {
   count: number
   total_quota: number
   inflow_quota: number
   outflow_quota: number
+  online_inflow_quota: number
+  offline_inflow_quota: number
+  transfer_in_quota: number
+  transfer_out_quota: number
   balance_quota: number
 }
 

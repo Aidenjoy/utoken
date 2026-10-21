@@ -30,6 +30,7 @@ var ErrRedeemFailed = errors.New("redeem.failed")
 var (
 	ErrInsufficientUserQuota  = errors.New("insufficient user quota")
 	ErrInsufficientTokenQuota = errors.New("insufficient token quota")
+	ErrQuotaTransferInvalid   = errors.New("invalid quota transfer amount")
 )
 
 // 2FA errors

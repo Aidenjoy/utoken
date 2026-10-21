@@ -325,6 +325,8 @@ org.threshold_invalid: "Alert threshold cannot be negative"
 org.cache_feature_disabled: "Response caching requires Redis to be enabled"
 org.not_empty: "This organization still has members; remove them before deleting"
 org.member_status_invalid: "Invalid organization member status"
+org.wallet_transfer_invalid: "Transfer amount must be greater than zero"
+org.wallet_insufficient: "Your wallet balance is insufficient"
 
 agent.not_found: "Agent not found"
 agent.disabled: "This agent account has been disabled"

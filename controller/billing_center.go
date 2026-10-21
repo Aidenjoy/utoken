@@ -113,21 +113,45 @@ func rechargeSourceText(source string) string {
 		return "用户调额"
 	case model.BillingSourceOrgAdjust:
 		return "企业调额"
+	case model.BillingSourceWalletTransferIn:
+		return "钱包转入企业"
+	case model.BillingSourceWalletTransferOut:
+		return "钱包转出"
 	}
 	return source
 }
 
+// rechargeOriginText 资金性质：钱是用户自助线上付的、线下打款后由管理员调的，
+// 还是只在客户自己账户之间搬运。对账时按这一列拆分才不会把内部转移当成新入账。
+func rechargeOriginText(source string) string {
+	switch source {
+	case model.BillingSourceOnlineTopup:
+		return "线上"
+	case model.BillingSourceWalletTransferIn, model.BillingSourceWalletTransferOut:
+		return "内部转移"
+	default:
+		return "线下"
+	}
+}
+
+// rechargeTargetText 渲染"对象"列。转移记录带上对手方，
+// 一行就能看出钱从谁的钱包搬进了哪个企业池。
 func rechargeTargetText(record *model.BillingRechargeRecord) string {
-	if record.Source == model.BillingSourceOrgAdjust {
-		if record.OrgName != "" {
-			return fmt.Sprintf("%s(ID %d)", record.OrgName, record.OrgId)
-		}
-		return fmt.Sprintf("ID %d", record.OrgId)
-	}
+	userText := fmt.Sprintf("ID %d", record.UserId)
 	if record.Username != "" {
-		return fmt.Sprintf("%s(ID %d)", record.Username, record.UserId)
+		userText = fmt.Sprintf("%s(ID %d)", record.Username, record.UserId)
 	}
-	return fmt.Sprintf("ID %d", record.UserId)
+	orgText := fmt.Sprintf("ID %d", record.OrgId)
+	if record.OrgName != "" {
+		orgText = fmt.Sprintf("%s(ID %d)", record.OrgName, record.OrgId)
+	}
+	switch record.Source {
+	case model.BillingSourceOrgAdjust, model.BillingSourceWalletTransferIn:
+		return orgText
+	case model.BillingSourceWalletTransferOut:
+		return userText + " → " + orgText
+	}
+	return userText
 }
 
 func writeBillingCSV(c *gin.Context, filename string, header []string, rows [][]string) {
@@ -149,7 +173,7 @@ func ExportBillingRecharge(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	header := []string{"时间", "类型", "对象", "金额", "支付金额", "支付方式", "订单号", "操作人"}
+	header := []string{"时间", "类型", "资金性质", "对象", "金额", "支付金额", "支付方式", "订单号", "操作人"}
 	rows := make([][]string, 0, len(records)+1)
 	var totalMoney float64
 	for _, record := range records {
@@ -157,6 +181,7 @@ func ExportBillingRecharge(c *gin.Context) {
 		rows = append(rows, []string{
 			billingTimestamp(record.CreatedAt),
 			rechargeSourceText(record.Source),
+			rechargeOriginText(record.Source),
 			rechargeTargetText(record),
 			logger.FormatQuota(record.Quota),
 			logger.FormatLocalCurrency(record.Money),
@@ -166,7 +191,7 @@ func ExportBillingRecharge(c *gin.Context) {
 		})
 	}
 	rows = append(rows, []string{
-		"合计", "", "",
+		"合计", "", "", "",
 		logger.FormatQuota(stat.TotalQuota),
 		logger.FormatLocalCurrency(totalMoney),
 		"", "", "",

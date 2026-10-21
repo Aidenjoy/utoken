@@ -823,6 +823,50 @@ func buildOrgTokenResponses(tokens []*model.Token) []*tokenOwnerResponse {
 	return items
 }
 
+// TransferWalletToPool 企业管理员把个人钱包余额转入本企业额度池，单向不可逆。
+//
+// 企业 id 只取调用者自己的成员归属，不接受任何请求参数，因此无法越权往别的
+// 企业充值。系统管理员代客户加额请走 /api/org/admin/:id/quota：那条路径记为
+// 线下调额，与本入口的内部转移在账单中心分开统计，两者互不影响。
+func TransferWalletToPool(c *gin.Context) {
+	orgId := middleware.OrgIdFromContext(c)
+	if orgId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgOrgMemberOnly)
+		return
+	}
+	var req struct {
+		Quota int `json:"quota"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Quota <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgOrgWalletTransferInvalid)
+		return
+	}
+	poolQuota, err := model.TransferUserQuotaToOrg(c.GetInt("id"), orgId, req.Quota)
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrInsufficientUserQuota):
+			common.ApiErrorI18n(c, i18n.MsgOrgWalletInsufficient)
+		case errors.Is(err, model.ErrOrgDisabled):
+			common.ApiErrorI18n(c, i18n.MsgOrgDisabled)
+		case errors.Is(err, model.ErrOrgNotFound):
+			common.ApiErrorI18n(c, i18n.MsgOrgNotFound)
+		default:
+			common.ApiError(c, err)
+		}
+		return
+	}
+	// 池余额取事务内锁定行的结果，保证审计里的 after 与账面一致；
+	// 企业名只为日志可读性补读一次，缺失不影响已完成的转账。
+	org, _ := model.GetOrganizationById(orgId)
+	recordManageAudit(c, "org.wallet_transfer", map[string]interface{}{
+		"id":    orgId,
+		"name":  orgAuditName(org),
+		"quota": req.Quota,
+		"after": poolQuota,
+	})
+	common.ApiSuccessI18n(c, i18n.MsgOperationSuccess, gin.H{"quota": poolQuota})
+}
+
 // ---------------------------------------------------------------------------
 // 系统管理员：企业 CRUD、充值调额、禁用与成员查看
 // ---------------------------------------------------------------------------
