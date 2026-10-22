@@ -376,6 +376,18 @@ func SetApiRouter(router *gin.Engine) {
 			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
 		}
 
+		// 实验性 seedance 模型替换探针（见 controller/seedance_probe.go）：
+		// 仅当 SEEDANCE_PROBE_ENABLED=true 且配了独立 Ark key 时才注册，Root 专属，
+		// 不走 relay / 计费 / 任务表。删除该文件与这一块即可完全下线。
+		if controller.SeedanceProbeEnabled() {
+			seedanceProbeRoute := apiRouter.Group("/probe/seedance/contents/generations/tasks")
+			seedanceProbeRoute.Use(middleware.RootAuth())
+			{
+				seedanceProbeRoute.POST("", controller.SeedanceProbeSubmit)
+				seedanceProbeRoute.GET("/:id", controller.SeedanceProbeFetch)
+			}
+		}
+
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
