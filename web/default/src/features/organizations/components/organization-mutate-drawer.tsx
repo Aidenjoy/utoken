@@ -61,6 +61,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import { listAgents } from '@/features/agents/api'
 import { OrgNotifyProtocolHelp } from '@/features/organization/components/org-notify-protocol-help'
 import {
   ORG_NOTIFY_TARGET_PLACEHOLDERS,
@@ -108,6 +109,8 @@ const organizationFormSchema = z.object({
   cache_ttl: z.number().int().min(1).max(ORG_VALIDATION.CACHE_TTL_MAX),
   allow_wallet_fallback: z.boolean(),
   hide_pool_quota: z.boolean(),
+  agent_id: z.number().int().min(0),
+  disable_personal_wallet: z.boolean(),
 })
 
 type OrganizationFormInput = z.input<typeof organizationFormSchema>
@@ -126,6 +129,8 @@ const EMPTY_DEFAULTS: OrganizationFormInput = {
   cache_ttl: ORG_VALIDATION.CACHE_TTL_DEFAULT,
   allow_wallet_fallback: false,
   hide_pool_quota: false,
+  agent_id: 0,
+  disable_personal_wallet: false,
 }
 
 type Props = {
@@ -156,6 +161,15 @@ export function OrganizationMutateDrawer({
   // A primitive, so the reset effect below can depend on it without the
   // freshly-allocated `groups` array retriggering it on every render.
   const defaultGroup = groupsData?.data?.[0] ?? EMPTY_DEFAULTS.group
+
+  // 归属代理商候选：管理员端代理商总量有限，一次取足即可，无需分页搜索。
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents', 'org-binding-options'],
+    queryFn: () => listAgents({ p: 1, page_size: 200 }),
+    staleTime: 5 * 60 * 1000,
+    enabled: open,
+  })
+  const agents = agentsData?.data?.items ?? []
 
   const form = useForm<OrganizationFormInput, unknown, OrganizationFormValues>({
     resolver: zodResolver(organizationFormSchema),
@@ -193,6 +207,8 @@ export function OrganizationMutateDrawer({
           : ORG_VALIDATION.CACHE_TTL_DEFAULT,
       allow_wallet_fallback: organization.allow_wallet_fallback,
       hide_pool_quota: organization.hide_pool_quota,
+      agent_id: organization.agent_id,
+      disable_personal_wallet: organization.disable_personal_wallet,
     })
   }, [open, organization, defaultGroup, form])
 
@@ -215,6 +231,8 @@ export function OrganizationMutateDrawer({
         cache_ttl: values.cache_ttl,
         allow_wallet_fallback: values.allow_wallet_fallback,
         hide_pool_quota: values.hide_pool_quota,
+        agent_id: values.agent_id,
+        disable_personal_wallet: values.disable_personal_wallet,
       }
       const result = isEdit
         ? await updateAdminOrganization(
@@ -360,6 +378,47 @@ export function OrganizationMutateDrawer({
                     </Select>
                     <FormDescription>
                       {t('The group decides billing ratios for every member.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='agent_id'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Owning Agent')}</FormLabel>
+                    <Select
+                      value={String(field.value ?? 0)}
+                      onValueChange={(value) =>
+                        field.onChange(Number(value ?? 0))
+                      }
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={t('Direct sales (no agent)')}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectItem value='0'>
+                          {t('Direct sales (no agent)')}
+                        </SelectItem>
+                        {agents.map((agent) => (
+                          <SelectItem key={agent.id} value={String(agent.id)}>
+                            {agent.display_name ||
+                              agent.username ||
+                              `#${agent.id}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {t(
+                        'Binding syncs every member to this agent and narrows their models to its authorization list. Rebinding moves the whole enterprise; direct sales keeps the full model catalog.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -594,6 +653,30 @@ export function OrganizationMutateDrawer({
                       <FormDescription>
                         {t(
                           "When the pool cannot cover a request, charge the member's personal balance instead of failing it."
+                        )}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='disable_personal_wallet'
+                render={({ field }) => (
+                  <FormItem className='flex flex-row items-center justify-between gap-4 rounded-lg border p-3'>
+                    <div className='space-y-0.5'>
+                      <FormLabel>
+                        {t('Disable Member Personal Wallets')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Members cannot top up, redeem codes or subscribe, and billing is forced to the shared pool regardless of fallback. Enterprise-admin top-ups still land in the pool.'
                         )}
                       </FormDescription>
                     </div>

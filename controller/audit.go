@@ -59,6 +59,12 @@ var auditContentTemplates = map[string]string{
 	"org.member.update":   "Updated organization member ${username} in ${name} (role ${role}, sub-quota ${quota_limit}, status ${status})",
 	"org.member.remove":   "Removed member ${username} from organization ${name}",
 	"org.wallet_transfer": "Transferred ${quota} from personal wallet into organization ${name} pool (balance ${after})",
+	"org.agent_bind":      "Bound organization ${name} (ID: ${id}) to agent ${agent} (${action})",
+	"org.agent_unbind":    "Unbound organization ${name} (ID: ${id}) from agent ${agent}",
+	"org.pool_topup":      "Organization ${name} pool received online top-up of ${quota} (order ${trade_no})",
+	"org.model_discounts": "Set organization ${name} (ID: ${id}) model discounts (${models} models)",
+	"agent.member_invite": "Agent ${agent} invited user ${username} as a member",
+	"agent.member_kick":   "Agent ${agent} removed member ${username}",
 
 	"alert.org_quota_low":   "Organization ${name} quota dropped below warning threshold ${threshold}",
 	"alert.org_daily_usage": "Organization ${name} daily usage exceeded ${threshold}",

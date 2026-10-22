@@ -23,6 +23,8 @@ import type {
   AgentMember,
   AgentMemberDiscounts,
   AgentMemberOption,
+  AgentOrganization,
+  AgentOrganizationMember,
   AgentProfile,
   AgentRechargeRecord,
   ApiResponse,
@@ -241,5 +243,104 @@ export async function listAgentMemberOptions(): Promise<
   ApiResponse<AgentMemberOption[]>
 > {
   const res = await api.get('/api/agent/member-options')
+  return res.data
+}
+
+// ============================================================================
+// Agent self-service: enterprises (developing enterprise customers)
+// ============================================================================
+
+export async function listMyEnterprises(
+  params: ListParams & { keyword?: string } = {}
+): Promise<PaginatedResponse<AgentOrganization>> {
+  const { p = 1, page_size = 20, keyword } = params
+  const query = new URLSearchParams()
+  query.set('p', String(p))
+  query.set('page_size', String(page_size))
+  if (keyword) query.set('keyword', keyword)
+  const res = await api.get(`/api/agent/enterprises?${query.toString()}`)
+  return res.data
+}
+
+export interface CreateEnterprisePayload {
+  name: string
+  display_name?: string
+  owner_username: string
+}
+
+/**
+ * Create an enterprise owned by this agent. The initial pool is 0 (funding is
+ * added later by an admin offline or by the enterprise admin's online top-up);
+ * the server binds the new org to the caller agent and syncs member attribution.
+ */
+export async function createMyEnterprise(
+  payload: CreateEnterprisePayload
+): Promise<ApiResponse<AgentOrganization>> {
+  const res = await api.post('/api/agent/enterprises', payload)
+  return res.data
+}
+
+/**
+ * Read an enterprise's per-model discounts together with this agent's floors,
+ * so the editor can clamp each percentage input before submitting.
+ */
+export async function getMyEnterpriseDiscounts(
+  orgId: number
+): Promise<ApiResponse<AgentMemberDiscounts>> {
+  const res = await api.get(`/api/agent/enterprises/${orgId}/model_discounts`)
+  return res.data
+}
+
+/**
+ * Set an enterprise's discounts for the models this agent is authorized for.
+ * Whole-table replacement within the authorization list; the server overwrites
+ * every member's personal discounts to match.
+ */
+export async function updateMyEnterpriseDiscounts(
+  orgId: number,
+  discounts: Record<string, number>
+): Promise<ApiResponse<{ discounts: Record<string, number> }>> {
+  const res = await api.put(
+    `/api/agent/enterprises/${orgId}/model_discounts`,
+    { discounts }
+  )
+  return res.data
+}
+
+export async function listMyEnterpriseMembers(
+  orgId: number,
+  params: ListParams & { keyword?: string } = {}
+): Promise<PaginatedResponse<AgentOrganizationMember>> {
+  const { p = 1, page_size = 20, keyword } = params
+  const query = new URLSearchParams()
+  query.set('p', String(p))
+  query.set('page_size', String(page_size))
+  if (keyword) query.set('keyword', keyword)
+  const res = await api.get(
+    `/api/agent/enterprises/${orgId}/members?${query.toString()}`
+  )
+  return res.data
+}
+
+// ============================================================================
+// Agent self-service: individual member invite / kick
+// ============================================================================
+
+/**
+ * Invite an existing individual user (by username) to become this agent's
+ * member — semantically equivalent to registering with the agent's invite code
+ * (bound to the authorization allowlist). Enterprise members follow their
+ * organization and cannot be invited individually.
+ */
+export async function inviteMember(
+  username: string
+): Promise<ApiResponse> {
+  const res = await api.post('/api/agent/members/invite', { username })
+  return res.data
+}
+
+/** Kick an individual member: unbinds their agent attribution. */
+export async function kickMember(userId: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/agent/members/${userId}`)
   return res.data
 }

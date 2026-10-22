@@ -83,6 +83,7 @@ import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
 import { Route as AuthenticatedAgentRechargeRouteImport } from './routes/_authenticated/agent/recharge'
 import { Route as AuthenticatedAgentMembersRouteImport } from './routes/_authenticated/agent/members'
+import { Route as AuthenticatedAgentEnterprisesRouteImport } from './routes/_authenticated/agent/enterprises'
 import { Route as AuthenticatedAgentCodesRouteImport } from './routes/_authenticated/agent/codes'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedSystemSettingsSiteIndexRouteImport } from './routes/_authenticated/system-settings/site/index'
@@ -513,6 +514,12 @@ const AuthenticatedAgentMembersRoute =
     path: '/agent/members',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAgentEnterprisesRoute =
+  AuthenticatedAgentEnterprisesRouteImport.update({
+    id: '/agent/enterprises',
+    path: '/agent/enterprises',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAgentCodesRoute = AuthenticatedAgentCodesRouteImport.update({
   id: '/agent/codes',
   path: '/agent/codes',
@@ -660,6 +667,7 @@ export interface FileRoutesByFullPath {
   '/setup/': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/agent/codes': typeof AuthenticatedAgentCodesRoute
+  '/agent/enterprises': typeof AuthenticatedAgentEnterprisesRoute
   '/agent/members': typeof AuthenticatedAgentMembersRoute
   '/agent/recharge': typeof AuthenticatedAgentRechargeRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
@@ -753,6 +761,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/agent/codes': typeof AuthenticatedAgentCodesRoute
+  '/agent/enterprises': typeof AuthenticatedAgentEnterprisesRoute
   '/agent/members': typeof AuthenticatedAgentMembersRoute
   '/agent/recharge': typeof AuthenticatedAgentRechargeRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
@@ -848,6 +857,7 @@ export interface FileRoutesById {
   '/setup/': typeof SetupIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
   '/_authenticated/agent/codes': typeof AuthenticatedAgentCodesRoute
+  '/_authenticated/agent/enterprises': typeof AuthenticatedAgentEnterprisesRoute
   '/_authenticated/agent/members': typeof AuthenticatedAgentMembersRoute
   '/_authenticated/agent/recharge': typeof AuthenticatedAgentRechargeRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
@@ -944,6 +954,7 @@ export interface FileRouteTypes {
     | '/setup/'
     | '/user/reset'
     | '/agent/codes'
+    | '/agent/enterprises'
     | '/agent/members'
     | '/agent/recharge'
     | '/chat/$chatId'
@@ -1037,6 +1048,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/user/reset'
     | '/agent/codes'
+    | '/agent/enterprises'
     | '/agent/members'
     | '/agent/recharge'
     | '/chat/$chatId'
@@ -1131,6 +1143,7 @@ export interface FileRouteTypes {
     | '/setup/'
     | '/(auth)/user/reset'
     | '/_authenticated/agent/codes'
+    | '/_authenticated/agent/enterprises'
     | '/_authenticated/agent/members'
     | '/_authenticated/agent/recharge'
     | '/_authenticated/chat/$chatId'
@@ -1740,6 +1753,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAgentMembersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/agent/enterprises': {
+      id: '/_authenticated/agent/enterprises'
+      path: '/agent/enterprises'
+      fullPath: '/agent/enterprises'
+      preLoaderRoute: typeof AuthenticatedAgentEnterprisesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/agent/codes': {
       id: '/_authenticated/agent/codes'
       path: '/agent/codes'
@@ -2006,6 +2026,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
   AuthenticatedAgentCodesRoute: typeof AuthenticatedAgentCodesRoute
+  AuthenticatedAgentEnterprisesRoute: typeof AuthenticatedAgentEnterprisesRoute
   AuthenticatedAgentMembersRoute: typeof AuthenticatedAgentMembersRoute
   AuthenticatedAgentRechargeRoute: typeof AuthenticatedAgentRechargeRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
@@ -2058,6 +2079,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
   AuthenticatedAgentCodesRoute: AuthenticatedAgentCodesRoute,
+  AuthenticatedAgentEnterprisesRoute: AuthenticatedAgentEnterprisesRoute,
   AuthenticatedAgentMembersRoute: AuthenticatedAgentMembersRoute,
   AuthenticatedAgentRechargeRoute: AuthenticatedAgentRechargeRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,

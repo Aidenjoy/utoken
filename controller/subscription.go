@@ -102,6 +102,12 @@ func SubscriptionRequestBalancePay(c *gin.Context) {
 		return
 	}
 
+	// 企业钱包守卫：禁用个人账户时不得购买个人订阅（子账号永远拦截）
+	if denyKey := checkOrgPersonalWalletPermission(c.GetInt("id")); denyKey != "" {
+		common.ApiErrorI18n(c, denyKey)
+		return
+	}
+
 	userId := c.GetInt("id")
 	var req SubscriptionBalancePayRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {

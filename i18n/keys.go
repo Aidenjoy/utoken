@@ -381,6 +381,15 @@ const (
 	MsgOrgMemberStatusInvalid    = "org.member_status_invalid"
 	MsgOrgWalletTransferInvalid  = "org.wallet_transfer_invalid"
 	MsgOrgWalletInsufficient     = "org.wallet_insufficient"
+	// 企业钱包管控（禁用个人账户）与企业↔代理商归属
+	MsgOrgPersonalWalletDisabled   = "org.personal_wallet_disabled"
+	MsgOrgSubUserNoWallet          = "org.sub_user_no_wallet"
+	MsgOrgMemberAgentBound         = "org.member_agent_bound"
+	MsgOrgNotOwnedByAgent          = "org.not_owned_by_agent"
+	MsgOrgAlreadyBoundOtherAgent   = "org.already_bound_other_agent"
+	MsgOrgDiscountBelowFloor       = "org.discount_below_floor"
+	MsgOrgDiscountInvalid          = "org.discount_invalid"
+	MsgOrgMemberDiscountFollowsOrg = "org.member_discount_follows_org"
 )
 
 // Agent (model authorization) related messages
@@ -395,6 +404,7 @@ const (
 	MsgAgentDiscountBelowFloor   = "agent.discount_below_floor"
 	MsgAgentDiscountLowered      = "agent.discount_lowered"
 	MsgAgentMemberNotOwned       = "agent.member_not_owned"
+	MsgAgentMemberBoundOther     = "agent.member_bound_other"
 )
 
 // Invite code related messages

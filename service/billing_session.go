@@ -596,7 +596,8 @@ func tryOrganizationBilling(c *gin.Context, relayInfo *relaycommon.RelayInfo, pr
 	insufficient := org.Quota < preConsumedQuota ||
 		(member.QuotaLimit > 0 && member.QuotaUsed+preConsumedQuota > member.QuotaLimit)
 	if insufficient {
-		if !org.AllowWalletFallback {
+		// 禁用个人账户的企业强制仅池：无视 AllowWalletFallback，池不足即终态错误
+		if !org.AllowWalletFallback || org.DisablePersonalWallet {
 			return nil, orgInsufficientError(org, member, preConsumedQuota), true
 		}
 		return nil, nil, false
@@ -612,8 +613,9 @@ func tryOrganizationBilling(c *gin.Context, relayInfo *relaycommon.RelayInfo, pr
 	}
 	if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
 		// preConsume 已回滚令牌预扣。并发下企业池可能刚好被其他请求扣空，
-		// 此时按企业配置决定是否回落个人资金；其他错误（如数据库故障）不回落。
-		if org.AllowWalletFallback && isOrgQuotaShortage(apiErr) {
+		// 此时按企业配置决定是否回落个人资金（禁用个人账户时不回落）；
+		// 其他错误（如数据库故障）不回落。
+		if org.AllowWalletFallback && !org.DisablePersonalWallet && isOrgQuotaShortage(apiErr) {
 			return nil, nil, false
 		}
 		return nil, apiErr, true

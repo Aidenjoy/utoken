@@ -26,6 +26,8 @@ const (
 var (
 	ErrAgentNotFound      = errors.New("agent not found")
 	ErrAgentAlreadyExists = errors.New("user is already an agent")
+	// ErrAgentDisabled 代理商已被停用：不得再绑定新的成员/企业，存量绑定不受影响。
+	ErrAgentDisabled = errors.New("agent is disabled")
 	// ErrAgentModelDiscountsInvalid 是授权配置各类校验失败（通配键、值域、条目数、键长度）
 	// 收敛后的哨兵错误。common 里这些子错误多为包内私有，controller 无法逐个 errors.Is，
 	// 因此在此统一包一层：前端展示 i18n 文案，具体原因保留在 wrapped message 里供日志排查。
@@ -90,6 +92,7 @@ var AgentMenuKeys = []string{
 	"viral_design",   // 爆款设计 / Viral Design
 	"asset_library",  // 素材库 / Asset Library
 	"prompt_library", // 提示词库 / Prompt Library
+	"enterprises",    // 我的企业 / My Enterprises（代理商发展企业客户）
 }
 
 var agentMenuKeySet = func() map[string]bool {
@@ -444,6 +447,68 @@ func SetUserAgentBinding(userId int, agentId int) error {
 		return err
 	}
 	return invalidateUserCache(userId)
+}
+
+// KickAgentMember 代理商踢出个人成员：解绑 users.agent_id（置 0）并清零该代理商
+// 授权清单内的折扣键（清单外可能是超管直设，保留），随后失效用户缓存使 AllowedModels
+// 恢复全模型访问。企业成员不走此路径（归属随企业），调用方需先确认用户不属于任何企业。
+func KickAgentMember(userId int, agentId int) error {
+	if userId <= 0 {
+		return errors.New("id 为空！")
+	}
+	floorKeys, err := agentFloorModelKeysTx(DB, agentId)
+	if err != nil {
+		return err
+	}
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&User{}).Where("id = ?", userId).Update("agent_id", 0).Error; err != nil {
+			return err
+		}
+		return stripMemberDiscountKeysTx(tx, []int{userId}, floorKeys)
+	}); err != nil {
+		return err
+	}
+	return invalidateUserCache(userId)
+}
+
+// GetAgentUsernames 批量返回代理商 ID → 代理商用户名的映射。
+// 代理商已被删除或归属用户不存在时对应键缺席，调用方按空串处理。
+func GetAgentUsernames(agentIds []int) (map[int]string, error) {
+	names := make(map[int]string)
+	if len(agentIds) == 0 {
+		return names, nil
+	}
+	var agents []Agent
+	if err := DB.Select("id, user_id").Where("id IN ?", agentIds).Find(&agents).Error; err != nil {
+		return nil, err
+	}
+	if len(agents) == 0 {
+		return names, nil
+	}
+	ownerIdByAgent := make(map[int]int, len(agents))
+	idSet := make(map[int]struct{}, len(agents))
+	ownerIds := make([]int, 0, len(agents))
+	for _, a := range agents {
+		ownerIdByAgent[a.Id] = a.UserId
+		if _, ok := idSet[a.UserId]; !ok {
+			idSet[a.UserId] = struct{}{}
+			ownerIds = append(ownerIds, a.UserId)
+		}
+	}
+	var owners []User
+	if err := DB.Select("id, username").Where("id IN ?", ownerIds).Find(&owners).Error; err != nil {
+		return nil, err
+	}
+	nameById := make(map[int]string, len(owners))
+	for _, o := range owners {
+		nameById[o.Id] = o.Username
+	}
+	for agentId, ownerId := range ownerIdByAgent {
+		if name, ok := nameById[ownerId]; ok {
+			names[agentId] = name
+		}
+	}
+	return names, nil
 }
 
 // validateAgentModelDiscounts 校验已序列化的授权配置：解析后交给 common 做规则校验。

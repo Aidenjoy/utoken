@@ -158,6 +158,12 @@ type orgSummaryResponse struct {
 	QuotaHeadroom int    `json:"quota_headroom"`
 	MemberCount   int64  `json:"member_count"`
 	CacheEnabled  bool   `json:"cache_enabled"`
+	// 企业钱包策略（禁用个人账户）：前端据此隐藏充值/兑换/订阅入口，并在管理员充值时
+	// 注明入池。非企业成员时这些字段缺省，前端按「不受限」处理。
+	DisablePersonalWallet bool `json:"disable_personal_wallet"`
+	CanTopUp              bool `json:"can_top_up"`
+	TopUpToPool           bool `json:"top_up_to_pool"`
+	CanUsePersonalWallet  bool `json:"can_use_personal_wallet"`
 }
 
 // GetOrgSummary 我的企业概览：企业名、我的子额度与已用量，
@@ -187,6 +193,18 @@ func GetOrgSummary(c *gin.Context) {
 		QuotaRemain:  member.RemainQuota(),
 		CacheEnabled: org.CacheEnabled,
 	}
+	// 钱包权限策略与守卫（controller/org_wallet_guard.go）同源：管理员充值直入池，
+	// 普通成员在开关开启时被拦截，子账号永远无个人钱包权限。
+	policy := &model.OrgWalletPolicy{
+		OrgId:          org.Id,
+		IsAdmin:        member.IsAdmin(),
+		SubUser:        member.SubUser,
+		WalletDisabled: org.DisablePersonalWallet,
+	}
+	resp.DisablePersonalWallet = org.DisablePersonalWallet
+	resp.CanTopUp = policy.CanTopUp()
+	resp.TopUpToPool = policy.TopUpOrgId() > 0
+	resp.CanUsePersonalWallet = policy.CanUsePersonalWallet()
 	// 池余额可见性由 HidePoolQuota 控制（零值 false 即默认可见）；
 	// 企业管理员与系统管理员始终可见，便于核对余额
 	if !org.HidePoolQuota || member.IsAdmin() || middleware.IsSystemAdmin(c) {
@@ -886,13 +904,18 @@ type adminCreateOrganizationRequest struct {
 	CacheTTL            int    `json:"cache_ttl"`
 	AllowWalletFallback bool   `json:"allow_wallet_fallback"`
 	HidePoolQuota       bool   `json:"hide_pool_quota"`
+	// AgentId > 0 时创建后立即绑定该代理商（同步全部成员归属），0=直销企业。
+	AgentId int `json:"agent_id"`
+	// DisablePersonalWallet 禁用成员个人账户：充值/兑换/订阅拦截、计费强制仅池。
+	DisablePersonalWallet bool `json:"disable_personal_wallet"`
 }
 
 // AdminGetAllOrganizations 企业列表（分页 + 关键字）
 func AdminGetAllOrganizations(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	keyword := strings.TrimSpace(c.Query("keyword"))
-	orgs, total, err := model.GetAllOrganizations(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	agentId, _ := strconv.Atoi(c.Query("agent_id"))
+	orgs, total, err := model.GetAllOrganizations(keyword, agentId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -980,18 +1003,19 @@ func AdminCreateOrganization(c *gin.Context) {
 	}
 
 	org := &model.Organization{
-		Name:                name,
-		DisplayName:         strings.TrimSpace(req.DisplayName),
-		Group:               group,
-		OwnerUserId:         0,
-		WarningThreshold:    req.WarningThreshold,
-		NotifyType:          notifyType,
-		NotifyTarget:        notifyTarget,
-		DailyUsageAlert:     req.DailyUsageAlert,
-		CacheEnabled:        cacheEnabled,
-		CacheTTL:            cacheTTL,
-		AllowWalletFallback: req.AllowWalletFallback,
-		HidePoolQuota:       req.HidePoolQuota,
+		Name:                  name,
+		DisplayName:           strings.TrimSpace(req.DisplayName),
+		Group:                 group,
+		OwnerUserId:           0,
+		WarningThreshold:      req.WarningThreshold,
+		NotifyType:            notifyType,
+		NotifyTarget:          notifyTarget,
+		DailyUsageAlert:       req.DailyUsageAlert,
+		CacheEnabled:          cacheEnabled,
+		CacheTTL:              cacheTTL,
+		AllowWalletFallback:   req.AllowWalletFallback,
+		HidePoolQuota:         req.HidePoolQuota,
+		DisablePersonalWallet: req.DisablePersonalWallet,
 	}
 	// 建企业、初始额度池与首位管理员在同一事务内完成，任一步失败整体回滚
 	if err := model.CreateOrganizationWithSetup(org, req.Quota, ownerUserId); err != nil {
@@ -1016,7 +1040,24 @@ func AdminCreateOrganization(c *gin.Context) {
 		"owner":  ownerUsername,
 		"status": org.Status,
 	})
-	common.ApiSuccessI18n(c, i18n.MsgCreateSuccess, org)
+	// 归属代理商单独走绑定路径：写 organizations.agent_id 并同步全部成员 users.agent_id。
+	if req.AgentId > 0 {
+		if err := model.SetOrganizationAgent(org.Id, req.AgentId); err != nil {
+			respondOrgAgentError(c, err)
+			return
+		}
+		recordManageAudit(c, "org.agent_bind", map[string]interface{}{
+			"id":     org.Id,
+			"name":   orgAuditName(org),
+			"agent":  req.AgentId,
+			"action": "create",
+		})
+	}
+	created, ok := loadOrganization(c, org.Id)
+	if !ok {
+		return
+	}
+	common.ApiSuccessI18n(c, i18n.MsgCreateSuccess, created)
 }
 
 // adminUpdateOrganizationRequest 系统管理员可改的全部企业字段（含分组与标识以外的计费相关项）
@@ -1031,6 +1072,10 @@ type adminUpdateOrganizationRequest struct {
 	CacheTTL            *int    `json:"cache_ttl"`
 	AllowWalletFallback *bool   `json:"allow_wallet_fallback"`
 	HidePoolQuota       *bool   `json:"hide_pool_quota"`
+	// DisablePersonalWallet 禁用成员个人账户开关（充值/兑换/订阅拦截 + 计费强制仅池）。
+	DisablePersonalWallet *bool `json:"disable_personal_wallet"`
+	// AgentId 非 nil 时重设归属代理商（0=收回为直销），走 SetOrganizationAgent 同步成员。
+	AgentId *int `json:"agent_id"`
 }
 
 // AdminUpdateOrganization 更新企业设置。分组变更会连带同步全部成员账号的分组，
@@ -1120,6 +1165,9 @@ func AdminUpdateOrganization(c *gin.Context) {
 	if req.HidePoolQuota != nil {
 		fields["hide_pool_quota"] = *req.HidePoolQuota
 	}
+	if req.DisablePersonalWallet != nil {
+		fields["disable_personal_wallet"] = *req.DisablePersonalWallet
+	}
 
 	// 分组单独走一条同步路径：需要连带更新成员账号的 group
 	newGroup := ""
@@ -1133,7 +1181,7 @@ func AdminUpdateOrganization(c *gin.Context) {
 			return
 		}
 	}
-	if len(fields) == 0 && newGroup == "" {
+	if len(fields) == 0 && newGroup == "" && req.AgentId == nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -1147,6 +1195,32 @@ func AdminUpdateOrganization(c *gin.Context) {
 		if err := model.UpdateOrganizationGroup(org.Id, newGroup); err != nil {
 			common.ApiError(c, err)
 			return
+		}
+	}
+	// 归属代理商变更单独走绑定/解绑路径（同步全部成员 users.agent_id + 清授权清单内折扣），
+	// 不能当普通字段直写 organizations.agent_id，否则成员归属与白名单不会随之更新。
+	if req.AgentId != nil && *req.AgentId != org.AgentId {
+		newAgentId := *req.AgentId
+		if newAgentId < 0 {
+			newAgentId = 0
+		}
+		if err := model.SetOrganizationAgent(org.Id, newAgentId); err != nil {
+			respondOrgAgentError(c, err)
+			return
+		}
+		if newAgentId > 0 {
+			recordManageAudit(c, "org.agent_bind", map[string]interface{}{
+				"id":     org.Id,
+				"name":   orgAuditName(org),
+				"agent":  newAgentId,
+				"action": "rebind",
+			})
+		} else {
+			recordManageAudit(c, "org.agent_unbind", map[string]interface{}{
+				"id":    org.Id,
+				"name":  orgAuditName(org),
+				"agent": org.AgentId,
+			})
 		}
 	}
 
@@ -1289,6 +1363,64 @@ func AdminUpdateOrgTokenRate(c *gin.Context) {
 		"purchase_discount": req.PurchaseDiscount,
 	})
 	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, nil)
+}
+
+// respondOrgAgentError 将企业↔代理商绑定/解绑的哨兵错误映射为 i18n 文案。
+func respondOrgAgentError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, model.ErrAgentNotFound):
+		common.ApiErrorI18n(c, i18n.MsgAgentNotFound)
+	case errors.Is(err, model.ErrAgentDisabled):
+		common.ApiErrorI18n(c, i18n.MsgAgentDisabled)
+	case errors.Is(err, model.ErrOrgNotFound):
+		common.ApiErrorI18n(c, i18n.MsgOrgNotFound)
+	default:
+		common.ApiError(c, err)
+	}
+}
+
+// AdminUpdateOrgModelDiscounts 设置企业级按模型折扣（直销企业由超管设，无下限约束），
+// 整表覆盖企业折扣并同步全部成员。空配置表示清除（成员一并回到原价）。
+func AdminUpdateOrgModelDiscounts(c *gin.Context) {
+	org, ok := loadOrganizationByIdParam(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Discounts map[string]float64 `json:"discounts"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	normalized, err := common.NormalizeModelDiscounts(req.Discounts)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgOrgDiscountInvalid)
+		return
+	}
+	discountsJSON := ""
+	if len(normalized) > 0 {
+		payload, err := common.Marshal(normalized)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		discountsJSON = string(payload)
+	}
+	if err := model.SetOrganizationModelDiscounts(org.Id, discountsJSON); err != nil {
+		if errors.Is(err, model.ErrOrgNotFound) {
+			common.ApiErrorI18n(c, i18n.MsgOrgNotFound)
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "org.model_discounts", map[string]interface{}{
+		"id":     org.Id,
+		"name":   orgAuditName(org),
+		"models": len(normalized),
+	})
+	common.ApiSuccessI18n(c, i18n.MsgUpdateSuccess, gin.H{"discounts": normalized})
 }
 
 // AdminDeleteOrganization 删除企业。仅允许删除已清空成员的企业，

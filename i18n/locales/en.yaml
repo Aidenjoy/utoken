@@ -327,6 +327,14 @@ org.not_empty: "This organization still has members; remove them before deleting
 org.member_status_invalid: "Invalid organization member status"
 org.wallet_transfer_invalid: "Transfer amount must be greater than zero"
 org.wallet_insufficient: "Your wallet balance is insufficient"
+org.personal_wallet_disabled: "Your organization has disabled personal accounts. Online top-up, redemption codes and subscriptions are unavailable; please contact your organization administrator"
+org.sub_user_no_wallet: "Sub-accounts created by the organization have no personal wallet access"
+org.member_agent_bound: "This user belongs to an organization; agent binding follows the organization"
+org.not_owned_by_agent: "This organization does not belong to you"
+org.already_bound_other_agent: "This organization is already bound to another agent"
+org.discount_below_floor: "Discount for model {{.Model}} is below the allowed floor"
+org.discount_invalid: "Invalid organization model discounts: values must satisfy 0 < discount <= 1"
+org.member_discount_follows_org: "Discounts for organization members follow the organization and cannot be set individually"
 
 agent.not_found: "Agent not found"
 agent.disabled: "This agent account has been disabled"
@@ -338,6 +346,7 @@ agent.model_not_authorized: "Model {{.Model}} is outside this agent's authorized
 agent.discount_below_floor: "The discount for model {{.Model}} is below the allowed floor"
 agent.discount_lowered: "The price for model {{.Model}} can only be raised, not lowered"
 agent.member_not_owned: "This user is not one of your members"
+agent.member_bound_other: "This user is already bound to another agent"
 
 invite_code.not_found: "Invite code does not exist"
 invite_code.disabled: "This invite code has been disabled"

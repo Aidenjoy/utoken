@@ -80,6 +80,10 @@ interface RechargeFormCardProps {
   waffoMinTopup?: number
   onWaffoMethodSelect?: (method: WaffoPayMethod, index: number) => void
   enableWaffoPancakeTopup?: boolean
+  /** Admin top-up credited to the enterprise pool rather than a personal wallet. */
+  topUpToPool?: boolean
+  /** Hide the redemption-code section (the enterprise wallet is locked). */
+  hideRedemption?: boolean
 }
 
 export function RechargeFormCard({
@@ -110,6 +114,8 @@ export function RechargeFormCard({
   waffoMinTopup,
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
+  topUpToPool,
+  hideRedemption,
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
@@ -137,7 +143,8 @@ export function RechargeFormCard({
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
-  const redemptionEnabled = topupInfo?.enable_redemption !== false
+  const redemptionEnabled =
+    topupInfo?.enable_redemption !== false && !hideRedemption
 
   if (loading) {
     return (
@@ -209,6 +216,15 @@ export function RechargeFormCard({
       }
       contentClassName='space-y-4 sm:space-y-6'
     >
+      {topUpToPool ? (
+        <Alert>
+          <AlertDescription>
+            {t(
+              'As an enterprise admin, this top-up is credited directly to your enterprise quota pool, not a personal wallet.'
+            )}
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-4 sm:space-y-6'>

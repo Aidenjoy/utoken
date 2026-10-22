@@ -17,7 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Ban, CircleCheck, Coins, Edit, Trash2, Users } from 'lucide-react'
+import {
+  Ban,
+  CircleCheck,
+  Coins,
+  Edit,
+  Percent,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
@@ -34,6 +42,7 @@ import { formatQuota, formatTimestamp } from '@/lib/format'
 export type OrganizationActions = {
   onEdit: (organization: Organization) => void
   onAdjustQuota: (organization: Organization) => void
+  onSetDiscounts: (organization: Organization) => void
   onToggleStatus: (organization: Organization) => void
   onViewMembers: (organization: Organization) => void
   onDelete: (organization: Organization) => void
@@ -89,6 +98,22 @@ export function useOrganizationColumns(
         />
       ),
       size: 120,
+    },
+    {
+      accessorKey: 'agent_username',
+      header: t('Owning Agent'),
+      meta: { mobileHidden: true },
+      cell: ({ row }) =>
+        row.original.agent_id > 0 ? (
+          <StatusBadge
+            label={row.original.agent_username || `#${row.original.agent_id}`}
+            variant='neutral'
+            copyable={false}
+          />
+        ) : (
+          <span className='text-muted-foreground text-xs'>{t('Direct')}</span>
+        ),
+      size: 150,
     },
     {
       accessorKey: 'status',
@@ -161,6 +186,12 @@ export function useOrganizationColumns(
             >
               {t('Adjust Pool Quota')}
               <Coins size={16} />
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => actions.onSetDiscounts(organization)}
+            >
+              {t('Model Discounts')}
+              <Percent size={16} />
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => actions.onViewMembers(organization)}

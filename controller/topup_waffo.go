@@ -166,6 +166,13 @@ func RequestWaffoPay(c *gin.Context) {
 		return
 	}
 
+	// 企业钱包守卫：禁用个人账户的企业成员/子账号不得充值，企业管理员充值直入企业池
+	orgId, denyKey := checkOrgTopUpPermission(id)
+	if denyKey != "" {
+		rejectOrgWalletLegacy(c, denyKey)
+		return
+	}
+
 	// 从服务端配置查找支付方式，客户端只传索引或旧字段
 	var resolvedPayMethodType, resolvedPayMethodName string
 	methods := setting.GetWaffoPayMethods()
@@ -226,6 +233,7 @@ func RequestWaffoPay(c *gin.Context) {
 		TradeNo:         merchantOrderId,
 		PaymentMethod:   model.PaymentMethodWaffo,
 		PaymentProvider: model.PaymentProviderWaffo,
+		OrgId:           orgId,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}

@@ -361,6 +361,13 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		return
 	}
 
+	// 企业钱包守卫：禁用个人账户的企业成员/子账号不得充值，企业管理员充值直入企业池
+	orgId, denyKey := checkOrgTopUpPermission(id)
+	if denyKey != "" {
+		rejectOrgWalletLegacy(c, denyKey)
+		return
+	}
+
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
@@ -381,6 +388,7 @@ func RequestWaffoPancakePay(c *gin.Context) {
 		TradeNo:         tradeNo,
 		PaymentMethod:   model.PaymentMethodWaffoPancake,
 		PaymentProvider: model.PaymentProviderWaffoPancake,
+		OrgId:           orgId,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}

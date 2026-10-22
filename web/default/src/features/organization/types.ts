@@ -76,6 +76,18 @@ export interface Organization {
   cache_ttl: number
   allow_wallet_fallback: boolean
   hide_pool_quota: boolean
+  /** Owning agent (`agents.id`); 0 = a direct-sales org opened by an admin.
+   *  Binding syncs every member's `users.agent_id` to match. */
+  agent_id: number
+  /** Backfilled owner-agent username for display; empty when direct-sales. */
+  agent_username?: string
+  /** Enterprise-wide per-model discount. Saving overwrites every member's
+   *  personal discount; never null (empty object when unset). */
+  model_discounts: Record<string, number>
+  /** Lock down member personal wallets: top-up / redeem / subscribe are
+   *  blocked and billing is forced to pool-only. Admin top-ups still land in
+   *  the pool. */
+  disable_personal_wallet: boolean
   /** Enterprise token consumption rate; 0 = unset (default 1.0x). Saving an
    *  enterprise rate overwrites the personal rate of every member. */
   token_rate: number
@@ -122,6 +134,19 @@ export interface OrgSummary {
   quota_headroom?: number
   member_count?: number
   cache_enabled?: boolean
+  /** Enterprise wallet-lockdown flag (admin-controlled). Absent when the user
+   *  has no organization. */
+  disable_personal_wallet?: boolean
+  /** Whether the caller may start an online top-up. Absent (no org) = allowed;
+   *  false for members when the wallet is locked, and always false for
+   *  sub-accounts. */
+  can_top_up?: boolean
+  /** True when the caller's top-up is credited to the enterprise pool (an org
+   *  admin) rather than to a personal wallet. */
+  top_up_to_pool?: boolean
+  /** Whether the caller may use their personal wallet (redeem codes,
+   *  subscriptions, billing fallback). Absent (no org) = allowed. */
+  can_use_personal_wallet?: boolean
 }
 
 export interface OrganizationDetail {

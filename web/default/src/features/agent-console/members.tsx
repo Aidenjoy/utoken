@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Percent } from 'lucide-react'
+import { Percent, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -31,6 +31,17 @@ import {
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import {
   Tooltip,
@@ -38,13 +49,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { listMyMembers } from '@/features/agents/api'
+import { kickMember, listMyMembers } from '@/features/agents/api'
 import type { AgentMember } from '@/features/agents/types'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatModelDiscount } from '@/lib/discount'
 import { formatQuota, formatTimestampToDate } from '@/lib/format'
 
 import { MemberDiscountDialog } from './components/member-discount-dialog'
+import { MemberInviteDialog } from './components/member-invite-dialog'
 
 /**
  * Users who registered with one of this agent's invite codes, together with the
@@ -62,11 +74,39 @@ export function AgentMembers() {
   const [pageSize, setPageSize] = useState(20)
   const [editing, setEditing] = useState<AgentMember | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [kickTarget, setKickTarget] = useState<AgentMember | null>(null)
+  const [isWorking, setIsWorking] = useState(false)
 
   const openDiscountEditor = useCallback((member: AgentMember) => {
     setEditing(member)
     setDialogOpen(true)
   }, [])
+
+  const refresh = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['my-agent-members'] })
+  }, [queryClient])
+
+  // 踢出个人成员：解绑其代理商归属并清零授权清单内折扣。企业成员归属随企业，
+  // 后端会拒绝并回显文案，这里不额外区分。
+  const confirmKick = useCallback(async () => {
+    if (!kickTarget) return
+    setIsWorking(true)
+    try {
+      const result = await kickMember(kickTarget.user_id)
+      if (!result.success) {
+        toast.error(result.message || t('Failed to remove member'))
+        return
+      }
+      toast.success(t('Member removed'))
+      setKickTarget(null)
+      refresh()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : t('Failed to remove member'))
+    } finally {
+      setIsWorking(false)
+    }
+  }, [kickTarget, refresh, t])
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['my-agent-members', pageIndex, pageSize],
@@ -188,6 +228,13 @@ export function AgentMembers() {
               {t('Set Discounts')}
               <Percent size={16} />
             </DropdownMenuItem>
+            <DropdownMenuItem
+              variant='destructive'
+              onClick={() => setKickTarget(row.original)}
+            >
+              {t('Remove')}
+              <Trash2 size={16} />
+            </DropdownMenuItem>
           </DataTableRowActionMenu>
         ),
         enableSorting: false,
@@ -215,6 +262,13 @@ export function AgentMembers() {
     totalCount: data?.total ?? 0,
   })
 
+  const inviteButton = (
+    <Button size='sm' onClick={() => setInviteOpen(true)}>
+      <Plus className='size-4' />
+      {t('Invite Member')}
+    </Button>
+  )
+
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Members')}</SectionPageLayout.Title>
@@ -228,9 +282,10 @@ export function AgentMembers() {
           emptyDescription={t(
             'Users who register with your invite code will appear here.'
           )}
+          emptyAction={inviteButton}
           skeletonKeyPrefix='my-agent-members-skeleton'
           applyHeaderSize
-          toolbarProps={{ hideViewOptions: true }}
+          toolbarProps={{ hideViewOptions: true, preActions: inviteButton }}
         />
         {/* 必须待在 Content 里：SectionPageLayout 只认自己的四个插槽子节点，
             放在它旁边会被静默丢弃，弹窗永远不会挂载（弹窗自身 portal 到 body，
@@ -239,12 +294,44 @@ export function AgentMembers() {
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           member={editing}
-          onSuccess={() =>
-            void queryClient.invalidateQueries({
-              queryKey: ['my-agent-members'],
-            })
-          }
+          onSuccess={refresh}
         />
+        <MemberInviteDialog
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          onSuccess={refresh}
+        />
+        <AlertDialog
+          open={kickTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setKickTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('Remove Member')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t('Remove {{name}} from your members?', {
+                  name: kickTarget?.display_name || kickTarget?.username || '',
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isWorking}>
+                {t('Cancel')}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isWorking}
+                onClick={(event) => {
+                  event.preventDefault()
+                  void confirmKick()
+                }}
+              >
+                {isWorking ? t('Processing...') : t('Remove')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

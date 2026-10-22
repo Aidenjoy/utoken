@@ -47,6 +47,8 @@ interface PaymentConfirmDialogProps {
   processing: boolean
   discountRate?: number
   usdExchangeRate?: number
+  /** Admin top-up credited to the enterprise pool rather than a personal wallet. */
+  topUpToPool?: boolean
 }
 
 export function PaymentConfirmDialog({
@@ -60,6 +62,7 @@ export function PaymentConfirmDialog({
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
   usdExchangeRate = 1,
+  topUpToPool,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
@@ -139,6 +142,12 @@ export function PaymentConfirmDialog({
               </div>
             </div>
           </div>
+
+          {topUpToPool ? (
+            <div className='bg-muted/50 text-muted-foreground rounded-lg p-3 text-xs'>
+              {t('This top-up will be credited to your enterprise quota pool.')}
+            </div>
+          ) : null}
         </div>
 
         <AlertDialogFooter className='grid grid-cols-2 gap-2 sm:flex'>

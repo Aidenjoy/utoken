@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -60,6 +61,8 @@ var (
 	ErrOrgPoolBelowCommitments   = errors.New("organization pool balance below member sub-quota commitments")
 	ErrOrgNotEmpty               = errors.New("organization still has members")
 	ErrOrgNotifyTargetInvalid    = errors.New("invalid organization notify target")
+	// ErrOrgMemberAgentBound 企业成员的代理商归属随企业，代理商不得单独邀请/改绑企业内用户。
+	ErrOrgMemberAgentBound = errors.New("user belongs to an organization, agent binding follows the organization")
 )
 
 // Organization 企业（组织）。
@@ -84,16 +87,38 @@ type Organization struct {
 	LastAlertAt      int64  `json:"last_alert_at" gorm:"bigint;default:0"`
 	LastDailyAlertAt int64  `json:"last_daily_alert_at" gorm:"bigint;default:0"`
 
-	CacheEnabled        bool    `json:"cache_enabled" gorm:"type:bool"` // 企业级响应缓存开关
-	CacheTTL            int     `json:"cache_ttl" gorm:"type:int;default:300"`
-	AllowWalletFallback bool    `json:"allow_wallet_fallback" gorm:"type:bool"`        // 企业池不足时是否回落成员个人钱包
-	HidePoolQuota       bool    `json:"hide_pool_quota" gorm:"type:bool"`              // 对成员隐藏企业池余额
-	TokenRate           float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // 企业 token 消耗费率（=期望折扣/采购折扣），0=未设置；保存时覆盖全部成员个人费率
-	ExpectedDiscount    float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 期望折扣（费率分子），保存时覆盖全部成员
-	PurchaseDiscount    float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 采购折扣（费率分母），保存时覆盖全部成员
+	CacheEnabled        bool `json:"cache_enabled" gorm:"type:bool"` // 企业级响应缓存开关
+	CacheTTL            int  `json:"cache_ttl" gorm:"type:int;default:300"`
+	AllowWalletFallback bool `json:"allow_wallet_fallback" gorm:"type:bool"` // 企业池不足时是否回落成员个人钱包
+	HidePoolQuota       bool `json:"hide_pool_quota" gorm:"type:bool"`       // 对成员隐藏企业池余额
+	// AgentId 是企业的代理商归属（agents 表主键），0=直销企业（超管开通）。
+	// 绑定/解绑走 SetOrganizationAgent：成员 users.agent_id 随企业整体同步。
+	AgentId int `json:"agent_id" gorm:"type:int;index;default:0"`
+	// ModelDiscounts 企业级按模型折扣的落库文本（格式同 users.model_discounts），
+	// 保存时整表覆盖全部成员个人折扣，新成员加入时继承；空串=未设置（原价）。
+	ModelDiscounts string `json:"-" gorm:"type:text;column:model_discounts"`
+	// DisablePersonalWallet 禁用成员个人账户：充值/兑换/订阅拦截、计费强制仅池。
+	// 企业管理员的在线充值不受拦截且直入企业池（见 OrgWalletPolicy）。
+	DisablePersonalWallet bool    `json:"disable_personal_wallet" gorm:"type:bool"`
+	TokenRate             float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // 企业 token 消耗费率（=期望折扣/采购折扣），0=未设置；保存时覆盖全部成员个人费率
+	ExpectedDiscount      float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 期望折扣（费率分子），保存时覆盖全部成员
+	PurchaseDiscount      float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 采购折扣（费率分母），保存时覆盖全部成员
 
 	CreatedAt int64 `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	UpdatedAt int64 `json:"updated_at" gorm:"autoUpdateTime;column:updated_at"`
+
+	// 列表/详情返回时回填，不落库
+	AgentUsername    string             `json:"agent_username" gorm:"-"`  // 归属代理商的用户名，直销为空
+	ModelDiscountMap map[string]float64 `json:"model_discounts" gorm:"-"` // 企业折扣的对象视图，永不为 nil
+}
+
+// syncResponseFields 把落库文本同步到 JSON 响应视图字段。凡是写出 Organization 之前都要调一次。
+func (o *Organization) syncResponseFields() {
+	floors := common.ParseModelDiscounts(o.ModelDiscounts)
+	if floors == nil {
+		floors = map[string]float64{}
+	}
+	o.ModelDiscountMap = floors
 }
 
 func (Organization) TableName() string {
@@ -146,7 +171,10 @@ type OrgMember struct {
 	QuotaLimit int    `json:"quota_limit" gorm:"type:int;default:0"`
 	QuotaUsed  int    `json:"quota_used" gorm:"type:int;default:0"`
 	Status     int    `json:"status" gorm:"type:int;default:1"`
-	JoinedAt   int64  `json:"joined_at" gorm:"bigint;default:0"`
+	// SubUser 标记成员账号由企业内新建（子账号），永远无个人钱包权限；
+	// 既有用户拉入企业的成员为 false。存量数据无法回溯，一律按 false（既有用户）处理。
+	SubUser  bool  `json:"sub_user" gorm:"type:bool"`
+	JoinedAt int64 `json:"joined_at" gorm:"bigint;default:0"`
 }
 
 func (OrgMember) TableName() string {
@@ -366,6 +394,7 @@ func GetOrganizationById(id int) (*Organization, error) {
 		}
 		return nil, err
 	}
+	org.syncResponseFields()
 	return &org, nil
 }
 
@@ -382,11 +411,14 @@ func GetOrganizationByName(name string) (*Organization, error) {
 		}
 		return nil, err
 	}
+	org.syncResponseFields()
 	return &org, nil
 }
 
-// GetAllOrganizations 分页查询企业列表，keyword 匹配标识与显示名
-func GetAllOrganizations(keyword string, startIdx int, num int) ([]*Organization, int64, error) {
+// GetAllOrganizations 分页查询企业列表，keyword 匹配标识与显示名；
+// agentId > 0 时只返回归属该代理商的企业（代理商自助端），= 0 不过滤。
+// 返回前回填归属代理商用户名与折扣对象视图。
+func GetAllOrganizations(keyword string, agentId int, startIdx int, num int) ([]*Organization, int64, error) {
 	var orgs []*Organization
 	var total int64
 	query := DB.Model(&Organization{})
@@ -394,13 +426,47 @@ func GetAllOrganizations(keyword string, startIdx int, num int) ([]*Organization
 		like := "%" + keyword + "%"
 		query = query.Where("name LIKE ? OR display_name LIKE ?", like, like)
 	}
+	if agentId > 0 {
+		query = query.Where("agent_id = ?", agentId)
+	}
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	if err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&orgs).Error; err != nil {
 		return nil, 0, err
 	}
+	if err := attachOrgAgentUsernames(orgs); err != nil {
+		return nil, 0, err
+	}
+	for _, org := range orgs {
+		org.syncResponseFields()
+	}
 	return orgs, total, nil
+}
+
+// attachOrgAgentUsernames 为企业列表批量回填归属代理商用户名，避免 N+1。
+func attachOrgAgentUsernames(orgs []*Organization) error {
+	agentSet := make(map[int]struct{}, len(orgs))
+	agentIds := make([]int, 0, len(orgs))
+	for _, org := range orgs {
+		if org.AgentId <= 0 {
+			continue
+		}
+		if _, ok := agentSet[org.AgentId]; !ok {
+			agentSet[org.AgentId] = struct{}{}
+			agentIds = append(agentIds, org.AgentId)
+		}
+	}
+	names, err := GetAgentUsernames(agentIds)
+	if err != nil {
+		return err
+	}
+	for _, org := range orgs {
+		if org.AgentId > 0 {
+			org.AgentUsername = names[org.AgentId]
+		}
+	}
+	return nil
 }
 
 // UpdateOrganizationFields 按字段白名单更新企业信息
@@ -494,6 +560,206 @@ func SetOrganizationTokenRate(orgId int, rate, expected, purchase float64) error
 		updateUserTokenRateCache(userId, rate)
 	}
 	return nil
+}
+
+// SetOrganizationAgent 绑定（agentId>0）或解绑（agentId=0）企业的代理商归属，
+// 成员 users.agent_id 随企业整体同步（企业归属优先：成员原属其他代理商时强制改绑）。
+// 解绑或改绑时清零旧代理商授权清单内的折扣键（企业与成员同口径）：清单外的键
+// 可能是超管或其他渠道设置的，不动。绑定时新代理商授权清单内的折扣键同样清零，
+// 避免成员带着旧代理商的折扣直接享受新归属。事务提交后逐成员失效用户缓存，
+// AllowedModels 白名单才能在下次缓存 miss 时按新归属重算。
+func SetOrganizationAgent(orgId int, agentId int) error {
+	if orgId <= 0 {
+		return ErrOrgNotFound
+	}
+	if agentId < 0 {
+		agentId = 0
+	}
+	var memberIds []int
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		org, err := getOrganizationByIdTx(tx, orgId)
+		if err != nil {
+			return err
+		}
+		if org.AgentId == agentId {
+			return nil
+		}
+		var oldFloorKeys, newFloorKeys []string
+		if org.AgentId > 0 {
+			oldFloorKeys, err = agentFloorModelKeysTx(tx, org.AgentId)
+			if err != nil {
+				return err
+			}
+		}
+		if agentId > 0 {
+			var agent Agent
+			if err := tx.Where("id = ?", agentId).First(&agent).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrAgentNotFound
+				}
+				return err
+			}
+			if agent.Status != AgentStatusEnabled {
+				return ErrAgentDisabled
+			}
+			newFloorKeys = floorKeysFromDiscounts(agent.ModelDiscounts)
+		}
+		if err := tx.Model(&Organization{}).Where("id = ?", orgId).
+			Updates(map[string]interface{}{"agent_id": agentId, "model_discounts": ""}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&OrgMember{}).Where("org_id = ?", orgId).Pluck("user_id", &memberIds).Error; err != nil {
+			return err
+		}
+		if len(memberIds) == 0 {
+			return nil
+		}
+		if err := tx.Model(&User{}).Where("id IN ?", memberIds).Update("agent_id", agentId).Error; err != nil {
+			return err
+		}
+		stripKeys := mergeFloorKeys(oldFloorKeys, newFloorKeys)
+		if len(stripKeys) == 0 {
+			return nil
+		}
+		return stripMemberDiscountKeysTx(tx, memberIds, stripKeys)
+	})
+	if err != nil {
+		return err
+	}
+	for _, userId := range memberIds {
+		if err := invalidateUserCache(userId); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate user cache after org agent change (userId=%d): %s", userId, err.Error()))
+		}
+	}
+	return nil
+}
+
+// SetOrganizationModelDiscounts 设置企业级按模型折扣并整表覆盖全部成员的个人折扣
+// （与 SetOrganizationTokenRate 的覆盖式继承同模式）。discountsJSON 为空串表示清除
+// （成员一并回到原价）。入参应已经过 common.NormalizeModelDiscounts 规范化并序列化；
+// 代理商下限校验由 controller 层完成。事务提交后逐成员刷新折扣缓存字段
+// （不整条失效，口径同 UpdateUserModelDiscounts）。
+func SetOrganizationModelDiscounts(orgId int, discountsJSON string) error {
+	if orgId <= 0 {
+		return ErrOrgNotFound
+	}
+	var memberIds []int
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := getOrganizationByIdTx(tx, orgId); err != nil {
+			return err
+		}
+		if err := tx.Model(&Organization{}).Where("id = ?", orgId).
+			Update("model_discounts", discountsJSON).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&OrgMember{}).Where("org_id = ?", orgId).
+			Pluck("user_id", &memberIds).Error; err != nil {
+			return err
+		}
+		if len(memberIds) == 0 {
+			return nil
+		}
+		return tx.Model(&User{}).Where("id IN ?", memberIds).
+			Update("model_discounts", discountsJSON).Error
+	}); err != nil {
+		return err
+	}
+	for _, userId := range memberIds {
+		if err := updateUserModelDiscountsCache(userId, discountsJSON); err != nil {
+			common.SysLog(fmt.Sprintf("failed to refresh model discounts cache (userId=%d): %s", userId, err.Error()))
+		}
+	}
+	return nil
+}
+
+// agentFloorModelKeysTx 读取代理商授权配置的模型键清单；代理商已删除时返回空（fail-open）。
+func agentFloorModelKeysTx(tx *gorm.DB, agentId int) ([]string, error) {
+	var agent Agent
+	if err := tx.Select("model_discounts").Where("id = ?", agentId).First(&agent).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return floorKeysFromDiscounts(agent.ModelDiscounts), nil
+}
+
+// floorKeysFromDiscounts 提取折扣/授权配置 JSON 的键清单
+func floorKeysFromDiscounts(discountsJSON string) []string {
+	floors := common.ParseModelDiscounts(discountsJSON)
+	keys := make([]string, 0, len(floors))
+	for key := range floors {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// mergeFloorKeys 合并两组模型键并去重排序，保证清理口径稳定可重现
+func mergeFloorKeys(groups ...[]string) []string {
+	set := make(map[string]struct{})
+	for _, group := range groups {
+		for _, key := range group {
+			set[key] = struct{}{}
+		}
+	}
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// stripMemberDiscountKeysTx 从成员个人折扣中删除指定模型键（含以这些键为前缀的
+// 通配键，如授权 gpt-4o 时一并清掉 gpt-4o*），重写剩余折扣 JSON。
+// 解绑/改绑时调用：折扣随归属失效，但只清授权清单内的键，清单外（超管直设等）不动。
+func stripMemberDiscountKeysTx(tx *gorm.DB, userIds []int, floorKeys []string) error {
+	if len(userIds) == 0 || len(floorKeys) == 0 {
+		return nil
+	}
+	var users []User
+	if err := tx.Select("id, model_discounts").Where("id IN ?", userIds).Find(&users).Error; err != nil {
+		return err
+	}
+	for i := range users {
+		discounts := common.ParseModelDiscounts(users[i].ModelDiscounts)
+		if len(discounts) == 0 {
+			continue
+		}
+		changed := false
+		for key := range discounts {
+			if discountKeyCoveredByFloors(key, floorKeys) {
+				delete(discounts, key)
+				changed = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		payload, err := common.Marshal(discounts)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", users[i].Id).
+			Update("model_discounts", string(payload)).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// discountKeyCoveredByFloors 判断折扣键是否落在授权清单内：
+// 精确键直接匹配；通配键（seedance*）只要其前缀被某个授权键的前缀覆盖即算在内，
+// 避免改绑后残留旧代理商授权范围内的通配折扣。
+func discountKeyCoveredByFloors(key string, floorKeys []string) bool {
+	keyPrefix := strings.TrimSuffix(key, "*")
+	for _, floor := range floorKeys {
+		floorPrefix := strings.TrimSuffix(floor, "*")
+		if strings.HasPrefix(keyPrefix, floorPrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // DeleteOrganization 删除企业。仅允许删除已清空成员的企业，
@@ -689,6 +955,8 @@ func AddOrgMember(member *OrgMember) error {
 		member.JoinedAt = common.GetTimestamp()
 	}
 	var joinedRate float64
+	var joinedDiscounts string
+	var joinedAgent bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var org Organization
 		if err := lockForUpdate(tx).Where("id = ?", member.OrgId).First(&org).Error; err != nil {
@@ -725,6 +993,16 @@ func AddOrgMember(member *OrgMember) error {
 			updates["purchase_discount"] = org.PurchaseDiscount
 			joinedRate = org.TokenRate
 		}
+		// 继承企业级按模型折扣与代理商归属：企业成员的可调模型与折扣只随企业，
+		// 加入即覆盖旧的个人折扣/归属（与 token_rate 覆盖式继承同模式）
+		if org.ModelDiscounts != "" {
+			updates["model_discounts"] = org.ModelDiscounts
+			joinedDiscounts = org.ModelDiscounts
+		}
+		if org.AgentId > 0 {
+			updates["agent_id"] = org.AgentId
+			joinedAgent = true
+		}
 		if err := tx.Model(&User{}).Where("id = ?", member.UserId).
 			Updates(updates).Error; err != nil {
 			return err
@@ -736,6 +1014,15 @@ func AddOrgMember(member *OrgMember) error {
 	}
 	if joinedRate > 0 {
 		updateUserTokenRateCache(member.UserId, joinedRate)
+	}
+	if joinedDiscounts != "" {
+		if err := updateUserModelDiscountsCache(member.UserId, joinedDiscounts); err != nil {
+			common.SysLog(fmt.Sprintf("failed to refresh model discounts cache (userId=%d): %s", member.UserId, err.Error()))
+		}
+	}
+	if joinedAgent {
+		// agent_id 变更影响 AllowedModels 派生快照，整条失效重建
+		return invalidateUserCache(member.UserId)
 	}
 	return nil
 }
@@ -784,6 +1071,10 @@ func CreateOrgMemberUser(user *User, member *OrgMember) error {
 		user.TokenRate = org.TokenRate
 		user.ExpectedDiscount = org.ExpectedDiscount
 		user.PurchaseDiscount = org.PurchaseDiscount
+		// 子账号继承企业级按模型折扣与代理商归属，且永远标记为企业内新建（无个人钱包权限）
+		user.ModelDiscounts = org.ModelDiscounts
+		user.AgentId = org.AgentId
+		member.SubUser = true
 		if err := user.InsertWithTx(tx, 0); err != nil {
 			return err
 		}
@@ -962,6 +1253,87 @@ func GetActiveOrganizationForUser(userId int) (*Organization, *OrgMember, error)
 		return nil, nil, nil
 	}
 	return org, &member, nil
+}
+
+// ---------------------------------------------------------------------------
+// 钱包权限策略（禁用个人账户）
+// ---------------------------------------------------------------------------
+
+// OrgWalletPolicy 是用户的企业钱包权限快照，供充值/兑换/订阅入口与计费侧统一判权。
+// 矩阵：管理员（含子账号）充值直入企业池；普通成员在企业开关开启时被拦截；
+// 子账号成员永远无个人钱包权限（与企业 disable_personal_wallet 开关无关）。
+type OrgWalletPolicy struct {
+	OrgId          int
+	IsAdmin        bool
+	SubUser        bool
+	WalletDisabled bool
+}
+
+// CanTopUp 能否发起在线充值：管理员永远可以（入池）；
+// 子账号成员永远不可以；普通成员仅在开关关闭时可以（入个人钱包）。
+func (p *OrgWalletPolicy) CanTopUp() bool {
+	if p == nil {
+		return true
+	}
+	if p.IsAdmin {
+		return true
+	}
+	return !p.SubUser && !p.WalletDisabled
+}
+
+// TopUpOrgId 返回充值应入账的企业池 ID：仅管理员的充值直入池，
+// 其余（非成员、普通成员）返回 0 入个人钱包。
+func (p *OrgWalletPolicy) TopUpOrgId() int {
+	if p == nil || !p.IsAdmin {
+		return 0
+	}
+	return p.OrgId
+}
+
+// CanUsePersonalWallet 个人钱包能否用于兑换码/订阅/计费回落：
+// 子账号成员永远不可；开关开启时全体不可（计费侧强制仅池，
+// 无视 AllowWalletFallback）；非成员不受限。
+func (p *OrgWalletPolicy) CanUsePersonalWallet() bool {
+	if p == nil {
+		return true
+	}
+	if p.SubUser {
+		return false
+	}
+	return !p.WalletDisabled
+}
+
+// GetUserOrgWalletPolicy 返回用户的钱包权限策略；非企业成员返回 (nil, nil)，
+// 调用方按全放行处理。只取启用状态的成员与启用状态的企业，
+// 口径与计费入口 GetActiveOrganizationForUser 一致。
+func GetUserOrgWalletPolicy(userId int) (*OrgWalletPolicy, error) {
+	if userId <= 0 {
+		return nil, nil
+	}
+	var member OrgMember
+	if err := DB.Where("user_id = ? AND status = ?", userId, OrgMemberStatusEnabled).
+		First(&member).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	org, err := GetOrganizationById(member.OrgId)
+	if err != nil {
+		if errors.Is(err, ErrOrgNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if org.Status != OrgStatusEnabled {
+		return nil, nil
+	}
+	return &OrgWalletPolicy{
+		OrgId:          org.Id,
+		IsAdmin:        member.OrgRole == OrgRoleAdmin,
+		SubUser:        member.SubUser,
+		WalletDisabled: org.DisablePersonalWallet,
+	}, nil
 }
 
 // ---------------------------------------------------------------------------

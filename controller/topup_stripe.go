@@ -87,6 +87,12 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	}
 
 	id := c.GetInt("id")
+	// 企业钱包守卫：禁用个人账户的企业成员/子账号不得充值，企业管理员充值直入企业池
+	orgId, denyKey := checkOrgTopUpPermission(id)
+	if denyKey != "" {
+		rejectOrgWalletLegacy(c, denyKey)
+		return
+	}
 	user, _ := model.GetUserById(id, false)
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
 
@@ -117,6 +123,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		TradeNo:         referenceId,
 		PaymentMethod:   model.PaymentMethodStripe,
 		PaymentProvider: model.PaymentProviderStripe,
+		OrgId:           orgId,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}

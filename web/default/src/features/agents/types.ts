@@ -117,6 +117,47 @@ export interface AgentMemberDiscounts {
 }
 
 /**
+ * An enterprise (organization) this agent develops. `agent_id` is always this
+ * agent for the self-service list; `model_discounts` is the enterprise-wide
+ * per-model discount the agent may set within its own floors, and
+ * `disable_personal_wallet` mirrors the admin-controlled wallet lockdown.
+ */
+export interface AgentOrganization {
+  id: number
+  name: string
+  display_name: string
+  group: string
+  status: number
+  quota: number
+  used_quota: number
+  agent_id: number
+  agent_username?: string
+  model_discounts: Record<string, number>
+  disable_personal_wallet: boolean
+  allow_wallet_fallback: boolean
+  hide_pool_quota: boolean
+  created_at?: number
+}
+
+/** An enterprise member row (read-only for the agent). */
+export interface AgentOrganizationMember {
+  id: number
+  org_id: number
+  user_id: number
+  org_role: string
+  quota_limit: number
+  quota_used: number
+  status: number
+  sub_user: boolean
+  username: string
+  display_name: string
+  email?: string
+  user_status?: number
+  user_quota?: number
+  used_quota?: number
+}
+
+/**
  * The configurable sidebar menus an admin may reveal for an agent. `key` must
  * stay in sync with the backend `model.AgentMenuKeys`; `labelKey` reuses the
  * existing sidebar i18n source string so labels never drift.
@@ -134,6 +175,7 @@ export const AGENT_MENU_KEYS: AgentMenuItem[] = [
   { key: 'viral_design', labelKey: 'Viral Design' },
   { key: 'asset_library', labelKey: 'Asset Library' },
   { key: 'prompt_library', labelKey: 'Prompt Library' },
+  { key: 'enterprises', labelKey: 'My Enterprises' },
 ]
 
 export const AGENT_STATUS = {

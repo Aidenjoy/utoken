@@ -1745,6 +1745,11 @@ func TopUp(c *gin.Context) {
 	}
 
 	id := c.GetInt("id")
+	// 企业钱包守卫：禁用个人账户时兑换码不得入个人钱包（子账号永远拦截）
+	if denyKey := checkOrgPersonalWalletPermission(id); denyKey != "" {
+		common.ApiErrorI18n(c, denyKey)
+		return
+	}
 	lock := getTopUpLock(id)
 	if !lock.TryLock() {
 		common.ApiErrorI18n(c, i18n.MsgUserTopUpProcessing)

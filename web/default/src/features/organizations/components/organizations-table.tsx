@@ -34,6 +34,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { listAgents } from '@/features/agents/api'
 import { ORG_STATUS, type Organization } from '@/features/organization/types'
 
 import {
@@ -46,6 +54,7 @@ import {
   ORG_ADMIN_SUCCESS_MESSAGES,
 } from '../constants'
 import { useOrganizationColumns } from './organization-columns'
+import { OrganizationDiscountDialog } from './organization-discount-dialog'
 import { OrganizationMembersDialog } from './organization-members-dialog'
 import { OrganizationMutateDrawer } from './organization-mutate-drawer'
 import { OrganizationQuotaDialog } from './organization-quota-dialog'
@@ -72,16 +81,34 @@ export function OrganizationsTable() {
   const [editing, setEditing] = useState<Organization | null>(null)
   const [quotaTarget, setQuotaTarget] = useState<Organization | null>(null)
   const [membersTarget, setMembersTarget] = useState<Organization | null>(null)
+  const [discountTarget, setDiscountTarget] =
+    useState<Organization | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [isWorking, setIsWorking] = useState(false)
+  // 归属代理商筛选：0 = 全部（后端 agent_id=0 即不过滤）。
+  const [agentFilter, setAgentFilter] = useState(0)
+
+  const { data: agentsData } = useQuery({
+    queryKey: ['agents', 'org-binding-options'],
+    queryFn: () => listAgents({ p: 1, page_size: 200 }),
+    staleTime: 5 * 60 * 1000,
+  })
+  const agents = agentsData?.data?.items ?? []
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['admin-organizations', pageIndex, pageSize, keyword],
+    queryKey: [
+      'admin-organizations',
+      pageIndex,
+      pageSize,
+      keyword,
+      agentFilter,
+    ],
     queryFn: async () => {
       const result = await getAdminOrganizations({
         p: pageIndex + 1,
         page_size: pageSize,
         keyword: keyword.trim() || undefined,
+        agent_id: agentFilter > 0 ? agentFilter : undefined,
       })
       if (!result.success) {
         toast.error(result.message || t(ORG_ADMIN_ERROR_MESSAGES.LOAD_FAILED))
@@ -110,6 +137,8 @@ export function OrganizationsTable() {
         onEdit: (organization: Organization) => openEdit(organization),
         onAdjustQuota: (organization: Organization) =>
           setQuotaTarget(organization),
+        onSetDiscounts: (organization: Organization) =>
+          setDiscountTarget(organization),
         onViewMembers: (organization: Organization) =>
           setMembersTarget(organization),
         onToggleStatus: (organization: Organization) =>
@@ -185,6 +214,28 @@ export function OrganizationsTable() {
     </Button>
   )
 
+  const agentFilterNode = (
+    <Select
+      value={String(agentFilter)}
+      onValueChange={(value) => {
+        setAgentFilter(Number(value ?? 0))
+        setPageIndex(0)
+      }}
+    >
+      <SelectTrigger className='w-[160px]'>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false}>
+        <SelectItem value='0'>{t('All Agents')}</SelectItem>
+        {agents.map((agent) => (
+          <SelectItem key={agent.id} value={String(agent.id)}>
+            {agent.display_name || agent.username || `#${agent.id}`}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+
   const isDelete = pendingAction?.kind === 'delete'
   const pendingName =
     pendingAction?.organization.display_name ||
@@ -230,6 +281,7 @@ export function OrganizationsTable() {
         toolbarProps={{
           searchPlaceholder: t('Search by name or display name...'),
           searchDebounceMs: 300,
+          additionalSearch: agentFilterNode,
           preActions: primaryButtons,
         }}
       />
@@ -254,6 +306,15 @@ export function OrganizationsTable() {
         onOpenChange={(open) => {
           if (!open) setMembersTarget(null)
         }}
+      />
+
+      <OrganizationDiscountDialog
+        open={discountTarget !== null}
+        organization={discountTarget}
+        onOpenChange={(open) => {
+          if (!open) setDiscountTarget(null)
+        }}
+        onSuccess={refresh}
       />
 
       <AlertDialog

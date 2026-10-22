@@ -81,17 +81,25 @@ const AGENT_GATED_GROUP: Record<string, string> = {
   'viral-hero': 'viral_hero',
   'viral-design': 'viral_design',
 }
-const AGENT_GATED_PERSONAL_ITEM: Record<string, string> = {
+// Individual items hidden unless the agent's `menu_visibility` lists their key.
+// Covers both the personal group (asset/prompt libraries) and the agent
+// workspace, where only the enterprise console is opt-in — codes, members,
+// recharge and billing stay always-on for any promoted agent.
+const AGENT_GATED_ITEM: Record<string, string> = {
   '/director/assets': 'asset_library',
   '/prompts': 'prompt_library',
+  '/agent/enterprises': 'enterprises',
 }
+
+// Groups whose items are individually gated by `AGENT_GATED_ITEM`.
+const AGENT_ITEM_GATED_GROUP = new Set(['personal', 'agent'])
 
 /**
  * Drop reseller-gated menus for an agent account. `visibleKeys` is null for
  * non-agents (nothing is ever hidden); for agents it holds the menu keys their
- * admin enabled, and any gated group / personal item whose key is absent is
- * removed. Ungated entries (Wallet, Profile, the agent workspace, admin tools)
- * are always kept.
+ * admin enabled, and any gated group / gated item whose key is absent is
+ * removed. Ungated entries (Wallet, Profile, the always-on agent workspace
+ * items, admin tools) are kept.
  */
 function gateAgentMenus(
   navGroups: SidebarData['navGroups'],
@@ -100,11 +108,11 @@ function gateAgentMenus(
   if (visibleKeys === null) return navGroups
   return navGroups
     .map((group) =>
-      group.id === 'personal'
+      AGENT_ITEM_GATED_GROUP.has(group.id ?? '')
         ? {
             ...group,
             items: group.items.filter((item) => {
-              const key = AGENT_GATED_PERSONAL_ITEM[item.url ?? '']
+              const key = AGENT_GATED_ITEM[item.url ?? '']
               return !key || visibleKeys.has(key)
             }),
           }
@@ -380,6 +388,11 @@ export function useSidebarData(): SidebarData {
                   title: t('Members'),
                   url: '/agent/members',
                   icon: Users,
+                },
+                {
+                  title: t('My Enterprises'),
+                  url: '/agent/enterprises',
+                  icon: Building,
                 },
                 {
                   title: t('Recharge Records'),

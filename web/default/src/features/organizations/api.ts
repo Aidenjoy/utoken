@@ -51,6 +51,11 @@ export interface AdminCreateOrganizationPayload {
   cache_ttl: number
   allow_wallet_fallback: boolean
   hide_pool_quota: boolean
+  /** Bind to an agent on creation (`agents.id`); 0 / omitted = direct sales. */
+  agent_id?: number
+  /** Lock member personal wallets (top-up / redeem / subscribe blocked,
+   *  billing forced to pool-only). */
+  disable_personal_wallet?: boolean
 }
 
 export interface AdminUpdateOrganizationPayload {
@@ -64,12 +69,18 @@ export interface AdminUpdateOrganizationPayload {
   cache_ttl?: number
   allow_wallet_fallback?: boolean
   hide_pool_quota?: boolean
+  /** Rebind the owning agent (`agents.id`); 0 reclaims it as direct sales.
+   *  Omit to leave attribution unchanged. */
+  agent_id?: number
+  disable_personal_wallet?: boolean
 }
 
 export interface AdminOrganizationsParams {
   p?: number
   page_size?: number
   keyword?: string
+  /** Filter by owning agent (`agents.id`); omitted / 0 = no filter. */
+  agent_id?: number
 }
 
 export async function getAdminOrganizations(
@@ -78,7 +89,7 @@ export async function getAdminOrganizations(
   const res = await api.get(
     `/api/org/admin/?p=${params.p ?? 1}&page_size=${params.page_size ?? 20}${
       params.keyword ? `&keyword=${encodeURIComponent(params.keyword)}` : ''
-    }`,
+    }${params.agent_id ? `&agent_id=${params.agent_id}` : ''}`,
     orgRequestConfig
   )
   return res.data
@@ -151,6 +162,24 @@ export async function updateAdminOrganizationTokenRate(
       expected_discount: expectedDiscount,
       purchase_discount: purchaseDiscount,
     },
+    orgRequestConfig
+  )
+  return res.data
+}
+
+/**
+ * Enterprise-wide per-model discount (an admin sets it directly for a
+ * direct-sales org — no agent floor). Whole-table replacement: the server
+ * overwrites every member's personal discount to match, and an empty map
+ * clears the discounts so members return to full price.
+ */
+export async function updateAdminOrganizationModelDiscounts(
+  id: number,
+  discounts: Record<string, number>
+): Promise<ApiResponse<{ discounts: Record<string, number> }>> {
+  const res = await api.put(
+    `/api/org/admin/${id}/model_discounts`,
+    { discounts },
     orgRequestConfig
   )
   return res.data

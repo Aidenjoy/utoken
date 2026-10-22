@@ -98,6 +98,12 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	}
 
 	id := c.GetInt("id")
+	// 企业钱包守卫：禁用个人账户的企业成员/子账号不得充值，企业管理员充值直入企业池
+	orgId, denyKey := checkOrgTopUpPermission(id)
+	if denyKey != "" {
+		rejectOrgWalletLegacy(c, denyKey)
+		return
+	}
 	user, _ := model.GetUserById(id, false)
 
 	// 生成唯一的订单引用ID
@@ -112,6 +118,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		TradeNo:         referenceId,
 		PaymentMethod:   model.PaymentMethodCreem,
 		PaymentProvider: model.PaymentProviderCreem,
+		OrgId:           orgId,
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
