@@ -351,8 +351,10 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[640px]'>
-        <DialogHeader>
+      {/* 表单区（授权模型行、菜单开关等）在模型多时会远超视口高度：整体限高并只让
+          中间表单区滚动，头部与底部确定/取消按钮保持常驻可见。 */}
+      <DialogContent className='flex max-h-[85dvh] flex-col sm:max-w-[640px]'>
+        <DialogHeader className='shrink-0'>
           <DialogTitle>
             {isEdit ? t('Edit Agent') : t('Promote User to Agent')}
           </DialogTitle>
@@ -367,7 +369,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className='space-y-4'>
+        <div className='min-h-0 space-y-4 overflow-y-auto pr-1'>
           {isEdit ? (
             <div className='space-y-2'>
               <Label>{t('User')}</Label>
@@ -648,7 +650,7 @@ export function SetAgentDialog({ open, agent, onOpenChange }: Props) {
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className='shrink-0'>
           <Button
             variant='outline'
             disabled={isSubmitting}
