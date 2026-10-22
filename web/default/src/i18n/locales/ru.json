@@ -3473,6 +3473,7 @@
     "Member updated": "Данные участника обновлены",
     "Member: {{name}}": "Участник: {{name}}",
     "Members": "Участники",
+    "Members start at list price (100%). The floor is your lowest allowed price, not the default.": "Изначально для участников действует прайс-лист (100%). Минимум — это самая низкая допустимая цена, а не значение по умолчанию.",
     "Members still see their own sub-quota, but not the shared pool balance.": "Участники по-прежнему видят свою подквоту, но не видят баланс общего пула.",
     "Memory": "Память",
     "Memory Hits": "Попаданий памяти",

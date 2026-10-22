@@ -45,7 +45,7 @@ const RATIO_PRECISION = 10000
 
 interface DiscountRow {
   model: string
-  /** 当前输入的价格（百分比）；打开弹窗时为已存折扣或授权下限 */
+  /** 当前输入的价格（百分比）；打开弹窗时为已存折扣，没设过则为原价 100% */
   percent: string
   /** 本行允许的最小百分比：已存折扣（价格只能上调）或授权下限（首次设置） */
   minPercent: number
@@ -77,17 +77,23 @@ function formatMultiplier(ratio: number): string {
  * Per-member model discount editor, scoped to what this agent may resell.
  *
  * The row list is the agent's authorization itself — models are not picked or
- * added here — and each row opens at the member's saved price, or at the floor
- * (the deepest discount the admin allowed) when the member has none yet. That
- * opening value is also the row's minimum: prices can only be revised upward,
- * so an agent can never deepen a discount after the fact. The backend enforces
- * the same rule (ValidateModelDiscountsNotLowered); the input min is only the
- * first gate.
+ * added here. A member the agent has not priced yet opens at 100% (list price),
+ * never at the authorization floor: the floor is the deepest discount the admin
+ * allows, not a default, and handing it over on day one would leave the agent no
+ * margin — and because prices can only be revised upward, the mistake could not
+ * be undone. Once the agent sets a price, that saved price becomes the row's
+ * minimum, so an agent can never deepen a discount after the fact. The backend
+ * enforces the same rule (ValidateModelDiscountsNotLowered); the input min is
+ * only the first gate.
  *
- * Submitting sends every authorized model, so the member's price list always
- * mirrors the authorization. Discounts an admin set for models outside this
- * agent's authorization are neither listed nor submitted; the server keeps them
- * untouched, so this dialog can never silently wipe an admin's configuration.
+ * Rows left at 100% are omitted from the payload, which the server reads as
+ * "no discount for this model". Persisting a literal 1.0 instead would make it
+ * the member's saved price and therefore the ratchet floor, permanently barring
+ * any future discount on that model.
+ *
+ * Discounts an admin set for models outside this agent's authorization are
+ * neither listed nor submitted; the server keeps them untouched, so this dialog
+ * can never silently wipe an admin's configuration.
  */
 export function MemberDiscountDialog({
   open,
@@ -114,17 +120,24 @@ export function MemberDiscountDialog({
   useEffect(() => {
     if (!open) return
     const discounts = data?.data?.discounts ?? {}
-    // 行清单 = 授权模型自动铺满，不让代理商挑：已存折扣原样回显，没设过的从
-    // 授权下限起。两者都是本行之后允许的最小值——价格只能上调。
+    // 行清单 = 授权模型自动铺满，不让代理商挑。已定过价的行原样回显，没定过的
+    // 一律从原价 100% 起：授权下限是「最低能卖到多少」，不是默认价，一上来就按
+    // 下限成交等于代理商零提成，而且价格只能上调，事后无法挽回。
+    // 存量的 1 等同原价（后端对缺失键也返回 1），按「没定过价」处理，
+    // 避免历史误存的原价把本行下限永久锁死在 100%。
     setRows(
       Object.keys(floors)
         .sort((a, b) => a.localeCompare(b))
         .map((model) => {
           const floorPercent = percentOf(floors[model])
           const saved = discounts[model]
-          const minPercent =
-            typeof saved === 'number' ? percentOf(saved) : floorPercent
-          return { model, percent: String(minPercent), minPercent, floorPercent }
+          const savedPercent =
+            typeof saved === 'number' && saved < 1 ? percentOf(saved) : 0
+          const isPriced = savedPercent > 0
+          // 最小值仍是「已存折扣 or 授权下限」——价格只能上调的判断不变。
+          const minPercent = isPriced ? savedPercent : floorPercent
+          const percent = String(isPriced ? savedPercent : MAX_PERCENT)
+          return { model, percent, minPercent, floorPercent }
         })
     )
   }, [open, data, floors])
@@ -180,6 +193,9 @@ export function MemberDiscountDialog({
       const discounts: Record<string, number> = {}
       for (const row of rows) {
         const percent = Number.parseFloat(row.percent)
+        // 停在原价的行不提交：后端把「授权清单内未提交的模型」视为取消折扣，
+        // 而写入一个 1 会让它成为该行的已存折扣，从此被棘轮锁死在原价。
+        if (percent >= MAX_PERCENT) continue
         // 百分比 → 小数，按后端精度四舍五入到 4 位，避免 0.8500000000000001 之类的浮点尾巴
         discounts[row.model] =
           Math.round((percent / MAX_PERCENT) * RATIO_PRECISION) /
@@ -219,10 +235,17 @@ export function MemberDiscountDialog({
         </DialogHeader>
 
         <div className='space-y-3'>
-          <div className='text-muted-foreground text-xs'>
-            {t(
-              'Models come from your authorization list. You can only adjust the price, and only upward.'
-            )}
+          <div className='text-muted-foreground space-y-1 text-xs'>
+            <div>
+              {t(
+                'Models come from your authorization list. You can only adjust the price, and only upward.'
+              )}
+            </div>
+            <div>
+              {t(
+                'Members start at list price (100%). The floor is your lowest allowed price, not the default.'
+              )}
+            </div>
           </div>
 
           {isLoading && (

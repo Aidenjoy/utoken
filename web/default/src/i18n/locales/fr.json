@@ -3473,6 +3473,7 @@
     "Member updated": "Membre mis à jour",
     "Member: {{name}}": "Membre : {{name}}",
     "Members": "Membres",
+    "Members start at list price (100%). The floor is your lowest allowed price, not the default.": "Prix initial : tarif plein (100 %). Le plancher est votre prix minimum, pas le prix par défaut.",
     "Members still see their own sub-quota, but not the shared pool balance.": "Les membres voient toujours leur sous-quota, mais pas le solde du pool partagé.",
     "Memory": "Mémoire",
     "Memory Hits": "Hits mémoire",

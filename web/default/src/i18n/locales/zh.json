@@ -3473,6 +3473,7 @@
     "Member updated": "成员已更新",
     "Member: {{name}}": "成员：{{name}}",
     "Members": "成员",
+    "Members start at list price (100%). The floor is your lowest allowed price, not the default.": "成员默认为原价（100%）。下限是你能给的最低价，不是默认价。",
     "Members still see their own sub-quota, but not the shared pool balance.": "成员仍可看到自己的子额度，但看不到共享额度池余额。",
     "Memory": "内存",
     "Memory Hits": "内存命中",

@@ -3473,6 +3473,7 @@
     "Member updated": "メンバーを更新しました",
     "Member: {{name}}": "メンバー：{{name}}",
     "Members": "メンバー",
+    "Members start at list price (100%). The floor is your lowest allowed price, not the default.": "メンバーの初期価格は定価（100%）です。下限は設定できる最低価格であり、初期値ではありません。",
     "Members still see their own sub-quota, but not the shared pool balance.": "メンバーは自分のサブクォータを引き続き確認できますが、共有プールの残高は見えません。",
     "Memory": "メモリ",
     "Memory Hits": "メモリヒット",

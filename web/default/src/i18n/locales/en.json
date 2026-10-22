@@ -3473,6 +3473,7 @@
     "Member updated": "Member updated",
     "Member: {{name}}": "Member: {{name}}",
     "Members": "Members",
+    "Members start at list price (100%). The floor is your lowest allowed price, not the default.": "Members start at list price (100%). The floor is your lowest allowed price, not the default.",
     "Members still see their own sub-quota, but not the shared pool balance.": "Members still see their own sub-quota, but not the shared pool balance.",
     "Memory": "Memory",
     "Memory Hits": "Memory Hits",

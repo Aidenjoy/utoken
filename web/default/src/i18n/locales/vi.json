@@ -3473,6 +3473,7 @@
     "Member updated": "Đã cập nhật thành viên",
     "Member: {{name}}": "Thành viên: {{name}}",
     "Members": "Thành viên",
+    "Members start at list price (100%). The floor is your lowest allowed price, not the default.": "Thành viên bắt đầu ở giá gốc (100%). Giá sàn là mức thấp nhất bạn được phép đặt, không phải giá mặc định.",
     "Members still see their own sub-quota, but not the shared pool balance.": "Thành viên vẫn thấy hạn mức phụ của mình nhưng không thấy số dư quỹ chung.",
     "Memory": "Bộ nhớ",
     "Memory Hits": "Lượt truy cập bộ nhớ",
