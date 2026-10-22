@@ -17,11 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type ColumnDef } from '@tanstack/react-table'
-import { CircleAlert, GitBranch, Sparkles, KeyRound } from 'lucide-react'
+import { CircleAlert, GitBranch, Info, Sparkles, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   Popover,
@@ -64,12 +65,7 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData, LogsScope } from '../../types'
-import { useLogBodies } from '../../hooks/use-log-bodies'
-import {
-  RelayDetailsDialog,
-  prettyJson,
-} from '../dialogs/relay-details-dialog'
-import { UsageBillingSections } from '../dialogs/usage-billing-sections'
+import { CommonLogDetailsDialog } from '../dialogs/common-log-details-dialog'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
@@ -301,6 +297,7 @@ function buildTypeDetailSegments(
 export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
   const isAdmin = scope === 'admin'
   const isAgent = scope === 'agent'
+  const isSuperAdmin = useIsSuperAdmin()
   const { t, i18n } = useTranslation()
   // Intl 只认 BCP-47，'zhCN' 直接传给 Intl.NumberFormat 会抛 RangeError。
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
@@ -899,13 +896,6 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
         const [dialogOpen, setDialogOpen] = useState(false)
         const log = row.original
         const other = parseLogOther(log.other)
-        const typeConfig = getLogTypeConfig(log.type)
-        // 传入/传出参数快照仅在详情弹窗打开时按需拉取（大 JSON 存独立表、不进列表）。
-        const { requestData, responseData } = useLogBodies(
-          log.request_id,
-          dialogOpen
-        )
-
         const segments = buildDetailSegments(log, other, t, isAdmin)
         const primary = segments[0]
         const hasMore = segments.length > 1
@@ -944,27 +934,11 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
                 <span className='text-muted-foreground/40'>—</span>
               )}
             </button>
-            <RelayDetailsDialog
+            <CommonLogDetailsDialog
+              log={log}
+              isAdmin={isAdmin}
               open={dialogOpen}
               onOpenChange={setDialogOpen}
-              title={
-                <>
-                  {t('Log Details')}
-                  <StatusBadge
-                    label={t(typeConfig.label)}
-                    variant={typeConfig.color as StatusBadgeProps['variant']}
-                    size='sm'
-                    copyable={false}
-                  />
-                </>
-              }
-              description={t('View the complete details for this log entry')}
-              requestModel={log.model_name || undefined}
-              requestJson={prettyJson(requestData)}
-              responseJson={prettyJson(responseData)}
-              extraSections={
-                <UsageBillingSections log={log} isAdmin={isAdmin} />
-              }
             />
           </>
         )
@@ -994,6 +968,39 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
       )
     },
   })
+
+  // 行尾显式详情按钮：与任务日志口径一致，仅超级管理员可见；其余角色仍可通过
+  // 摘要文本列点开详情，超管在行尾获得与任务日志统一的显式入口。
+  if (isSuperAdmin) {
+    columns.push({
+      id: 'details_action',
+      header: t('Actions'),
+      cell: function DetailsActionCell({ row }) {
+        const [open, setOpen] = useState(false)
+        const log = row.original
+        return (
+          <>
+            <button
+              type='button'
+              onClick={() => setOpen(true)}
+              title={t('Click to view full details')}
+              className='text-foreground flex items-center gap-1 text-xs hover:underline'
+            >
+              <Info className='size-3.5' />
+              <span>{t('Details')}</span>
+            </button>
+            <CommonLogDetailsDialog
+              log={log}
+              isAdmin={isAdmin}
+              open={open}
+              onOpenChange={setOpen}
+            />
+          </>
+        )
+      },
+      size: 90,
+    })
+  }
 
   return columns
 }

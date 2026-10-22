@@ -163,10 +163,10 @@ function TaskRefetchCell({ log }: { log: TaskLog }) {
   )
 }
 
-// 超级管理员与代理商可见：查看单个任务的完整请求/响应数据（含提示词、分辨率、
-// 上游返回、视频地址与 token 消耗）。普通管理员与自助用户不渲染该按钮。复用统一的
-// RelayDetailsDialog（与使用日志详情同一份弹窗代码），任务侧额外传入 basicRows
-// 与视频预览地址。
+// 仅超级管理员可见：查看单个任务的完整请求/响应数据（含提示词、分辨率、
+// 上游返回、视频地址与 token 消耗）。普通管理员、代理商与自助用户不渲染该按钮。
+// 复用统一的 RelayDetailsDialog（与使用日志详情同一份弹窗代码），任务侧额外
+// 传入 basicRows 与视频预览地址。
 function TaskDetailsCell({ log }: { log: TaskLog }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -504,11 +504,8 @@ export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
     }
   )
 
-  // Actions column: admins get Re-query + (super admin) Details; agents get
-  // Details only so they can inspect their members' task request/response,
-  // consistent with the Common Logs details column visible to all scopes.
-  if (isAdmin || isAgent) {
-    const showDetails = isSuperAdmin || isAgent
+  // Actions column: admins get Re-query, super admins additionally get Details.
+  if (isAdmin) {
     columns.push({
       id: 'actions',
       header: t('Actions'),
@@ -516,12 +513,12 @@ export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
         const log = row.original
         return (
           <div className='flex items-center gap-3'>
-            {isAdmin && <TaskRefetchCell log={log} />}
-            {showDetails && <TaskDetailsCell log={log} />}
+            <TaskRefetchCell log={log} />
+            {isSuperAdmin && <TaskDetailsCell log={log} />}
           </div>
         )
       },
-      size: isAdmin && isSuperAdmin ? 190 : 110,
+      size: isSuperAdmin ? 190 : 110,
     })
   }
 
