@@ -393,6 +393,7 @@
     "All Models": "すべてのモデル",
     "All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.": "すべてのモデルが100%（割引なし）で事前入力されています。特定のモデルのフロアを調整するか、エージェントが再販すべきでないモデルを削除してください。",
     "All models in use are properly configured.": "使用中のすべてのモデルが適切に構成されています。",
+    "All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.": "すべてのモデルは定価 100% で一覧表示されます。行を下げて割引を設定し、100% のままの行は保存されません。",
     "All Must Match (AND)": "すべて一致（AND）",
     "All nodes": "すべてのノード",
     "All organization admins": "すべての組織管理者",

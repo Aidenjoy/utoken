@@ -393,6 +393,7 @@
     "All Models": "Tous les modèles",
     "All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.": "Tous les modèles sont pré-remplis à 100% (sans remise). Ajustez le seuil pour certains modèles ou supprimez ceux que l'agent ne doit pas revendre.",
     "All models in use are properly configured.": "Tous les modèles utilisés sont correctement configurés.",
+    "All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.": "Tous les modèles sont listés au prix courant (100 %). Baissez une ligne pour la remiser ; les lignes laissées à 100 % ne sont pas enregistrées.",
     "All Must Match (AND)": "Toutes doivent correspondre (AND)",
     "All nodes": "Tous les nœuds",
     "All organization admins": "Tous les administrateurs de l'organisation",

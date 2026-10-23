@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -93,6 +93,9 @@ export function UserModelDiscountDialog({
   const queryClient = useQueryClient()
   const [rows, setRows] = useState<DiscountRow[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // 每次打开只铺一次行：模型定价与已存折扣是两个异步查询，若每次数据到达都
+  // 重建行，会覆盖管理员在加载间隙已做的编辑。
+  const initializedRef = useRef(false)
 
   const userId = user?.id ?? 0
   const { data, isLoading } = useQuery({
@@ -119,19 +122,39 @@ export function UserModelDiscountDialog({
     [pricing.data]
   )
 
+  // 打开即铺满全部模型、默认原价 100%，已存折扣回显覆盖对应行——与代理商端
+  // 成员折扣编辑器 / 提升代理商对话框同一口径，管理员只需下调想打折的模型。
+  // 行清单 = 定价目录 ∪ 已存折扣键（含 `*` 通配等目录外键）。
   useEffect(() => {
-    if (!open) return
-    const discounts = data?.data?.discounts ?? {}
+    if (!open) {
+      initializedRef.current = false
+      setRows([])
+      return
+    }
+    if (initializedRef.current) return
+    if (isLoading || pricing.isLoading) return
+    const saved = data?.data?.discounts ?? {}
+    const catalog = new Set<string>()
+    for (const option of modelOptions) catalog.add(option.value)
+    for (const key of Object.keys(saved)) catalog.add(key)
     setRows(
-      Object.entries(discounts)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([model, ratio]) => ({
-          id: nextRowId(),
-          model,
-          percent: ratioToPercent(ratio),
-        }))
+      [...catalog]
+        .sort((a, b) => a.localeCompare(b))
+        .map((model) => {
+          const stored = saved[model]
+          const savedPercent =
+            typeof stored === 'number' && stored > 0 && stored < 1
+              ? ratioToPercent(stored)
+              : null
+          return {
+            id: nextRowId(),
+            model,
+            percent: savedPercent ?? String(MAX_PERCENT),
+          }
+        })
     )
-  }, [open, data])
+    initializedRef.current = true
+  }, [open, isLoading, pricing.isLoading, data, modelOptions])
 
   const updateRow = (id: string, patch: Partial<DiscountRow>) => {
     setRows((prev) =>
@@ -185,6 +208,9 @@ export function UserModelDiscountDialog({
       const discounts: Record<string, number> = {}
       for (const row of rows) {
         const percent = Number.parseFloat(row.percent)
+        // 停在原价的行不提交：与代理商端同一约定，缺失键即原价，避免把 1.0
+        // 写进 users.model_discounts 造成无意义的整表膨胀。
+        if (percent >= MAX_PERCENT) continue
         // 百分比 → 小数，按后端精度四舍五入到 4 位，避免 0.8500000000000001 之类的浮点尾巴
         discounts[row.model.trim()] =
           Math.round((percent / 100) * RATIO_PRECISION) / RATIO_PRECISION
@@ -224,10 +250,17 @@ export function UserModelDiscountDialog({
 
         <div className='space-y-3'>
           <div className='flex items-center justify-between gap-2'>
-            <div className='text-muted-foreground text-xs'>
-              {t(
-                'Supports exact model names and prefix wildcards ending with *, e.g. doubao-seedance-*'
-              )}
+            <div className='text-muted-foreground space-y-1 text-xs'>
+              <div>
+                {t(
+                  'Supports exact model names and prefix wildcards ending with *, e.g. doubao-seedance-*'
+                )}
+              </div>
+              <div>
+                {t(
+                  'All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.'
+                )}
+              </div>
             </div>
             <Button
               type='button'

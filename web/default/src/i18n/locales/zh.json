@@ -393,6 +393,7 @@
     "All Models": "所有模型",
     "All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.": "所有模型已预填为 100%（无折扣）。请调整特定模型的下限，或删除不应授权转售的模型。",
     "All models in use are properly configured.": "所有正在使用的模型都已正确配置。",
+    "All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.": "所有模型默认按原价 100% 列出。下调某行即设置折扣；保持 100% 的行不会保存。",
     "All Must Match (AND)": "全部满足（AND）",
     "All nodes": "全部节点",
     "All organization admins": "全部企业管理员",

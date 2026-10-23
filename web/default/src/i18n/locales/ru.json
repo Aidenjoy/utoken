@@ -393,6 +393,7 @@
     "All Models": "Все модели",
     "All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.": "Все модели заполнены на 100% (без скидки). Настройте порог для конкретных моделей или удалите те, которые агент не должен перепродавать.",
     "All models in use are properly configured.": "Все используемые модели настроены правильно.",
+    "All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.": "Все модели показаны по исходной цене (100%). Уменьшите строку, чтобы задать скидку; строки, оставленные на 100%, не сохраняются.",
     "All Must Match (AND)": "Все должны совпасть (AND)",
     "All nodes": "Все узлы",
     "All organization admins": "Все администраторы организации",

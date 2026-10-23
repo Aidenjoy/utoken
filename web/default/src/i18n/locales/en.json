@@ -393,6 +393,7 @@
     "All Models": "All Models",
     "All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.": "All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.",
     "All models in use are properly configured.": "All models in use are properly configured.",
+    "All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.": "All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.",
     "All Must Match (AND)": "All Must Match (AND)",
     "All nodes": "All nodes",
     "All organization admins": "All organization admins",

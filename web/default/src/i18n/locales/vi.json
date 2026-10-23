@@ -393,6 +393,7 @@
     "All Models": "Tất cả các mẫu",
     "All models are pre-filled at 100% (no discount). Adjust the floor for specific models or remove those the agent should not resell.": "Tất cả các mô hình được điền sẵn ở 100% (không giảm giá). Điều chỉnh mức sàn cho các mô hình cụ thể hoặc xóa những mô hình mà đại lý không nên bán lại.",
     "All models in use are properly configured.": "Tất cả các mô hình đang được sử dụng đều được cấu hình đúng cách.",
+    "All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.": "Tất cả mô hình được liệt kê theo giá gốc (100%). Hạ một dòng để đặt chiết khấu; các dòng giữ 100% sẽ không được lưu.",
     "All Must Match (AND)": "Tất cả phải khớp (AND)",
     "All nodes": "Tất cả nút",
     "All organization admins": "Tất cả quản trị viên tổ chức",
