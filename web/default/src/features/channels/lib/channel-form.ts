@@ -16,63 +16,63 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { z } from 'zod'
+import { z } from "zod";
 
 import {
   CHANNEL_STATUS,
   ERROR_MESSAGES,
   MODEL_FETCHABLE_TYPES,
-} from '../constants'
-import type { Channel } from '../types'
+} from "../constants";
+import type { Channel } from "../types";
 import {
   CHANNEL_TYPE_ADVANCED_CUSTOM,
   advancedCustomConfigUsesRelativeUpstreamPath,
   parseAdvancedCustomConfig,
   stringifyAdvancedCustomConfig,
   validateAdvancedCustomConfig,
-} from './advanced-custom'
+} from "./advanced-custom";
 
 // ============================================================================
 // Form Validation Schema
 // ============================================================================
 
 function parseOptionalJson(value: string | undefined): unknown {
-  if (!value?.trim()) return undefined
-  return JSON.parse(value)
+  if (!value?.trim()) return undefined;
+  return JSON.parse(value);
 }
 
 function isJsonObjectValue(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isOptionalJsonObject(value: string | undefined): boolean {
   try {
-    const parsed = parseOptionalJson(value)
-    return parsed === undefined || isJsonObjectValue(parsed)
+    const parsed = parseOptionalJson(value);
+    return parsed === undefined || isJsonObjectValue(parsed);
   } catch {
-    return false
+    return false;
   }
 }
 
 function isOptionalModelMapping(value: string | undefined): boolean {
   try {
-    const parsed = parseOptionalJson(value)
-    if (parsed === undefined) return true
-    if (!isJsonObjectValue(parsed)) return false
-    return Object.values(parsed).every((item) => typeof item === 'string')
+    const parsed = parseOptionalJson(value);
+    if (parsed === undefined) return true;
+    if (!isJsonObjectValue(parsed)) return false;
+    return Object.values(parsed).every((item) => typeof item === "string");
   } catch {
-    return false
+    return false;
   }
 }
 
 function isOptionalStatusCodeMapping(value: string | undefined): boolean {
   try {
-    const parsed = parseOptionalJson(value)
-    if (parsed === undefined) return true
-    if (!isJsonObjectValue(parsed)) return false
+    const parsed = parseOptionalJson(value);
+    if (parsed === undefined) return true;
+    if (!isJsonObjectValue(parsed)) return false;
     return Object.entries(parsed).every(([from, to]) => {
-      const fromCode = Number(from)
-      const toCode = Number(to)
+      const fromCode = Number(from);
+      const toCode = Number(to);
       return (
         Number.isInteger(fromCode) &&
         Number.isInteger(toCode) &&
@@ -80,52 +80,52 @@ function isOptionalStatusCodeMapping(value: string | undefined): boolean {
         fromCode <= 599 &&
         toCode >= 100 &&
         toCode <= 599
-      )
-    })
+      );
+    });
   } catch {
-    return false
+    return false;
   }
 }
 
 function isCodexCredential(value: string | undefined): boolean {
   try {
-    const parsed = parseOptionalJson(value)
-    if (parsed === undefined) return true
+    const parsed = parseOptionalJson(value);
+    if (parsed === undefined) return true;
     return (
       isJsonObjectValue(parsed) &&
-      typeof parsed.access_token === 'string' &&
+      typeof parsed.access_token === "string" &&
       parsed.access_token.trim().length > 0 &&
-      typeof parsed.account_id === 'string' &&
+      typeof parsed.account_id === "string" &&
       parsed.account_id.trim().length > 0
-    )
+    );
   } catch {
-    return false
+    return false;
   }
 }
 
 function isVertexJsonKey(value: string | undefined): boolean {
   try {
-    const parsed = parseOptionalJson(value)
-    if (parsed === undefined) return true
+    const parsed = parseOptionalJson(value);
+    if (parsed === undefined) return true;
     if (Array.isArray(parsed)) {
-      return parsed.every((item) => isJsonObjectValue(item))
+      return parsed.every((item) => isJsonObjectValue(item));
     }
-    return isJsonObjectValue(parsed)
+    return isJsonObjectValue(parsed);
   } catch {
-    return false
+    return false;
   }
 }
 
 function addRequiredIssue(
   ctx: z.RefinementCtx,
   path: string,
-  message: string
+  message: string,
 ): void {
   ctx.addIssue({
     code: z.ZodIssueCode.custom,
     path: [path],
     message,
-  })
+  });
 }
 
 export const channelFormSchema = z
@@ -142,7 +142,7 @@ export const channelFormSchema = z
       .optional()
       .refine(
         isOptionalModelMapping,
-        'Model mapping must be a JSON object with string values'
+        "Model mapping must be a JSON object with string values",
       ),
     priority: z.number().optional(),
     weight: z.number().optional(),
@@ -154,12 +154,12 @@ export const channelFormSchema = z
       .optional()
       .refine(
         isOptionalStatusCodeMapping,
-        'Status code mapping must use valid HTTP status codes'
+        "Status code mapping must use valid HTTP status codes",
       ),
     tag: z.string().optional(),
     remark: z
       .string()
-      .max(255, 'Remark must be less than 255 characters')
+      .max(255, "Remark must be less than 255 characters")
       .optional(),
     setting: z
       .string()
@@ -180,10 +180,10 @@ export const channelFormSchema = z
     advanced_custom: z.string().optional(),
     other: z.string().optional(),
     // Multi-key options (not sent to backend directly)
-    multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
-    multi_key_type: z.enum(['random', 'polling']).optional(),
+    multi_key_mode: z.enum(["single", "batch", "multi_to_single"]).optional(),
+    multi_key_type: z.enum(["random", "polling"]).optional(),
     batch_add_set_key_prefix_2_name: z.boolean().optional(),
-    key_mode: z.enum(['append', 'replace']).optional(), // For editing multi-key channels
+    key_mode: z.enum(["append", "replace"]).optional(), // For editing multi-key channels
     // Channel extra settings (stored in setting JSON, not sent directly)
     force_format: z.boolean().optional(),
     thinking_to_content: z.boolean().optional(),
@@ -193,8 +193,8 @@ export const channelFormSchema = z
     system_prompt_override: z.boolean().optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
-    vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
-    aws_key_type: z.enum(['ak_sk', 'api_key']).optional(), // AWS specific
+    vertex_key_type: z.enum(["json", "api_key"]).optional(), // Vertex AI specific
+    aws_key_type: z.enum(["ak_sk", "api_key"]).optional(), // AWS specific
     azure_responses_version: z.string().optional(), // Azure specific
     // Field passthrough controls (stored in settings JSON)
     allow_service_tier: z.boolean().optional(), // OpenAI/Anthropic
@@ -209,15 +209,16 @@ export const channelFormSchema = z
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
-    // Asset library settings (Volcengine Ark Native type 59; stored in settings JSON)
+    // Asset library settings (Volcengine Ark Native type 59 / Baidu DataBuilder type 61; stored in settings JSON)
     asset_upload_protocol: z
       .enum([
-        '',
-        'relay',
-        'ark_official',
-        'ecloud',
-        'bit_official',
-        'xswj_official',
+        "",
+        "relay",
+        "ark_official",
+        "ecloud",
+        "bit_official",
+        "xswj_official",
+        "baidu_databuilder",
       ])
       .optional(),
     asset_upload_path: z.string().optional(),
@@ -228,25 +229,25 @@ export const channelFormSchema = z
     asset_project_name: z.string().optional(),
     asset_region: z.string().optional(),
     asset_endpoint: z.string().optional(),
-    asset_auth_mode: z.enum(['', 'v4', 'bearer']).optional(),
+    asset_auth_mode: z.enum(["", "v4", "bearer"]).optional(),
   })
   .superRefine((data, ctx) => {
     if ([3, 8, 36, 45, 60].includes(data.type) && !data.base_url?.trim()) {
       addRequiredIssue(
         ctx,
-        'base_url',
-        'Base URL is required for this channel type'
-      )
+        "base_url",
+        "Base URL is required for this channel type",
+      );
     }
 
     if (data.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
       const advancedCustomConfig = parseAdvancedCustomConfig(
-        data.advanced_custom
-      )
+        data.advanced_custom,
+      );
       const advancedCustomError =
-        validateAdvancedCustomConfig(advancedCustomConfig)
+        validateAdvancedCustomConfig(advancedCustomConfig);
       if (advancedCustomError) {
-        addRequiredIssue(ctx, 'advanced_custom', advancedCustomError.message)
+        addRequiredIssue(ctx, "advanced_custom", advancedCustomError.message);
       }
       if (
         advancedCustomConfigUsesRelativeUpstreamPath(advancedCustomConfig) &&
@@ -254,108 +255,108 @@ export const channelFormSchema = z
       ) {
         addRequiredIssue(
           ctx,
-          'base_url',
-          'Base URL is required when an advanced route uses an upstream path'
-        )
+          "base_url",
+          "Base URL is required when an advanced route uses an upstream path",
+        );
       }
     }
 
     if ([3, 18, 21, 39, 41, 49].includes(data.type) && !data.other?.trim()) {
       addRequiredIssue(
         ctx,
-        'other',
-        'This channel type requires additional configuration'
-      )
+        "other",
+        "This channel type requires additional configuration",
+      );
     }
 
     if (data.type === 57) {
-      if (data.multi_key_mode && data.multi_key_mode !== 'single') {
+      if (data.multi_key_mode && data.multi_key_mode !== "single") {
         addRequiredIssue(
           ctx,
-          'multi_key_mode',
-          'Codex channels do not support batch creation'
-        )
+          "multi_key_mode",
+          "Codex channels do not support batch creation",
+        );
       }
       if (data.key?.trim() && !isCodexCredential(data.key)) {
         addRequiredIssue(
           ctx,
-          'key',
-          'Codex credential must be a JSON object with access_token and account_id'
-        )
+          "key",
+          "Codex credential must be a JSON object with access_token and account_id",
+        );
       }
     }
 
     if (
       data.type === 41 &&
-      data.vertex_key_type === 'json' &&
+      data.vertex_key_type === "json" &&
       data.key?.trim() &&
       !isVertexJsonKey(data.key)
     ) {
       addRequiredIssue(
         ctx,
-        'key',
-        'Vertex AI service account key must be valid JSON'
-      )
+        "key",
+        "Vertex AI service account key must be valid JSON",
+      );
     }
 
     if (
       data.type === 41 &&
-      data.vertex_key_type === 'api_key' &&
+      data.vertex_key_type === "api_key" &&
       data.multi_key_mode &&
-      data.multi_key_mode !== 'single'
+      data.multi_key_mode !== "single"
     ) {
       addRequiredIssue(
         ctx,
-        'multi_key_mode',
-        'Vertex AI API Key mode does not support batch creation'
-      )
+        "multi_key_mode",
+        "Vertex AI API Key mode does not support batch creation",
+      );
     }
-  })
+  });
 
-export type ChannelFormValues = z.infer<typeof channelFormSchema>
+export type ChannelFormValues = z.infer<typeof channelFormSchema>;
 
 // ============================================================================
 // Default Form Values
 // ============================================================================
 
 export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
-  name: '',
+  name: "",
   type: 1,
-  base_url: '',
-  key: '',
-  openai_organization: '',
-  models: '',
-  group: ['default'],
-  model_mapping: '',
+  base_url: "",
+  key: "",
+  openai_organization: "",
+  models: "",
+  group: ["default"],
+  model_mapping: "",
   priority: 0,
   weight: 0,
-  test_model: '',
+  test_model: "",
   auto_ban: 1,
   status: CHANNEL_STATUS.ENABLED,
-  status_code_mapping: '',
-  tag: '',
-  remark: '',
-  setting: '',
-  param_override: '',
-  header_override: '',
-  settings: '{}',
-  other: '',
-  multi_key_mode: 'single',
-  multi_key_type: 'random',
+  status_code_mapping: "",
+  tag: "",
+  remark: "",
+  setting: "",
+  param_override: "",
+  header_override: "",
+  settings: "{}",
+  other: "",
+  multi_key_mode: "single",
+  multi_key_type: "random",
   batch_add_set_key_prefix_2_name: false,
-  key_mode: 'append',
+  key_mode: "append",
   // Channel extra settings
   force_format: false,
   thinking_to_content: false,
-  proxy: '',
+  proxy: "",
   pass_through_body_enabled: false,
-  system_prompt: '',
+  system_prompt: "",
   system_prompt_override: false,
   // Type-specific settings
   is_enterprise_account: false,
-  vertex_key_type: 'json',
-  aws_key_type: 'ak_sk',
-  azure_responses_version: '',
+  vertex_key_type: "json",
+  aws_key_type: "ak_sk",
+  azure_responses_version: "",
   // Field passthrough controls
   allow_service_tier: false,
   disable_store: false,
@@ -367,20 +368,20 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   disable_task_polling_sleep: false,
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
-  upstream_model_update_ignored_models: '',
-  advanced_custom: '',
+  upstream_model_update_ignored_models: "",
+  advanced_custom: "",
   // Asset library settings
-  asset_upload_protocol: '',
-  asset_upload_path: '',
-  asset_query_path: '',
-  asset_ak: '',
-  asset_sk: '',
-  asset_group_id: '',
-  asset_project_name: '',
-  asset_region: '',
-  asset_endpoint: '',
-  asset_auth_mode: '',
-}
+  asset_upload_protocol: "",
+  asset_upload_path: "",
+  asset_query_path: "",
+  asset_ak: "",
+  asset_sk: "",
+  asset_group_id: "",
+  asset_project_name: "",
+  asset_region: "",
+  asset_endpoint: "",
+  asset_auth_mode: "",
+};
 
 // ============================================================================
 // Transform Functions
@@ -390,148 +391,150 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
  * Transform Channel from API to Form default values
  */
 export function transformChannelToFormDefaults(
-  channel: Channel
+  channel: Channel,
 ): ChannelFormValues {
   // Parse channel extra settings from setting field
   let extraSettings = {
     force_format: false,
     thinking_to_content: false,
-    proxy: '',
+    proxy: "",
     pass_through_body_enabled: false,
-    system_prompt: '',
+    system_prompt: "",
     system_prompt_override: false,
-  }
+  };
 
   if (channel.setting) {
     try {
-      const parsed = JSON.parse(channel.setting)
+      const parsed = JSON.parse(channel.setting);
       extraSettings = {
         force_format: parsed.force_format || false,
         thinking_to_content: parsed.thinking_to_content || false,
-        proxy: parsed.proxy || '',
+        proxy: parsed.proxy || "",
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
-        system_prompt: parsed.system_prompt || '',
+        system_prompt: parsed.system_prompt || "",
         system_prompt_override: parsed.system_prompt_override || false,
-      }
+      };
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error('Failed to parse channel setting:', error)
+      console.error("Failed to parse channel setting:", error);
     }
   }
 
   // Parse type-specific settings from settings field
-  let vertexKeyType: 'json' | 'api_key' = 'json'
-  let azureResponsesVersion = ''
-  let isEnterpriseAccount = false
-  let awsKeyType: 'ak_sk' | 'api_key' = 'ak_sk'
-  let allowServiceTier = false
-  let disableStore = false
-  let allowSafetyIdentifier = false
-  let allowIncludeObfuscation = false
-  let allowInferenceGeo = false
-  let allowSpeed = false
-  let claudeBetaQuery = false
-  let disableTaskPollingSleep = false
-  let upstreamModelUpdateCheckEnabled = false
-  let upstreamModelUpdateAutoSyncEnabled = false
-  let upstreamModelUpdateIgnoredModels = ''
-  let advancedCustom = ''
+  let vertexKeyType: "json" | "api_key" = "json";
+  let azureResponsesVersion = "";
+  let isEnterpriseAccount = false;
+  let awsKeyType: "ak_sk" | "api_key" = "ak_sk";
+  let allowServiceTier = false;
+  let disableStore = false;
+  let allowSafetyIdentifier = false;
+  let allowIncludeObfuscation = false;
+  let allowInferenceGeo = false;
+  let allowSpeed = false;
+  let claudeBetaQuery = false;
+  let disableTaskPollingSleep = false;
+  let upstreamModelUpdateCheckEnabled = false;
+  let upstreamModelUpdateAutoSyncEnabled = false;
+  let upstreamModelUpdateIgnoredModels = "";
+  let advancedCustom = "";
   let assetUploadProtocol:
-    | ''
-    | 'relay'
-    | 'ark_official'
-    | 'ecloud'
-    | 'bit_official'
-    | 'xswj_official' = ''
-  let assetUploadPath = ''
-  let assetQueryPath = ''
-  let assetAk = ''
-  let assetSk = ''
-  let assetGroupId = ''
-  let assetProjectName = ''
-  let assetRegion = ''
-  let assetEndpoint = ''
-  let assetAuthMode: '' | 'v4' | 'bearer' = ''
+    | ""
+    | "relay"
+    | "ark_official"
+    | "ecloud"
+    | "bit_official"
+    | "xswj_official"
+    | "baidu_databuilder" = "";
+  let assetUploadPath = "";
+  let assetQueryPath = "";
+  let assetAk = "";
+  let assetSk = "";
+  let assetGroupId = "";
+  let assetProjectName = "";
+  let assetRegion = "";
+  let assetEndpoint = "";
+  let assetAuthMode: "" | "v4" | "bearer" = "";
 
   if (channel.settings) {
     try {
-      const parsed = JSON.parse(channel.settings)
-      vertexKeyType = parsed.vertex_key_type || 'json'
-      azureResponsesVersion = parsed.azure_responses_version || ''
-      isEnterpriseAccount = parsed.openrouter_enterprise === true
-      awsKeyType = parsed.aws_key_type || 'ak_sk'
-      allowServiceTier = parsed.allow_service_tier === true
-      disableStore = parsed.disable_store === true
-      allowSafetyIdentifier = parsed.allow_safety_identifier === true
-      allowIncludeObfuscation = parsed.allow_include_obfuscation === true
-      allowInferenceGeo = parsed.allow_inference_geo === true
-      allowSpeed = parsed.allow_speed === true
-      claudeBetaQuery = parsed.claude_beta_query === true
-      disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
+      const parsed = JSON.parse(channel.settings);
+      vertexKeyType = parsed.vertex_key_type || "json";
+      azureResponsesVersion = parsed.azure_responses_version || "";
+      isEnterpriseAccount = parsed.openrouter_enterprise === true;
+      awsKeyType = parsed.aws_key_type || "ak_sk";
+      allowServiceTier = parsed.allow_service_tier === true;
+      disableStore = parsed.disable_store === true;
+      allowSafetyIdentifier = parsed.allow_safety_identifier === true;
+      allowIncludeObfuscation = parsed.allow_include_obfuscation === true;
+      allowInferenceGeo = parsed.allow_inference_geo === true;
+      allowSpeed = parsed.allow_speed === true;
+      claudeBetaQuery = parsed.claude_beta_query === true;
+      disableTaskPollingSleep = parsed.disable_task_polling_sleep === true;
       upstreamModelUpdateCheckEnabled =
-        parsed.upstream_model_update_check_enabled === true
+        parsed.upstream_model_update_check_enabled === true;
       upstreamModelUpdateAutoSyncEnabled =
-        parsed.upstream_model_update_auto_sync_enabled === true
+        parsed.upstream_model_update_auto_sync_enabled === true;
       upstreamModelUpdateIgnoredModels = Array.isArray(
-        parsed.upstream_model_update_ignored_models
+        parsed.upstream_model_update_ignored_models,
       )
-        ? parsed.upstream_model_update_ignored_models.join(',')
-        : ''
+        ? parsed.upstream_model_update_ignored_models.join(",")
+        : "";
       if (parsed.advanced_custom) {
-        advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom)
+        advancedCustom = stringifyAdvancedCustomConfig(parsed.advanced_custom);
       }
       assetUploadProtocol =
-        parsed.asset_upload_protocol === 'relay' ||
-        parsed.asset_upload_protocol === 'ark_official' ||
-        parsed.asset_upload_protocol === 'ecloud' ||
-        parsed.asset_upload_protocol === 'bit_official' ||
-        parsed.asset_upload_protocol === 'xswj_official'
+        parsed.asset_upload_protocol === "relay" ||
+        parsed.asset_upload_protocol === "ark_official" ||
+        parsed.asset_upload_protocol === "ecloud" ||
+        parsed.asset_upload_protocol === "bit_official" ||
+        parsed.asset_upload_protocol === "xswj_official" ||
+        parsed.asset_upload_protocol === "baidu_databuilder"
           ? parsed.asset_upload_protocol
-          : ''
-      assetUploadPath = String(parsed.asset_upload_path || '')
-      assetQueryPath = String(parsed.asset_query_path || '')
-      assetAk = String(parsed.asset_ak || '')
-      assetSk = String(parsed.asset_sk || '')
-      assetGroupId = String(parsed.asset_group_id || '')
-      assetProjectName = String(parsed.asset_project_name || '')
-      assetRegion = String(parsed.asset_region || '')
-      assetEndpoint = String(parsed.asset_endpoint || '')
+          : "";
+      assetUploadPath = String(parsed.asset_upload_path || "");
+      assetQueryPath = String(parsed.asset_query_path || "");
+      assetAk = String(parsed.asset_ak || "");
+      assetSk = String(parsed.asset_sk || "");
+      assetGroupId = String(parsed.asset_group_id || "");
+      assetProjectName = String(parsed.asset_project_name || "");
+      assetRegion = String(parsed.asset_region || "");
+      assetEndpoint = String(parsed.asset_endpoint || "");
       assetAuthMode =
-        parsed.asset_auth_mode === 'v4' || parsed.asset_auth_mode === 'bearer'
+        parsed.asset_auth_mode === "v4" || parsed.asset_auth_mode === "bearer"
           ? parsed.asset_auth_mode
-          : ''
+          : "";
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error('Failed to parse channel settings:', error)
+      console.error("Failed to parse channel settings:", error);
     }
   }
 
   return {
-    name: channel.name || '',
+    name: channel.name || "",
     type: channel.type,
-    base_url: channel.base_url || '',
-    key: channel.key || '', // 回显密钥（后端仅对敏感写权限角色下发），供编辑时区分多密钥
-    openai_organization: channel.openai_organization || '',
-    models: channel.models || '',
-    group: parseGroups(channel.group || 'default'),
-    model_mapping: channel.model_mapping || '',
+    base_url: channel.base_url || "",
+    key: channel.key || "", // 回显密钥（后端仅对敏感写权限角色下发），供编辑时区分多密钥
+    openai_organization: channel.openai_organization || "",
+    models: channel.models || "",
+    group: parseGroups(channel.group || "default"),
+    model_mapping: channel.model_mapping || "",
     priority: channel.priority || 0,
     weight: channel.weight || 0,
-    test_model: channel.test_model || '',
+    test_model: channel.test_model || "",
     auto_ban: channel.auto_ban ?? 1,
     status: channel.status,
-    status_code_mapping: channel.status_code_mapping || '',
-    tag: channel.tag || '',
-    remark: channel.remark || '',
-    setting: channel.setting || '',
-    param_override: channel.param_override || '',
-    header_override: channel.header_override || '',
-    settings: channel.settings || '{}',
-    other: channel.other || '',
-    multi_key_mode: 'single',
-    multi_key_type: channel.channel_info.multi_key_mode || 'random',
+    status_code_mapping: channel.status_code_mapping || "",
+    tag: channel.tag || "",
+    remark: channel.remark || "",
+    setting: channel.setting || "",
+    param_override: channel.param_override || "",
+    header_override: channel.header_override || "",
+    settings: channel.settings || "{}",
+    other: channel.other || "",
+    multi_key_mode: "single",
+    multi_key_type: channel.channel_info.multi_key_mode || "random",
     batch_add_set_key_prefix_2_name: false,
-    key_mode: 'replace', // 回显完整密钥列表后默认覆盖，所见即所得；仍可手动切追加
+    key_mode: "replace", // 回显完整密钥列表后默认覆盖，所见即所得；仍可手动切追加
     // Channel extra settings
     ...extraSettings,
     // Type-specific settings
@@ -562,7 +565,7 @@ export function transformChannelToFormDefaults(
     asset_region: assetRegion,
     asset_endpoint: assetEndpoint,
     asset_auth_mode: assetAuthMode,
-  }
+  };
 }
 
 /**
@@ -572,221 +575,226 @@ function buildSettingJSON(formData: ChannelFormValues): string {
   const settingObj = {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
-    proxy: formData.proxy || '',
+    proxy: formData.proxy || "",
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
-    system_prompt: formData.system_prompt || '',
+    system_prompt: formData.system_prompt || "",
     system_prompt_override: formData.system_prompt_override || false,
-  }
-  return JSON.stringify(settingObj)
+  };
+  return JSON.stringify(settingObj);
 }
 
 /**
  * Build the settings JSON string (for type-specific config like vertex_key_type)
  */
 function buildSettingsJSON(formData: ChannelFormValues): string {
-  let settingsObj: Record<string, unknown> = {}
+  let settingsObj: Record<string, unknown> = {};
 
   // Try to parse existing settings first
-  if (formData.settings && formData.settings !== '{}') {
+  if (formData.settings && formData.settings !== "{}") {
     try {
-      settingsObj = JSON.parse(formData.settings)
+      settingsObj = JSON.parse(formData.settings);
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error('Failed to parse existing settings:', error)
+      console.error("Failed to parse existing settings:", error);
     }
   }
 
   // Add vertex_key_type for Vertex AI channels (type 41)
   if (formData.type === 41) {
-    settingsObj.vertex_key_type = formData.vertex_key_type || 'json'
-  } else if ('vertex_key_type' in settingsObj) {
-    delete settingsObj.vertex_key_type
+    settingsObj.vertex_key_type = formData.vertex_key_type || "json";
+  } else if ("vertex_key_type" in settingsObj) {
+    delete settingsObj.vertex_key_type;
   }
 
   // Add azure_responses_version for Azure channels (type 3)
   if (formData.type === 3 && formData.azure_responses_version) {
-    settingsObj.azure_responses_version = formData.azure_responses_version
-  } else if ('azure_responses_version' in settingsObj) {
-    delete settingsObj.azure_responses_version
+    settingsObj.azure_responses_version = formData.azure_responses_version;
+  } else if ("azure_responses_version" in settingsObj) {
+    delete settingsObj.azure_responses_version;
   }
 
   // Add enterprise account setting for OpenRouter (type 20)
   if (formData.type === 20) {
-    settingsObj.openrouter_enterprise = formData.is_enterprise_account === true
-  } else if ('openrouter_enterprise' in settingsObj) {
-    delete settingsObj.openrouter_enterprise
+    settingsObj.openrouter_enterprise = formData.is_enterprise_account === true;
+  } else if ("openrouter_enterprise" in settingsObj) {
+    delete settingsObj.openrouter_enterprise;
   }
 
   // Add aws_key_type for AWS channels (type 33)
   if (formData.type === 33) {
-    settingsObj.aws_key_type = formData.aws_key_type || 'ak_sk'
-  } else if ('aws_key_type' in settingsObj) {
-    delete settingsObj.aws_key_type
+    settingsObj.aws_key_type = formData.aws_key_type || "ak_sk";
+  } else if ("aws_key_type" in settingsObj) {
+    delete settingsObj.aws_key_type;
   }
 
   // Field passthrough controls:
   // - OpenAI (type 1) and Anthropic (type 14): allow_service_tier
   // - OpenAI only: disable_store, allow_safety_identifier
   if (formData.type === 1 || formData.type === 14 || formData.type === 57) {
-    settingsObj.allow_service_tier = formData.allow_service_tier === true
-  } else if ('allow_service_tier' in settingsObj) {
-    delete settingsObj.allow_service_tier
+    settingsObj.allow_service_tier = formData.allow_service_tier === true;
+  } else if ("allow_service_tier" in settingsObj) {
+    delete settingsObj.allow_service_tier;
   }
 
   if (formData.type === 1 || formData.type === 57) {
-    settingsObj.disable_store = formData.disable_store === true
+    settingsObj.disable_store = formData.disable_store === true;
     settingsObj.allow_safety_identifier =
-      formData.allow_safety_identifier === true
+      formData.allow_safety_identifier === true;
     settingsObj.allow_include_obfuscation =
-      formData.allow_include_obfuscation === true
-    settingsObj.allow_inference_geo = formData.allow_inference_geo === true
+      formData.allow_include_obfuscation === true;
+    settingsObj.allow_inference_geo = formData.allow_inference_geo === true;
   } else {
-    if ('disable_store' in settingsObj) delete settingsObj.disable_store
-    if ('allow_safety_identifier' in settingsObj)
-      delete settingsObj.allow_safety_identifier
-    if ('allow_include_obfuscation' in settingsObj)
-      delete settingsObj.allow_include_obfuscation
-    if (formData.type !== 14 && 'allow_inference_geo' in settingsObj)
-      delete settingsObj.allow_inference_geo
+    if ("disable_store" in settingsObj) delete settingsObj.disable_store;
+    if ("allow_safety_identifier" in settingsObj)
+      delete settingsObj.allow_safety_identifier;
+    if ("allow_include_obfuscation" in settingsObj)
+      delete settingsObj.allow_include_obfuscation;
+    if (formData.type !== 14 && "allow_inference_geo" in settingsObj)
+      delete settingsObj.allow_inference_geo;
   }
 
   // Anthropic (type 14): claude_beta_query, allow_inference_geo, allow_speed
   if (formData.type === 14) {
-    settingsObj.allow_inference_geo = formData.allow_inference_geo === true
-    settingsObj.allow_speed = formData.allow_speed === true
-    settingsObj.claude_beta_query = formData.claude_beta_query === true
+    settingsObj.allow_inference_geo = formData.allow_inference_geo === true;
+    settingsObj.allow_speed = formData.allow_speed === true;
+    settingsObj.claude_beta_query = formData.claude_beta_query === true;
   } else {
-    if ('allow_speed' in settingsObj) delete settingsObj.allow_speed
-    if ('claude_beta_query' in settingsObj) delete settingsObj.claude_beta_query
+    if ("allow_speed" in settingsObj) delete settingsObj.allow_speed;
+    if ("claude_beta_query" in settingsObj)
+      delete settingsObj.claude_beta_query;
   }
 
   settingsObj.disable_task_polling_sleep =
-    formData.disable_task_polling_sleep === true
+    formData.disable_task_polling_sleep === true;
 
   // Upstream model update settings (for model-fetchable channel types)
   if (MODEL_FETCHABLE_TYPES.has(formData.type)) {
     settingsObj.upstream_model_update_check_enabled =
-      formData.upstream_model_update_check_enabled === true
+      formData.upstream_model_update_check_enabled === true;
     settingsObj.upstream_model_update_auto_sync_enabled =
       settingsObj.upstream_model_update_check_enabled === true &&
-      formData.upstream_model_update_auto_sync_enabled === true
+      formData.upstream_model_update_auto_sync_enabled === true;
     settingsObj.upstream_model_update_ignored_models = Array.from(
       new Set(
-        String(formData.upstream_model_update_ignored_models || '')
-          .split(',')
+        String(formData.upstream_model_update_ignored_models || "")
+          .split(",")
           .map((model) => model.trim())
-          .filter(Boolean)
-      )
-    )
+          .filter(Boolean),
+      ),
+    );
     if (
       !Array.isArray(settingsObj.upstream_model_update_last_detected_models) ||
       settingsObj.upstream_model_update_check_enabled !== true
     ) {
-      settingsObj.upstream_model_update_last_detected_models = []
+      settingsObj.upstream_model_update_last_detected_models = [];
     }
-    if (typeof settingsObj.upstream_model_update_last_check_time !== 'number') {
-      settingsObj.upstream_model_update_last_check_time = 0
+    if (typeof settingsObj.upstream_model_update_last_check_time !== "number") {
+      settingsObj.upstream_model_update_last_check_time = 0;
     }
   }
 
   if (formData.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
     const advancedCustomConfig = parseAdvancedCustomConfig(
-      formData.advanced_custom
-    )
+      formData.advanced_custom,
+    );
     if (advancedCustomConfig) {
-      settingsObj.advanced_custom = advancedCustomConfig
+      settingsObj.advanced_custom = advancedCustomConfig;
     }
-  } else if ('advanced_custom' in settingsObj) {
-    delete settingsObj.advanced_custom
+  } else if ("advanced_custom" in settingsObj) {
+    delete settingsObj.advanced_custom;
   }
 
   // Asset library settings (Volcengine Ark Native, type 59)
   const assetSettingKeys = [
-    'asset_upload_protocol',
-    'asset_upload_path',
-    'asset_query_path',
-    'asset_ak',
-    'asset_sk',
-    'asset_group_id',
-    'asset_project_name',
-    'asset_region',
-    'asset_endpoint',
-    'asset_auth_mode',
-  ] as const
-  if (formData.type === 59 && formData.asset_upload_protocol) {
-    settingsObj.asset_upload_protocol = formData.asset_upload_protocol
+    "asset_upload_protocol",
+    "asset_upload_path",
+    "asset_query_path",
+    "asset_ak",
+    "asset_sk",
+    "asset_group_id",
+    "asset_project_name",
+    "asset_region",
+    "asset_endpoint",
+    "asset_auth_mode",
+  ] as const;
+  if (
+    (formData.type === 59 || formData.type === 61) &&
+    formData.asset_upload_protocol
+  ) {
+    settingsObj.asset_upload_protocol = formData.asset_upload_protocol;
     if (formData.asset_upload_path?.trim()) {
-      settingsObj.asset_upload_path = formData.asset_upload_path.trim()
+      settingsObj.asset_upload_path = formData.asset_upload_path.trim();
     } else {
-      delete settingsObj.asset_upload_path
+      delete settingsObj.asset_upload_path;
     }
     if (formData.asset_query_path?.trim()) {
-      settingsObj.asset_query_path = formData.asset_query_path.trim()
+      settingsObj.asset_query_path = formData.asset_query_path.trim();
     } else {
-      delete settingsObj.asset_query_path
+      delete settingsObj.asset_query_path;
     }
     if (
-      formData.asset_upload_protocol === 'ark_official' ||
-      formData.asset_upload_protocol === 'bit_official' ||
-      formData.asset_upload_protocol === 'xswj_official'
+      formData.asset_upload_protocol === "ark_official" ||
+      formData.asset_upload_protocol === "bit_official" ||
+      formData.asset_upload_protocol === "xswj_official" ||
+      formData.asset_upload_protocol === "baidu_databuilder"
     ) {
-      settingsObj.asset_ak = (formData.asset_ak || '').trim()
-      settingsObj.asset_sk = (formData.asset_sk || '').trim()
-      settingsObj.asset_group_id = formData.asset_group_id || ''
-      settingsObj.asset_project_name = formData.asset_project_name || ''
-      settingsObj.asset_region = formData.asset_region?.trim() || ''
+      settingsObj.asset_ak = (formData.asset_ak || "").trim();
+      settingsObj.asset_sk = (formData.asset_sk || "").trim();
+      settingsObj.asset_group_id = formData.asset_group_id || "";
+      settingsObj.asset_project_name = formData.asset_project_name || "";
+      settingsObj.asset_region = formData.asset_region?.trim() || "";
     }
-    if (formData.asset_upload_protocol === 'ecloud') {
-      settingsObj.asset_ak = (formData.asset_ak || '').trim()
-      settingsObj.asset_sk = (formData.asset_sk || '').trim()
-      settingsObj.asset_group_id = formData.asset_group_id || ''
+    if (formData.asset_upload_protocol === "ecloud") {
+      settingsObj.asset_ak = (formData.asset_ak || "").trim();
+      settingsObj.asset_sk = (formData.asset_sk || "").trim();
+      settingsObj.asset_group_id = formData.asset_group_id || "";
     }
     // 素材网关地址只有「火山官方」协议可自定义（用于方舟兼容网关，如百度智能云）；
     // tokenbit / 星枢无极 / 移动云的网关是各自固定服务，落库也只会被后端忽略。
     if (
-      formData.asset_upload_protocol === 'ark_official' &&
+      formData.asset_upload_protocol === "ark_official" &&
       formData.asset_endpoint?.trim()
     ) {
-      settingsObj.asset_endpoint = formData.asset_endpoint.trim()
+      settingsObj.asset_endpoint = formData.asset_endpoint.trim();
     } else {
-      delete settingsObj.asset_endpoint
+      delete settingsObj.asset_endpoint;
     }
     // 鉴权方式只有「火山官方」协议可选（方舟兼容网关不一定照搬火山的 AK/SK
     // 签名，如百度智能云 aigw 只认 API Key）；bearer 以外的值一律不落库，
     // 后端留空即按 V4 签名处理。
     if (
-      formData.asset_upload_protocol === 'ark_official' &&
-      formData.asset_auth_mode === 'bearer'
+      formData.asset_upload_protocol === "ark_official" &&
+      formData.asset_auth_mode === "bearer"
     ) {
-      settingsObj.asset_auth_mode = 'bearer'
+      settingsObj.asset_auth_mode = "bearer";
     } else {
-      delete settingsObj.asset_auth_mode
+      delete settingsObj.asset_auth_mode;
     }
   } else {
     for (const key of assetSettingKeys) {
-      if (key in settingsObj) delete settingsObj[key]
+      if (key in settingsObj) delete settingsObj[key];
     }
   }
 
-  return JSON.stringify(settingsObj)
+  return JSON.stringify(settingsObj);
 }
 
 function normalizeBaseUrl(value: string | undefined): string {
-  return String(value || '')
+  return String(value || "")
     .trim()
-    .replace(/\/+$/, '')
+    .replace(/\/+$/, "");
 }
 
 /**
  * Transform form data to API payload for creating channel
  */
 export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
-  mode: 'single' | 'batch' | 'multi_to_single'
-  multi_key_mode?: 'random' | 'polling'
-  batch_add_set_key_prefix_2_name?: boolean
-  channel: Partial<Channel>
+  mode: "single" | "batch" | "multi_to_single";
+  multi_key_mode?: "random" | "polling";
+  batch_add_set_key_prefix_2_name?: boolean;
+  channel: Partial<Channel>;
 } {
-  const mode = formData.multi_key_mode || 'single'
+  const mode = formData.multi_key_mode || "single";
 
   const channel: Partial<Channel> = {
     name: formData.name,
@@ -804,29 +812,29 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     status: formData.status,
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
-    remark: formData.remark || '',
+    remark: formData.remark || "",
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,
     header_override: formData.header_override || null,
     settings: buildSettingsJSON(formData),
-    other: formData.other || '',
-  }
+    other: formData.other || "",
+  };
 
   // Clean up empty strings to null for optional fields
   Object.keys(channel).forEach((key) => {
-    if (channel[key as keyof typeof channel] === '') {
-      ;(channel as Record<string, unknown>)[key] = null
+    if (channel[key as keyof typeof channel] === "") {
+      (channel as Record<string, unknown>)[key] = null;
     }
-  })
+  });
 
   return {
     mode,
     multi_key_mode:
-      mode === 'multi_to_single' ? formData.multi_key_type : undefined,
+      mode === "multi_to_single" ? formData.multi_key_type : undefined,
     batch_add_set_key_prefix_2_name:
-      mode === 'batch' ? formData.batch_add_set_key_prefix_2_name : undefined,
+      mode === "batch" ? formData.batch_add_set_key_prefix_2_name : undefined,
     channel,
-  }
+  };
 }
 
 /**
@@ -834,7 +842,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
  */
 export function transformFormDataToUpdatePayload(
   formData: ChannelFormValues,
-  channelId: number
+  channelId: number,
 ): Partial<Channel> {
   const payload: Partial<Channel> = {
     id: channelId,
@@ -851,38 +859,38 @@ export function transformFormDataToUpdatePayload(
     auto_ban: formData.auto_ban ?? 1,
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
-    remark: formData.remark || '',
+    remark: formData.remark || "",
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,
     header_override: formData.header_override || null,
     settings: buildSettingsJSON(formData),
-    other: formData.other || '',
-  }
+    other: formData.other || "",
+  };
 
   // Only include key if it was changed (not empty)
   if (formData.key && formData.key.trim()) {
-    payload.key = formData.key
+    payload.key = formData.key;
   }
 
   // Clean up empty strings to null for optional fields
   Object.keys(payload).forEach((key) => {
-    if (payload[key as keyof typeof payload] === '') {
-      ;(payload as Record<string, unknown>)[key] = null
+    if (payload[key as keyof typeof payload] === "") {
+      (payload as Record<string, unknown>)[key] = null;
     }
-  })
+  });
 
   // Send explicit empty strings for nullable fields so GORM updates can clear them.
-  payload.base_url = normalizeBaseUrl(formData.base_url) || ''
-  payload.openai_organization = formData.openai_organization || ''
-  payload.test_model = formData.test_model || ''
-  payload.tag = formData.tag || ''
-  payload.remark = formData.remark || ''
-  payload.model_mapping = formData.model_mapping || ''
-  payload.status_code_mapping = formData.status_code_mapping || ''
-  payload.param_override = formData.param_override || ''
-  payload.header_override = formData.header_override || ''
+  payload.base_url = normalizeBaseUrl(formData.base_url) || "";
+  payload.openai_organization = formData.openai_organization || "";
+  payload.test_model = formData.test_model || "";
+  payload.tag = formData.tag || "";
+  payload.remark = formData.remark || "";
+  payload.model_mapping = formData.model_mapping || "";
+  payload.status_code_mapping = formData.status_code_mapping || "";
+  payload.param_override = formData.param_override || "";
+  payload.header_override = formData.header_override || "";
 
-  return payload
+  return payload;
 }
 
 // ============================================================================
@@ -893,12 +901,12 @@ export function transformFormDataToUpdatePayload(
  * Validate JSON string
  */
 export function validateJSON(value: string): boolean {
-  if (!value || value.trim() === '') return true
+  if (!value || value.trim() === "") return true;
   try {
-    JSON.parse(value)
-    return true
+    JSON.parse(value);
+    return true;
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -906,42 +914,42 @@ export function validateJSON(value: string): boolean {
  * Validate model mapping format
  */
 export function validateModelMapping(value: string): boolean {
-  if (!value || value.trim() === '') return true
-  return validateJSON(value)
+  if (!value || value.trim() === "") return true;
+  return validateJSON(value);
 }
 
 /**
  * Parse models string to array
  */
 export function parseModels(models: string): string[] {
-  if (!models) return []
+  if (!models) return [];
   return models
-    .split(',')
+    .split(",")
     .map((m) => m.trim())
-    .filter((m) => m.length > 0)
+    .filter((m) => m.length > 0);
 }
 
 /**
  * Parse groups string to array
  */
 export function parseGroups(groups: string): string[] {
-  if (!groups) return []
+  if (!groups) return [];
   return groups
-    .split(',')
+    .split(",")
     .map((g) => g.trim())
-    .filter((g) => g.length > 0)
+    .filter((g) => g.length > 0);
 }
 
 /**
  * Format models array to string
  */
 export function formatModels(models: string[]): string {
-  return models.join(',')
+  return models.join(",");
 }
 
 /**
  * Format groups array to string
  */
 export function formatGroups(groups: string[]): string {
-  return groups.join(',')
+  return groups.join(",");
 }

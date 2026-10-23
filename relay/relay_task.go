@@ -465,12 +465,17 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	return
 }
 
-// arkNativePassthroughFetch 对 ArkNative（火山方舟官方协议透传）渠道实时查询上游，
+// arkNativePassthroughFetch 对 ArkNative（火山方舟官方协议透传）与 Baidu DataBuilder
+// （同为方舟官方协议形态，仅鉴权改 BCE AK/SK 签名）渠道实时查询上游，
 // 返回上游原始响应体；顺便把最新状态同步到本地任务。失败返回 nil（调用方回退本地快照）。
 func arkNativePassthroughFetch(task *model.Task) []byte {
 	channelModel, err := model.GetChannelById(task.ChannelId, true)
-	if err != nil || channelModel.Type != constant.ChannelTypeArkNative {
+	if err != nil || (channelModel.Type != constant.ChannelTypeArkNative && channelModel.Type != constant.ChannelTypeBaiduDataBuilder) {
 		return nil
+	}
+	logPrefix := "[ArkNative]"
+	if channelModel.Type == constant.ChannelTypeBaiduDataBuilder {
+		logPrefix = "[DataBuilder]"
 	}
 
 	baseURL := channelModel.GetBaseURL()
@@ -497,14 +502,14 @@ func arkNativePassthroughFetch(task *model.Task) []byte {
 	// 按用户 token 费率缩放 usage（仅「按 seedance 计费」的任务会被改写，其余原样
 	// 返回）；在 ParseTaskResult / ApplyUpstreamTaskResult 之前执行，使实时透传给客户端的
 	// body、本地快照与结算全部使用缩放后的值。
-	body = service.ScaleSeedanceTaskUsageByUserRate(body, task, "[ArkNative]")
+	body = service.ScaleSeedanceTaskUsageByUserRate(body, task, logPrefix)
 
 	// 顺便同步本地任务状态；进入终态时必须在此结算/退款（与后台轮询共用逻辑）：
 	// 任务一旦被标记为 Success/Failure，后台轮询不再捕获它，不在这里结算
 	// 就会导致计费永不执行，使用日志缺失带 token 的退费/结算记录。
 	if ti, parseErr := adaptor.ParseTaskResult(body); parseErr == nil && ti != nil {
 		if applyErr := service.ApplyUpstreamTaskResult(context.Background(), adaptor, task, ti, body); applyErr != nil {
-			common.SysLog(fmt.Sprintf("[ArkNative] apply realtime task result failed, task=%s err=%v", task.TaskID, applyErr))
+			common.SysLog(fmt.Sprintf("%s apply realtime task result failed, task=%s err=%v", logPrefix, task.TaskID, applyErr))
 		}
 	}
 	return body
