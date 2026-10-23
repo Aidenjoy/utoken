@@ -100,9 +100,9 @@ type Organization struct {
 	// DisablePersonalWallet 禁用成员个人账户：充值/兑换/订阅拦截、计费强制仅池。
 	// 企业管理员的在线充值不受拦截且直入企业池（见 OrgWalletPolicy）。
 	DisablePersonalWallet bool    `json:"disable_personal_wallet" gorm:"type:bool"`
-	TokenRate             float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // 企业 token 消耗费率（=期望折扣/采购折扣），0=未设置；保存时覆盖全部成员个人费率
-	ExpectedDiscount      float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 期望折扣（费率分子），保存时覆盖全部成员
-	PurchaseDiscount      float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 采购折扣（费率分母），保存时覆盖全部成员
+	TokenRate             float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // 企业 token 消耗费率（=渠道采购折扣/客户期望折扣），0=未设置；保存时覆盖全部成员个人费率
+	ExpectedDiscount      float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 客户期望折扣（费率分母），保存时覆盖全部成员
+	PurchaseDiscount      float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 渠道采购折扣（费率分子），保存时覆盖全部成员
 
 	CreatedAt int64 `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	UpdatedAt int64 `json:"updated_at" gorm:"autoUpdateTime;column:updated_at"`

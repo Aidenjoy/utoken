@@ -56,9 +56,9 @@ type User struct {
 	// 空字符串 = 无折扣（原价）。仅 model_discounts 专用接口可写，通用更新路径不得覆盖。
 	ModelDiscounts   string  `json:"model_discounts,omitempty" gorm:"type:text;column:model_discounts"`
 	Remark           string  `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	TokenRate        float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // token 消耗费率（=期望折扣/采购折扣），0=未设置（等效 1.0）
-	ExpectedDiscount float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 期望折扣（费率分子），0=未设置；服务端由 num/denom 反算 token_rate
-	PurchaseDiscount float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 采购折扣（费率分母），0=未设置；服务端由 num/denom 反算 token_rate
+	TokenRate        float64 `json:"token_rate" gorm:"default:0;column:token_rate"`               // token 消耗费率（=渠道采购折扣/客户期望折扣），0=未设置（等效 1.0）
+	ExpectedDiscount float64 `json:"expected_discount" gorm:"default:0;column:expected_discount"` // 客户期望折扣（费率分母），0=未设置；服务端由 采购/期望 反算 token_rate
+	PurchaseDiscount float64 `json:"purchase_discount" gorm:"default:0;column:purchase_discount"` // 渠道采购折扣（费率分子），0=未设置；服务端由 采购/期望 反算 token_rate
 	// AgentId 是所属代理商（agents.id），0 = 无代理归属。
 	// 由注册时消费邀请码写入，是模型白名单的唯一依据：大于 0 时该用户只能调用
 	// 代理商授权清单内的模型。与 model_discounts 同属权限字段，通用更新路径不得覆盖，

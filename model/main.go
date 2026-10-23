@@ -449,7 +449,9 @@ func dropDirectorRedundantColumns() error {
 }
 
 // backfillTokenRateDiscounts 为「设置费率」改造前已有 token_rate 的用户/企业回填折扣分子分母。
-// 旧数据只有费率 R，按「分母=1、分子=R」反推（R = 期望折扣/采购折扣 = R/1），管理员后续可再修改。
+// 旧数据只有费率 R，按当时公式（费率=期望折扣/采购折扣）以「分母=1、分子=R」反推（R = R/1），管理员后续可再修改。
+// 费率公式后改为 渠道采购折扣/客户期望折扣，本回填产生的 (期望=R, 采购=1) 不再复现 R；但 token_rate 是
+// 持久化计费真源、不随公式重算，故存量费率不受影响，仅下次保存才按新公式生效。
 // 幂等：purchase_discount=0 仅表示未经新 UI 设置过；回填后置 1，新 UI 保存时两折扣均 >0，都不会再次命中。
 func backfillTokenRateDiscounts() error {
 	backfill := map[string]interface{}{

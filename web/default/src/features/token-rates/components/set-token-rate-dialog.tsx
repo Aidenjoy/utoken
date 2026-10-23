@@ -49,9 +49,9 @@ type Props = {
 
 /**
  * Set a user's token consumption rate from two discounts. The rate is derived
- * as Expected Discount ÷ Purchase Discount and multiplies the tokens reported
- * by seedance video tasks before billing, so 1.5 charges 1.5x the upstream
- * tokens. It does not touch the pricing system itself.
+ * as Channel Purchase Discount ÷ Customer Expected Discount and multiplies the
+ * tokens reported by seedance video tasks before billing, so 1.5 charges 1.5x
+ * the upstream tokens. It does not touch the pricing system itself.
  */
 export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
   const { t } = useTranslation()
@@ -70,8 +70,9 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
         setPurchase(String(purchaseDiscount))
       } else if (currentRate > 0) {
         // Legacy rows carry only the rate: prefill as denominator 1, numerator = rate.
-        setExpected(String(currentRate))
-        setPurchase('1')
+        // Under rate = purchase ÷ expected the numerator is the purchase discount.
+        setPurchase(String(currentRate))
+        setExpected('1')
       } else {
         setExpected('')
         setPurchase('')
@@ -91,7 +92,7 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
     parsedExpected <= MAX_DISCOUNT &&
     parsedPurchase <= MAX_DISCOUNT
   const rate = discountsValid
-    ? ceilTokenRate(parsedExpected / parsedPurchase)
+    ? ceilTokenRate(parsedPurchase / parsedExpected)
     : Number.NaN
   const isValid = discountsValid && rate >= MIN_RATE && rate <= MAX_RATE
 
@@ -140,7 +141,19 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
 
         <div className='space-y-4'>
           <div className='space-y-2'>
-            <Label>{t('Expected Discount')}</Label>
+            <Label>{t('Channel Purchase Discount')}</Label>
+            <Input
+              type='number'
+              min={0}
+              max={MAX_DISCOUNT}
+              step='0.1'
+              placeholder='0.75'
+              value={purchase}
+              onChange={(event) => setPurchase(event.target.value)}
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('Customer Expected Discount')}</Label>
             <Input
               type='number'
               min={0}
@@ -152,18 +165,6 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
             />
           </div>
           <div className='space-y-2'>
-            <Label>{t('Purchase Discount')}</Label>
-            <Input
-              type='number'
-              min={0}
-              max={MAX_DISCOUNT}
-              step='0.1'
-              placeholder='0.6'
-              value={purchase}
-              onChange={(event) => setPurchase(event.target.value)}
-            />
-          </div>
-          <div className='space-y-2'>
             <Label>{t('Token Rate')}</Label>
             <Input
               readOnly
@@ -171,7 +172,7 @@ export function SetTokenRateDialog({ open, user, onOpenChange }: Props) {
               placeholder={t('Auto-calculated')}
             />
             <p className='text-muted-foreground text-xs'>
-              {t('Rate = Expected Discount ÷ Purchase Discount')}
+              {t('Rate = Channel Purchase Discount ÷ Customer Expected Discount')}
             </p>
             <p className='text-muted-foreground text-xs'>
               {t(

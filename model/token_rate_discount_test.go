@@ -8,7 +8,8 @@ import (
 )
 
 // TestBackfillTokenRateDiscounts 守护「设置费率」两字段改造的旧数据回填契约：
-// 已有 token_rate 但未经新 UI 设置（purchase_discount=0）的行，按「分母=1、分子=token_rate」反推；
+// 已有 token_rate 但未经新 UI 设置（purchase_discount=0）的行，按旧公式口径回填「渠道采购折扣=1、客户期望折扣=token_rate」
+// （公式改为 采购/期望 后该组合不再复现费率，但 token_rate 是持久化计费真源，存量费率不受影响）；
 // token_rate=0 的行不动；已用新 UI 设置过（purchase_discount>0）的行不被覆盖；重复运行结果不变（幂等）。
 func TestBackfillTokenRateDiscounts(t *testing.T) {
 	setupOrgFixture(t)

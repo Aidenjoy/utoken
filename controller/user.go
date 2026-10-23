@@ -1223,8 +1223,8 @@ func ceilTokenRate(rate float64) float64 {
 	return math.Ceil(scaled) / 100
 }
 
-// resolveTokenRateFromDiscounts 由期望折扣（分子）与采购折扣（分母）计算 token 费率。
-// 当模型计价基准为采购价时，费率 = 期望折扣 / 采购折扣 即用户期望的计费倍率；结果向上取整到 2 位小数。
+// resolveTokenRateFromDiscounts 由客户期望折扣（分母）与渠道采购折扣（分子）计算 token 费率。
+// 费率 = 渠道采购折扣 / 客户期望折扣；结果向上取整到 2 位小数。
 // 两者皆为 0 表示清除费率（返回 0）；其余情况要求两者均为有限正数、各自不超上限，且费率落在 (0, maxTokenRate]。
 func resolveTokenRateFromDiscounts(expected, purchase float64) (float64, bool) {
 	for _, v := range []float64{expected, purchase} {
@@ -1236,16 +1236,16 @@ func resolveTokenRateFromDiscounts(expected, purchase float64) (float64, bool) {
 		return 0, true // 清除费率
 	}
 	if expected == 0 || purchase == 0 {
-		return 0, false // 单边为 0：分母为 0 无意义，分子为 0 会把费率清零
+		return 0, false // 单边为 0：分母（客户期望折扣）为 0 无意义，分子为 0 会把费率清零
 	}
-	rate := ceilTokenRate(expected / purchase)
+	rate := ceilTokenRate(purchase / expected)
 	if rate <= 0 || rate > maxTokenRate {
 		return 0, false
 	}
 	return rate, true
 }
 
-// UpdateUserTokenRate 管理员设置用户 token 消耗费率（接收期望折扣/采购折扣，服务端算 rate=分子/分母；两者皆 0 表示清除恢复默认 1.0 倍）。
+// UpdateUserTokenRate 管理员设置用户 token 消耗费率（接收客户期望折扣/渠道采购折扣，服务端算 rate=采购折扣/期望折扣；两者皆 0 表示清除恢复默认 1.0 倍）。
 // Only admin user can do this.
 func UpdateUserTokenRate(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))

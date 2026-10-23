@@ -49,8 +49,8 @@ type Props = {
 
 /**
  * Set an enterprise's token consumption rate from two discounts (rate =
- * Expected Discount ÷ Purchase Discount). Saving overwrites the personal rate
- * of every member (last setting wins); later joins inherit it too.
+ * Channel Purchase Discount ÷ Customer Expected Discount). Saving overwrites
+ * the personal rate of every member (last setting wins); later joins inherit it too.
  */
 export function SetOrgTokenRateDialog({
   open,
@@ -73,8 +73,9 @@ export function SetOrgTokenRateDialog({
         setPurchase(String(purchaseDiscount))
       } else if (currentRate > 0) {
         // Legacy rows carry only the rate: prefill as denominator 1, numerator = rate.
-        setExpected(String(currentRate))
-        setPurchase('1')
+        // Under rate = purchase ÷ expected the numerator is the purchase discount.
+        setPurchase(String(currentRate))
+        setExpected('1')
       } else {
         setExpected('')
         setPurchase('')
@@ -94,7 +95,7 @@ export function SetOrgTokenRateDialog({
     parsedExpected <= MAX_DISCOUNT &&
     parsedPurchase <= MAX_DISCOUNT
   const rate = discountsValid
-    ? ceilTokenRate(parsedExpected / parsedPurchase)
+    ? ceilTokenRate(parsedPurchase / parsedExpected)
     : Number.NaN
   const isValid = discountsValid && rate >= MIN_RATE && rate <= MAX_RATE
 
@@ -144,7 +145,19 @@ export function SetOrgTokenRateDialog({
 
         <div className='space-y-4'>
           <div className='space-y-2'>
-            <Label>{t('Expected Discount')}</Label>
+            <Label>{t('Channel Purchase Discount')}</Label>
+            <Input
+              type='number'
+              min={0}
+              max={MAX_DISCOUNT}
+              step='0.1'
+              placeholder='0.75'
+              value={purchase}
+              onChange={(event) => setPurchase(event.target.value)}
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label>{t('Customer Expected Discount')}</Label>
             <Input
               type='number'
               min={0}
@@ -156,18 +169,6 @@ export function SetOrgTokenRateDialog({
             />
           </div>
           <div className='space-y-2'>
-            <Label>{t('Purchase Discount')}</Label>
-            <Input
-              type='number'
-              min={0}
-              max={MAX_DISCOUNT}
-              step='0.1'
-              placeholder='0.6'
-              value={purchase}
-              onChange={(event) => setPurchase(event.target.value)}
-            />
-          </div>
-          <div className='space-y-2'>
             <Label>{t('Token Rate')}</Label>
             <Input
               readOnly
@@ -175,7 +176,7 @@ export function SetOrgTokenRateDialog({
               placeholder={t('Auto-calculated')}
             />
             <p className='text-muted-foreground text-xs'>
-              {t('Rate = Expected Discount ÷ Purchase Discount')}
+              {t('Rate = Channel Purchase Discount ÷ Customer Expected Discount')}
             </p>
             <p className='text-muted-foreground text-xs'>
               {t(
