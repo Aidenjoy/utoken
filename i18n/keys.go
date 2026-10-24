@@ -387,6 +387,8 @@ const (
 	MsgOrgMemberAgentBound         = "org.member_agent_bound"
 	MsgOrgNotOwnedByAgent          = "org.not_owned_by_agent"
 	MsgOrgAlreadyBoundOtherAgent   = "org.already_bound_other_agent"
+	MsgOrgMemberIsAgent            = "org.member_is_agent"
+	MsgOrgAgentSelfBind            = "org.agent_self_bind"
 	MsgOrgDiscountBelowFloor       = "org.discount_below_floor"
 	MsgOrgDiscountInvalid          = "org.discount_invalid"
 	MsgOrgMemberDiscountFollowsOrg = "org.member_discount_follows_org"
@@ -398,13 +400,13 @@ const (
 	MsgAgentDisabled             = "agent.disabled"
 	MsgAgentAlreadyExists        = "agent.already_exists"
 	MsgAgentUserNotFound         = "agent.user_not_found"
+	MsgAgentUserInOrg            = "agent.user_in_org"
 	MsgAgentModelDiscountsEmpty  = "agent.model_discounts_empty"
 	MsgAgentModelDiscountInvalid = "agent.model_discounts_invalid"
 	MsgAgentModelNotAuthorized   = "agent.model_not_authorized"
 	MsgAgentDiscountBelowFloor   = "agent.discount_below_floor"
 	MsgAgentDiscountLowered      = "agent.discount_lowered"
 	MsgAgentMemberNotOwned       = "agent.member_not_owned"
-	MsgAgentMemberBoundOther     = "agent.member_bound_other"
 )
 
 // Invite code related messages

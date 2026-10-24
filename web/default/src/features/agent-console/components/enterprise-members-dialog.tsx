@@ -16,12 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -30,13 +40,36 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { listMyEnterpriseMembers } from '@/features/agents/api'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  createEnterpriseMember,
+  listMyEnterpriseMembers,
+  removeEnterpriseMember,
+  updateEnterpriseMember,
+} from '@/features/agents/api'
 import type {
   AgentOrganization,
   AgentOrganizationMember,
 } from '@/features/agents/types'
-import { ORG_ROLE } from '@/features/organization/types'
-import { formatQuota } from '@/lib/format'
+import {
+  MemberMutateDrawer,
+  type MemberDrawerApi,
+  type MemberDrawerMode,
+} from '@/features/organization/components/member-mutate-drawer'
+import {
+  ORG_ERROR_MESSAGES,
+  ORG_MEMBER_STATUSES,
+  ORG_ROLES,
+  ORG_SUCCESS_MESSAGES,
+} from '@/features/organization/constants'
+import { formatQuota, formatTimestamp } from '@/lib/format'
 
 interface Props {
   open: boolean
@@ -44,14 +77,20 @@ interface Props {
   enterprise: AgentOrganization | null
 }
 
-const PAGE_SIZE = 20
+type DrawerState = {
+  mode: MemberDrawerMode
+  member: AgentOrganizationMember | null
+}
 
 /**
- * Read-only roster of an enterprise's members. The agent develops the
- * enterprise but does not manage its membership — members join through the
- * enterprise admin, and their discounts and attribution follow the enterprise.
- * This dialog is therefore a viewer, paginated against the server, never an
- * editor.
+ * Member management for an enterprise this agent owns. The agent develops the
+ * enterprise and, like a system administrator acting on behalf of an org, may
+ * create sub-accounts, adjust role/sub-quota/status and remove members. Adding
+ * an existing user is not offered: pulling one into an enterprise overwrites
+ * its attribution and discounts, which only the enterprise's own admin or a
+ * system administrator may do. Writes go through the agent-scoped enterprise
+ * endpoints; the server enforces that the enterprise belongs to the calling
+ * agent. Members still follow the enterprise for discounts and attribution.
  */
 export function EnterpriseMembersDialog({
   open,
@@ -59,127 +98,249 @@ export function EnterpriseMembersDialog({
   enterprise,
 }: Props) {
   const { t } = useTranslation()
-  const [pageIndex, setPageIndex] = useState(0)
+  const queryClient = useQueryClient()
+  // 抽屉内容与开关分离：关闭动画期间仍渲染最后一次的状态，
+  // 避免退出动画里表单回退成“创建成员”。
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerState, setDrawerState] = useState<DrawerState>({
+    mode: 'create',
+    member: null,
+  })
+  const [pendingRemoval, setPendingRemoval] =
+    useState<AgentOrganizationMember | null>(null)
+  const [isRemoving, setIsRemoving] = useState(false)
 
   const orgId = enterprise?.id ?? 0
 
-  useEffect(() => {
-    if (open) setPageIndex(0)
-  }, [open, orgId])
+  const openDrawer = (state: DrawerState) => {
+    setDrawerState(state)
+    setDrawerOpen(true)
+  }
 
-  const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['agent-enterprise-members', orgId, pageIndex],
+  const refreshMembers = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ['agent-enterprise-members', orgId],
+    })
+  }
+
+  // 代理商走企业维度的成员端点，注入给共享抽屉；不注入 invite（代理商只能建号），
+  // 额度池余量未知（后端仍强制校验）。
+  const drawerApi: MemberDrawerApi = {
+    create: (data) => createEnterpriseMember(orgId, data),
+    update: (memberId, data) => updateEnterpriseMember(orgId, memberId, data),
+  }
+
+  const confirmRemove = async () => {
+    if (!pendingRemoval) return
+    setIsRemoving(true)
+    try {
+      const result = await removeEnterpriseMember(orgId, pendingRemoval.id)
+      if (!result.success) {
+        toast.error(
+          result.message || t(ORG_ERROR_MESSAGES.MEMBER_REMOVE_FAILED)
+        )
+        return
+      }
+      toast.success(t(ORG_SUCCESS_MESSAGES.MEMBER_REMOVED))
+      setPendingRemoval(null)
+      refreshMembers()
+    } finally {
+      setIsRemoving(false)
+    }
+  }
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['agent-enterprise-members', orgId],
+    enabled: open && orgId > 0,
     queryFn: async () => {
       const result = await listMyEnterpriseMembers(orgId, {
-        p: pageIndex + 1,
-        page_size: PAGE_SIZE,
+        p: 1,
+        page_size: 1000,
       })
       if (!result.success) {
         toast.error(result.message || t('Failed to load members'))
-        return { items: [] as AgentOrganizationMember[], total: 0 }
+        return []
       }
-      return {
-        items: result.data?.items ?? [],
-        total: result.data?.total ?? 0,
-      }
+      return result.data?.items ?? []
     },
-    enabled: open && orgId > 0,
-    placeholderData: (previous) => previous,
   })
 
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const members = data ?? []
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[560px]'>
-        <DialogHeader>
-          <DialogTitle>{t('Enterprise Members')}</DialogTitle>
-          <DialogDescription>
-            {t('Enterprise: {{name}}', {
-              name: enterprise?.display_name || enterprise?.name || '',
-            })}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className='sm:max-w-[760px]'>
+          <DialogHeader>
+            <DialogTitle>{t('Enterprise Members')}</DialogTitle>
+            <DialogDescription>
+              {t('Enterprise: {{name}}', {
+                name: enterprise?.display_name || enterprise?.name || '',
+              })}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className='space-y-3'>
           <div className='text-muted-foreground text-xs'>
             {t(
               'Members follow the enterprise. Their discounts and attribution are set at the enterprise level.'
             )}
           </div>
 
-          {isLoading && items.length === 0 ? (
-            <div className='text-muted-foreground py-8 text-center text-sm'>
-              {t('Loading...')}
-            </div>
-          ) : items.length === 0 ? (
-            <div className='border-border/60 bg-muted/20 text-muted-foreground rounded-md border border-dashed py-8 text-center text-sm'>
-              {t('No Members Found')}
-            </div>
-          ) : (
-            <div className='max-h-[360px] space-y-1 overflow-y-auto pr-1'>
-              {items.map((member) => {
-                const isAdmin = member.org_role === ORG_ROLE.ADMIN
-                return (
-                  <div
-                    key={member.id}
-                    className='border-border/50 flex items-center gap-3 border-b py-2 last:border-b-0'
-                  >
-                    <div className='min-w-0 flex-1'>
-                      <div className='truncate font-medium'>
-                        {member.display_name || member.username}
-                      </div>
-                      <div className='text-muted-foreground truncate text-xs'>
-                        {member.username}
-                        {member.sub_user ? ` · ${t('Sub-account')}` : ''}
-                      </div>
-                    </div>
-                    <StatusBadge
-                      label={isAdmin ? t('Organization Admin') : t('Member')}
-                      variant={isAdmin ? 'blue' : 'neutral'}
-                      copyable={false}
-                    />
-                    <span className='font-mono text-xs tabular-nums'>
-                      {formatQuota(member.user_quota ?? 0)}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <div className='flex items-center justify-end'>
+            <Button
+              size='sm'
+              onClick={() => openDrawer({ mode: 'create', member: null })}
+            >
+              {t('Create Member')}
+            </Button>
+          </div>
 
-          {total > PAGE_SIZE ? (
-            <div className='flex items-center justify-between text-sm'>
-              <span className='text-muted-foreground text-xs'>
-                {t('{{count}} members', { count: total })}
-              </span>
-              <div className='flex items-center gap-2'>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  disabled={pageIndex === 0 || isFetching}
-                  onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
-                >
-                  {t('Previous')}
-                </Button>
-                <span className='text-muted-foreground text-xs tabular-nums'>
-                  {pageIndex + 1} / {pageCount}
-                </span>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  disabled={pageIndex + 1 >= pageCount || isFetching}
-                  onClick={() => setPageIndex((p) => p + 1)}
-                >
-                  {t('Next')}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </DialogContent>
-    </Dialog>
+          <div className='max-h-[60vh] overflow-auto'>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('Username')}</TableHead>
+                  <TableHead>{t('Organization Role')}</TableHead>
+                  <TableHead className='text-right'>{t('Sub-quota')}</TableHead>
+                  <TableHead>{t('Status')}</TableHead>
+                  <TableHead>{t('Joined At')}</TableHead>
+                  <TableHead className='text-right'>{t('Actions')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading || members.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className='text-muted-foreground py-10 text-center'
+                    >
+                      {isLoading ? t('Loading...') : t('No Members Found')}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  members.map((member) => {
+                    const roleConfig = ORG_ROLES[member.org_role]
+                    const statusConfig = ORG_MEMBER_STATUSES[member.status]
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className='flex flex-col'>
+                            <span className='max-w-[180px] truncate font-medium'>
+                              {member.display_name ||
+                                member.username ||
+                                `#${member.user_id}`}
+                            </span>
+                            <span className='text-muted-foreground max-w-[180px] truncate text-xs'>
+                              {member.username}
+                              {member.sub_user ? ` · ${t('Sub-account')}` : ''}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {roleConfig ? (
+                            <StatusBadge
+                              label={t(roleConfig.labelKey)}
+                              variant={roleConfig.variant}
+                              copyable={false}
+                            />
+                          ) : (
+                            <span className='text-muted-foreground'>-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className='text-right text-xs tabular-nums'>
+                          {member.quota_limit > 0
+                            ? `${formatQuota(member.quota_used)} / ${formatQuota(member.quota_limit)}`
+                            : `${t('Unlimited')} · ${formatQuota(member.quota_used)}`}
+                        </TableCell>
+                        <TableCell>
+                          {statusConfig ? (
+                            <StatusBadge
+                              label={t(statusConfig.labelKey)}
+                              variant={statusConfig.variant}
+                              copyable={false}
+                            />
+                          ) : (
+                            <span className='text-muted-foreground'>-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className='text-muted-foreground text-xs'>
+                          {formatTimestamp(member.joined_at ?? 0)}
+                        </TableCell>
+                        <TableCell className='text-right'>
+                          <div className='flex items-center justify-end gap-1'>
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              onClick={() =>
+                                openDrawer({ mode: 'edit', member })
+                              }
+                            >
+                              {t('Edit')}
+                            </Button>
+                            <Button
+                              variant='ghost'
+                              size='sm'
+                              className='text-destructive hover:text-destructive'
+                              onClick={() => setPendingRemoval(member)}
+                            >
+                              {t('Remove from Organization')}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <MemberMutateDrawer
+            open={drawerOpen}
+            mode={drawerState.mode}
+            member={drawerState.member}
+            api={drawerApi}
+            quotaHeadroom={null}
+            onRefresh={refreshMembers}
+            onOpenChange={(value) => {
+              if (!value) setDrawerOpen(false)
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(value) => {
+          if (!value) setPendingRemoval(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Remove Member')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'Remove {{username}} from this organization? The account, its keys and its history are kept; it simply stops consuming the shared pool.',
+                { username: pendingRemoval?.username ?? '' }
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemoving}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRemoving}
+              onClick={(event) => {
+                event.preventDefault()
+                void confirmRemove()
+              }}
+            >
+              {isRemoving ? t('Removing...') : t('Remove')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

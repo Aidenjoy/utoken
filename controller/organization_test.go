@@ -36,20 +36,20 @@ func TestLoadScopedOrgMemberHidesCrossOrgExistence(t *testing.T) {
 
 	// 本企业访问：命中
 	cSame, _ := newOrgMemberParamContext("123")
-	member, ok := loadScopedOrgMember(cSame, 1)
+	member, ok := loadScopedOrgMember(cSame, 1, "id")
 	require.True(t, ok)
 	require.NotNil(t, member)
 	assert.Equal(t, 123, member.Id)
 
 	// 跨企业访问（成员属于企业 1，却以企业 2 的身份请求）：按不存在处理
 	cCross, wCross := newOrgMemberParamContext("123")
-	crossMember, crossOk := loadScopedOrgMember(cCross, 2)
+	crossMember, crossOk := loadScopedOrgMember(cCross, 2, "id")
 	assert.False(t, crossOk)
 	assert.Nil(t, crossMember)
 
 	// 真正不存在的成员
 	cMissing, wMissing := newOrgMemberParamContext("999")
-	missingMember, missingOk := loadScopedOrgMember(cMissing, 2)
+	missingMember, missingOk := loadScopedOrgMember(cMissing, 2, "id")
 	assert.False(t, missingOk)
 	assert.Nil(t, missingMember)
 
@@ -66,7 +66,7 @@ func TestLoadScopedOrgMemberRejectsBadParam(t *testing.T) {
 
 	for _, bad := range []string{"abc", "0", "-5"} {
 		c, _ := newOrgMemberParamContext(bad)
-		member, ok := loadScopedOrgMember(c, 1)
+		member, ok := loadScopedOrgMember(c, 1, "id")
 		assert.False(t, ok, "id=%s must be rejected", bad)
 		assert.Nil(t, member)
 	}

@@ -190,15 +190,22 @@ func SetApiRouter(router *gin.Engine) {
 			// 成员折扣只读写「授权范围内」的部分，下限由服务端 Agent 记录决定。
 			agentSelfRoute.GET("/members/:id/model_discounts", controller.GetAgentMemberModelDiscounts)
 			agentSelfRoute.PUT("/members/:id/model_discounts", controller.UpdateAgentMemberModelDiscounts)
-			// 个人成员邀请/踢出：invite 用静态段避免与 :id 参数在同一方法树下冲突。
-			agentSelfRoute.POST("/members/invite", controller.InviteAgentMember)
+			// 个人成员新建/踢出：代理商只能新建账号，没有认领既有用户的入口（见 CreateAgentMember）。
+			agentSelfRoute.POST("/members", middleware.CriticalRateLimit(), controller.CreateAgentMember)
 			agentSelfRoute.DELETE("/members/:id", controller.KickAgentMember)
-			// 我的企业：发展企业客户、企业折扣（下限内）与成员只读列表。
+			// 我的企业：发展企业客户、企业折扣（下限内）与成员管理（与超管代管同等能力）。
 			agentSelfRoute.GET("/enterprises", controller.ListAgentOrganizations)
 			agentSelfRoute.POST("/enterprises", controller.CreateAgentOrganization)
+			agentSelfRoute.PUT("/enterprises/:id", controller.UpdateAgentOrganization)
+			agentSelfRoute.PATCH("/enterprises/:id/status", controller.UpdateAgentOrganizationStatus)
+			agentSelfRoute.DELETE("/enterprises/:id", controller.DeleteAgentOrganization)
 			agentSelfRoute.GET("/enterprises/:id/model_discounts", controller.GetAgentOrganizationModelDiscounts)
 			agentSelfRoute.PUT("/enterprises/:id/model_discounts", controller.UpdateAgentOrganizationModelDiscounts)
-			agentSelfRoute.GET("/enterprises/:id/members", controller.ListAgentOrganizationMembers)
+			agentSelfRoute.GET("/enterprises/:id/members", middleware.SearchRateLimit(), controller.ListAgentOrganizationMembers)
+			// 只新建账号（create 用静态段，:memberId 只出现在 PUT/DELETE 树，避免同方法树下静态段与通配符冲突）。
+			agentSelfRoute.POST("/enterprises/:id/members/create", middleware.CriticalRateLimit(), controller.CreateAgentOrganizationMember)
+			agentSelfRoute.PUT("/enterprises/:id/members/:memberId", controller.UpdateAgentOrganizationMember)
+			agentSelfRoute.DELETE("/enterprises/:id/members/:memberId", controller.RemoveAgentOrganizationMember)
 			agentSelfRoute.GET("/recharge", controller.ListAgentRecharge)
 			// 范围化的使用日志 / 任务日志 / 绘图日志 / 账单中心：均限定在「成员 ∪ 自己」，
 			// 客户端 user_ids 只在此集合内取子集，交集为空即返回空结果（见 controller/agent_self.go）。

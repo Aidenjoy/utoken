@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -82,9 +82,9 @@ function formatDiscountMultiplier(ratio: number): string {
  * Enterprise-wide, per-model discount editor (system administrator). Unlike
  * the agent console there is no floor: an admin may set any discount in
  * (0, 100]. Saving is a whole-table replacement — the server overwrites every
- * member's personal discount to match, and clearing the list returns the whole
- * enterprise to full price. Keys match the request model name and may end with
- * `*` to match a prefix, longest prefix wins.
+ * member's personal discount to match, and a model omitted from the payload
+ * reverts to list price for the whole enterprise. Keys match the request model
+ * name and may end with `*` to match a prefix, longest prefix wins.
  */
 export function OrganizationDiscountDialog({
   open,
@@ -96,6 +96,9 @@ export function OrganizationDiscountDialog({
   const queryClient = useQueryClient()
   const [rows, setRows] = useState<DiscountRow[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // 每次打开只铺一次行：模型定价是异步查询，若每次数据到达都重建行，
+  // 会覆盖管理员在加载间隙已做的编辑。
+  const initializedRef = useRef(false)
 
   // 模型名候选来自模型广场的定价缓存（queryKey ['pricing']），允许自由输入以支持 `*` 通配。
   const pricing = useQuery({
@@ -115,21 +118,39 @@ export function OrganizationDiscountDialog({
     [pricing.data]
   )
 
-  // 当前企业折扣随 Organization 对象一起下发（model_discounts 永不为 nil），
-  // 无需单独请求，打开时直接铺进行内编辑。
+  // 打开即铺满全部模型、默认原价 100%，已存折扣回显覆盖对应行——与用户级折扣
+  // 编辑器 / 代理商端企业折扣编辑器同一口径，管理员只需下调想打折的模型。
+  // 行清单 = 定价目录 ∪ 已存折扣键（含 `*` 通配等目录外键）。
   useEffect(() => {
-    if (!open) return
-    const discounts = organization?.model_discounts ?? {}
+    if (!open) {
+      initializedRef.current = false
+      setRows([])
+      return
+    }
+    if (initializedRef.current) return
+    if (pricing.isLoading) return
+    const saved = organization?.model_discounts ?? {}
+    const catalog = new Set<string>()
+    for (const option of modelOptions) catalog.add(option.value)
+    for (const key of Object.keys(saved)) catalog.add(key)
     setRows(
-      Object.entries(discounts)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([model, ratio]) => ({
-          id: nextRowId(),
-          model,
-          percent: ratioToPercent(ratio),
-        }))
+      [...catalog]
+        .sort((a, b) => a.localeCompare(b))
+        .map((model) => {
+          const stored = saved[model]
+          const savedPercent =
+            typeof stored === 'number' && stored > 0 && stored < 1
+              ? ratioToPercent(stored)
+              : null
+          return {
+            id: nextRowId(),
+            model,
+            percent: savedPercent ?? String(MAX_PERCENT),
+          }
+        })
     )
-  }, [open, organization])
+    initializedRef.current = true
+  }, [open, pricing.isLoading, organization, modelOptions])
 
   const updateRow = (id: string, patch: Partial<DiscountRow>) => {
     setRows((prev) =>
@@ -183,6 +204,9 @@ export function OrganizationDiscountDialog({
       const discounts: Record<string, number> = {}
       for (const row of rows) {
         const percent = Number.parseFloat(row.percent)
+        // 停在原价的行不提交：企业折扣整表替换，未提交即该模型回原价，
+        // 避免把 1.0 写进 organizations.model_discounts 造成无意义的整表膨胀。
+        if (percent >= MAX_PERCENT) continue
         // 百分比 → 小数，按后端精度四舍五入到 4 位，避免 0.8500000000000001 之类的浮点尾巴
         discounts[row.model.trim()] =
           Math.round((percent / 100) * RATIO_PRECISION) / RATIO_PRECISION
@@ -225,10 +249,17 @@ export function OrganizationDiscountDialog({
 
         <div className='space-y-3'>
           <div className='flex items-center justify-between gap-2'>
-            <div className='text-muted-foreground text-xs'>
-              {t(
-                'Supports exact model names and prefix wildcards ending with *, e.g. doubao-seedance-*'
-              )}
+            <div className='text-muted-foreground space-y-1 text-xs'>
+              <div>
+                {t(
+                  'Supports exact model names and prefix wildcards ending with *, e.g. doubao-seedance-*'
+                )}
+              </div>
+              <div>
+                {t(
+                  'All models start at list price (100%). Lower a row to discount it; rows left at 100% are not saved.'
+                )}
+              </div>
             </div>
             <Button
               type='button'
@@ -242,7 +273,13 @@ export function OrganizationDiscountDialog({
             </Button>
           </div>
 
-          {rows.length === 0 && (
+          {pricing.isLoading && (
+            <div className='text-muted-foreground py-8 text-center text-sm'>
+              {t('Loading...')}
+            </div>
+          )}
+
+          {!pricing.isLoading && rows.length === 0 && (
             <div className='border-border/60 bg-muted/20 text-muted-foreground rounded-md border border-dashed py-8 text-center text-sm'>
               {t('No model discounts')}
               <div className='mt-1 text-xs'>
@@ -251,7 +288,7 @@ export function OrganizationDiscountDialog({
             </div>
           )}
 
-          {rows.length > 0 && (
+          {!pricing.isLoading && rows.length > 0 && (
             <div className='max-h-[320px] space-y-2 overflow-y-auto pr-1'>
               <div className='text-muted-foreground flex items-center gap-2 px-1 text-xs'>
                 <span className='flex-1'>{t('Model name')}</span>
@@ -333,7 +370,7 @@ export function OrganizationDiscountDialog({
             {t('Cancel')}
           </Button>
           <Button
-            disabled={isSubmitting || !isValid}
+            disabled={isSubmitting || !isValid || pricing.isLoading}
             onClick={() => void submit()}
           >
             {isSubmitting ? t('Saving...') : t('Confirm')}

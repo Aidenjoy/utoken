@@ -55,14 +55,15 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatModelDiscount } from '@/lib/discount'
 import { formatQuota, formatTimestampToDate } from '@/lib/format'
 
+import { MemberCreateDialog } from './components/member-create-dialog'
 import { MemberDiscountDialog } from './components/member-discount-dialog'
-import { MemberInviteDialog } from './components/member-invite-dialog'
 
 /**
- * Users who registered with one of this agent's invite codes, together with the
- * per-model discounts granted to each and their lifetime successful recharge
- * (face value). Membership is what confines these users to the agent's
- * authorized models, so the discount editor is offered right here.
+ * This agent's individual members: accounts the agent created for them plus
+ * users who registered with one of its invite codes. Each row carries the
+ * per-model discounts granted to it and its lifetime successful recharge (face
+ * value). Membership is what confines these users to the agent's authorized
+ * models, so the discount editor is offered right here.
  */
 export function AgentMembers() {
   const { t, i18n } = useTranslation()
@@ -74,7 +75,7 @@ export function AgentMembers() {
   const [pageSize, setPageSize] = useState(20)
   const [editing, setEditing] = useState<AgentMember | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [inviteOpen, setInviteOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [kickTarget, setKickTarget] = useState<AgentMember | null>(null)
   const [isWorking, setIsWorking] = useState(false)
 
@@ -262,10 +263,10 @@ export function AgentMembers() {
     totalCount: data?.total ?? 0,
   })
 
-  const inviteButton = (
-    <Button size='sm' onClick={() => setInviteOpen(true)}>
+  const addMemberButton = (
+    <Button size='sm' onClick={() => setCreateOpen(true)}>
       <Plus className='size-4' />
-      {t('Invite Member')}
+      {t('Add Member')}
     </Button>
   )
 
@@ -280,12 +281,12 @@ export function AgentMembers() {
           isFetching={isFetching}
           emptyTitle={t('No Members Found')}
           emptyDescription={t(
-            'Users who register with your invite code will appear here.'
+            'Add a member account, or share your invite code — users who register with it land here.'
           )}
-          emptyAction={inviteButton}
+          emptyAction={addMemberButton}
           skeletonKeyPrefix='my-agent-members-skeleton'
           applyHeaderSize
-          toolbarProps={{ hideViewOptions: true, preActions: inviteButton }}
+          toolbarProps={{ hideViewOptions: true, preActions: addMemberButton }}
         />
         {/* 必须待在 Content 里：SectionPageLayout 只认自己的四个插槽子节点，
             放在它旁边会被静默丢弃，弹窗永远不会挂载（弹窗自身 portal 到 body，
@@ -296,9 +297,9 @@ export function AgentMembers() {
           member={editing}
           onSuccess={refresh}
         />
-        <MemberInviteDialog
-          open={inviteOpen}
-          onOpenChange={setInviteOpen}
+        <MemberCreateDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
           onSuccess={refresh}
         />
         <AlertDialog

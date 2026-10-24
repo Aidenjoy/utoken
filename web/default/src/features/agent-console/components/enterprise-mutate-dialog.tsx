@@ -32,67 +32,79 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createMyEnterprise } from '@/features/agents/api'
+import { createMyEnterprise, updateMyEnterprise } from '@/features/agents/api'
+import type { AgentOrganization } from '@/features/agents/types'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** null/undefined = create mode; an enterprise = edit mode. */
+  enterprise?: AgentOrganization | null
   onSuccess?: () => void
 }
 
 /**
- * Create an enterprise this agent develops. The identifier is normalized
- * server-side (lowercased, letters/digits/_/- only, 2-64 chars) and must be
- * globally unique; the display name is optional. An existing user is named as
- * the enterprise admin — the initial pool is always 0, since funding is added
- * later by an admin offline or by the enterprise admin's own online top-up.
- * On success the server binds the new org to this agent and syncs attribution.
+ * Create or edit an enterprise this agent develops. Both modes expose exactly
+ * two fields: the identifier (normalized server-side to lowercase
+ * letters/digits/_/-, 2-64 chars, globally unique) and the optional display
+ * name. Group, pool funding, enterprise discounts and wallet policy are left
+ * out on purpose — they either have their own entry point or belong to the
+ * system administrator, and saving them overwrites every member's billing
+ * fields, so they must not ride along in a general edit form.
+ *
+ * On create the server binds the new org to this agent and syncs attribution;
+ * the pool starts at 0 and members are added afterwards, one of whom is
+ * promoted to admin from the member list.
  */
-export function CreateEnterpriseDialog({
+export function EnterpriseMutateDialog({
   open,
   onOpenChange,
+  enterprise,
   onSuccess,
 }: Props) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const isEdit = enterprise != null
 
   const [name, setName] = useState('')
   const [displayName, setDisplayName] = useState('')
-  const [ownerUsername, setOwnerUsername] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    setName('')
-    setDisplayName('')
-    setOwnerUsername('')
-  }, [open])
+    setName(enterprise?.name ?? '')
+    setDisplayName(enterprise?.display_name ?? '')
+  }, [open, enterprise])
 
-  // Identifier is required and at least 2 chars; the admin username is required
-  // so the enterprise always has an owner. Display name is optional.
-  const nameValid = name.trim().length >= 2
-  const ownerValid = ownerUsername.trim().length > 0
-  const canSubmit = nameValid && ownerValid
+  // Identifier is required and at least 2 chars. Display name is optional.
+  const canSubmit = name.trim().length >= 2
 
   const submit = async () => {
     if (!canSubmit) return
     setIsSubmitting(true)
+    const failureMessage = isEdit
+      ? t('Failed to update enterprise')
+      : t('Failed to create')
+    const payload = {
+      name: name.trim(),
+      display_name: displayName.trim(),
+    }
     try {
-      const result = await createMyEnterprise({
-        name: name.trim(),
-        display_name: displayName.trim() || undefined,
-        owner_username: ownerUsername.trim(),
-      })
+      const result = isEdit
+        ? await updateMyEnterprise(enterprise.id, payload)
+        : await createMyEnterprise(payload)
       if (!result.success) {
-        toast.error(result.message || t('Failed to create'))
+        toast.error(result.message || failureMessage)
         return
       }
-      toast.success(t('Enterprise created'))
+      toast.success(
+        isEdit ? t('Updated successfully') : t('Enterprise created')
+      )
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['my-agent-enterprises'] })
       onSuccess?.()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('Failed to create'))
+      toast.error(e instanceof Error ? e.message : failureMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -102,11 +114,15 @@ export function CreateEnterpriseDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-[480px]'>
         <DialogHeader>
-          <DialogTitle>{t('Create Enterprise')}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? t('Edit Enterprise') : t('Create Enterprise')}
+          </DialogTitle>
           <DialogDescription>
-            {t(
-              'The enterprise starts with an empty pool and is bound to you. Name an existing user as its admin.'
-            )}
+            {isEdit
+              ? t('Only the identifier and display name can be edited.')
+              : t(
+                  'The enterprise starts with an empty pool and is bound to you. Add members afterwards and promote one of them to admin.'
+                )}
           </DialogDescription>
         </DialogHeader>
 
@@ -120,7 +136,9 @@ export function CreateEnterpriseDialog({
               onChange={(event) => setName(event.target.value)}
             />
             <p className='text-muted-foreground text-xs'>
-              {t('Lowercase letters, digits, underscore or hyphen. 2-64 chars.')}
+              {t(
+                'Lowercase letters, digits, underscore or hyphen. 2-64 chars.'
+              )}
             </p>
           </div>
 
@@ -132,19 +150,6 @@ export function CreateEnterpriseDialog({
               placeholder={t('Optional display name')}
               onChange={(event) => setDisplayName(event.target.value)}
             />
-          </div>
-
-          <div className='space-y-2'>
-            <Label>{t('Admin Username')}</Label>
-            <Input
-              value={ownerUsername}
-              maxLength={64}
-              placeholder={t('Existing username')}
-              onChange={(event) => setOwnerUsername(event.target.value)}
-            />
-            <p className='text-muted-foreground text-xs'>
-              {t('This user becomes the enterprise admin and can top up the pool.')}
-            </p>
           </div>
         </div>
 

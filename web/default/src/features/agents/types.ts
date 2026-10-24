@@ -139,7 +139,7 @@ export interface AgentOrganization {
   created_at?: number
 }
 
-/** An enterprise member row (read-only for the agent). */
+/** An enterprise member row. The agent that owns the enterprise may manage it. */
 export interface AgentOrganizationMember {
   id: number
   org_id: number
@@ -149,6 +149,7 @@ export interface AgentOrganizationMember {
   quota_used: number
   status: number
   sub_user: boolean
+  joined_at?: number
   username: string
   display_name: string
   email?: string

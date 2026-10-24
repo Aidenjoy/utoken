@@ -26,6 +26,10 @@ const (
 var (
 	ErrAgentNotFound      = errors.New("agent not found")
 	ErrAgentAlreadyExists = errors.New("user is already an agent")
+	// ErrAgentUserInOrg 已是企业成员的用户不得被提升为代理商。企业折扣保存时整表覆盖
+	// 全部成员的 users.model_discounts，而计费只认这一个字段：该用户一旦成为代理商，
+	// 他自己的定价就会被企业折扣冲掉。与 ErrOrgMemberIsAgent 是同一条互斥规则的两端。
+	ErrAgentUserInOrg = errors.New("user already belongs to an organization and cannot become an agent")
 	// ErrAgentDisabled 代理商已被停用：不得再绑定新的成员/企业，存量绑定不受影响。
 	ErrAgentDisabled = errors.New("agent is disabled")
 	// ErrAgentModelDiscountsInvalid 是授权配置各类校验失败（通配键、值域、条目数、键长度）
@@ -344,7 +348,8 @@ func backfillAgentUserInfo(agents []*Agent) {
 	}
 }
 
-// CreateAgent 提升用户为代理商。同一用户不可重复提升。
+// CreateAgent 提升用户为代理商。同一用户不可重复提升；已是企业成员的用户不可提升
+// （企业折扣会整表覆盖其 users.model_discounts，两套折扣体系互斥）。
 func CreateAgent(agent *Agent) error {
 	if agent == nil || agent.UserId <= 0 {
 		return ErrAgentNotFound
@@ -358,6 +363,13 @@ func CreateAgent(agent *Agent) error {
 	}
 	if count > 0 {
 		return ErrAgentAlreadyExists
+	}
+	inOrg, err := isInAnyOrgTx(DB, agent.UserId)
+	if err != nil {
+		return err
+	}
+	if inOrg {
+		return ErrAgentUserInOrg
 	}
 	if agent.Status == 0 {
 		agent.Status = AgentStatusEnabled
@@ -447,6 +459,50 @@ func SetUserAgentBinding(userId int, agentId int) error {
 		return err
 	}
 	return invalidateUserCache(userId)
+}
+
+// CreateAgentMemberUser 代理商新建个人成员账号：一个事务里建号并写入 users.agent_id，
+// 中途失败不会留下无归属的孤儿账号。
+//
+// 与企业内建号（CreateOrgMemberUser）同口径的两条约束：
+//   - 系统角色固定 RoleCommonUser，成员身份只体现在 users.agent_id
+//   - 个人钱包 0 起步、不发注册赠送：赠送额度会被批量建号套走
+//
+// 代理商只有这一条发展个人成员的入口——认领既有用户属于权限变更，只能由系统管理员
+// 在用户侧调 SetUserAgentBinding 完成。
+func CreateAgentMemberUser(user *User, agentId int) error {
+	if user == nil {
+		return errors.New("invalid agent member user")
+	}
+	if agentId <= 0 {
+		return ErrAgentNotFound
+	}
+	user.Role = common.RoleCommonUser
+	user.AgentId = agentId
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		var agent Agent
+		if err := lockForUpdate(tx).Where("id = ?", agentId).First(&agent).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAgentNotFound
+			}
+			return err
+		}
+		if agent.Status != AgentStatusEnabled {
+			return ErrAgentDisabled
+		}
+		if err := user.InsertWithTx(tx, 0); err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("quota", 0).Error; err != nil {
+			return err
+		}
+		user.Quota = 0
+		return nil
+	}); err != nil {
+		return err
+	}
+	user.FinishInsert(0)
+	return nil
 }
 
 // KickAgentMember 代理商踢出个人成员：解绑 users.agent_id（置 0）并清零该代理商

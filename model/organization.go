@@ -63,6 +63,14 @@ var (
 	ErrOrgNotifyTargetInvalid    = errors.New("invalid organization notify target")
 	// ErrOrgMemberAgentBound 企业成员的代理商归属随企业，代理商不得单独邀请/改绑企业内用户。
 	ErrOrgMemberAgentBound = errors.New("user belongs to an organization, agent binding follows the organization")
+	// ErrOrgMemberIsAgent 代理商本人（agents.user_id 命中）不得加入企业，管理员身份更不行。
+	// 企业折扣保存时整表覆盖全部成员的 users.model_discounts，而计费只认这一个字段：
+	// 代理商一旦进了企业，自己的定价就会被企业折扣冲掉，两套折扣体系互相污染。
+	ErrOrgMemberIsAgent = errors.New("an agent cannot be an organization member")
+	// ErrOrgAgentSelfBind 企业不得绑定到其成员本人名下的代理商。SetOrganizationAgent 会把
+	// 全部成员的 users.agent_id 刷成该代理商，绑到自己人头上会让代理商成为自己的成员，
+	// 出现在自己的成员列表里并能给自己设折扣。
+	ErrOrgAgentSelfBind = errors.New("organization cannot be bound to an agent who is its own member")
 )
 
 // Organization 企业（组织）。
@@ -261,6 +269,43 @@ func IsValidOrgRole(role string) bool {
 	return role == OrgRoleAdmin || role == OrgRoleMember
 }
 
+// isAgentUserTx 判断该用户是否为代理商本人（agents.user_id 命中）。
+// 无记录返回 false，查询错误原样上抛——资格判定不允许 fail-open，
+// 否则一次数据库抖动就能把代理商塞进企业，把两套折扣搅在一起。
+func isAgentUserTx(tx *gorm.DB, userId int) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	var count int64
+	if err := tx.Model(&Agent{}).Where("user_id = ?", userId).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// IsAgentUser 判断用户是否为代理商本人，供 controller 在授予企业管理员前拦截存量脏数据。
+func IsAgentUser(userId int) (bool, error) {
+	return isAgentUserTx(DB, userId)
+}
+
+// isInAnyOrgTx 以 org_members 为准判断用户是否已属于任何企业。
+func isInAnyOrgTx(tx *gorm.DB, userId int) (bool, error) {
+	if userId <= 0 {
+		return false, nil
+	}
+	var count int64
+	if err := tx.Model(&OrgMember{}).Where("user_id = ?", userId).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// IsUserInAnyOrg 判断用户是否已属于任何企业。users.org_id 只是归属快照，
+// 鉴权与计费一律以 org_members 为事实源，判定企业归属必须走本函数而不是读快照。
+func IsUserInAnyOrg(userId int) (bool, error) {
+	return isInAnyOrgTx(DB, userId)
+}
+
 // normalizeOrganization 归一化企业字段：状态、缓存 TTL、显示名兜底。
 // 布尔字段的默认值由代码归一化而非 gorm default，保证三库行为一致。
 func normalizeOrganization(org *Organization) {
@@ -339,18 +384,29 @@ func CreateOrganizationWithSetup(org *Organization, initialQuota int, ownerUserI
 			return ErrOrgNameTaken
 		}
 		if ownerUserId > 0 {
-			var userCount int64
-			if err := tx.Model(&User{}).Where("id = ?", ownerUserId).Count(&userCount).Error; err != nil {
+			// 先锁用户行再判资格：org_members 的唯一索引是 (org_id, user_id) 复合的，
+			// 数据库层拦不住「同一人被并发邀请进两个不同企业」，只能靠行锁把同一个
+			// 用户的入企操作串行化。SQLite 下 lockForUpdate 退化为普通查询，但它本身
+			// 单写者，不构成额外风险。
+			var owner User
+			if err := lockForUpdate(tx).Select("id").Where("id = ?", ownerUserId).First(&owner).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrOrgUserNotFound
+				}
 				return err
 			}
-			if userCount == 0 {
-				return ErrOrgUserNotFound
-			}
-			var memberCount int64
-			if err := tx.Model(&OrgMember{}).Where("user_id = ?", ownerUserId).Count(&memberCount).Error; err != nil {
+			isAgent, err := isAgentUserTx(tx, ownerUserId)
+			if err != nil {
 				return err
 			}
-			if memberCount > 0 {
+			if isAgent {
+				return ErrOrgMemberIsAgent
+			}
+			inOrg, err := isInAnyOrgTx(tx, ownerUserId)
+			if err != nil {
+				return err
+			}
+			if inOrg {
 				return ErrOrgUserAlreadyInOrg
 			}
 		}
@@ -492,6 +548,28 @@ func UpdateOrganizationStatus(id int, status int) error {
 	return UpdateOrganizationFields(id, map[string]interface{}{"status": status})
 }
 
+// RenameOrganization 变更企业唯一标识，重名（排除自身）返回 ErrOrgNameTaken。
+// 成员、台账与密钥一律按 org_id 关联，标识只用于展示与建企业时的唯一性约束，
+// 因此改名不影响归属与计费，无需同步成员。
+func RenameOrganization(id int, name string) error {
+	if id <= 0 {
+		return ErrOrgNotFound
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := getOrganizationByIdTx(tx, id); err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(&Organization{}).Where("name = ? AND id <> ?", name, id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return ErrOrgNameTaken
+		}
+		return tx.Model(&Organization{}).Where("id = ?", id).Update("name", name).Error
+	})
+}
+
 // UpdateOrganizationGroup 变更企业绑定的用户分组，并同步全部成员账号的分组。
 // 分组决定计费倍率，只有系统管理员可以变更；不同步成员会导致新老成员倒率不一致。
 func UpdateOrganizationGroup(orgId int, group string) error {
@@ -601,6 +679,17 @@ func SetOrganizationAgent(orgId int, agentId int) error {
 			}
 			if agent.Status != AgentStatusEnabled {
 				return ErrAgentDisabled
+			}
+			// 不得把企业绑到其成员本人名下的代理商：下面会把全部成员的 agent_id 刷成
+			// 该代理商，绑到自己人头上会让代理商成为自己的成员，出现在自己的成员列表里
+			// 并能给自己设折扣。
+			var selfMemberCount int64
+			if err := tx.Model(&OrgMember{}).
+				Where("org_id = ? AND user_id = ?", orgId, agent.UserId).Count(&selfMemberCount).Error; err != nil {
+				return err
+			}
+			if selfMemberCount > 0 {
+				return ErrOrgAgentSelfBind
 			}
 			newFloorKeys = floorKeysFromDiscounts(agent.ModelDiscounts)
 		}
@@ -936,8 +1025,10 @@ func GetOrgAdminUserIds(orgId int) ([]int, error) {
 	return ids, err
 }
 
-// AddOrgMember 把既有用户加入企业：写成员记录，并同步 User.OrgId 与企业分组。
-// 用户已属于任何企业时返回 ErrOrgUserAlreadyInOrg。
+// AddOrgMember 把既有用户加入企业：写成员记录，并让用户的归属字段整体随企业
+// （org_id、分组、agent_id、model_discounts、token_rate 及其折扣分子分母）。
+// 一个用户最多属于一个企业，已在任何企业内返回 ErrOrgUserAlreadyInOrg；
+// 代理商本人不得加入企业，返回 ErrOrgMemberIsAgent。
 func AddOrgMember(member *OrgMember) error {
 	if member == nil || member.OrgId <= 0 || member.UserId <= 0 {
 		return errors.New("invalid organization member")
@@ -954,9 +1045,7 @@ func AddOrgMember(member *OrgMember) error {
 	if member.JoinedAt == 0 {
 		member.JoinedAt = common.GetTimestamp()
 	}
-	var joinedRate float64
-	var joinedDiscounts string
-	var joinedAgent bool
+	var orgRate float64
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var org Organization
 		if err := lockForUpdate(tx).Where("id = ?", member.OrgId).First(&org).Error; err != nil {
@@ -968,63 +1057,55 @@ func AddOrgMember(member *OrgMember) error {
 		if err := checkOrgQuotaCommitmentTx(tx, &org, 0, 0, member.PromisedQuota()); err != nil {
 			return err
 		}
-		var count int64
-		if err := tx.Model(&OrgMember{}).Where("user_id = ?", member.UserId).Count(&count).Error; err != nil {
-			return err
-		}
-		if count > 0 {
-			return ErrOrgUserAlreadyInOrg
-		}
+		// 锁用户行再判资格：org_members 的唯一索引是 (org_id, user_id) 复合的，数据库层
+		// 拦不住「同一人被并发邀请进两个不同企业」，只能靠行锁把同一个用户的入企操作串行化。
 		var user User
-		if err := tx.Where("id = ?", member.UserId).First(&user).Error; err != nil {
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", member.UserId).First(&user).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errors.New("user not found")
 			}
 			return err
 		}
+		isAgent, err := isAgentUserTx(tx, member.UserId)
+		if err != nil {
+			return err
+		}
+		if isAgent {
+			return ErrOrgMemberIsAgent
+		}
+		inOrg, err := isInAnyOrgTx(tx, member.UserId)
+		if err != nil {
+			return err
+		}
+		if inOrg {
+			return ErrOrgUserAlreadyInOrg
+		}
 		if err := tx.Create(member).Error; err != nil {
 			return err
 		}
-		updates := map[string]interface{}{"org_id": org.Id, "group": org.Group}
-		// 新成员默认继承企业费率（含折扣分子分母）：与企业费率倒挂的旧个人费率在加入时被覆盖
-		if org.TokenRate > 0 {
-			updates["token_rate"] = org.TokenRate
-			updates["expected_discount"] = org.ExpectedDiscount
-			updates["purchase_discount"] = org.PurchaseDiscount
-			joinedRate = org.TokenRate
+		// 归属字段无条件随企业：企业成员的可调模型、折扣与费率只由企业决定。
+		// 旧写法是「企业有值才覆盖」，于是已绑定代理商 A 的用户加入直销企业后仍带着
+		// agent_id=A 和 A 给的折扣——受 A 的白名单约束，企业却以为自己在管他。
+		updates := map[string]interface{}{
+			"org_id":            org.Id,
+			"group":             org.Group,
+			"agent_id":          org.AgentId,
+			"model_discounts":   org.ModelDiscounts,
+			"token_rate":        org.TokenRate,
+			"expected_discount": org.ExpectedDiscount,
+			"purchase_discount": org.PurchaseDiscount,
 		}
-		// 继承企业级按模型折扣与代理商归属：企业成员的可调模型与折扣只随企业，
-		// 加入即覆盖旧的个人折扣/归属（与 token_rate 覆盖式继承同模式）
-		if org.ModelDiscounts != "" {
-			updates["model_discounts"] = org.ModelDiscounts
-			joinedDiscounts = org.ModelDiscounts
-		}
-		if org.AgentId > 0 {
-			updates["agent_id"] = org.AgentId
-			joinedAgent = true
-		}
-		if err := tx.Model(&User{}).Where("id = ?", member.UserId).
-			Updates(updates).Error; err != nil {
-			return err
-		}
-		return nil
+		orgRate = org.TokenRate
+		return tx.Model(&User{}).Where("id = ?", member.UserId).Updates(updates).Error
 	})
 	if err != nil {
 		return err
 	}
-	if joinedRate > 0 {
-		updateUserTokenRateCache(member.UserId, joinedRate)
-	}
-	if joinedDiscounts != "" {
-		if err := updateUserModelDiscountsCache(member.UserId, joinedDiscounts); err != nil {
-			common.SysLog(fmt.Sprintf("failed to refresh model discounts cache (userId=%d): %s", member.UserId, err.Error()))
-		}
-	}
-	if joinedAgent {
-		// agent_id 变更影响 AllowedModels 派生快照，整条失效重建
-		return invalidateUserCache(member.UserId)
-	}
-	return nil
+	// 费率缓存是进程内 map（多节点不互相同步，见 model/user_token_rate.go），直接置新值；
+	// agent_id 与 model_discounts 落在 Redis 用户缓存里，整条失效重建才能同时刷新
+	// AllowedModels 白名单与折扣快照。
+	updateUserTokenRateCache(member.UserId, orgRate)
+	return invalidateUserCache(member.UserId)
 }
 
 // CreateOrgMemberUser 在企业内新建成员账号：一个事务里创建用户并写入成员记录，
@@ -1127,13 +1208,18 @@ func UpdateOrgMemberFields(id int, fields map[string]interface{}) error {
 	})
 }
 
-// RemoveOrgMember 把用户移出企业：删除成员记录，User.OrgId 归零且分组回落系统默认组。
-// 只解绑不删账号，用户的密钥与历史日志保留。
+// RemoveOrgMember 把用户移出企业：删除成员记录，并把加入时从企业继承的归属字段
+// 全部清零——org_id 归零、分组回落系统默认组、agent_id 解绑、model_discounts 清空、
+// token_rate 及其折扣分子分母归零。只解绑不删账号，用户的密钥与历史日志保留。
+//
+// 清零而不是保留：加入企业时旧的个人归属已被整体覆盖、无从还原，若退出时留着企业
+// 下发的折扣与 agent_id，等于「退企即锁定企业折扣」——人走了还按企业价计费，并且
+// 继续挂在原代理商名下（ListAgentMembers 按 users.agent_id 查），代理商仍能给他改价。
 func RemoveOrgMember(orgId int, userId int) error {
 	if orgId <= 0 || userId <= 0 {
 		return ErrOrgMemberNotFound
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
 		// 必须在事务内用 tx 查询：调用全局 DB 的 GetOrgMember 会另取一条连接，
 		// 连接池耗尽时死锁，且读到的是事务外快照，破坏移出的原子性。
 		var member OrgMember
@@ -1147,11 +1233,25 @@ func RemoveOrgMember(orgId int, userId int) error {
 			return err
 		}
 		if err := tx.Model(&User{}).Where("id = ? AND org_id = ?", userId, orgId).
-			Updates(map[string]interface{}{"org_id": 0, "group": DefaultUserGroup}).Error; err != nil {
+			Updates(map[string]interface{}{
+				"org_id":            0,
+				"group":             DefaultUserGroup,
+				"agent_id":          0,
+				"model_discounts":   "",
+				"token_rate":        0,
+				"expected_discount": 0,
+				"purchase_discount": 0,
+			}).Error; err != nil {
 			return err
 		}
 		return invalidateUserCacheTxSafe(userId)
-	})
+	}); err != nil {
+		return err
+	}
+	// 费率是进程内缓存，事务提交后单独置零；agent_id 与 model_discounts 在 Redis
+	// 用户缓存里，已由上面的整条失效覆盖。
+	updateUserTokenRateCache(userId, 0)
+	return nil
 }
 
 // invalidateOrgMembersUserCache 清理企业全部成员的用户缓存（企业分组/状态变更后调用）

@@ -72,8 +72,8 @@ func loadOrganization(c *gin.Context, orgId int) (*model.Organization, bool) {
 
 // loadScopedOrgMember 按成员主键读取，并校验其确实属于本次请求的企业。
 // 不属于时同样按"成员不存在"响应，跨企业探测拿不到任何可区分的信息。
-func loadScopedOrgMember(c *gin.Context, orgId int) (*model.OrgMember, bool) {
-	memberId, err := strconv.Atoi(c.Param("id"))
+func loadScopedOrgMember(c *gin.Context, orgId int, paramName string) (*model.OrgMember, bool) {
+	memberId, err := strconv.Atoi(c.Param(paramName))
 	if err != nil || memberId <= 0 {
 		common.ApiErrorI18n(c, i18n.MsgOrgMemberNotFound)
 		return nil, false
@@ -424,6 +424,12 @@ func CreateOrgMember(c *gin.Context) {
 	if !ok {
 		return
 	}
+	createOrgMember(c, org)
+}
+
+// createOrgMember 在指定企业内新建成员账号的共享实现，供企业管理员（本企业）与
+// 代理商（名下企业）两条入口复用；企业归属校验由调用方在进入前完成。
+func createOrgMember(c *gin.Context, org *model.Organization) {
 	if org.Status != model.OrgStatusEnabled {
 		common.ApiErrorI18n(c, i18n.MsgOrgDisabled)
 		return
@@ -515,6 +521,11 @@ func InviteOrgMember(c *gin.Context) {
 	if !ok {
 		return
 	}
+	inviteOrgMember(c, org)
+}
+
+// inviteOrgMember 邀请既有用户加入指定企业的共享实现，供企业管理员与代理商两条入口复用。
+func inviteOrgMember(c *gin.Context, org *model.Organization) {
 	if org.Status != model.OrgStatusEnabled {
 		common.ApiErrorI18n(c, i18n.MsgOrgDisabled)
 		return
@@ -557,6 +568,10 @@ func InviteOrgMember(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgOrgUserAlreadyInOrg)
 			return
 		}
+		if errors.Is(err, model.ErrOrgMemberIsAgent) {
+			common.ApiErrorI18n(c, i18n.MsgOrgMemberIsAgent)
+			return
+		}
 		if errors.Is(err, model.ErrOrgMemberQuotaExceedsPool) {
 			common.ApiErrorI18n(c, i18n.MsgOrgMemberQuotaExceedsPool)
 			return
@@ -592,10 +607,16 @@ func UpdateOrgMember(c *gin.Context) {
 	if !ok {
 		return
 	}
-	member, ok := loadScopedOrgMember(c, org.Id)
+	member, ok := loadScopedOrgMember(c, org.Id, "id")
 	if !ok {
 		return
 	}
+	updateOrgMember(c, org, member)
+}
+
+// updateOrgMember 更新指定企业某成员的角色/子额度/状态的共享实现，供企业管理员、
+// 系统管理员代管与代理商管理名下企业三条入口复用；最后管理员保护对所有入口一致生效。
+func updateOrgMember(c *gin.Context, org *model.Organization, member *model.OrgMember) {
 	var req updateOrgMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -610,6 +631,20 @@ func UpdateOrgMember(c *gin.Context) {
 			return
 		}
 		if orgRole != member.OrgRole {
+			// 代理商不得成为企业管理员：企业折扣保存时整表覆盖全部成员的
+			// users.model_discounts，而计费只认这一个字段，代理商当上管理员就会
+			// 被企业折扣冲掉自身定价。入企环节已拦住，这里是兜存量脏数据。
+			if orgRole == model.OrgRoleAdmin {
+				isAgent, err := model.IsAgentUser(member.UserId)
+				if err != nil {
+					common.ApiError(c, err)
+					return
+				}
+				if isAgent {
+					common.ApiErrorI18n(c, i18n.MsgOrgMemberIsAgent)
+					return
+				}
+			}
 			fields["org_role"] = orgRole
 			if member.IsAdmin() && orgRole != model.OrgRoleAdmin {
 				losingAdmin = true
@@ -691,17 +726,24 @@ func RemoveOrgMember(c *gin.Context) {
 	if !ok {
 		return
 	}
-	member, ok := loadScopedOrgMember(c, org.Id)
+	member, ok := loadScopedOrgMember(c, org.Id, "id")
 	if !ok {
 		return
 	}
-	if member.UserId == c.GetInt("id") && !middleware.IsSystemAdmin(c) {
+	removeOrgMember(c, org, member, middleware.IsSystemAdmin(c))
+}
+
+// removeOrgMember 把成员移出指定企业的共享实现，供企业管理员、系统管理员代管
+// 与代理商管理名下企业三条入口复用。bypassProtections 为真时（代管方本身就是
+// 企业的兜底管理渠道）跳过自移除与最后管理员保护。
+func removeOrgMember(c *gin.Context, org *model.Organization, member *model.OrgMember, bypassProtections bool) {
+	if member.UserId == c.GetInt("id") && !bypassProtections {
 		common.ApiErrorI18n(c, i18n.MsgOrgRemoveSelf)
 		return
 	}
 	// 最后管理员保护是防止企业失去自管理入口；系统管理员代管时自己就是兜底
 	// 渠道，且清空成员是删除企业的前置条件，故该限制对其不生效。
-	if member.IsAdmin() && !middleware.IsSystemAdmin(c) {
+	if member.IsAdmin() && !bypassProtections {
 		adminIds, err := model.GetOrgAdminUserIds(org.Id)
 		if err != nil {
 			common.ApiError(c, err)
@@ -1026,6 +1068,8 @@ func AdminCreateOrganization(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgOrgUserNotFound)
 		case errors.Is(err, model.ErrOrgUserAlreadyInOrg):
 			common.ApiErrorI18n(c, i18n.MsgOrgUserAlreadyInOrg)
+		case errors.Is(err, model.ErrOrgMemberIsAgent):
+			common.ApiErrorI18n(c, i18n.MsgOrgMemberIsAgent)
 		default:
 			common.ApiError(c, err)
 		}
@@ -1372,6 +1416,8 @@ func respondOrgAgentError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgAgentNotFound)
 	case errors.Is(err, model.ErrAgentDisabled):
 		common.ApiErrorI18n(c, i18n.MsgAgentDisabled)
+	case errors.Is(err, model.ErrOrgAgentSelfBind):
+		common.ApiErrorI18n(c, i18n.MsgOrgAgentSelfBind)
 	case errors.Is(err, model.ErrOrgNotFound):
 		common.ApiErrorI18n(c, i18n.MsgOrgNotFound)
 	default:

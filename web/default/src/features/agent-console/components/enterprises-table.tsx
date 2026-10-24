@@ -18,44 +18,73 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Percent, Plus, Users } from 'lucide-react'
+import {
+  Ban,
+  CircleCheck,
+  Edit,
+  Percent,
+  Plus,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import {
-  DataTablePage,
-  TruncatedCell,
-  useDataTable,
-} from '@/components/data-table'
+import { DataTablePage, useDataTable } from '@/components/data-table'
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { StatusBadge } from '@/components/status-badge'
+import { TableId } from '@/components/table-id'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { listMyEnterprises } from '@/features/agents/api'
+import {
+  deleteMyEnterprise,
+  listMyEnterprises,
+  updateMyEnterpriseStatus,
+} from '@/features/agents/api'
 import type { AgentOrganization } from '@/features/agents/types'
+import { ORG_STATUSES } from '@/features/organization/constants'
 import { ORG_STATUS } from '@/features/organization/types'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatModelDiscount } from '@/lib/discount'
-import { formatQuota, formatTimestampToDate } from '@/lib/format'
+import { formatQuota, formatTimestamp } from '@/lib/format'
 
-import { CreateEnterpriseDialog } from './create-enterprise-dialog'
 import { EnterpriseDiscountDialog } from './enterprise-discount-dialog'
 import { EnterpriseMembersDialog } from './enterprise-members-dialog'
+import { EnterpriseMutateDialog } from './enterprise-mutate-dialog'
+
+type PendingAction =
+  | { kind: 'status'; enterprise: AgentOrganization }
+  | { kind: 'delete'; enterprise: AgentOrganization }
+  | null
 
 /**
- * The enterprises (organizations) this agent develops. Each row is an org bound
- * to this agent: its shared pool, the enterprise-wide per-model discount the
- * agent may set within its own floors, and the admin-controlled personal-wallet
- * lockdown. The agent prices the enterprise and views its roster, but never
- * manages membership or the pool balance directly — funding arrives via an
- * admin's offline adjustment or the enterprise admin's own online top-up.
+ * The enterprises (organizations) this agent develops, laid out like the
+ * system-administrator organization list so both consoles read the same way.
+ * The agent gets every management affordance except pool funding: edit the two
+ * name fields, set the enterprise-wide per-model discount within its own
+ * floors, manage the roster, toggle status and delete an emptied enterprise.
+ * Funding arrives via an admin's offline adjustment or the enterprise admin's
+ * own online top-up, so there is deliberately no quota control here.
  */
 export function EnterprisesTable() {
   const { t, i18n } = useTranslation()
@@ -65,32 +94,34 @@ export function EnterprisesTable() {
 
   const [pageIndex, setPageIndex] = useState(0)
   const [pageSize, setPageSize] = useState(20)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [discountTarget, setDiscountTarget] = useState<AgentOrganization | null>(
-    null
-  )
-  const [discountOpen, setDiscountOpen] = useState(false)
+  const [keyword, setKeyword] = useState('')
+
+  const [mutateOpen, setMutateOpen] = useState(false)
+  const [editing, setEditing] = useState<AgentOrganization | null>(null)
+  const [discountTarget, setDiscountTarget] =
+    useState<AgentOrganization | null>(null)
   const [membersTarget, setMembersTarget] = useState<AgentOrganization | null>(
     null
   )
-  const [membersOpen, setMembersOpen] = useState(false)
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
+  const [isWorking, setIsWorking] = useState(false)
 
-  const openDiscountEditor = useCallback((org: AgentOrganization) => {
-    setDiscountTarget(org)
-    setDiscountOpen(true)
-  }, [])
+  const refresh = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['my-agent-enterprises'] })
+  }, [queryClient])
 
-  const openMembers = useCallback((org: AgentOrganization) => {
-    setMembersTarget(org)
-    setMembersOpen(true)
+  const openEdit = useCallback((enterprise: AgentOrganization | null) => {
+    setEditing(enterprise)
+    setMutateOpen(true)
   }, [])
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['my-agent-enterprises', pageIndex, pageSize],
+    queryKey: ['my-agent-enterprises', pageIndex, pageSize, keyword],
     queryFn: async () => {
       const result = await listMyEnterprises({
         p: pageIndex + 1,
         page_size: pageSize,
+        keyword: keyword.trim() || undefined,
       })
       if (!result.success) {
         toast.error(result.message || t('Failed to load enterprises'))
@@ -107,16 +138,28 @@ export function EnterprisesTable() {
   const columns = useMemo<ColumnDef<AgentOrganization>[]>(
     () => [
       {
-        id: 'enterprise',
-        header: t('Enterprise'),
+        accessorKey: 'id',
+        header: t('ID'),
+        meta: { mobileHidden: true },
         cell: ({ row }) => (
-          <div className='flex min-w-[160px] flex-col gap-0.5'>
-            <TruncatedCell cellClassName='font-medium'>
+          <TableId value={row.original.id} className='w-[60px]' />
+        ),
+        size: 80,
+      },
+      {
+        accessorKey: 'name',
+        header: t('Enterprise'),
+        meta: { mobileTitle: true },
+        cell: ({ row }) => (
+          <div className='flex flex-col'>
+            <span className='max-w-[220px] truncate font-medium'>
               {row.original.display_name || row.original.name}
-            </TruncatedCell>
-            <span className='text-muted-foreground text-xs'>
-              {row.original.name} · #{row.original.id}
             </span>
+            {row.original.display_name ? (
+              <span className='text-muted-foreground max-w-[220px] truncate font-mono text-xs'>
+                {row.original.name}
+              </span>
+            ) : null}
           </div>
         ),
         size: 220,
@@ -124,6 +167,7 @@ export function EnterprisesTable() {
       {
         accessorKey: 'group',
         header: t('Group'),
+        meta: { mobileBadge: true },
         cell: ({ row }) => (
           <StatusBadge
             label={row.original.group || '-'}
@@ -134,19 +178,42 @@ export function EnterprisesTable() {
         size: 120,
       },
       {
+        accessorKey: 'status',
+        header: t('Status'),
+        meta: { mobileBadge: true },
+        cell: ({ row }) => {
+          const config = ORG_STATUSES[row.original.status]
+          if (!config) return <span className='text-muted-foreground'>-</span>
+          return (
+            <StatusBadge
+              label={t(config.labelKey)}
+              variant={config.variant}
+              copyable={false}
+            />
+          )
+        },
+        size: 110,
+      },
+      {
         accessorKey: 'quota',
-        header: t('Pool Balance'),
+        header: t('Pool Quota'),
         cell: ({ row }) => (
-          <span className='font-mono text-sm font-semibold tabular-nums'>
-            {formatQuota(row.original.quota ?? 0)}
-          </span>
+          <div className='flex flex-col text-xs'>
+            <span className='tabular-nums'>
+              {t('Balance:')} {formatQuota(row.original.quota ?? 0)}
+            </span>
+            <span className='text-muted-foreground tabular-nums'>
+              {t('Used:')} {formatQuota(row.original.used_quota ?? 0)}
+            </span>
+          </div>
         ),
-        size: 130,
+        size: 170,
       },
       {
         id: 'model_discounts',
         accessorKey: 'model_discounts',
         header: t('Model Discounts'),
+        meta: { mobileHidden: true },
         cell: ({ row }) => {
           const entries = Object.entries(
             row.original.model_discounts ?? {}
@@ -189,6 +256,7 @@ export function EnterprisesTable() {
       {
         id: 'personal_wallet',
         header: t('Personal Wallet'),
+        meta: { mobileHidden: true },
         cell: ({ row }) =>
           row.original.disable_personal_wallet ? (
             <StatusBadge
@@ -206,64 +274,71 @@ export function EnterprisesTable() {
         size: 130,
       },
       {
-        accessorKey: 'status',
-        header: t('Status'),
-        cell: ({ row }) =>
-          row.original.status === ORG_STATUS.ENABLED ? (
-            <StatusBadge
-              label={t('Enabled')}
-              variant='success'
-              copyable={false}
-            />
-          ) : (
-            <StatusBadge
-              label={t('Disabled')}
-              variant='neutral'
-              copyable={false}
-            />
-          ),
-        size: 110,
-      },
-      {
         accessorKey: 'created_at',
-        header: t('Created'),
+        header: t('Created At'),
+        meta: { mobileHidden: true },
         cell: ({ row }) => (
-          <span className='text-muted-foreground font-mono text-xs whitespace-nowrap'>
+          <span className='text-muted-foreground text-xs'>
             {row.original.created_at
-              ? formatTimestampToDate(row.original.created_at)
+              ? formatTimestamp(row.original.created_at)
               : '-'}
           </span>
         ),
-        size: 165,
+        size: 170,
       },
       {
         id: 'actions',
-        cell: ({ row }) => (
-          <DataTableRowActionMenu ariaLabel={t('Open menu')} modal={false}>
-            <DropdownMenuItem
-              onClick={() => openDiscountEditor(row.original)}
-            >
-              {t('Set Discounts')}
-              <Percent size={16} />
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openMembers(row.original)}>
-              {t('View Members')}
-              <Users size={16} />
-            </DropdownMenuItem>
-          </DataTableRowActionMenu>
-        ),
+        cell: ({ row }) => {
+          const enterprise = row.original
+          const isEnabled = enterprise.status === ORG_STATUS.ENABLED
+          return (
+            <DataTableRowActionMenu ariaLabel={t('Open menu')} modal={false}>
+              <DropdownMenuItem onClick={() => openEdit(enterprise)}>
+                {t('Edit')}
+                <Edit size={16} />
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDiscountTarget(enterprise)}>
+                {t('Model Discounts')}
+                <Percent size={16} />
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMembersTarget(enterprise)}>
+                {t('View Members')}
+                <Users size={16} />
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setPendingAction({ kind: 'status', enterprise })}
+              >
+                {isEnabled ? t('Disable') : t('Enable')}
+                {isEnabled ? <Ban size={16} /> : <CircleCheck size={16} />}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setPendingAction({ kind: 'delete', enterprise })}
+                className='text-destructive focus:text-destructive'
+              >
+                {t('Delete')}
+                <Trash2 size={16} />
+              </DropdownMenuItem>
+            </DataTableRowActionMenu>
+          )
+        },
         enableSorting: false,
         enableHiding: false,
         meta: { align: 'right' },
-        size: 70,
+        size: 90,
       },
     ],
-    [t, locale, openDiscountEditor, openMembers]
+    [t, locale, openEdit]
   )
 
   const { table } = useDataTable({
     data: data?.items ?? [],
     columns,
+    globalFilter: keyword,
+    onGlobalFilterChange: (value) => {
+      setKeyword(value)
+      setPageIndex(0)
+    },
     pagination: { pageIndex, pageSize },
     onPaginationChange: (updater) => {
       const next =
@@ -274,15 +349,75 @@ export function EnterprisesTable() {
       setPageSize(next.pageSize)
     },
     manualPagination: true,
+    manualFiltering: true,
     totalCount: data?.total ?? 0,
   })
 
+  const runPendingAction = async () => {
+    if (!pendingAction) return
+    const { kind, enterprise } = pendingAction
+    setIsWorking(true)
+    try {
+      if (kind === 'status') {
+        const nextStatus =
+          enterprise.status === ORG_STATUS.ENABLED
+            ? ORG_STATUS.DISABLED
+            : ORG_STATUS.ENABLED
+        const result = await updateMyEnterpriseStatus(enterprise.id, nextStatus)
+        if (!result.success) {
+          toast.error(result.message || t('Failed to update enterprise status'))
+          return
+        }
+        toast.success(t('Updated successfully'))
+      } else {
+        const result = await deleteMyEnterprise(enterprise.id)
+        if (!result.success) {
+          toast.error(result.message || t('Failed to delete enterprise'))
+          return
+        }
+        toast.success(t('Deleted successfully'))
+      }
+      setPendingAction(null)
+      refresh()
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
   const primaryButtons = (
-    <Button size='sm' onClick={() => setCreateOpen(true)}>
+    <Button size='sm' onClick={() => openEdit(null)}>
       <Plus className='size-4' />
       {t('Create Enterprise')}
     </Button>
   )
+
+  const isDelete = pendingAction?.kind === 'delete'
+  const pendingName =
+    pendingAction?.enterprise.display_name ||
+    pendingAction?.enterprise.name ||
+    ''
+  const isEnabled = pendingAction?.enterprise.status === ORG_STATUS.ENABLED
+
+  // One dialog covers the three confirmations; resolve the copy up front so the
+  // JSX below stays flat.
+  let pendingDescription = ''
+  let pendingConfirmLabel = t('Enable')
+  if (isDelete) {
+    pendingDescription = t(
+      'Delete {{name}}? Only enterprises without members can be deleted; remove every member first.',
+      { name: pendingName }
+    )
+    pendingConfirmLabel = t('Delete')
+  } else if (isEnabled) {
+    pendingDescription = t(
+      'Disable {{name}}? Member requests stop using the shared pool immediately.',
+      { name: pendingName }
+    )
+    pendingConfirmLabel = t('Disable')
+  } else {
+    pendingDescription = t('Enable {{name}}?', { name: pendingName })
+    pendingConfirmLabel = t('Enable')
+  }
 
   return (
     <>
@@ -299,35 +434,67 @@ export function EnterprisesTable() {
         skeletonKeyPrefix='my-agent-enterprises-skeleton'
         applyHeaderSize
         toolbarProps={{
-          hideViewOptions: true,
+          searchPlaceholder: t('Search by name or display name...'),
+          searchDebounceMs: 300,
           preActions: primaryButtons,
         }}
       />
 
-      <CreateEnterpriseDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onSuccess={() =>
-          void queryClient.invalidateQueries({
-            queryKey: ['my-agent-enterprises'],
-          })
-        }
+      <EnterpriseMutateDialog
+        open={mutateOpen}
+        enterprise={editing}
+        onOpenChange={setMutateOpen}
+        onSuccess={refresh}
       />
+
       <EnterpriseDiscountDialog
-        open={discountOpen}
-        onOpenChange={setDiscountOpen}
+        open={discountTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDiscountTarget(null)
+        }}
         enterprise={discountTarget}
-        onSuccess={() =>
-          void queryClient.invalidateQueries({
-            queryKey: ['my-agent-enterprises'],
-          })
-        }
+        onSuccess={refresh}
       />
+
       <EnterpriseMembersDialog
-        open={membersOpen}
-        onOpenChange={setMembersOpen}
+        open={membersTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setMembersTarget(null)
+        }}
         enterprise={membersTarget}
       />
+
+      <AlertDialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingAction(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isDelete ? t('Delete Enterprise') : t('Change Status')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDescription}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isWorking}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isWorking}
+              onClick={(event) => {
+                event.preventDefault()
+                void runPendingAction()
+              }}
+            >
+              {isWorking ? t('Processing...') : pendingConfirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

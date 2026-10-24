@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type {
+  CreateOrgMemberPayload,
+  UpdateOrgMemberPayload,
+} from '@/features/organization/types'
 import { api } from '@/lib/api'
 
 import type {
@@ -265,18 +269,57 @@ export async function listMyEnterprises(
 export interface CreateEnterprisePayload {
   name: string
   display_name?: string
-  owner_username: string
 }
 
 /**
  * Create an enterprise owned by this agent. The initial pool is 0 (funding is
- * added later by an admin offline or by the enterprise admin's online top-up);
- * the server binds the new org to the caller agent and syncs member attribution.
+ * added later by an admin offline or by an enterprise admin's online top-up);
+ * no admin is named here — members are added afterwards and one of them is
+ * promoted. The server binds the new org to the caller agent and syncs member
+ * attribution.
  */
 export async function createMyEnterprise(
   payload: CreateEnterprisePayload
 ): Promise<ApiResponse<AgentOrganization>> {
   const res = await api.post('/api/agent/enterprises', payload)
+  return res.data
+}
+
+export interface UpdateEnterprisePayload {
+  name?: string
+  display_name?: string
+}
+
+/**
+ * Edit an enterprise this agent owns. The server only accepts the identifier
+ * and the display name — group, pool, discounts and wallet policy each have
+ * their own endpoint or belong to the system administrator.
+ */
+export async function updateMyEnterprise(
+  id: number,
+  payload: UpdateEnterprisePayload
+): Promise<ApiResponse<AgentOrganization>> {
+  const res = await api.put(`/api/agent/enterprises/${id}`, payload)
+  return res.data
+}
+
+/** Enable or disable an enterprise this agent owns. */
+export async function updateMyEnterpriseStatus(
+  id: number,
+  status: number
+): Promise<ApiResponse<null>> {
+  const res = await api.patch(`/api/agent/enterprises/${id}/status`, { status })
+  return res.data
+}
+
+/**
+ * Delete an enterprise this agent owns. The server only allows organizations
+ * whose members have all been removed first.
+ */
+export async function deleteMyEnterprise(
+  id: number
+): Promise<ApiResponse<null>> {
+  const res = await api.delete(`/api/agent/enterprises/${id}`)
   return res.data
 }
 
@@ -300,10 +343,9 @@ export async function updateMyEnterpriseDiscounts(
   orgId: number,
   discounts: Record<string, number>
 ): Promise<ApiResponse<{ discounts: Record<string, number> }>> {
-  const res = await api.put(
-    `/api/agent/enterprises/${orgId}/model_discounts`,
-    { discounts }
-  )
+  const res = await api.put(`/api/agent/enterprises/${orgId}/model_discounts`, {
+    discounts,
+  })
   return res.data
 }
 
@@ -322,20 +364,71 @@ export async function listMyEnterpriseMembers(
   return res.data
 }
 
+// An agent manages the members of an enterprise it owns with the same powers an
+// organization admin (or a delegating system admin) has, minus adding existing
+// users: create a sub-account, adjust role/sub-quota/status, and remove a
+// member. Ownership is enforced server-side; these mirror the
+// /api/org/members payloads.
+
+export async function createEnterpriseMember(
+  orgId: number,
+  data: CreateOrgMemberPayload
+): Promise<ApiResponse<{ id: number; user_id: number; username: string }>> {
+  const res = await api.post(
+    `/api/agent/enterprises/${orgId}/members/create`,
+    data
+  )
+  return res.data
+}
+
+export async function updateEnterpriseMember(
+  orgId: number,
+  memberId: number,
+  data: UpdateOrgMemberPayload
+): Promise<ApiResponse<null>> {
+  const res = await api.put(
+    `/api/agent/enterprises/${orgId}/members/${memberId}`,
+    data
+  )
+  return res.data
+}
+
+/** Unbind a member from the enterprise; the account itself is kept. */
+export async function removeEnterpriseMember(
+  orgId: number,
+  memberId: number
+): Promise<ApiResponse> {
+  const res = await api.delete(
+    `/api/agent/enterprises/${orgId}/members/${memberId}`
+  )
+  return res.data
+}
+
 // ============================================================================
-// Agent self-service: individual member invite / kick
+// Agent self-service: individual member create / kick
 // ============================================================================
 
-/**
- * Invite an existing individual user (by username) to become this agent's
- * member — semantically equivalent to registering with the agent's invite code
- * (bound to the authorization allowlist). Enterprise members follow their
- * organization and cannot be invited individually.
- */
-export async function inviteMember(
+export interface CreateMemberPayload {
   username: string
-): Promise<ApiResponse> {
-  const res = await api.post('/api/agent/members/invite', { username })
+  password: string
+  display_name?: string
+  email?: string
+}
+
+/**
+ * Create an individual member account for this agent. The account is bound to
+ * the agent at birth, so it is confined to the agent's authorized models and
+ * priced by whatever per-model discounts the agent later sets for it; the
+ * personal wallet starts empty (no sign-up bonus).
+ *
+ * There is no counterpart that binds an existing user: agent attribution is a
+ * permission field, and only a system administrator may attach an existing user
+ * from the user list.
+ */
+export async function createMember(
+  payload: CreateMemberPayload
+): Promise<ApiResponse<{ user_id: number; username: string }>> {
+  const res = await api.post('/api/agent/members', payload)
   return res.data
 }
 

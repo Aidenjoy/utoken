@@ -72,10 +72,56 @@ import {
   ORG_VALIDATION,
   getOrgRoleOptions,
 } from '../constants'
-import { ORG_MEMBER_STATUS, ORG_ROLE, type OrgMemberDetail } from '../types'
+import {
+  ORG_MEMBER_STATUS,
+  ORG_ROLE,
+  type ApiResponse,
+  type CreateOrgMemberPayload,
+  type InviteOrgMemberPayload,
+  type UpdateOrgMemberPayload,
+} from '../types'
 import { useOptionalOrganization } from './organization-context'
 
 export type MemberDrawerMode = 'create' | 'invite' | 'edit'
+
+/**
+ * The subset of a member row the drawer reads. Both the enterprise-facing
+ * `OrgMemberDetail` and the agent-facing `AgentOrganizationMember` satisfy it,
+ * so the same drawer serves the org admin, a delegating system admin, and an
+ * agent managing an enterprise it owns.
+ */
+export type MemberDrawerSubject = {
+  id: number
+  username: string
+  display_name: string
+  email?: string
+  org_role: string
+  quota_limit: number
+  quota_used: number
+  status: number
+}
+
+/**
+ * Member write endpoints the drawer submits to. Defaults to the org-scoped
+ * `/api/org/members/*` API; an agent console injects its own
+ * `/api/agent/enterprises/:id/members/*` variants instead.
+ *
+ * `invite` is optional: an agent may only create accounts, never attach an
+ * existing user, so its injected api leaves it out and never opens the
+ * `'invite'` mode.
+ */
+export type MemberDrawerApi = {
+  create: (
+    data: CreateOrgMemberPayload
+  ) => Promise<ApiResponse<{ id: number; user_id: number; username: string }>>
+  invite?: (
+    data: InviteOrgMemberPayload
+  ) => Promise<ApiResponse<{ id: number; user_id: number; username: string }>>
+  update: (
+    id: number,
+    data: UpdateOrgMemberPayload
+  ) => Promise<ApiResponse<null>>
+}
 
 const FAILURE_MESSAGE_BY_MODE: Record<MemberDrawerMode, string> = {
   create: ORG_ERROR_MESSAGES.MEMBER_CREATE_FAILED,
@@ -120,11 +166,11 @@ const EMPTY_DEFAULTS: MemberFormInput = {
 type Props = {
   open: boolean
   mode: MemberDrawerMode
-  member: OrgMemberDetail | null
+  member: MemberDrawerSubject | null
   onOpenChange: (open: boolean) => void
   /**
    * 系统管理员代管某企业时传入目标企业 ID（后端按 org_id 查询参数定位）；
-   * 企业管理员操作本企业时留空。
+   * 企业管理员操作本企业时留空。注入 `api` 时本项被忽略。
    */
   orgId?: number
   /**
@@ -132,6 +178,8 @@ type Props = {
    * null 表示未知（后端仍会强制校验，前端不做前置拦截）。
    */
   quotaHeadroom?: number | null
+  /** 成员写入端点；缺省回落到 /api/org/members/*（见 MemberDrawerApi）。 */
+  api?: MemberDrawerApi
   /** 无 OrganizationProvider 时（代管场景）由调用方提供刷新回调。 */
   onRefresh?: () => void
 }
@@ -157,12 +205,20 @@ export function MemberMutateDrawer({
   onOpenChange,
   orgId,
   quotaHeadroom = null,
+  api,
   onRefresh,
 }: Props) {
   const { t } = useTranslation()
   const orgContext = useOptionalOrganization()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const roleOptions = useMemo(() => getOrgRoleOptions(t), [t])
+
+  // 未注入专用 api 时回落到企业自服务端点（系统管理员代管传 orgId 定位目标企业）。
+  const drawerApi: MemberDrawerApi = api ?? {
+    create: (data) => createOrgMember(data, orgId),
+    invite: (data) => inviteOrgMember(data, orgId),
+    update: (id, data) => updateOrgMember(id, data, orgId),
+  }
 
   const form = useForm<MemberFormInput, unknown, MemberFormValues>({
     resolver: zodResolver(memberFormSchema),
@@ -229,38 +285,28 @@ export function MemberMutateDrawer({
     try {
       let result
       if (mode === 'create') {
-        result = await createOrgMember(
-          {
-            username: values.username,
-            password: values.password,
-            display_name: values.display_name || undefined,
-            email: values.email || undefined,
-            org_role: values.org_role,
-            quota_limit: quotaLimit,
-          },
-          orgId
-        )
+        result = await drawerApi.create({
+          username: values.username,
+          password: values.password,
+          display_name: values.display_name || undefined,
+          email: values.email || undefined,
+          org_role: values.org_role,
+          quota_limit: quotaLimit,
+        })
       } else if (mode === 'invite') {
-        result = await inviteOrgMember(
-          {
-            username: values.username,
-            org_role: values.org_role,
-            quota_limit: quotaLimit,
-          },
-          orgId
-        )
+        result = await drawerApi.invite?.({
+          username: values.username,
+          org_role: values.org_role,
+          quota_limit: quotaLimit,
+        })
       } else if (member) {
-        result = await updateOrgMember(
-          member.id,
-          {
-            org_role: values.org_role,
-            quota_limit: quotaLimit,
-            status: values.enabled
-              ? ORG_MEMBER_STATUS.ENABLED
-              : ORG_MEMBER_STATUS.DISABLED,
-          },
-          orgId
-        )
+        result = await drawerApi.update(member.id, {
+          org_role: values.org_role,
+          quota_limit: quotaLimit,
+          status: values.enabled
+            ? ORG_MEMBER_STATUS.ENABLED
+            : ORG_MEMBER_STATUS.DISABLED,
+        })
       }
       if (!result || !result.success) {
         toast.error(result?.message || t(FAILURE_MESSAGE_BY_MODE[mode]))

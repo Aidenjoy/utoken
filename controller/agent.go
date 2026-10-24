@@ -34,6 +34,8 @@ func respondAgentModelError(c *gin.Context, err error) {
 		common.ApiErrorI18n(c, i18n.MsgAgentNotFound)
 	case errors.Is(err, model.ErrAgentAlreadyExists):
 		common.ApiErrorI18n(c, i18n.MsgAgentAlreadyExists)
+	case errors.Is(err, model.ErrAgentUserInOrg):
+		common.ApiErrorI18n(c, i18n.MsgAgentUserInOrg)
 	case errors.Is(err, common.ErrAgentModelsEmpty):
 		common.ApiErrorI18n(c, i18n.MsgAgentModelDiscountsEmpty)
 	case errors.Is(err, model.ErrAgentModelDiscountsInvalid):

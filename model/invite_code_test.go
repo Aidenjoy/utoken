@@ -15,10 +15,11 @@ import (
 // model 包的 TestMain 只迁移核心表，InviteCode 与 Agent 在此按需迁移。
 func setupInviteFixture(t *testing.T) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&InviteCode{}, &Agent{}, &User{}, &TopUp{}))
+	require.NoError(t, DB.AutoMigrate(&InviteCode{}, &Agent{}, &User{}, &TopUp{}, &OrgMember{}))
 	cleanup := func() {
 		DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&InviteCode{})
 		DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Agent{})
+		DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&OrgMember{})
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM top_ups")
 	}
