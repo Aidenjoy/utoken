@@ -105,18 +105,22 @@ type RelayInfo struct {
 	RelayMode              int
 	OriginModelName        string
 	RequestURLPath         string
-	RequestHeaders         map[string]string
-	ShouldIncludeUsage     bool
-	DisablePing            bool // 是否禁止向下游发送自定义 Ping
-	ClientWs               *websocket.Conn
-	TargetWs               *websocket.Conn
-	InputAudioFormat       string
-	OutputAudioFormat      string
-	RealtimeTools          []dto.RealTimeTool
-	IsFirstRequest         bool
-	AudioUsage             bool
-	ReasoningEffort        string
-	UserSetting            dto.UserSetting
+	// UpstreamRequestURL 本次 relay 拼接完成的最终上游地址（含 path 与 query），
+	// 由 channel.DoApiRequest/DoTaskApiRequest 等发送入口统一填写，
+	// 凭据 query 值已脱敏，落库后供日志详情「传入参数」展示。
+	UpstreamRequestURL string
+	RequestHeaders     map[string]string
+	ShouldIncludeUsage bool
+	DisablePing        bool // 是否禁止向下游发送自定义 Ping
+	ClientWs           *websocket.Conn
+	TargetWs           *websocket.Conn
+	InputAudioFormat   string
+	OutputAudioFormat  string
+	RealtimeTools      []dto.RealTimeTool
+	IsFirstRequest     bool
+	AudioUsage         bool
+	ReasoningEffort    string
+	UserSetting        dto.UserSetting
 	// ModelDiscounts 是管理员为本用户配置的按模型折扣 JSON（随用户快照下发，空=无折扣）。
 	ModelDiscounts string
 	// UserModelDiscount 为本次请求模型命中的折扣比例（1=原价），预扣与结算共用同一值，

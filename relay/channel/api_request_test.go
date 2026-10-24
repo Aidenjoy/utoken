@@ -7,8 +7,57 @@ import (
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestSanitizeUpstreamURL 锁定凭据不落库不变量：个别供应商把密钥放 query
+//（如百度 v1 的 access_token），最终地址写入日志前必须脱敏；
+// path 与非敏感 query（如任务协议的 Action/Version）原样保留。
+func TestSanitizeUpstreamURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "无 query 原样返回",
+			raw:  "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
+			want: "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
+		},
+		{
+			name: "凭据 query 脱敏、业务 query 保留",
+			raw:  "https://aip.baidubce.com/rpc/2.0/chat?access_token=secret123&Action=CVSync2AsyncSubmitTask&Version=2022-08-31",
+			want: "https://aip.baidubce.com/rpc/2.0/chat?Action=CVSync2AsyncSubmitTask&Version=2022-08-31&access_token=%2A%2A%2A",
+		},
+		{
+			name: "全部非敏感原样返回",
+			raw:  "https://example.com/v1/videos?Action=Query&Version=2024-01-01",
+			want: "https://example.com/v1/videos?Action=Query&Version=2024-01-01",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, sanitizeUpstreamURL(tt.raw))
+		})
+	}
+}
+
+// TestRecordUpstreamRequestURL 校验发送入口把脱敏后的最终地址记入 RelayInfo。
+func TestRecordUpstreamRequestURL(t *testing.T) {
+	t.Parallel()
+
+	info := &relaycommon.RelayInfo{}
+	recordUpstreamRequestURL(info, "https://example.com/v1/chat?api_key=sk-1")
+	assert.Equal(t, "https://example.com/v1/chat?api_key=%2A%2A%2A", info.UpstreamRequestURL)
+
+	// nil info 不 panic（防御性调用点）。
+	recordUpstreamRequestURL(nil, "https://example.com/v1/chat")
+}
 
 func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	t.Parallel()

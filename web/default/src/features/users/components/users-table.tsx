@@ -59,7 +59,8 @@ interface AppliedUserFilter {
   status: string
   role: string
   group: string
-  referrer: string
+  agent: string
+  org: string
 }
 
 export function UsersTable() {
@@ -99,13 +100,15 @@ export function UsersTable() {
     (columnFilters.find((filter) => filter.id === 'group')?.value as string) ??
     ''
 
-  const [referrerDraft, setReferrerDraft] = useState('')
+  const [agentDraft, setAgentDraft] = useState('')
+  const [orgDraft, setOrgDraft] = useState('')
   const [applied, setApplied] = useState<AppliedUserFilter>(() => ({
     keyword: globalFilter ?? '',
     status: statusFilter[0] ?? '',
     role: roleFilter[0] ?? '',
     group: groupFilter,
-    referrer: '',
+    agent: '',
+    org: '',
   }))
 
   const handleSearch = () => {
@@ -114,7 +117,8 @@ export function UsersTable() {
       status: statusFilter[0] ?? '',
       role: roleFilter[0] ?? '',
       group: groupFilter,
-      referrer: referrerDraft.trim(),
+      agent: agentDraft.trim(),
+      org: orgDraft.trim(),
     })
     onPaginationChange({ pageIndex: 0, pageSize: pagination.pageSize })
   }
@@ -134,7 +138,8 @@ export function UsersTable() {
         applied.status ||
         applied.role ||
         applied.group ||
-        applied.referrer
+        applied.agent ||
+        applied.org
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
@@ -147,7 +152,8 @@ export function UsersTable() {
             status: applied.status,
             role: applied.role,
             group: applied.group,
-            referrer: applied.referrer,
+            agent: applied.agent,
+            org: applied.org,
           })
         : await getUsers(params)
 
@@ -213,15 +219,24 @@ export function UsersTable() {
       toolbarProps={{
         searchPlaceholder: t('Filter by username, name or email...'),
         preActions: (
-          <div className='flex items-center gap-2'>
+          <div className='flex flex-wrap items-center gap-2'>
             <Input
-              className='h-8 w-[150px]'
-              value={referrerDraft}
-              onChange={(event) => setReferrerDraft(event.target.value)}
+              className='h-8 w-[140px]'
+              value={agentDraft}
+              onChange={(event) => setAgentDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') handleSearch()
               }}
-              placeholder={t('Referrer username')}
+              placeholder={t('Agent')}
+            />
+            <Input
+              className='h-8 w-[140px]'
+              value={orgDraft}
+              onChange={(event) => setOrgDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleSearch()
+              }}
+              placeholder={t('Organization')}
             />
             <Button variant='outline' size='sm' onClick={handleSearch}>
               <Search />

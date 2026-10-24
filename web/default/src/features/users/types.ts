@@ -114,7 +114,10 @@ export interface SearchUsersParams {
   group?: string
   role?: string
   status?: string
-  referrer?: string
+  /** 代理商归属：命中其名下成员与其名下企业的成员，按归属账号的用户名/显示名匹配。 */
+  agent?: string
+  /** 企业归属：只命中该企业的成员，按企业名称/显示名匹配。 */
+  org?: string
   p?: number
   page_size?: number
 }

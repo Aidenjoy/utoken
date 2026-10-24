@@ -22,6 +22,7 @@ import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 
 import type { UsageLog } from '../../data/schema'
 import { useLogBodies } from '../../hooks/use-log-bodies'
+import { parseLogOther } from '../../lib/format'
 import { getLogTypeConfig } from '../../lib/utils'
 import { RelayDetailsDialog, prettyJson } from './relay-details-dialog'
 import { UsageBillingSections } from './usage-billing-sections'
@@ -44,6 +45,7 @@ export function CommonLogDetailsDialog({
   const { t } = useTranslation()
   const typeConfig = getLogTypeConfig(log.type)
   const { requestData, responseData } = useLogBodies(log.request_id, open)
+  const other = parseLogOther(log.other)
 
   return (
     <RelayDetailsDialog
@@ -62,6 +64,7 @@ export function CommonLogDetailsDialog({
       }
       description={t('View the complete details for this log entry')}
       requestModel={log.model_name || undefined}
+      requestUrl={other?.request_url}
       requestJson={prettyJson(requestData)}
       responseJson={prettyJson(responseData)}
       extraSections={<UsageBillingSections log={log} isAdmin={isAdmin} />}

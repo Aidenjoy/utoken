@@ -46,7 +46,7 @@ export async function getUsers(
 }
 
 /**
- * Search users by keyword or group
+ * Search users by keyword, group and attribution (agent / organization)
  */
 export async function searchUsers(
   params: SearchUsersParams
@@ -56,7 +56,8 @@ export async function searchUsers(
     group = '',
     role = '',
     status = '',
-    referrer = '',
+    agent = '',
+    org = '',
     p = 1,
     page_size = 10,
   } = params
@@ -65,7 +66,8 @@ export async function searchUsers(
   queryParams.set('group', group)
   if (role) queryParams.set('role', role)
   if (status) queryParams.set('status', status)
-  if (referrer) queryParams.set('referrer', referrer)
+  if (agent) queryParams.set('agent', agent)
+  if (org) queryParams.set('org', org)
   queryParams.set('p', String(p))
   queryParams.set('page_size', String(page_size))
   const res = await api.get(`/api/user/search?${queryParams.toString()}`)

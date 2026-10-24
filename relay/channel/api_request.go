@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -304,12 +305,58 @@ func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]s
 	}
 }
 
+// isSensitiveQueryKey 判断 query 参数名是否承载凭据（个别供应商把密钥放 query，
+// 如百度 v1 的 access_token）。这类值在最终地址落库前统一替换为 ***。
+func isSensitiveQueryKey(key string) bool {
+	lower := strings.ToLower(key)
+	for _, frag := range []string{"token", "key", "secret", "sign", "auth", "pass", "credential", "access"} {
+		if strings.Contains(lower, frag) {
+			return true
+		}
+	}
+	return false
+}
+
+// sanitizeUpstreamURL 脱敏最终上游地址中的凭据 query 值，供日志「传入参数」
+// 安全展示；path 与非敏感 query 原样保留，解析失败时原样返回。
+func sanitizeUpstreamURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.RawQuery == "" {
+		return raw
+	}
+	query := parsed.Query()
+	changed := false
+	for name, values := range query {
+		if !isSensitiveQueryKey(name) {
+			continue
+		}
+		for i := range values {
+			values[i] = "***"
+		}
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+// recordUpstreamRequestURL 把拼接完成的最终上游地址记入 RelayInfo，
+// 落库后供任务日志/使用日志详情展示（凭据 query 已脱敏）。
+func recordUpstreamRequestURL(info *common.RelayInfo, fullRequestURL string) {
+	if info != nil {
+		info.UpstreamRequestURL = sanitizeUpstreamURL(fullRequestURL)
+	}
+}
+
 func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", fullRequestURL)
+	recordUpstreamRequestURL(info, fullRequestURL)
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -340,6 +387,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", fullRequestURL)
+	recordUpstreamRequestURL(info, fullRequestURL)
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
@@ -371,6 +419,7 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
+	recordUpstreamRequestURL(info, fullRequestURL)
 	targetHeader := http.Header{}
 	err = a.SetupRequestHeader(c, &targetHeader, info)
 	if err != nil {
@@ -529,6 +578,7 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, err
 	}
+	recordUpstreamRequestURL(info, fullRequestURL)
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)

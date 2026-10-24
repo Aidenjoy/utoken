@@ -254,23 +254,20 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { mobileOrder: 40 },
     },
     {
-      accessorKey: 'group',
-      header: t('Group'),
+      id: 'agent',
+      accessorKey: 'agent_username',
+      header: t('Agent'),
       cell: ({ row }) => {
-        const group = row.getValue('group') as string
-        return (
-          <BadgeCell>
-            <GroupBadge group={group} />
-          </BadgeCell>
-        )
+        // 归属代理商决定该用户能调用哪些模型，因此列在这里而不只是备注信息。
+        const agent = row.original.agent_username
+        if (!agent) {
+          return <span className='text-muted-foreground text-sm'>-</span>
+        }
+        return <StatusBadge label={agent} variant='purple' copyable={false} />
       },
-      filterFn: (row, id, value) => {
-        const group = String(row.getValue(id) || t('User Group')).toLowerCase()
-        const searchValue = String(value).toLowerCase()
-        return group.includes(searchValue)
-      },
-      size: 140,
-      meta: { mobileOrder: 30 },
+      enableSorting: false,
+      size: 160,
+      meta: { mobileHidden: true },
     },
     {
       accessorKey: 'org_name',
@@ -312,6 +309,25 @@ export function useUsersColumns(): ColumnDef<User>[] {
       enableSorting: false,
       size: 120,
       meta: { mobileOrder: 20 },
+    },
+    {
+      accessorKey: 'group',
+      header: t('Group'),
+      cell: ({ row }) => {
+        const group = row.getValue('group') as string
+        return (
+          <BadgeCell>
+            <GroupBadge group={group} />
+          </BadgeCell>
+        )
+      },
+      filterFn: (row, id, value) => {
+        const group = String(row.getValue(id) || t('User Group')).toLowerCase()
+        const searchValue = String(value).toLowerCase()
+        return group.includes(searchValue)
+      },
+      size: 140,
+      meta: { mobileOrder: 30 },
     },
     {
       id: 'invite_info',
@@ -385,22 +401,6 @@ export function useUsersColumns(): ColumnDef<User>[] {
       },
       size: 240,
       enableSorting: false,
-      meta: { mobileHidden: true },
-    },
-    {
-      id: 'agent',
-      accessorKey: 'agent_username',
-      header: t('Agent'),
-      cell: ({ row }) => {
-        // 归属代理商决定该用户能调用哪些模型，因此列在这里而不只是备注信息。
-        const agent = row.original.agent_username
-        if (!agent) {
-          return <span className='text-muted-foreground text-sm'>-</span>
-        }
-        return <StatusBadge label={agent} variant='purple' copyable={false} />
-      },
-      enableSorting: false,
-      size: 160,
       meta: { mobileHidden: true },
     },
     {

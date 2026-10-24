@@ -386,7 +386,10 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, referrer string, startIdx int, num int) ([]*User, int64, error) {
+// SearchUsers 管理端用户检索。keyword/group/role/status 是常规筛选，
+// agentKeyword 与 orgKeyword 按归属收窄：前者命中「代理商名下的人 + 其名下企业的成员」，
+// 后者只命中「该企业的成员」，两者同时给出时取交集。
+func SearchUsers(keyword string, group string, role *int, status *int, agentKeyword string, orgKeyword string, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -431,10 +434,26 @@ func SearchUsers(keyword string, group string, role *int, status *int, referrer 
 			query = query.Where("deleted_at IS NULL").Where("status = ?", *status)
 		}
 	}
-	if referrer != "" {
-		// 发展关系：由该用户直接邀请（inviter_id），或注册时用该用户名下代理商的邀请码
-		// 绑定进了其代理体系（agent_id 存的是 agents.id，需经 agents.user_id 反查归属人）。
-		query = query.Where("(inviter_id = (SELECT id FROM users WHERE username = ?) OR agent_id = (SELECT id FROM agents WHERE user_id = (SELECT id FROM users WHERE username = ?)))", referrer, referrer)
+	if agentKeyword != "" {
+		// 代理商口径 = 归属其名下的人 + 其名下企业里的所有人。
+		// users.agent_id 是企业绑定代理商时同步下来的快照，可能滞后于 org_members，
+		// 因此企业成员一律按 org_members 再并一次，两条来源取并集。
+		// 代理商以其归属账号的用户名/显示名匹配；内层 Unscoped 与外层一致，
+		// 账号被软删后其发展的人仍可被检索。
+		agentLike := "%" + agentKeyword + "%"
+		agentScope := DB.Model(&Agent{}).Select("id").
+			Where("user_id IN (?)", DB.Unscoped().Model(&User{}).Select("id").
+				Where("username LIKE ? OR display_name LIKE ?", agentLike, agentLike))
+		agentOrgMemberScope := DB.Model(&OrgMember{}).Select("user_id").
+			Where("org_id IN (?)", DB.Model(&Organization{}).Select("id").Where("agent_id IN (?)", agentScope))
+		query = query.Where("(agent_id IN (?) OR id IN (?))", agentScope, agentOrgMemberScope)
+	}
+	if orgKeyword != "" {
+		// 企业口径只认 org_members（事实源），不看 users.org_id 快照。
+		orgLike := "%" + orgKeyword + "%"
+		orgScope := DB.Model(&Organization{}).Select("id").
+			Where("name LIKE ? OR display_name LIKE ?", orgLike, orgLike)
+		query = query.Where("id IN (?)", DB.Model(&OrgMember{}).Select("user_id").Where("org_id IN (?)", orgScope))
 	}
 
 	// 获取总数

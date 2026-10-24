@@ -100,6 +100,9 @@ type Properties struct {
 	Input             string `json:"input"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 	OriginModelName   string `json:"origin_model_name,omitempty"`
+	// RequestURL 提交任务时拼接完成的最终上游地址（凭据 query 已脱敏），
+	// 供任务日志详情「传入参数」展示；旧任务为空。
+	RequestURL string `json:"request_url,omitempty"`
 }
 
 func (m *Properties) Scan(val interface{}) error {
@@ -222,6 +225,9 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 		if relayInfo.OriginModelName != "" {
 			properties.OriginModelName = relayInfo.OriginModelName
 		}
+	}
+	if relayInfo != nil && relayInfo.UpstreamRequestURL != "" {
+		properties.RequestURL = relayInfo.UpstreamRequestURL
 	}
 
 	// 使用预生成的公开 ID（如果有），否则新生成

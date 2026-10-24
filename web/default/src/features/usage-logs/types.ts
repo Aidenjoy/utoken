@@ -152,6 +152,8 @@ export interface LogOtherData {
   login_method?: string
   user_agent?: string
   request_path?: string
+  // 拼接完成的最终上游地址（凭据 query 已脱敏），详情弹窗「传入参数」展示。
+  request_url?: string
   request_conversion?: string[]
   ws?: boolean
   audio?: boolean
@@ -290,6 +292,7 @@ export interface TaskProperties {
   input?: string
   upstream_model_name?: string
   origin_model_name?: string
+  request_url?: string
 }
 
 export interface TaskLog {

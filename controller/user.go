@@ -317,6 +317,15 @@ func Register(c *gin.Context) {
 			OrgRole: model.OrgRoleMember,
 		}); err != nil {
 			common.SysLog(fmt.Sprintf("failed to attach new user %d to organization %d: %s", insertedUser.Id, inviterOrgId, err.Error()))
+			// 成员记录没登记上就同步撤掉快照：留着 org_id 会让用户归属一个
+			// org_members 里查无此人的企业——企业侧看不到这个成员，他却按企业分组走量。
+			if rbErr := model.DB.Model(&model.User{}).Where("id = ?", insertedUser.Id).
+				Updates(map[string]interface{}{"org_id": 0, "group": model.DefaultUserGroup}).Error; rbErr != nil {
+				common.SysLog(fmt.Sprintf("failed to clear organization snapshot for new user %d: %s", insertedUser.Id, rbErr.Error()))
+			}
+			if cacheErr := model.InvalidateUserCache(insertedUser.Id); cacheErr != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate user cache for new user %d: %s", insertedUser.Id, cacheErr.Error()))
+			}
 		}
 	}
 	// 生成默认令牌
@@ -389,7 +398,9 @@ func GetAllUsers(c *gin.Context) {
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
-	referrer := c.Query("referrer")
+	// 归属筛选：agent 命中代理商名下的人与其名下企业的成员，org 只命中该企业的成员。
+	agentKeyword := c.Query("agent")
+	orgKeyword := c.Query("org")
 	var role *int
 	if roleStr := c.Query("role"); roleStr != "" {
 		if parsed, err := strconv.Atoi(roleStr); err == nil {
@@ -403,7 +414,7 @@ func SearchUsers(c *gin.Context) {
 		}
 	}
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, role, status, referrer, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.SearchUsers(keyword, group, role, status, agentKeyword, orgKeyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
