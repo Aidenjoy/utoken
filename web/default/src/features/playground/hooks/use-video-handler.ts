@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { fetchVideoTask, submitVideoTask, uploadFile } from '../api'
+import {
+  cancelVideoTask,
+  fetchVideoTask,
+  submitVideoTask,
+  uploadFile,
+} from '../api'
 import {
   AUDIO_MAX_DURATION,
   VIDEO_MAX_DURATION,
@@ -418,24 +423,62 @@ export function useVideoHandler(config: VideoConfig) {
     [config, t, pollTask, persistTasks]
   )
 
-  const stopPolling = useCallback(() => {
+  // 取消必须是服务端动作：只清本地计时器时，网关后台轮询仍会在上游成功后结算预扣，
+  // 于是出现「界面已取消、任务日志已成功、费用照扣」。服务端把任务 CAS 到 CANCELLED
+  // 并全额退还预扣，这里只按服务端返回的真实状态回写卡片。
+  const cancelActiveTask = useCallback(async () => {
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current)
       pollTimerRef.current = null
     }
     setIsGenerating(false)
-    // Mark the active task as cancelled so it doesn't resume polling on refresh
     const taskId = activeTaskIdRef.current
     activeTaskIdRef.current = null
-    if (taskId) {
-      updateTask(taskId, (t) => ({
-        ...t,
+    if (!taskId) {
+      return
+    }
+
+    let status = ''
+    let failure = ''
+    try {
+      status = (await cancelVideoTask(taskId)).status
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error)
+    }
+
+    if (status === 'CANCELLED') {
+      updateTask(taskId, (task) => ({
+        ...task,
         status: 'cancelled',
         progress: 100,
         completedAt: Date.now(),
       }))
+      return
     }
-  }, [updateTask])
+
+    // 取消没生效（请求失败，或到达服务端前任务已进终态）：恢复轮询让卡片跟随服务端
+    // 真实状态，SUCCESS 会带回视频地址，FAILURE 由轮询自己报错——界面不再谎报已取消。
+    activeTaskIdRef.current = taskId
+    setIsGenerating(true)
+    pollTimerRef.current = setTimeout(() => {
+      pollTask(taskId)
+    }, VIDEO_POLL_INTERVAL_MS)
+    if (failure) {
+      toast.error(t('Cancel request failed, the task may still be billed'), {
+        description: failure,
+      })
+    } else if (status === 'SUCCESS') {
+      toast.info(
+        t(
+          'The task finished before the cancel reached the server, so it was billed.'
+        )
+      )
+    }
+  }, [pollTask, t, updateTask])
+
+  const stopPolling = useCallback(() => {
+    void cancelActiveTask()
+  }, [cancelActiveTask])
 
   const clearTasks = useCallback(() => {
     stopPolling()

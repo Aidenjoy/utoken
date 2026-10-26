@@ -157,7 +157,7 @@ function VideoTaskCard({ task }: { task: VideoTask }) {
         <div className='border-border/60 border-t p-3'>
           <div className='bg-muted text-muted-foreground flex items-center gap-2 rounded-lg px-3 py-2 text-sm'>
             <XCircleIcon size={16} />
-            <span>{t('Cancelled')}</span>
+            <span>{t('Cancelled, pre-charge refunded')}</span>
           </div>
         </div>
       )}

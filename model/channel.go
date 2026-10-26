@@ -55,8 +55,81 @@ type Channel struct {
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
+	// UpstreamPrices 是渠道级上游合同费率卡（JSON，见 ChannelUpstreamPrice），
+	// 供渠道账单中心估算上游成本，与售价（模型广场价）严格分离。
+	// 属平台机密：类型掩码使任意结构体 JSON 序列化（渠道列表/缓存同步等）
+	// 恒输出空串，读写只走 GetChannelUpstreamPricesRaw/SaveChannelUpstreamPrices。
+	UpstreamPrices MaskedJSON `json:"upstream_prices" gorm:"column:upstream_prices;type:text"`
+
 	// cache info
 	Keys []string `json:"-" gorm:"-"`
+}
+
+// MaskedJSON 是 JSON 序列化恒为空的 text 列类型：数据库内存真实值，
+// 但任何把宿主结构体 marshal 出去的接口（管理端列表、缓存同步）都不会泄露。
+// 需要真实值时用 Table+Scan 直读列（见 GetChannelUpstreamPricesRaw）。
+type MaskedJSON string
+
+func (m MaskedJSON) MarshalJSON() ([]byte, error) { return []byte(`""`), nil }
+
+func (m MaskedJSON) Value() (driver.Value, error) { return string(m), nil }
+
+func (m *MaskedJSON) Scan(value interface{}) error {
+	if value == nil {
+		*m = ""
+		return nil
+	}
+	switch v := value.(type) {
+	case []byte:
+		*m = MaskedJSON(v)
+	case string:
+		*m = MaskedJSON(v)
+	default:
+		return fmt.Errorf("MaskedJSON: unsupported scan type %T", value)
+	}
+	return nil
+}
+
+// ChannelUpstreamPrice 单个模型的上游合同单价（美元/百万 tokens）。
+// 只做两档 input/output，不支持阶梯与缓存价，复杂合同后续再扩展。
+type ChannelUpstreamPrice struct {
+	Input  float64 `json:"input"`
+	Output float64 `json:"output"`
+}
+
+// ChannelUpstreamPrices 渠道费率卡：模型名 → 上游单价。
+type ChannelUpstreamPrices map[string]ChannelUpstreamPrice
+
+// GetChannelUpstreamPricesRaw 直读渠道费率卡 JSON（绕过 MaskedJSON 掩码），
+// 未配置时返回 nil。仅限管理端专用接口与成本估算内部使用。
+func GetChannelUpstreamPricesRaw(channelId int) (ChannelUpstreamPrices, error) {
+	var raw string
+	err := DB.Table("channels").Select("upstream_prices").Where("id = ?", channelId).Scan(&raw).Error
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var prices ChannelUpstreamPrices
+	if err := common.UnmarshalJsonStr(raw, &prices); err != nil {
+		return nil, err
+	}
+	return prices, nil
+}
+
+// SaveChannelUpstreamPrices 落库渠道费率卡（nil/空 视为清空）。
+// 用 map 定向更新单列，避免 Save 整行把其他 MaskedJSON/敏感列回写掩码空值。
+func SaveChannelUpstreamPrices(channelId int, prices ChannelUpstreamPrices) error {
+	raw := ""
+	if len(prices) > 0 {
+		data, err := common.Marshal(prices)
+		if err != nil {
+			return err
+		}
+		raw = string(data)
+	}
+	return DB.Table("channels").Where("id = ?", channelId).Update("upstream_prices", raw).Error
 }
 
 type ChannelInfo struct {

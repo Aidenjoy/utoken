@@ -172,6 +172,29 @@ export async function fetchVideoTask(
 }
 
 /**
+ * Cancel an in-flight video generation task on the server.
+ *
+ * Cancelling must be a server action: the gateway keeps polling the upstream task
+ * after the browser stops, so a client-side-only cancel still settles the
+ * pre-charged quota. The backend CAS-marks the task CANCELLED and refunds the
+ * pre-consume; when the cancel arrives after the task already reached a terminal
+ * state it is a no-op and the real status is returned so the UI can converge on
+ * server truth instead of showing "cancelled" for a billed task.
+ */
+export async function cancelVideoTask(
+  taskId: string
+): Promise<{ status: string }> {
+  try {
+    const res = await api.post(VIDEO_API_ENDPOINTS.CANCEL(taskId), undefined, {
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+    return (res.data?.data ?? { status: '' }) as { status: string }
+  } catch (error) {
+    throw new Error(apiErrorMessage(error))
+  }
+}
+
+/**
  * Upload a file to the Volcengine Files API via the backend proxy.
  *
  * The backend forwards the multipart file to {channel baseURL}/api/v3/files
@@ -215,10 +238,10 @@ export async function uploadFile(
 }
 
 /**
- * Extract the error message from an asset API failure response.
- * The backend returns `{ error: { message, type } }` on /pg/assets/*.
+ * Extract the error message from a /pg/* API failure response.
+ * The backend returns `{ error: { message, type } }` on these endpoints.
  */
-function assetErrorMessage(error: unknown): string {
+function apiErrorMessage(error: unknown): string {
   const axiosErr = error as {
     response?: { data?: { error?: { message?: string } } }
   }
@@ -258,7 +281,7 @@ export async function registerAsset(payload: {
     } as Record<string, unknown>)
     return res.data as Asset
   } catch (error) {
-    throw new Error(assetErrorMessage(error))
+    throw new Error(apiErrorMessage(error))
   }
 }
 
@@ -296,7 +319,7 @@ export async function deleteAsset(id: number): Promise<void> {
       skipErrorHandler: true,
     } as Record<string, unknown>)
   } catch (error) {
-    throw new Error(assetErrorMessage(error))
+    throw new Error(apiErrorMessage(error))
   }
 }
 
@@ -331,7 +354,7 @@ export async function uploadSourceAsset(
     } as Record<string, unknown>)
     return res.data as SourceAsset
   } catch (error) {
-    throw new Error(assetErrorMessage(error))
+    throw new Error(apiErrorMessage(error))
   }
 }
 
@@ -360,7 +383,7 @@ export async function deleteSourceAsset(id: number): Promise<void> {
       skipErrorHandler: true,
     } as Record<string, unknown>)
   } catch (error) {
-    throw new Error(assetErrorMessage(error))
+    throw new Error(apiErrorMessage(error))
   }
 }
 

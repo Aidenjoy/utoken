@@ -33,26 +33,31 @@ func ScaleSeedanceTaskUsageByUserRate(body []byte, task *model.Task, logPrefix s
 		return body
 	}
 	rate := model.GetUserTokenRate(task.UserId)
-	return scaleVolcUsageByRate(body, rate, task.UserId, logPrefix)
+	scaled, scale := scaleVolcUsageByRate(body, rate, task.UserId, logPrefix)
+	if scale != nil {
+		task.TokenRateScale = scale
+	}
+	return scaled
 }
 
 // scaleVolcUsageByRate 是纯粹的响应体缩放逻辑（不依赖计费模式与费率查询），
 // 便于独立测试。费率 <=0 或 ==1、以及任何解析/回写失败均 fail-open 返回原始 body，
-// 绝不阻断任务查询与结算。
-func scaleVolcUsageByRate(body []byte, rate float64, userId int, logPrefix string) []byte {
+// 绝不阻断任务查询与结算。缩放成功时额外返回缩放前的原始用量与费率，
+// 供调用方挂到 task 上随结算日志落库；fail-open 时返回 nil。
+func scaleVolcUsageByRate(body []byte, rate float64, userId int, logPrefix string) ([]byte, *model.TaskTokenRateScale) {
 	if rate <= 0 || rate == 1 {
-		return body
+		return body, nil
 	}
 
 	usagePath := locateVolcUsagePath(body)
 	if usagePath == "" {
-		return body
+		return body, nil
 	}
 
 	oldCompletion, hasCompletion := readUsageToken(body, usagePath+".completion_tokens")
 	oldTotal, hasTotal := readUsageToken(body, usagePath+".total_tokens")
 	if !hasCompletion && !hasTotal {
-		return body
+		return body, nil
 	}
 
 	newCompletion := scaleTokensByRate(oldCompletion, rate, userId, logPrefix)
@@ -64,12 +69,12 @@ func scaleVolcUsageByRate(body []byte, rate float64, userId int, logPrefix strin
 	var err error
 	if hasCompletion {
 		if scaled, err = writeUsageToken(scaled, usagePath+".completion_tokens", newCompletion); err != nil {
-			return body
+			return body, nil
 		}
 	}
 	if hasTotal {
 		if scaled, err = writeUsageToken(scaled, usagePath+".total_tokens", newTotal); err != nil {
-			return body
+			return body, nil
 		}
 	}
 
@@ -79,7 +84,11 @@ func scaleVolcUsageByRate(body []byte, rate float64, userId int, logPrefix strin
 	// → 新 token」，便于用接口调用核算费率是否生效。
 	common.SysLog(fmt.Sprintf("%s Token rate applied: user=%d rate=%.4f completion_tokens %d -> %d, total_tokens %d -> %d",
 		logPrefix, userId, rate, oldCompletion, newCompletion, oldTotal, newTotal))
-	return scaled
+	return scaled, &model.TaskTokenRateScale{
+		Rate:                     rate,
+		OriginalCompletionTokens: oldCompletion,
+		OriginalTotalTokens:      oldTotal,
+	}
 }
 
 // locateVolcUsagePath 返回 usage 对象的 gjson/sjson 路径：顶层优先，

@@ -301,6 +301,71 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
   const { t, i18n } = useTranslation()
   // Intl 只认 BCP-47，'zhCN' 直接传给 Intl.NumberFormat 会抛 RangeError。
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  // token 费率对账列（超管专属）：seedance 任务 usage 被用户费率缩放后，
+  // 结算日志的 admin_info.token_rate_scale 带回缩放前原始用量与费率，
+  // 与「原价 / 折扣 / 费用」同一对账思路；非超管看不到这两列。
+  const tokenRateColumns: ColumnDef<UsageLog>[] =
+    isAdmin && isSuperAdmin
+      ? [
+          {
+            id: 'original_tokens',
+            header: t('Original Tokens'),
+            meta: { mobileHidden: true },
+            cell: ({ row }) => {
+              const log = row.original
+              if (!isDisplayableLogType(log.type)) return null
+              if (
+                (log.prompt_tokens || 0) === 0 &&
+                (log.completion_tokens || 0) === 0
+              ) {
+                return <span className='text-muted-foreground text-xs'>-</span>
+              }
+              const scale =
+                parseLogOther(log.other)?.admin_info?.token_rate_scale
+              if (!scale) {
+                return (
+                  <span className='text-muted-foreground/60 text-xs'>-</span>
+                )
+              }
+              return (
+                <span className='text-muted-foreground font-mono text-xs tabular-nums'>
+                  {(log.prompt_tokens || 0).toLocaleString()} /{' '}
+                  {scale.original_completion_tokens.toLocaleString()}
+                </span>
+              )
+            },
+            size: 140,
+          },
+          {
+            id: 'token_rate',
+            header: t('Token Rate'),
+            meta: { mobileHidden: true },
+            cell: ({ row }) => {
+              const log = row.original
+              if (!isDisplayableLogType(log.type)) return null
+              if (
+                (log.prompt_tokens || 0) === 0 &&
+                (log.completion_tokens || 0) === 0
+              ) {
+                return <span className='text-muted-foreground text-xs'>-</span>
+              }
+              const scale =
+                parseLogOther(log.other)?.admin_info?.token_rate_scale
+              if (!scale) {
+                return (
+                  <span className='text-muted-foreground/60 text-xs'>-</span>
+                )
+              }
+              return (
+                <span className='font-mono text-xs tabular-nums'>
+                  {scale.rate}×
+                </span>
+              )
+            },
+            size: 100,
+          },
+        ]
+      : []
   const columns: ColumnDef<UsageLog>[] = [
     {
       accessorKey: 'created_at',
@@ -745,6 +810,8 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
         )
       },
     },
+
+    ...tokenRateColumns,
 
     {
       accessorKey: 'prompt_tokens',

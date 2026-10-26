@@ -516,7 +516,13 @@ type inviteOrgMemberRequest struct {
 
 // InviteOrgMember 邀请既有用户加入企业：写入成员记录并同步其 org_id 与分组。
 // 一个用户最多属于一个企业，已在任何企业内的用户会被拒绝。
+// 添加已有用户是系统管理员专属操作：企业侧成员页只保留创建成员，
+// 管理端企业成员弹窗以系统管理员身份经本接口代加。
 func InviteOrgMember(c *gin.Context) {
+	if c.GetInt("role") < common.RoleAdminUser {
+		common.ApiErrorI18n(c, i18n.MsgUnauthorized)
+		return
+	}
 	org, ok := loadScopedOrganization(c)
 	if !ok {
 		return
@@ -524,7 +530,7 @@ func InviteOrgMember(c *gin.Context) {
 	inviteOrgMember(c, org)
 }
 
-// inviteOrgMember 邀请既有用户加入指定企业的共享实现，供企业管理员与代理商两条入口复用。
+// inviteOrgMember 邀请既有用户加入指定企业的共享实现，仅由 InviteOrgMember 调用。
 func inviteOrgMember(c *gin.Context, org *model.Organization) {
 	if org.Status != model.OrgStatusEnabled {
 		common.ApiErrorI18n(c, i18n.MsgOrgDisabled)

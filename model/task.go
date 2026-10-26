@@ -29,6 +29,10 @@ func (t TaskStatus) ToVideoStatus() string {
 		status = dto.VideoStatusCompleted
 	case TaskStatusFailure:
 		status = dto.VideoStatusFailed
+	case TaskStatusCancelled:
+		// 用户取消：对 OpenAI video 协议消费方没有 cancelled 枚举，按失败上报，
+		// 下游中转站才会退还它自己用户的预扣。
+		status = dto.VideoStatusFailed
 	case TaskStatusTimeoutUnresolved:
 		// 超时且上游无法解析、保留预扣待人工核对：对外不谎报成功/失败，按未知处理
 		status = dto.VideoStatusUnknown
@@ -51,7 +55,27 @@ const (
 	// 且被排除出自动轮询以约束负载；管理员可用"重新查询"按钮随时解析（成功即结算、
 	// 失败即退款）。
 	TaskStatusTimeoutUnresolved = "TIMEOUT_UNRESOLVED"
+	// TaskStatusCancelled 用户在任务进入终态前主动取消。它是计费终态：预扣已全额退还，
+	// 与 FAILURE/SUCCESS 一样被排除出自动轮询与超时回源；上游（方舟等）没有取消接口，
+	// 任务在上游仍会跑完，但本地不再结算，ApplyUpstreamTaskResult 对 CANCELLED 直接拦截。
+	TaskStatusCancelled = "CANCELLED"
 )
+
+// terminalTaskStatuses 任务的生命周期终态集合：进入其中之一后不再被自动轮询、
+// 超时回源与在途统计捞起。新增终态必须登记在这里，否则后台轮询会把已退款/已结算
+// 的任务再次推进并产生第二笔资金变动。
+var terminalTaskStatuses = []string{
+	string(TaskStatusFailure),
+	string(TaskStatusSuccess),
+	string(TaskStatusTimeoutUnresolved),
+	string(TaskStatusCancelled),
+}
+
+// unfinishedTaskQuery 追加「未进入终态」过滤（progress 未到 100% 且状态非终态）。
+func unfinishedTaskQuery(db *gorm.DB) *gorm.DB {
+	return db.Where("progress != ?", "100%").
+		Where("status NOT IN ?", terminalTaskStatuses)
+}
 
 type Task struct {
 	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
@@ -85,6 +109,18 @@ type Task struct {
 	ResolveAttempts  int    `json:"resolve_attempts" gorm:"column:resolve_attempts"`
 	NextResolveAt    int64  `json:"next_resolve_at" gorm:"column:next_resolve_at;index"`
 	LastResolveError string `json:"last_resolve_error" gorm:"column:last_resolve_error;type:varchar(255)"`
+	// TokenRateScale 记录任务 usage 被用户 token 费率缩放前的原始上游用量与所用费率
+	//（见 service.ScaleSeedanceTaskUsageByUserRate）。仅内存传递（gorm:"-"）：
+	// 结算写日志时随 other.admin_info 落库，供超管核对「原 tokens → 费率 → 计费 tokens」；
+	// 不进 tasks 表，也不进任务 JSON 响应。
+	TokenRateScale *TaskTokenRateScale `json:"-" gorm:"-"`
+}
+
+// TaskTokenRateScale token 费率缩放前的原始 usage 与所用费率。
+type TaskTokenRateScale struct {
+	Rate                     float64 `json:"rate"`
+	OriginalCompletionTokens int64   `json:"original_completion_tokens"`
+	OriginalTotalTokens      int64   `json:"original_total_tokens"`
 }
 
 func (t *Task) SetData(data any) {
@@ -337,8 +373,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
-	err := DB.Where("progress != ?", "100%").
-		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusTimeoutUnresolved}).
+	err := unfinishedTaskQuery(DB).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
 		Limit(limit).
@@ -357,10 +392,7 @@ func CountInFlightTasksByChannelIDs(ids []int) (int64, error) {
 		return 0, nil
 	}
 	var count int64
-	err := DB.Model(&Task{}).
-		Where("channel_id in (?)", ids).
-		Where("progress != ?", "100%").
-		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess, TaskStatusTimeoutUnresolved}).
+	err := unfinishedTaskQuery(DB.Model(&Task{}).Where("channel_id in (?)", ids)).
 		Count(&count).Error
 	return count, err
 }
@@ -369,7 +401,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Where("status != ?", TaskStatusTimeoutUnresolved).Limit(limit).Order("id").Find(&tasks).Error
+	err = unfinishedTaskQuery(DB).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -382,11 +414,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 // the scheduler skips creating a row entirely.
 func HasUnfinishedSyncTasks() bool {
 	var id int64
-	err := DB.Model(&Task{}).
-		Where("progress != ?", "100%").
-		Where("status != ?", TaskStatusFailure).
-		Where("status != ?", TaskStatusSuccess).
-		Where("status != ?", TaskStatusTimeoutUnresolved).
+	err := unfinishedTaskQuery(DB.Model(&Task{})).
 		Limit(1).
 		Pluck("id", &id).Error
 	return err == nil && id != 0

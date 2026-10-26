@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -290,5 +291,46 @@ func PlaygroundFileUpload(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"id":          objectKey,
 		"content_url": publicURL,
+	})
+}
+
+// PlaygroundTaskCancel 取消体验页在途视频任务：服务端 CAS 迁到 CANCELLED 并退还预扣。
+// 响应返回任务最终状态，前端据此展示——取消晚于上游完成时如实返回 SUCCESS/FAILURE，
+// 不再出现"界面已取消、账单已扣费"的口径分裂。
+func PlaygroundTaskCancel(c *gin.Context) {
+	if c.GetBool("use_access_token") {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"message": "暂不支持使用 access token",
+				"type":    "access_denied",
+			},
+		})
+		return
+	}
+	taskId := c.Param("task_id")
+	userId := c.GetInt("id")
+	task, exist, err := model.GetByTaskId(userId, taskId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "type": "query_data_error"},
+		})
+		return
+	}
+	if !exist {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": gin.H{"message": "task not found", "type": "task_not_exist"},
+		})
+		return
+	}
+	status, err := service.CancelVideoTask(c.Request.Context(), task)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "type": "internal_error"},
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    gin.H{"status": string(status)},
 	})
 }

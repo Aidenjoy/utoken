@@ -34,8 +34,8 @@ import {
 } from '@/components/ui/select'
 import { parseLogOther } from '@/features/usage-logs/lib/format'
 import {
+  formatLogQuota,
   formatNumber,
-  formatQuota,
   formatTimestamp,
   formatUseTime,
 } from '@/lib/format'
@@ -189,7 +189,7 @@ export function OrganizationBilling() {
           return (
             <div className='flex flex-col items-end gap-1'>
               <span className='text-xs tabular-nums'>
-                {formatQuota(row.original.quota)}
+                {formatLogQuota(row.original.quota)}
               </span>
               {other?.cache_hit ? (
                 <StatusBadge

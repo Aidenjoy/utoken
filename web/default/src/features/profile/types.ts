@@ -65,6 +65,12 @@ export interface UserProfile {
   aff_history_quota: number
   /** Invite user ID */
   invite_user_id?: number
+  /**
+   * Per-model pay multipliers configured for this account
+   * (model name → ratio in (0, 1]); empty/absent means original price.
+   * Only sent by `/api/user/self` for the owner's own profile display.
+   */
+  model_discounts?: Record<string, number>
   /** Account creation timestamp */
   created_time: number
   /** User settings (JSON string) */

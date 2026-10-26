@@ -132,6 +132,15 @@ export interface LogOtherData {
       original: number
       clamped: number
     }
+    // Token-rate scaling record (seedance video tasks): the upstream usage
+    // tokens before the user's token rate was applied plus the rate itself,
+    // written at task settlement so super admins can reconcile
+    // "original tokens -> rate -> billed tokens". Admin-only (admin_info).
+    token_rate_scale?: {
+      rate: number
+      original_completion_tokens: number
+      original_total_tokens: number
+    }
   }
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.

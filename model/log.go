@@ -79,6 +79,38 @@ type Log struct {
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
+	// UpstreamPromptTokens/UpstreamCompletionTokens 记录上游真实 token 用量，
+	// 供渠道账单中心与上游对账。0 表示未单独记录，真实值回退
+	// prompt_tokens/completion_tokens（历史数据与未被费率缩放的链路天然为 0）。
+	// 目前唯一与计费 tokens 不一致的链路是 seedance 任务的用户 token 费率缩放。
+	UpstreamPromptTokens     int `json:"upstream_prompt_tokens" gorm:"default:0"`
+	UpstreamCompletionTokens int `json:"upstream_completion_tokens" gorm:"default:0"`
+	// CacheHit 为 true 表示响应缓存回放：不打上游、quota=0，上游对账必须排除。
+	// 此前只存于 other JSON，SQL 过滤跨三库不可行（同 quota_data.cache_hits 先例），
+	// 故加真列；默认值由写入路径设置，不用 gorm 布尔默认 tag。
+	CacheHit bool `json:"cache_hit" gorm:"index"`
+	// TaskSettle 标记异步任务的差额结算行（RecalculateTaskQuota 写入）。
+	// 结算行记录的是任务全量用量而非差额，任务真实用量以预扣回填行为准；
+	// 上游对账（渠道账单中心）只统计 consume 且非 settle 行，排除本行避免双计。
+	// 整单退款行（RefundTaskQuota）不带本标记，仅供明细审计展示。
+	TaskSettle bool `json:"task_settle" gorm:"index"`
+}
+
+// UpstreamTokenUsage 返回上游对账口径的真实 token 用量：
+// 任务差额结算行计 0（用量以预扣回填行为准），其余行优先取 upstream 列，
+// 为 0 时回退计费 tokens 列（两者在无费率缩放时相等）。
+func (log *Log) UpstreamTokenUsage() (prompt, completion int) {
+	if log.TaskSettle {
+		return 0, 0
+	}
+	prompt, completion = log.PromptTokens, log.CompletionTokens
+	if log.UpstreamPromptTokens > 0 {
+		prompt = log.UpstreamPromptTokens
+	}
+	if log.UpstreamCompletionTokens > 0 {
+		completion = log.UpstreamCompletionTokens
+	}
+	return prompt, completion
 }
 
 // don't use iota, avoid change log type value
@@ -375,9 +407,13 @@ type RecordConsumeLogParams struct {
 	OrgId int `json:"org_id"`
 	// CacheHit 为 true 表示本次响应来自响应缓存回放，Quota 必为 0；
 	// CacheSavedQuota 记录“如果打上游本应扣多少”，仅用于报表统计节省额度。
-	CacheHit        bool                   `json:"cache_hit,omitempty"`
-	CacheSavedQuota int                    `json:"cache_saved_quota,omitempty"`
-	Other           map[string]interface{} `json:"other"`
+	CacheHit        bool `json:"cache_hit,omitempty"`
+	CacheSavedQuota int  `json:"cache_saved_quota,omitempty"`
+	// UpstreamPromptTokens/UpstreamCompletionTokens 为上游真实 token 用量，
+	// 0 表示与计费 tokens 一致（回退口径），见 Log 同名字段注释。
+	UpstreamPromptTokens     int                    `json:"upstream_prompt_tokens,omitempty"`
+	UpstreamCompletionTokens int                    `json:"upstream_completion_tokens,omitempty"`
+	Other                    map[string]interface{} `json:"other"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
@@ -426,9 +462,12 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			}
 			return ""
 		}(),
-		RequestId:         requestId,
-		UpstreamRequestId: upstreamRequestId,
-		Other:             otherStr,
+		RequestId:                requestId,
+		UpstreamRequestId:        upstreamRequestId,
+		Other:                    otherStr,
+		CacheHit:                 params.CacheHit,
+		UpstreamPromptTokens:     params.UpstreamPromptTokens,
+		UpstreamCompletionTokens: params.UpstreamCompletionTokens,
 	}
 	err := createLog(log)
 	if err != nil {
@@ -467,8 +506,16 @@ type RecordTaskBillingLogParams struct {
 	OrgId            int
 	PromptTokens     int // 结算时上游返回的实际 prompt token 数（无则为 0）
 	CompletionTokens int // 结算时上游返回的实际 completion/total token 数（无则为 0）
-	Other            map[string]interface{}
-	NodeName         string // 任务发起节点；为空时回退当前节点
+	// TaskSettle 标记差额结算行（结算/部分退款）：其 tokens 是任务全量用量而非差额，
+	// 上游对账（渠道账单中心）只统计 consume 且非 settle 行，本行被排除。
+	// 真实用量以预扣回填行为准（成功任务才会回填）；整单退款不标记，
+	// 其 tokens 仅供明细审计展示（失败任务预扣行未回填，对账净额自然为 0）。
+	TaskSettle bool
+	// TokenRateScale 非空表示结算 tokens 已被用户费率缩放，取其原始值写入
+	// upstream tokens 列（存正值，供明细/审计追溯缩放前的上游真实用量）。
+	TokenRateScale *TaskTokenRateScale
+	Other          map[string]interface{}
+	NodeName       string // 任务发起节点；为空时回退当前节点
 	// QuotaDataCreatedAt 为任务提交时刻（task.SubmitTime）。结算修正落到提交
 	// 同一小时桶，避免差额/退款跨桶跨天漂移；为 0 时回退日志时间。
 	QuotaDataCreatedAt int64
@@ -502,6 +549,18 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			orgId = resolvedOrgId
 		}
 	}
+	// 上游真实 tokens：优先取费率缩放前的原始值，否则用传入的计费 tokens。
+	// 存正值：差额结算行（TaskSettle=true）与整单退款行都被上游对账聚合排除，
+	// 此处写入仅供明细审计视图展示「缩放前原始用量」。
+	upstreamPrompt := int64(params.PromptTokens)
+	upstreamCompletion := int64(params.CompletionTokens)
+	if scale := params.TokenRateScale; scale != nil {
+		upstreamPrompt = scale.OriginalTotalTokens - scale.OriginalCompletionTokens
+		if upstreamPrompt < 0 {
+			upstreamPrompt = 0
+		}
+		upstreamCompletion = scale.OriginalCompletionTokens
+	}
 	log := &Log{
 		UserId:           params.UserId,
 		Username:         username,
@@ -517,6 +576,10 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		TokenId:          params.TokenId,
 		Group:            params.Group,
 		Other:            common.MapToJsonStr(params.Other),
+		// 结算行标记见 Log.TaskSettle 注释：上游对账只认预扣回填行，避免双计。
+		TaskSettle:               params.TaskSettle,
+		UpstreamPromptTokens:     int(upstreamPrompt),
+		UpstreamCompletionTokens: int(upstreamCompletion),
 	}
 	err := createLog(log)
 	if err != nil {
@@ -559,7 +622,9 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 // 差额为 0（预扣准确）时甚至没有差额行，tokens 完全丢失，用户在对账时看不到
 // 真实消耗。此函数按 other.task_id 定位该任务最早一条 consume 日志（即预扣行），
 // 仅补展示字段（tokens/耗时），不改动 quota 等资金字段，返回影响行数。
-func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, useTime int) (int64, error) {
+// upstreamPrompt/upstreamCompletion 为费率缩放前的上游真实 tokens（无缩放传 0
+// 走回退口径）：预扣回填行是上游对账唯一计入行，必须携带真实值。
+func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion int) (int64, error) {
 	if taskID == "" {
 		return 0, nil
 	}
@@ -575,9 +640,11 @@ func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, us
 		return 0, err
 	}
 	res := LOG_DB.Model(&Log{}).Where("id = ?", pre.Id).Updates(map[string]any{
-		"prompt_tokens":     promptTokens,
-		"completion_tokens": completionTokens,
-		"use_time":          useTime,
+		"prompt_tokens":              promptTokens,
+		"completion_tokens":          completionTokens,
+		"use_time":                   useTime,
+		"upstream_prompt_tokens":     upstreamPrompt,
+		"upstream_completion_tokens": upstreamCompletion,
 	})
 	return res.RowsAffected, res.Error
 }

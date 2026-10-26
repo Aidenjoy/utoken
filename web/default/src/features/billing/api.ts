@@ -26,6 +26,11 @@ import {
   type BillingQueryParams,
   type BillingRechargeRecord,
   type BillingRechargeStat,
+  type ChannelBillingDetailRow,
+  type ChannelBillingQueryParams,
+  type ChannelBillingRecord,
+  type ChannelBillingStat,
+  type UpstreamPrices,
 } from './types'
 
 function toQueryParams(filter: BillingQueryParams): Record<string, string> {
@@ -115,4 +120,102 @@ export async function downloadBillingConsumption(
     disableDuplicate: true,
   })
   triggerBlobDownload(res.data as Blob, 'billing-consumption.csv')
+}
+
+// ============================================================================
+// Channel Billing (upstream reconciliation)
+// ============================================================================
+// Admin-only: upstream cost is platform-confidential, so there is no
+// agent-scoped variant and every call hits /api/billing/channel/*.
+
+function toChannelQueryParams(
+  params: ChannelBillingQueryParams
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  const channelIds = billingScopeToParam(params.channelSel)
+  if (channelIds) out.channel_ids = channelIds
+  if (params.modelName) out.model_name = params.modelName
+  if (params.start) out.start_timestamp = String(params.start)
+  if (params.end) out.end_timestamp = String(params.end)
+  if (params.p) out.p = String(params.p)
+  if (params.page_size) out.page_size = String(params.page_size)
+  return out
+}
+
+export interface ChannelBillingData {
+  records: ChannelBillingRecord[]
+  stat: ChannelBillingStat
+}
+
+export async function fetchChannelBillingRecords(
+  params: ChannelBillingQueryParams
+): Promise<BillingApiResponse<ChannelBillingData>> {
+  const res = await api.get('/api/billing/channel/records', {
+    params: toChannelQueryParams(params),
+    disableDuplicate: true,
+  })
+  return res.data
+}
+
+export interface ChannelBillingDetailData {
+  items: ChannelBillingDetailRow[]
+  total: number
+}
+
+export async function fetchChannelBillingDetails(
+  params: ChannelBillingQueryParams
+): Promise<BillingApiResponse<ChannelBillingDetailData>> {
+  const res = await api.get('/api/billing/channel/details', {
+    params: toChannelQueryParams(params),
+    disableDuplicate: true,
+  })
+  return res.data
+}
+
+export async function exportChannelBillingRecords(
+  params: ChannelBillingQueryParams
+): Promise<void> {
+  const res = await api.get('/api/billing/channel/records/export', {
+    params: toChannelQueryParams(params),
+    responseType: 'blob',
+    disableDuplicate: true,
+  })
+  triggerBlobDownload(res.data as Blob, 'channel-billing.csv')
+}
+
+export async function exportChannelBillingDetails(
+  params: ChannelBillingQueryParams
+): Promise<void> {
+  const res = await api.get('/api/billing/channel/details/export', {
+    params: toChannelQueryParams(params),
+    responseType: 'blob',
+    disableDuplicate: true,
+  })
+  triggerBlobDownload(res.data as Blob, 'channel-billing-detail.csv')
+}
+
+export interface ChannelPricesData {
+  channel_id: number
+  prices: UpstreamPrices
+}
+
+export async function fetchChannelPrices(
+  channelId: number
+): Promise<BillingApiResponse<ChannelPricesData>> {
+  const res = await api.get('/api/billing/channel/prices', {
+    params: { channel_id: String(channelId) },
+    disableDuplicate: true,
+  })
+  return res.data
+}
+
+export async function saveChannelPrices(
+  channelId: number,
+  prices: UpstreamPrices
+): Promise<BillingApiResponse<null>> {
+  const res = await api.post('/api/billing/channel/prices', {
+    channel_id: channelId,
+    prices,
+  })
+  return res.data
 }

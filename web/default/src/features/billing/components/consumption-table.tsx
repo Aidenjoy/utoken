@@ -31,6 +31,9 @@ import {
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
+import { parseLogOther } from '@/features/usage-logs/lib/format'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatModelDiscount } from '@/lib/discount'
 import {
   formatLogQuota,
   formatNumber,
@@ -60,7 +63,8 @@ export function ConsumptionTable({
   filter,
   isAgent = false,
 }: ConsumptionTableProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [exporting, setExporting] = useState(false)
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
 
@@ -149,11 +153,7 @@ export function ConsumptionTable({
             {
               id: 'organization',
               header: t('Organization'),
-              cell: ({
-                row,
-              }: {
-                row: { original: BillingConsumptionRow }
-              }) => {
+              cell: ({ row }: { row: { original: BillingConsumptionRow } }) => {
                 const orgId = orgOf[String(row.original.user_id)]
                 if (!orgId)
                   return <span className='text-muted-foreground'>-</span>
@@ -201,8 +201,53 @@ export function ConsumptionTable({
         size: 100,
       },
       {
+        id: 'original_price',
+        header: t('Original Price'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => {
+          const log = row.original
+          const other = log.other ? parseLogOther(log.other) : null
+          // 退款与订阅抵扣不走钱包折扣，原价/折扣两列对它们没有意义。
+          if (
+            log.type === LOG_TYPE_REFUND ||
+            other?.billing_source === 'subscription'
+          ) {
+            return <span className='text-muted-foreground/60 text-xs'>-</span>
+          }
+          // 历史日志没有 original_quota：回退为当前费用，即“原价 = 费用”。
+          const originalQuota = other?.original_quota ?? log.quota
+          return (
+            <span className='text-muted-foreground font-mono text-xs tabular-nums'>
+              {formatLogQuota(originalQuota)}
+            </span>
+          )
+        },
+        size: 120,
+      },
+      {
+        id: 'discount',
+        header: t('Discount (%)'),
+        meta: { mobileHidden: true },
+        cell: ({ row }) => {
+          const log = row.original
+          const other = log.other ? parseLogOther(log.other) : null
+          if (
+            log.type === LOG_TYPE_REFUND ||
+            other?.billing_source === 'subscription'
+          ) {
+            return <span className='text-muted-foreground/60 text-xs'>-</span>
+          }
+          return (
+            <span className='font-mono text-xs tabular-nums'>
+              {formatModelDiscount(other?.discount, locale)}
+            </span>
+          )
+        },
+        size: 90,
+      },
+      {
         accessorKey: 'quota',
-        header: t('Quota Change'),
+        header: t('Cost'),
         cell: ({ row }) => {
           const isRefund = row.original.type === LOG_TYPE_REFUND
           const quota = isRefund ? -row.original.quota : row.original.quota
@@ -245,7 +290,7 @@ export function ConsumptionTable({
         size: 170,
       },
     ],
-    [orgNames, orgOf, t, isAgent]
+    [orgNames, orgOf, t, isAgent, locale]
   )
 
   const { table } = useDataTable({

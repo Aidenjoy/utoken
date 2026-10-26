@@ -199,6 +199,7 @@ export const TASK_STATUS = {
   QUEUED: 'QUEUED', // 排队中
   UNKNOWN: 'UNKNOWN', // 未知
   TIMEOUT_UNRESOLVED: 'TIMEOUT_UNRESOLVED', // 超时未解析，挂起待人工核对（未退款）
+  CANCELLED: 'CANCELLED', // 用户取消，预扣已全额退还
 } as const
 
 /**
@@ -217,20 +218,23 @@ export const TASK_STATUS_FILTERS = [
   { label: 'In Progress', value: TASK_STATUS.IN_PROGRESS },
   { label: 'Success', value: TASK_STATUS.SUCCESS },
   { label: 'Failed', value: TASK_STATUS.FAILURE },
+  { label: 'Cancelled', value: TASK_STATUS.CANCELLED },
   { label: 'Timeout Unresolved', value: TASK_STATUS.TIMEOUT_UNRESOLVED },
 ] as const
 
 /**
  * Maps the backend refetch summary code to a user-facing i18n toast key.
  * The backend returns a machine-readable result (settled_adjusted / settled_exact /
- * refunded / already_settled / no_terminal / status_changed) so the UI can report
- * what actually happened instead of always claiming "settled".
+ * refunded / already_settled / cancelled_no_settle / no_terminal / status_changed)
+ * so the UI can report what actually happened instead of always claiming "settled".
  */
 export const REFETCH_RESULT_TOAST: Record<string, string> = {
   refunded: 'Re-query result: upstream failed, pre-charge refunded',
   already_settled: 'Re-query result: already settled before, no change',
   settled_adjusted: 'Re-query result: settled, quota adjusted by delta',
   settled_exact: 'Re-query result: settled, pre-charge exact, usage backfilled',
+  cancelled_no_settle:
+    'Re-query result: cancelled by the user and refunded, no settlement',
   no_terminal: 'Re-query result: upstream not terminal yet, no settlement',
   status_changed: 'Re-query result: status changed, check task detail',
 }
@@ -346,6 +350,7 @@ export const TASK_STATUS_MAPPINGS: Record<string, StatusMapping> = {
   [TASK_STATUS.SUBMITTED]: { label: 'Queued', variant: 'yellow' },
   [TASK_STATUS.IN_PROGRESS]: { label: 'In Progress', variant: 'blue' },
   [TASK_STATUS.FAILURE]: { label: 'Failed', variant: 'red' },
+  [TASK_STATUS.CANCELLED]: { label: 'Cancelled', variant: 'neutral' },
   [TASK_STATUS.QUEUED]: { label: 'Queued', variant: 'orange' },
   [TASK_STATUS.UNKNOWN]: { label: 'Unknown', variant: 'neutral' },
   [TASK_STATUS.TIMEOUT_UNRESOLVED]: {

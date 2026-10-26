@@ -544,6 +544,10 @@ func RefetchAndSettleTask(ctx context.Context, task *model.Task) (string, error)
 		latest = task
 	}
 	switch {
+	case beforeStatus == model.TaskStatusCancelled:
+		// 用户取消：预扣已退还，ApplyUpstreamTaskResult 会拦截上游结果，补录不产生资金变动。
+		// 必须单独返回，否则会落到 no_terminal 让管理员误以为上游还没跑完、退款还挂着。
+		return "cancelled_no_settle", nil
 	case latest.Status == model.TaskStatusFailure && beforeStatus != model.TaskStatusFailure:
 		return "refunded", nil
 	case beforeStatus == model.TaskStatusSuccess && latest.Status == model.TaskStatusSuccess:
@@ -636,6 +640,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 // responseBody 为上游原始查询响应，用于 task.Data 快照与空状态错误探测。
 func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo, responseBody []byte) error {
 	snap := task.Snapshot()
+
+	// 用户取消是计费终态（预扣已全额退还）：上游稍后报成功也不得再结算，否则同一
+	// 任务先退款后扣费。实时透传查询与管理员补录都会走到这里，统一在此拦截。
+	if snap.Status == model.TaskStatusCancelled {
+		logger.LogInfo(ctx, fmt.Sprintf("Task %s cancelled by user, ignore upstream result %q", task.TaskID, taskResult.Status))
+		return nil
+	}
+
 	task.Data = redactVideoResponseBody(responseBody)
 
 	now := time.Now().Unix()
@@ -753,7 +765,10 @@ func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, ta
 		settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
 	}
 	if shouldRefund {
-		RefundTaskQuota(ctx, task, task.FailReason)
+		// 传入上游真实用量：整单退款日志负向冲销预扣回填行，
+		// 上游对账才能把失败任务的 tokens 净额归零。
+		refundPrompt, refundCompletion := splitTaskUsageTokens(taskResult)
+		RefundTaskQuota(ctx, task, task.FailReason, refundPrompt, refundCompletion)
 	}
 
 	return nil
@@ -852,7 +867,17 @@ func backfillPreConsumeLogUsage(ctx context.Context, task *model.Task, taskResul
 	if promptTokens+completionTokens <= 0 && useTime <= 0 {
 		return
 	}
-	n, err := model.UpdateTaskConsumeLogUsage(task.TaskID, promptTokens, completionTokens, useTime)
+	// 预扣回填行是上游对账唯一计入行：被用户费率缩放过的任务（seedance）
+	// 需额外写入缩放前的原始 tokens，其余链路传 0 走回退口径。
+	upstreamPrompt, upstreamCompletion := 0, 0
+	if scale := task.TokenRateScale; scale != nil {
+		upstreamPrompt = int(scale.OriginalTotalTokens - scale.OriginalCompletionTokens)
+		if upstreamPrompt < 0 {
+			upstreamPrompt = 0
+		}
+		upstreamCompletion = int(scale.OriginalCompletionTokens)
+	}
+	n, err := model.UpdateTaskConsumeLogUsage(task.TaskID, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("回填预扣消费日志失败 task %s: %s", task.TaskID, err.Error()))
 		return

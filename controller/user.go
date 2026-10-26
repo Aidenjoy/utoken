@@ -597,6 +597,13 @@ func GetSelf(c *gin.Context) {
 		agentMenuVisibility = agent.MenuVisibilityList
 	}
 
+	// 本人按模型折扣明细：个人资料页徽章按模型列出自己的折扣，仅下发给本人。
+	// 无折扣时下发空对象，前端据此隐藏徽章。
+	selfModelDiscounts := map[string]float64{}
+	if parsed := common.ParseModelDiscounts(user.ModelDiscounts); parsed != nil {
+		selfModelDiscounts = parsed
+	}
+
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
 		"id":                user.Id,
@@ -630,9 +637,12 @@ func GetSelf(c *gin.Context) {
 		"org_quota_limit":   orgQuotaLimit,
 		"org_quota_used":    orgQuotaUsed,
 		// has_model_discount 仅告知本人“是否配有模型折扣”，前端据此决定使用日志
-		// 原价/折扣两列是否默认显示；折扣明细不下发给普通用户。
+		// 原价/折扣两列是否默认显示。
 		"has_model_discount": common.HasModelDiscounts(user.ModelDiscounts),
-		"is_agent":           isAgent,
+		// model_discounts 是本人按模型折扣明细 {模型名: 付费倍率}，供个人资料页
+		// 徽章展示；他人视角的接口不下发该字段。
+		"model_discounts": selfModelDiscounts,
+		"is_agent":        isAgent,
 		// agent_model_discounts 是本人作为代理商的授权配置 {模型名: 折扣下限}，
 		// 非代理商时为空对象。前端用它约束「成员折扣编辑器」的模型下拉与百分比下限。
 		"agent_model_discounts": agentModelDiscounts,

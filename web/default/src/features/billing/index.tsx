@@ -22,9 +22,10 @@ import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useIsAgent } from '@/hooks/use-admin'
+import { useIsAdmin, useIsAgent } from '@/hooks/use-admin'
 
 import { BillingFilterBar } from './components/billing-filter-bar'
+import { ChannelBillingPanel } from './components/channel-billing-panel'
 import { ConsumptionTable } from './components/consumption-table'
 import { RechargeTable } from './components/recharge-table'
 import {
@@ -33,7 +34,7 @@ import {
   type BillingFilterDraft,
 } from './types'
 
-type BillingTab = 'recharge' | 'consumption'
+type BillingTab = 'recharge' | 'consumption' | 'channel'
 
 function getDefaultDraft(): BillingFilterDraft {
   const end = new Date()
@@ -50,6 +51,10 @@ function getDefaultDraft(): BillingFilterDraft {
 export function BillingCenter() {
   const { t } = useTranslation()
   const isAgent = useIsAgent()
+  const isAdmin = useIsAdmin()
+  // Channel billing reconciles upstream cost, which is platform-confidential:
+  // visible only to admins, never to agents (whose scope is downstream members).
+  const showChannelTab = isAdmin && !isAgent
   const [tab, setTab] = useState<BillingTab>('recharge')
   const [draft, setDraft] = useState<BillingFilterDraft>(getDefaultDraft)
   const [applied, setApplied] = useState<BillingFilterDraft>(getDefaultDraft)
@@ -77,18 +82,20 @@ export function BillingCenter() {
       <SectionPageLayout.Title>{t('Billing Center')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-3'>
-          <BillingFilterBar
-            draft={draft}
-            isAgent={isAgent}
-            onDraftChange={setDraft}
-            onSearch={() => setApplied(draft)}
-            onReset={() => {
-              const next = getDefaultDraft()
-              setDraft(next)
-              setApplied(next)
-            }}
-            searching={searching}
-          />
+          {tab !== 'channel' && (
+            <BillingFilterBar
+              draft={draft}
+              isAgent={isAgent}
+              onDraftChange={setDraft}
+              onSearch={() => setApplied(draft)}
+              onReset={() => {
+                const next = getDefaultDraft()
+                setDraft(next)
+                setApplied(next)
+              }}
+              searching={searching}
+            />
+          )}
 
           <Tabs
             value={tab}
@@ -101,14 +108,21 @@ export function BillingCenter() {
               <TabsTrigger value='consumption'>
                 {t('Consumption Details')}
               </TabsTrigger>
+              {showChannelTab && (
+                <TabsTrigger value='channel'>
+                  {t('Channel Billing')}
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
 
-          {tab === 'recharge' ? (
+          {tab === 'recharge' && (
             <RechargeTable filter={filter} isAgent={isAgent} />
-          ) : (
+          )}
+          {tab === 'consumption' && (
             <ConsumptionTable filter={filter} isAgent={isAgent} />
           )}
+          {tab === 'channel' && showChannelTab && <ChannelBillingPanel />}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

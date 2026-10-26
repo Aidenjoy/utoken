@@ -374,6 +374,13 @@ func SetApiRouter(router *gin.Engine) {
 			billingRoute.GET("/recharge/export", controller.ExportBillingRecharge)
 			billingRoute.GET("/consumption", controller.GetBillingConsumption)
 			billingRoute.GET("/consumption/export", controller.ExportBillingConsumption)
+			// 渠道账单中心：上游对账（真实 tokens + 可选费率卡估算成本），仅管理员。
+			billingRoute.GET("/channel/records", controller.GetChannelBilling)
+			billingRoute.GET("/channel/records/export", controller.ExportChannelBilling)
+			billingRoute.GET("/channel/details", controller.GetChannelBillingDetail)
+			billingRoute.GET("/channel/details/export", controller.ExportChannelBillingDetail)
+			billingRoute.GET("/channel/prices", controller.GetChannelUpstreamPrices)
+			billingRoute.POST("/channel/prices", controller.SaveChannelUpstreamPrices)
 		}
 
 		systemTaskRoute := apiRouter.Group("/system-task")

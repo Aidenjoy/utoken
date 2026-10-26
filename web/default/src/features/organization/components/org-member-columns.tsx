@@ -28,7 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { formatQuota, formatTimestamp } from '@/lib/format'
+import { formatLogQuota, formatTimestamp } from '@/lib/format'
 
 import { ORG_MEMBER_STATUSES, ORG_ROLES } from '../constants'
 import type { OrgMemberDetail } from '../types'
@@ -102,17 +102,17 @@ export function useOrgMemberColumns(
         if (limit <= 0) {
           return (
             <span className='text-muted-foreground text-xs'>
-              {t('Unlimited')} · {t('Used:')} {formatQuota(used)}
+              {t('Unlimited')} · {t('Used:')} {formatLogQuota(used)}
             </span>
           )
         }
         return (
           <div className='flex flex-col text-xs'>
             <span className='tabular-nums'>
-              {t('Used:')} {formatQuota(used)}
+              {t('Used:')} {formatLogQuota(used)}
             </span>
             <span className='text-muted-foreground tabular-nums'>
-              {t('Total:')} {formatQuota(limit)}
+              {t('Total:')} {formatLogQuota(limit)}
             </span>
           </div>
         )

@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -207,6 +208,16 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	if props.RequestURL != "" {
 		other["request_url"] = props.RequestURL
 	}
+	// token 费率缩放前的原始用量与费率是超管对账数据：嵌套在 admin_info 下，
+	// model.formatUserLogs 会对非管理员视图剥离整个对象，列天然超管专属。
+	if scale := task.TokenRateScale; scale != nil {
+		adminInfo, ok := other["admin_info"].(map[string]interface{})
+		if !ok || adminInfo == nil {
+			adminInfo = map[string]interface{}{}
+			other["admin_info"] = adminInfo
+		}
+		adminInfo["token_rate_scale"] = scale
+	}
 	return other
 }
 
@@ -235,7 +246,10 @@ func taskModelName(task *model.Task) string {
 // 退款必须恰好执行一次：后台轮询、超时清扫与客户端实时查询（GET 任务详情）都会对
 // 同一个失败任务调用本函数，而资金退还是 quota += N 的非幂等操作。因此先原子认领
 // 预扣额度（CAS 置零，见 model.Task.ClaimRefundQuota），认领失败即已退过，直接跳过。
-func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
+//
+// usage 可选传入上游真实 token 用量（prompt, completion）：整单退款日志据此
+// 负向冲销预扣回填行，上游对账才能把失败任务净额归零；调用点无用量时省略。
+func RefundTaskQuota(ctx context.Context, task *model.Task, reason string, usage ...int) {
 	quota, err := task.ClaimRefundQuota()
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("认领退款额度失败 task %s: %s", task.TaskID, err.Error()))
@@ -269,6 +283,10 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
+	refundPromptTokens, refundCompletionTokens := 0, 0
+	if len(usage) >= 2 {
+		refundPromptTokens, refundCompletionTokens = usage[0], usage[1]
+	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:             task.UserId,
 		LogType:            model.LogTypeRefund,
@@ -278,11 +296,45 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 		Quota:              quota,
 		TokenId:            task.PrivateData.TokenId,
 		Group:              task.Group,
+		PromptTokens:       refundPromptTokens,
+		CompletionTokens:   refundCompletionTokens,
+		TokenRateScale:     task.TokenRateScale,
 		Other:              other,
 		NodeName:           task.PrivateData.NodeName,
 		QuotaDataCreatedAt: task.SubmitTime,
 		CreatedAt:          task.FinishTime,
 	})
+}
+
+// CancelVideoTask 用户在任务进入终态前主动取消：CAS 迁到 CANCELLED 并全额退还预扣。
+// 上游视频平台（方舟等）没有取消接口，任务在上游仍会跑完；本地的口径是停止轮询、
+// 不再结算、预扣退回——用户放弃结果时不应为它付费。
+// 返回任务当前状态：CANCELLED 表示本次取消生效；SUCCESS/FAILURE 等表示取消到达前
+// 任务已被轮询/实时查询推进到终态（计费已按该终态处理），调用方应据此如实展示。
+func CancelVideoTask(ctx context.Context, task *model.Task) (model.TaskStatus, error) {
+	switch task.Status {
+	case model.TaskStatusSuccess, model.TaskStatusFailure, model.TaskStatusCancelled, model.TaskStatusTimeoutUnresolved:
+		return task.Status, nil
+	}
+	oldStatus := task.Status
+	task.Status = model.TaskStatusCancelled
+	task.Progress = taskcommon.ProgressComplete
+	task.FailReason = "用户取消"
+	task.FinishTime = time.Now().Unix()
+	won, err := task.UpdateWithStatus(oldStatus)
+	if err != nil {
+		return "", err
+	}
+	if !won {
+		// 轮询/实时查询抢先推进到终态：以 DB 现状为准，不退款（终态已各自处理计费）
+		latest, exist, getErr := model.GetByOnlyTaskId(task.TaskID)
+		if getErr != nil || !exist || latest == nil {
+			return "", fmt.Errorf("reload task %s after cancel CAS loss: %w", task.TaskID, getErr)
+		}
+		return latest.Status, nil
+	}
+	RefundTaskQuota(ctx, task, "用户取消任务")
+	return model.TaskStatusCancelled, nil
 }
 
 // RecalculateTaskQuota 通用的异步差额结算。
@@ -347,16 +399,20 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		attachQuotaSaturationToOther(other, clamp)
 	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		UserId:             task.UserId,
-		LogType:            logType,
-		Content:            reason,
-		ChannelId:          task.ChannelId,
-		ModelName:          taskModelName(task),
-		Quota:              logQuota,
-		TokenId:            task.PrivateData.TokenId,
-		Group:              task.Group,
-		PromptTokens:       promptTokens,
-		CompletionTokens:   completionTokens,
+		UserId:           task.UserId,
+		LogType:          logType,
+		Content:          reason,
+		ChannelId:        task.ChannelId,
+		ModelName:        taskModelName(task),
+		Quota:            logQuota,
+		TokenId:          task.PrivateData.TokenId,
+		Group:            task.Group,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		// 差额结算/部分退款行都是全量用量快照：标记 TaskSettle 使上游对账
+		// 排除本行，并携带费率缩放前原始值供审计追溯。
+		TaskSettle:         true,
+		TokenRateScale:     task.TokenRateScale,
 		Other:              other,
 		NodeName:           task.PrivateData.NodeName,
 		QuotaDataCreatedAt: task.SubmitTime,

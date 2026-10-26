@@ -21,6 +21,7 @@ func TestToVideoStatus(t *testing.T) {
 		{TaskStatusInProgress, dto.VideoStatusInProgress},
 		{TaskStatusSuccess, dto.VideoStatusCompleted},
 		{TaskStatusFailure, dto.VideoStatusFailed},
+		{TaskStatusCancelled, dto.VideoStatusFailed},
 		{TaskStatusUnknown, dto.VideoStatusUnknown},
 	}
 	for _, tt := range tests {

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { UserPlus, Users } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -47,9 +47,10 @@ import { useOrgMemberColumns } from './org-member-columns'
 import { useOrganization } from './organization-context'
 
 /**
- * Organization member management: paged search plus create / invite / edit /
+ * Organization member management: paged search plus create / edit /
  * remove. Removal only unbinds the account from the organization; the account,
- * its keys and its history are kept.
+ * its keys and its history are kept. Adding an existing user is a system-admin
+ * operation, so the enterprise-facing entry only offers member creation.
  */
 export function OrganizationMembers() {
   const { t } = useTranslation()
@@ -153,14 +154,6 @@ export function OrganizationMembers() {
         <UserPlus className='size-4' />
         {t('Create Member')}
       </Button>
-      <Button
-        size='sm'
-        variant='outline'
-        onClick={() => openDrawer('invite', null)}
-      >
-        <Users className='size-4' />
-        {t('Add Existing User')}
-      </Button>
     </div>
   )
 
@@ -172,9 +165,7 @@ export function OrganizationMembers() {
         isLoading={isLoading}
         isFetching={isFetching}
         emptyTitle={t('No Members Found')}
-        emptyDescription={t(
-          'Create an account or add an existing user to start sharing the pool.'
-        )}
+        emptyDescription={t('Create an account to start sharing the pool.')}
         emptyAction={primaryButtons}
         skeletonKeyPrefix='org-members-skeleton'
         applyHeaderSize

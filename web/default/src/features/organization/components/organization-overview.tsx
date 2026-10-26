@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { ORG_ROLES } from '@/features/organization/constants'
-import { formatNumber, formatQuota } from '@/lib/format'
+import { formatLogQuota, formatNumber, formatQuota } from '@/lib/format'
 
 import { useOrganization } from './organization-context'
 import { PoolTransferDialog } from './pool-transfer-dialog'
@@ -118,7 +118,7 @@ export function OrganizationOverview() {
             <span className='tabular-nums'>
               {unlimited
                 ? t('Unlimited')
-                : `${formatQuota(quotaUsed)} / ${formatQuota(quotaLimit)}`}
+                : `${formatLogQuota(quotaUsed)} / ${formatLogQuota(quotaLimit)}`}
             </span>
           </div>
           {!unlimited && <Progress value={usedPercent} />}
@@ -128,7 +128,7 @@ export function OrganizationOverview() {
                   'Your organization did not cap your usage. Every request is billed against the shared pool.'
                 )
               : t('Remaining: {{quota}}', {
-                  quota: formatQuota(summary.quota_remain ?? 0),
+                  quota: formatLogQuota(summary.quota_remain ?? 0),
                 })}
           </p>
         </CardContent>
@@ -164,7 +164,7 @@ export function OrganizationOverview() {
             <MetricCard
               icon={Gauge}
               label={t('Pool Used')}
-              value={formatQuota(summary.pool_used_quota ?? 0)}
+              value={formatLogQuota(summary.pool_used_quota ?? 0)}
             />
           </>
         )}

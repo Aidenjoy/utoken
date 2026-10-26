@@ -91,13 +91,16 @@ func TestScaleVolcUsageByRate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scaleVolcUsageByRate([]byte(tt.body), tt.rate, userId, "[Test]")
+			got, scale := scaleVolcUsageByRate([]byte(tt.body), tt.rate, userId, "[Test]")
 
 			if tt.expectUnchanged {
 				assert.Equal(t, tt.body, string(got))
+				assert.Nil(t, scale, "fail-open 时不应返回缩放信息")
 				return
 			}
 			assert.JSONEq(t, tt.expectJSON, string(got))
+			require.NotNil(t, scale, "缩放成功时应返回原始用量与费率")
+			assert.Equal(t, tt.rate, scale.Rate)
 		})
 	}
 }
@@ -108,7 +111,7 @@ func TestScaleVolcUsageByRate_PreservesStringTypeAndUnrelatedFields(t *testing.T
 	const userId = 4243
 
 	body := []byte(`{"id":"t1","status":"succeeded","content":{"video_url":"http://v"},"usage":{"completion_tokens":"100","total_tokens":200,"prompt_tokens":5}}`)
-	got := scaleVolcUsageByRate(body, 1.5, userId, "[Test]")
+	got, _ := scaleVolcUsageByRate(body, 1.5, userId, "[Test]")
 
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(got, &payload))
@@ -148,7 +151,7 @@ func TestScaleVolcUsageByRate_PreservesKeyOrder(t *testing.T) {
 	const userId = 4244
 
 	body := []byte(`{"id":"t1","model":"doubao-seedance-2-0","status":"succeeded","content":{"video_url":"http://v"},"usage":{"completion_tokens":100,"total_tokens":100},"created_at":1,"seed":2,"resolution":"480p"}`)
-	got := scaleVolcUsageByRate(body, 1.5, userId, "[Test]")
+	got, scale := scaleVolcUsageByRate(body, 1.5, userId, "[Test]")
 
 	topKeys := func(b []byte) []string {
 		var keys []string
@@ -163,4 +166,10 @@ func TestScaleVolcUsageByRate_PreservesKeyOrder(t *testing.T) {
 	usage := parseScaledUsage(t, got)
 	assert.EqualValues(t, 150, usage["completion_tokens"])
 	assert.EqualValues(t, 150, usage["total_tokens"])
+
+	// 缩放信息记录缩放前的原始用量与费率，供结算日志落库对账
+	require.NotNil(t, scale)
+	assert.Equal(t, 1.5, scale.Rate)
+	assert.EqualValues(t, 100, scale.OriginalCompletionTokens)
+	assert.EqualValues(t, 100, scale.OriginalTotalTokens)
 }

@@ -88,6 +88,9 @@ var channelReadOnlyFields = map[string]struct{}{
 	"balance":              {},
 	"balance_updated_time": {},
 	"used_quota":           {},
+	// upstream_prices（渠道上游合同费率卡）由渠道账单中心的专用接口
+	// SaveChannelUpstreamPrices 管理，通用渠道编辑端点必须忽略客户端传入的该字段。
+	"upstream_prices": {},
 }
 
 func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]any) {
@@ -108,6 +111,11 @@ func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]an
 	}
 	if _, ok := requestData["used_quota"]; ok {
 		channel.UsedQuota = 0
+	}
+	// upstream_prices 是平台机密且由专用接口管理：清零后 GORM Updates 会跳过
+	// 该零值列，从而保留数据库已配置的费率卡，客户端无法通过通用编辑端点注入。
+	if _, ok := requestData["upstream_prices"]; ok {
+		channel.UpstreamPrices = ""
 	}
 }
 

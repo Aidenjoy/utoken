@@ -32,7 +32,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatNumber, formatQuota, formatTimestampToDate } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatNumber,
+  formatTimestampToDate,
+} from '@/lib/format'
 
 import { getOrgUsage } from '../api'
 import { ORG_ERROR_MESSAGES, ORG_ROLES } from '../constants'
@@ -138,7 +142,7 @@ export function OrganizationUsage() {
         <TotalCard
           icon={Coins}
           label={t('Total Quota')}
-          value={formatQuota(total?.quota ?? 0)}
+          value={formatLogQuota(total?.quota ?? 0)}
         />
         <TotalCard
           icon={Hash}
@@ -163,7 +167,7 @@ export function OrganizationUsage() {
         <TotalCard
           icon={Coins}
           label={t('Quota Saved by Cache')}
-          value={formatQuota(total?.cache_saved_quota ?? 0)}
+          value={formatLogQuota(total?.cache_saved_quota ?? 0)}
           hint={t('Cache hits are billed at zero quota')}
         />
       </div>
@@ -202,7 +206,7 @@ export function OrganizationUsage() {
                         {formatNumber(row.count)}
                       </TableCell>
                       <TableCell className='text-right tabular-nums'>
-                        {formatQuota(row.quota)}
+                        {formatLogQuota(row.quota)}
                       </TableCell>
                       <TableCell className='text-right tabular-nums'>
                         {formatNumber(row.cache_hits)}
@@ -248,7 +252,7 @@ export function OrganizationUsage() {
                         {formatNumber(row.count)}
                       </TableCell>
                       <TableCell className='text-right tabular-nums'>
-                        {formatQuota(row.quota)}
+                        {formatLogQuota(row.quota)}
                       </TableCell>
                       <TableCell className='text-right tabular-nums'>
                         {(total?.quota ?? 0) > 0
@@ -308,7 +312,7 @@ export function OrganizationUsage() {
                       </TableCell>
                       <TableCell className='text-right text-xs tabular-nums'>
                         {row.quota_limit > 0
-                          ? `${formatQuota(row.quota_used)} / ${formatQuota(row.quota_limit)}`
+                          ? `${formatLogQuota(row.quota_used)} / ${formatLogQuota(row.quota_limit)}`
                           : t('Unlimited')}
                       </TableCell>
                       <TableCell className='text-right tabular-nums'>
@@ -318,7 +322,7 @@ export function OrganizationUsage() {
                         {formatNumber(row.token_used)}
                       </TableCell>
                       <TableCell className='text-right tabular-nums'>
-                        {formatQuota(row.quota)}
+                        {formatLogQuota(row.quota)}
                       </TableCell>
                     </TableRow>
                   )

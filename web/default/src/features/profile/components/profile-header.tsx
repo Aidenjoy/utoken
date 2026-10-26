@@ -23,7 +23,15 @@ import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { toIntlLocale } from '@/i18n/languages'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
+import { formatModelDiscount } from '@/lib/discount'
 import { formatCompactNumber, formatQuota } from '@/lib/format'
 import { getRoleLabel } from '@/lib/roles'
 
@@ -40,7 +48,7 @@ interface ProfileHeaderProps {
 }
 
 export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   if (loading) {
     return (
@@ -83,6 +91,11 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
   const avatarFallback = getUserAvatarFallback(avatarName)
   const avatarFallbackStyle = getUserAvatarStyle(avatarName)
   const roleLabel = getRoleLabel(profile.role)
+  // 只展示真正改变价格的折扣（倍率 < 1）；恒为 1 等同原价，与 has_model_discount 口径一致。
+  const discountEntries = Object.entries(profile.model_discounts ?? {})
+    .filter(([, ratio]) => ratio > 0 && ratio < 1)
+    .sort(([a], [b]) => a.localeCompare(b))
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const stats = [
     {
       label: t('Current Balance'),
@@ -118,7 +131,7 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
           </Avatar>
 
           <div className='min-w-0 flex-1 space-y-1.5 sm:space-y-3'>
-            <div className='flex min-w-0 items-center gap-2'>
+            <div className='flex min-w-0 flex-wrap items-center gap-2'>
               <h1 className='truncate text-xl font-semibold tracking-tight sm:text-2xl'>
                 {displayName}
               </h1>
@@ -132,6 +145,33 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
                 variant='info'
                 copyText={String(profile.id)}
               />
+              {discountEntries.length > 0 && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<span />}>
+                      <StatusBadge
+                        label={t('{{total}} discounted', {
+                          total: discountEntries.length,
+                        })}
+                        variant='success'
+                        copyable={false}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent side='top' className='max-w-xs'>
+                      <ul className='space-y-0.5'>
+                        {discountEntries.map(([model, ratio]) => (
+                          <li key={model} className='flex items-center gap-2'>
+                            <span className='font-mono'>{model}</span>
+                            <span className='text-background/70 ml-auto font-mono tabular-nums'>
+                              {formatModelDiscount(ratio, locale)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
 
             <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:gap-x-4 sm:text-sm'>

@@ -102,6 +102,7 @@ export const MESSAGE_ACTION_BUTTON_STYLES = {
 export const VIDEO_API_ENDPOINTS = {
   SUBMIT: '/pg/video/generations',
   FETCH: (taskId: string) => `/pg/video/generations/${taskId}`,
+  CANCEL: (taskId: string) => `/pg/video/generations/${taskId}/cancel`,
   FILE_UPLOAD: '/pg/files/upload',
 } as const
 
