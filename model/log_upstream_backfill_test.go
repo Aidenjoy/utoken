@@ -86,3 +86,65 @@ func TestBackfillLogUpstreamTokens(t *testing.T) {
 	assert.Equal(t, l1.UpstreamCompletionTokens, l1Again.UpstreamCompletionTokens)
 	assert.Equal(t, l1.Other, l1Again.Other)
 }
+
+// TestBackfillLogDiscountOriginalQuota 保护折前原价回填口径：仅修「有 discount 且
+// original_quota 缺失或误等于折后 quota」的行；已正确的原价、无折扣行、折扣=1 行
+// 一律不动；并保证幂等。
+func TestBackfillLogDiscountOriginalQuota(t *testing.T) {
+	truncateTables(t)
+
+	// L1: 命中——退款行缺 original_quota，quota=500_000 / 0.625 = 800_000。
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId: 1, Type: LogTypeRefund, ModelName: "seedance-2-0", Quota: 500_000,
+		Other: `{"discount":0.625,"task_id":"t1"}`,
+	}).Error)
+	// L2: 命中——结算行 original_quota 误等于折后 quota（「原价=费用」回退误写）。
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ModelName: "seedance-2-0", Quota: 500_000,
+		Other: `{"discount":0.625,"original_quota":500000}`,
+	}).Error)
+	// L3: 不命中——预扣行原价已正确（1_000_000 = 625_000 / 0.625）。
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId: 1, Type: LogTypeConsume, ModelName: "seedance-2-0", Quota: 625_000,
+		Other: `{"discount":0.625,"original_quota":1000000}`,
+	}).Error)
+	// L4: 不命中——无 discount。
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId: 1, Type: LogTypeRefund, ModelName: "seedance-2-0", Quota: 500_000,
+		Other: `{"task_id":"t2"}`,
+	}).Error)
+	// L5: 不命中——discount=1 不构成折扣。
+	require.NoError(t, LOG_DB.Create(&Log{
+		UserId: 1, Type: LogTypeRefund, ModelName: "seedance-2-0", Quota: 500_000,
+		Other: `{"discount":1}`,
+	}).Error)
+
+	require.NoError(t, backfillLogDiscountOriginalQuota())
+
+	var l1, l2, l3, l4, l5 Log
+	require.NoError(t, LOG_DB.Where("other LIKE ?", `%"task_id":"t1"%`).First(&l1).Error)
+	require.NoError(t, LOG_DB.Where("type = ? AND other LIKE ?", LogTypeConsume, `%"original_quota":%`).First(&l2).Error)
+	require.NoError(t, LOG_DB.Where("quota = ?", 625_000).First(&l3).Error)
+	require.NoError(t, LOG_DB.Where("other LIKE ?", `%"task_id":"t2"%`).First(&l4).Error)
+	require.NoError(t, LOG_DB.Where("other LIKE ?", `%"discount":1%`).First(&l5).Error)
+
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(l1.Other, &other))
+	assert.EqualValues(t, 800_000, other["original_quota"])
+	assert.Equal(t, "t1", other["task_id"], "既有键必须保留")
+
+	require.NoError(t, common.UnmarshalJsonStr(l2.Other, &other))
+	assert.EqualValues(t, 800_000, other["original_quota"])
+
+	// L3/L4/L5：一律未被触碰。
+	require.NoError(t, common.UnmarshalJsonStr(l3.Other, &other))
+	assert.EqualValues(t, 1_000_000, other["original_quota"])
+	assert.NotContains(t, l4.Other, "original_quota")
+	assert.NotContains(t, l5.Other, "original_quota")
+
+	// 幂等：再次运行不改变已修复的行。
+	require.NoError(t, backfillLogDiscountOriginalQuota())
+	var l1Again Log
+	require.NoError(t, LOG_DB.First(&l1Again, l1.Id).Error)
+	assert.Equal(t, l1.Other, l1Again.Other)
+}

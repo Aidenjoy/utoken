@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"math"
 	"testing"
 
@@ -256,4 +257,60 @@ func TestUserModelDiscountsArePerUser(t *testing.T) {
 
 	// 未配置的模型仍按原价。
 	assert.InDelta(t, 1.0, common.ResolveUserModelDiscount(userB.ModelDiscounts, "gpt-4o"), 1e-9)
+}
+
+// TestRefundLogCarriesDiscountOriginalQuota 锁定整单退款行的原价对账不变量：
+// 退款日志 quota 是折后额，other 必须同时写 discount 与 original_quota（折前额），
+// 否则前端「原价」列回退为「原价 = 费用」，退款行原价与预扣行上下对不上。
+func TestRefundLogCarriesDiscountOriginalQuota(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	seedUser(t, 1, 10_000_000)
+
+	task := makeTask(1, 1, 625_000, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		relaycommon.OtherRatioUserDiscount: 0.625,
+	}
+	require.NoError(t, model.DB.Create(task).Error)
+
+	RefundTaskQuota(ctx, task, "task failed: upstream error")
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	require.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, 625_000, log.Quota)
+
+	other := map[string]interface{}{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.InDelta(t, 0.625, other["discount"], 1e-9)
+	// 折前原价 = 625_000 / 0.625 = 1_000_000
+	assert.Equal(t, 1_000_000, int(other["original_quota"].(float64)))
+}
+
+// TestSettleDeltaLogCarriesDiscountOriginalQuota 锁定差额结算退款行同一不变量：
+// 差额（折后）除以折扣得折前差额，与预扣行「原价 - 实际原价」上下对应。
+func TestSettleDeltaLogCarriesDiscountOriginalQuota(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+	seedUser(t, 1, 10_000_000)
+
+	task := makeTask(1, 1, 625_000, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		relaycommon.OtherRatioUserDiscount: 0.625,
+	}
+	require.NoError(t, model.DB.Create(task).Error)
+
+	// 实际折后 125_000 → 退还差额 500_000
+	RecalculateTaskQuota(ctx, task, 125_000, "token重算", 0, 60_766)
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	require.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, 500_000, log.Quota)
+
+	other := map[string]interface{}{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.InDelta(t, 0.625, other["discount"], 1e-9)
+	// 折前差额 = 500_000 / 0.625 = 800_000
+	assert.Equal(t, 800_000, int(other["original_quota"].(float64)))
 }

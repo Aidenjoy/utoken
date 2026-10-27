@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -240,6 +241,19 @@ func taskModelName(task *model.Task) string {
 	return task.Properties.OriginModelName
 }
 
+// attachTaskLogDiscountOriginal 为差额结算/退款日志补写折前额度（original_quota）。
+// 这些日志的 quota 已是折后差额，而 taskBillingOther 只暴露 discount 不写
+// original_quota，前端「原价」列会回退为「原价 = 费用」，使退款行原价显示成
+// 折后额、与「折扣」列不自洽（预扣行却带折前原价，上下两行对不上）。
+// 折前差额 = 折后差额 / discount；复用 appendModelDiscountInfo 的 NaN/边界守卫。
+func attachTaskLogDiscountOriginal(other map[string]interface{}, logQuota int) {
+	discount, ok := other["discount"].(float64)
+	if !ok || logQuota <= 0 {
+		return
+	}
+	appendModelDiscountInfo(other, discount, int(math.Round(float64(logQuota)/discount)))
+}
+
 // RefundTaskQuota 统一的任务失败退款逻辑。
 // 当异步任务失败时，将预扣的 quota 退还给用户（支持钱包和订阅），并退还令牌额度。
 //
@@ -283,6 +297,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string, usage
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
+	attachTaskLogDiscountOriginal(other, quota)
 	refundPromptTokens, refundCompletionTokens := 0, 0
 	if len(usage) >= 2 {
 		refundPromptTokens, refundCompletionTokens = usage[0], usage[1]
@@ -395,6 +410,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	attachTaskLogDiscountOriginal(other, logQuota)
 	for _, clamp := range clamps {
 		attachQuotaSaturationToOther(other, clamp)
 	}

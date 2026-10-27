@@ -566,7 +566,11 @@ func migrateLOGDB() error {
 	}
 	// 为改造前已存在、被用户费率缩放过的 seedance 消耗行回填 upstream_* 与费率快照。
 	// 依赖 billing_setting（InitLogDB 在 InitOptionMap 之后调用，此时已加载）。
-	return backfillLogUpstreamTokens()
+	if err := backfillLogUpstreamTokens(); err != nil {
+		return err
+	}
+	// 为历史差额结算/退款行补写折前原价（有 discount 但缺 original_quota 的行）。
+	return backfillLogDiscountOriginalQuota()
 }
 
 // seedanceBillingModeOf 是 billing_setting.GetBillingMode 的可测试替身（仅测试覆盖）。
@@ -631,6 +635,54 @@ func backfillLogUpstreamTokens() error {
 			if err := LOG_DB.Model(&Log{}).Where("id = ?", lg.Id).Updates(updates).Error; err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// backfillLogDiscountOriginalQuota 为「有 discount 但 original_quota 缺失（或误等于
+// 折后 quota）」的历史结算/退款行补写折前原价。taskBillingOther 历史上只写 discount
+// 不写 original_quota，前端「原价」列回退为「原价 = 费用」，退款行原价显示成折后额、
+// 与预扣行上下对不上。折前额度 = 折后 quota / discount（退款/结算行 quota 均存正数）。
+//
+// 核对口径：已有 original_quota 且等于推算值的行跳过；已有且不等折后 quota 的视为
+// 其它来源正确值不动；仅修缺失或「原价 = 费用」的回退误写。幂等：修复后不再命中。
+func backfillLogDiscountOriginalQuota() error {
+	var logs []Log
+	if err := LOG_DB.
+		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		Where("quota > 0").
+		Where("other LIKE ?", `%"discount":%`).
+		Select("id", "quota", "other").
+		Find(&logs).Error; err != nil {
+		return err
+	}
+	for _, lg := range logs {
+		if strings.TrimSpace(lg.Other) == "" {
+			continue
+		}
+		other := map[string]interface{}{}
+		if err := common.UnmarshalJsonStr(lg.Other, &other); err != nil {
+			continue
+		}
+		discount, ok := other["discount"].(float64)
+		if !ok || !(discount > 0 && discount < 1) {
+			continue
+		}
+		original := int(math.Round(float64(lg.Quota) / discount))
+		if existing, exists := other["original_quota"].(float64); exists {
+			if int(existing) == original || int(existing) != lg.Quota {
+				continue
+			}
+		}
+		other["original_quota"] = original
+		data, err := common.Marshal(other)
+		if err != nil {
+			continue
+		}
+		if err := LOG_DB.Model(&Log{}).Where("id = ?", lg.Id).
+			Update("other", string(data)).Error; err != nil {
+			return err
 		}
 	}
 	return nil
