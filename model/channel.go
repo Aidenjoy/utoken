@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -103,16 +104,18 @@ type ChannelUpstreamPrices map[string]ChannelUpstreamPrice
 // GetChannelUpstreamPricesRaw 直读渠道费率卡 JSON（绕过 MaskedJSON 掩码），
 // 未配置时返回 nil。仅限管理端专用接口与成本估算内部使用。
 func GetChannelUpstreamPricesRaw(channelId int) (ChannelUpstreamPrices, error) {
-	var raw string
+	// 历史渠道行该列为 NULL（ALTER TABLE 新增列无默认值），用 sql.NullString
+	// 容忍 NULL；直接 Scan 到 string 会报 "converting NULL to string is unsupported"。
+	var raw sql.NullString
 	err := DB.Table("channels").Select("upstream_prices").Where("id = ?", channelId).Scan(&raw).Error
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(raw) == "" {
+	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
 		return nil, nil
 	}
 	var prices ChannelUpstreamPrices
-	if err := common.UnmarshalJsonStr(raw, &prices); err != nil {
+	if err := common.UnmarshalJsonStr(raw.String, &prices); err != nil {
 		return nil, err
 	}
 	return prices, nil

@@ -309,6 +309,24 @@ func TestChannelUpstreamPricesRoundTrip(t *testing.T) {
 	assert.Nil(t, cleared)
 }
 
+// TestGetChannelUpstreamPricesRawHandlesNullColumn reproduces the production
+// state of a legacy channel row: upstream_prices was added via ALTER TABLE, so
+// pre-existing rows hold SQL NULL (not ""). Reading such a row must not fail
+// with "converting NULL to string is unsupported" and must yield a nil card.
+func TestGetChannelUpstreamPricesRawHandlesNullColumn(t *testing.T) {
+	truncateTables(t)
+	seedChannelBillingChannel(t, 1, "east")
+
+	// Force the column to NULL, mirroring a row created before the migration.
+	require.NoError(t, DB.Table("channels").
+		Where("id = ?", 1).
+		Update("upstream_prices", nil).Error)
+
+	prices, err := GetChannelUpstreamPricesRaw(1)
+	require.NoError(t, err)
+	assert.Nil(t, prices)
+}
+
 // TestMaskedJSONHidesUpstreamPrices guards the platform-confidential contract:
 // marshalling a Channel must blank upstream_prices so neither the admin channel
 // list nor the cache sync ever leaks the contract rate card.
