@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/clickhouse"
@@ -559,7 +561,79 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	if err := LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	// 为改造前已存在、被用户费率缩放过的 seedance 消耗行回填 upstream_* 与费率快照。
+	// 依赖 billing_setting（InitLogDB 在 InitOptionMap 之后调用，此时已加载）。
+	return backfillLogUpstreamTokens()
+}
+
+// seedanceBillingModeOf 是 billing_setting.GetBillingMode 的可测试替身（仅测试覆盖）。
+var seedanceBillingModeOf = billing_setting.GetBillingMode
+
+// backfillLogUpstreamTokens 为「上游对账」改造前已存在、且被用户 token 费率缩放过的
+// seedance 消耗行回填 upstream_* 列与费率快照（改造后的新任务由 UpdateTaskConsumeLogUsage
+// 在预扣回填时写入，超管即可在消耗行看到「原始 tokens / 费率」）。
+//
+// 口径严格，避免污染其它日志：
+//   - 只处理 token_rate 非 1.0 的用户：费率 1.0 的行 upstream_* 保持 0/NULL，展示层
+//     自动回退计费 tokens（原始==计费、费率 1.0），无需写库；
+//   - 只处理计费模式为 seedance 的模型行：费率缩放只发生在 seedance 链路，同一用户的
+//     对话/图片等未被缩放的行绝不能按费率折算，否则会把真实用量改小；
+//   - 只处理 type=consume、非结算行、且尚未记录 upstream_* 的行，绝不触碰结算/退款行。
+//
+// 用当前 token_rate 反推原始 tokens（original = round(billed / rate)），假设历史费率未变；
+// 仅测试用户受影响。幂等：回填后 upstream_* 非 0，不再命中。
+func backfillLogUpstreamTokens() error {
+	var users []struct {
+		Id        int
+		TokenRate float64
+	}
+	if err := DB.Model(&User{}).
+		Where("token_rate > 0 AND token_rate <> 1").
+		Select("id", "token_rate").
+		Scan(&users).Error; err != nil {
+		return err
+	}
+	for _, u := range users {
+		var logs []Log
+		if err := LOG_DB.
+			Where("type = ?", LogTypeConsume).
+			Where("user_id = ?", u.Id).
+			Where("task_settle IS NULL OR task_settle = ?", false).
+			Where("COALESCE(upstream_prompt_tokens, 0) = 0").
+			Where("COALESCE(upstream_completion_tokens, 0) = 0").
+			Find(&logs).Error; err != nil {
+			return err
+		}
+		for _, lg := range logs {
+			if seedanceBillingModeOf(lg.ModelName) != billing_setting.BillingModeSeedance {
+				continue
+			}
+			rate := u.TokenRate
+			origCompletion := int64(math.Round(float64(lg.CompletionTokens) / rate))
+			origTotal := int64(math.Round(float64(lg.PromptTokens+lg.CompletionTokens) / rate))
+			origPrompt := origTotal - origCompletion
+			if origPrompt < 0 {
+				origPrompt = 0
+			}
+			scale := &TaskTokenRateScale{
+				Rate:                     rate,
+				OriginalCompletionTokens: origCompletion,
+				OriginalTotalTokens:      origTotal,
+			}
+			updates := map[string]any{
+				"upstream_prompt_tokens":     origPrompt,
+				"upstream_completion_tokens": origCompletion,
+				"other":                      mergeTokenRateScaleIntoOther(lg.Other, scale),
+			}
+			if err := LOG_DB.Model(&Log{}).Where("id = ?", lg.Id).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func migrateClickHouseLogDB() error {

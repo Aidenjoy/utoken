@@ -180,33 +180,6 @@ export function ChannelBillingDetailsTable({
         size: 150,
       },
       {
-        id: 'billed_tokens',
-        header: t('Billed Tokens'),
-        meta: { mobileHidden: true },
-        cell: ({ row }) => {
-          const log = row.original
-          const usage = upstreamUsage(log)
-          // Highlight rows where the billed (rate-scaled) tokens differ from the
-          // real upstream usage — exactly the rows reconciliation must catch.
-          const differs =
-            usage.prompt !== log.prompt_tokens ||
-            usage.completion !== log.completion_tokens
-          return (
-            <span
-              className={
-                differs
-                  ? 'font-mono text-xs whitespace-nowrap text-amber-600 tabular-nums dark:text-amber-400'
-                  : 'text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums'
-              }
-            >
-              {formatNumber(log.prompt_tokens)} /{' '}
-              {formatNumber(log.completion_tokens)}
-            </span>
-          )
-        },
-        size: 150,
-      },
-      {
         accessorKey: 'request_id',
         header: t('Request ID'),
         cell: ({ row }) => {

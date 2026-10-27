@@ -617,6 +617,27 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
+// mergeTokenRateScaleIntoOther 把费率缩放快照合并进日志 other 的 admin_info 下，
+// 保留 admin_info 既有键（如 quota_saturation）；other 为空或非法时新建对象。
+// 合并失败（marshal 错误）时返回原串，绝不阻断回填。
+func mergeTokenRateScaleIntoOther(otherStr string, scale *TaskTokenRateScale) string {
+	other := map[string]interface{}{}
+	if strings.TrimSpace(otherStr) != "" {
+		_ = common.UnmarshalJsonStr(otherStr, &other)
+	}
+	adminInfo, _ := other["admin_info"].(map[string]interface{})
+	if adminInfo == nil {
+		adminInfo = map[string]interface{}{}
+	}
+	adminInfo["token_rate_scale"] = scale
+	other["admin_info"] = adminInfo
+	data, err := common.Marshal(other)
+	if err != nil {
+		return otherStr
+	}
+	return string(data)
+}
+
 // UpdateTaskConsumeLogUsage 回填任务预扣消费日志的真实 token 用量与耗时。
 // 异步任务提交时预扣消费日志 tokens=0，结算差额另起新行，原行永远显示 0；
 // 差额为 0（预扣准确）时甚至没有差额行，tokens 完全丢失，用户在对账时看不到
@@ -624,7 +645,9 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 // 仅补展示字段（tokens/耗时），不改动 quota 等资金字段，返回影响行数。
 // upstreamPrompt/upstreamCompletion 为费率缩放前的上游真实 tokens（无缩放传 0
 // 走回退口径）：预扣回填行是上游对账唯一计入行，必须携带真实值。
-func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion int) (int64, error) {
+// scale 非空时同时把缩放快照合并进该行 other.admin_info.token_rate_scale，使超管
+// 在使用日志的消耗行（而非仅结算行）也能看到「原始 tokens / 费率」。
+func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion int, scale *TaskTokenRateScale) (int64, error) {
 	if taskID == "" {
 		return 0, nil
 	}
@@ -639,13 +662,17 @@ func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, us
 		}
 		return 0, err
 	}
-	res := LOG_DB.Model(&Log{}).Where("id = ?", pre.Id).Updates(map[string]any{
+	updates := map[string]any{
 		"prompt_tokens":              promptTokens,
 		"completion_tokens":          completionTokens,
 		"use_time":                   useTime,
 		"upstream_prompt_tokens":     upstreamPrompt,
 		"upstream_completion_tokens": upstreamCompletion,
-	})
+	}
+	if scale != nil {
+		updates["other"] = mergeTokenRateScaleIntoOther(pre.Other, scale)
+	}
+	res := LOG_DB.Model(&Log{}).Where("id = ?", pre.Id).Updates(updates)
 	return res.RowsAffected, res.Error
 }
 

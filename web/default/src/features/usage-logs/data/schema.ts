@@ -35,6 +35,10 @@ export const usageLogSchema = z.object({
   quota: z.number().default(0),
   prompt_tokens: z.number().default(0),
   completion_tokens: z.number().default(0),
+  // Real upstream tokens before user token-rate scaling (seedance video tasks).
+  // 0 means "no separate record" -> fall back to the billed tokens above.
+  upstream_prompt_tokens: z.number().default(0),
+  upstream_completion_tokens: z.number().default(0),
   use_time: z.number().default(0),
   is_stream: z.boolean().default(false),
   channel: z.number().default(0),

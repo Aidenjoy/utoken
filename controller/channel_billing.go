@@ -104,7 +104,7 @@ func ExportChannelBillingDetail(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	header := []string{"时间", "渠道", "模型", "类型", "上游输入tokens", "上游输出tokens", "计费输入tokens", "计费输出tokens", "请求ID", "上游请求ID"}
+	header := []string{"时间", "渠道", "模型", "类型", "上游输入tokens", "上游输出tokens", "请求ID", "上游请求ID"}
 	rows := make([][]string, 0, len(logs))
 	for _, log := range logs {
 		typeText := "消耗"
@@ -114,6 +114,9 @@ func ExportChannelBillingDetail(c *gin.Context) {
 		if log.TaskSettle {
 			typeText += "(结算行,对账不计)"
 		}
+		// 只导出计入对账的上游 tokens（结算行 UpstreamTokenUsage 恒 0），
+		// 不导出计费 tokens 快照：消耗行与结算行的计费值相同，Excel 直接
+		// 加和会把同一次上游交互计两次。
 		upstreamPrompt, upstreamCompletion := log.UpstreamTokenUsage()
 		rows = append(rows, []string{
 			billingTimestamp(log.CreatedAt),
@@ -122,8 +125,6 @@ func ExportChannelBillingDetail(c *gin.Context) {
 			typeText,
 			strconv.Itoa(upstreamPrompt),
 			strconv.Itoa(upstreamCompletion),
-			strconv.Itoa(log.PromptTokens),
-			strconv.Itoa(log.CompletionTokens),
 			log.RequestId,
 			log.UpstreamRequestId,
 		})

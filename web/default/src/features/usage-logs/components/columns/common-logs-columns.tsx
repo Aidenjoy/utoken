@@ -301,8 +301,9 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
   const { t, i18n } = useTranslation()
   // Intl 只认 BCP-47，'zhCN' 直接传给 Intl.NumberFormat 会抛 RangeError。
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
-  // token 费率对账列（超管专属）：seedance 任务 usage 被用户费率缩放后，
-  // 结算日志的 admin_info.token_rate_scale 带回缩放前原始用量与费率，
+  // token 费率对账列（超管专属）：seedance 任务 usage 被用户费率缩放后，日志的
+  // upstream_* 列携带缩放前原始用量、admin_info.token_rate_scale 携带费率快照。
+  // 两列恒填充：无缩放（费率 1.0）时原始 tokens 等于计费 tokens、费率显示 1.0×，
   // 与「原价 / 折扣 / 费用」同一对账思路；非超管看不到这两列。
   const tokenRateColumns: ColumnDef<UsageLog>[] =
     isAdmin && isSuperAdmin
@@ -322,15 +323,21 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
               }
               const scale =
                 parseLogOther(log.other)?.admin_info?.token_rate_scale
-              if (!scale) {
-                return (
-                  <span className='text-muted-foreground/60 text-xs'>-</span>
-                )
-              }
+              // upstream_* 列权威；缺失时回退缩放快照，再回退计费 tokens（=未缩放）。
+              const originalPrompt =
+                log.upstream_prompt_tokens > 0
+                  ? log.upstream_prompt_tokens
+                  : log.prompt_tokens || 0
+              const originalCompletion =
+                log.upstream_completion_tokens > 0
+                  ? log.upstream_completion_tokens
+                  : (scale?.original_completion_tokens ??
+                    log.completion_tokens ??
+                    0)
               return (
                 <span className='text-muted-foreground font-mono text-xs tabular-nums'>
-                  {(log.prompt_tokens || 0).toLocaleString()} /{' '}
-                  {scale.original_completion_tokens.toLocaleString()}
+                  {originalPrompt.toLocaleString()} /{' '}
+                  {originalCompletion.toLocaleString()}
                 </span>
               )
             },
@@ -349,17 +356,10 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
               ) {
                 return <span className='text-muted-foreground text-xs'>-</span>
               }
-              const scale =
-                parseLogOther(log.other)?.admin_info?.token_rate_scale
-              if (!scale) {
-                return (
-                  <span className='text-muted-foreground/60 text-xs'>-</span>
-                )
-              }
+              const rate =
+                parseLogOther(log.other)?.admin_info?.token_rate_scale?.rate ?? 1
               return (
-                <span className='font-mono text-xs tabular-nums'>
-                  {scale.rate}×
-                </span>
+                <span className='font-mono text-xs tabular-nums'>{rate}×</span>
               )
             },
             size: 100,

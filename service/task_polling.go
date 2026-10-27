@@ -877,7 +877,7 @@ func backfillPreConsumeLogUsage(ctx context.Context, task *model.Task, taskResul
 		}
 		upstreamCompletion = int(scale.OriginalCompletionTokens)
 	}
-	n, err := model.UpdateTaskConsumeLogUsage(task.TaskID, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion)
+	n, err := model.UpdateTaskConsumeLogUsage(task.TaskID, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion, task.TokenRateScale)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("回填预扣消费日志失败 task %s: %s", task.TaskID, err.Error()))
 		return
