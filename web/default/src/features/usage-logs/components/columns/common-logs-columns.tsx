@@ -1003,6 +1003,7 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
             </button>
             <CommonLogDetailsDialog
               log={log}
+              scope={scope}
               open={dialogOpen}
               onOpenChange={setDialogOpen}
             />
@@ -1057,6 +1058,7 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
             </button>
             <CommonLogDetailsDialog
               log={log}
+              scope={scope}
               open={open}
               onOpenChange={setOpen}
             />

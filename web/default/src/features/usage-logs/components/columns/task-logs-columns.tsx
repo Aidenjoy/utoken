@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Info, Music, RefreshCw } from "lucide-react";
+import { Info, Music, RefreshCw } from "lucide-react";
 /* eslint-disable react-refresh/only-export-components */
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -27,13 +27,8 @@ import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useIsSuperAdmin } from "@/hooks/use-admin";
-import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { getUserAvatarFallback, getUserAvatarStyle } from "@/lib/avatar";
-import {
-  formatLogQuota,
-  formatTimestampToDate,
-  formatUseTime,
-} from "@/lib/format";
+import { formatTimestampToDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import {
@@ -49,11 +44,7 @@ import {
   type AudioClip,
 } from "../dialogs/audio-preview-dialog";
 import { FailReasonDialog } from "../dialogs/fail-reason-dialog";
-import {
-  RelayDetailsDialog,
-  prettyJson,
-  type RelayDetailRow,
-} from "../dialogs/relay-details-dialog";
+import { TaskDetailsDialog } from "../dialogs/task-details-dialog";
 import { useUsageLogsContext } from "../usage-logs-provider";
 import {
   createDurationColumn,
@@ -61,20 +52,7 @@ import {
   createProgressColumn,
 } from "./column-helpers";
 
-// Video-generation actions can fall back to the authenticated
-// /v1/videos/{id}/content proxy when no direct result URL is available.
-const VIDEO_ACTIONS = new Set<string>([
-  TASK_ACTIONS.GENERATE,
-  TASK_ACTIONS.TEXT_GENERATE,
-  TASK_ACTIONS.FIRST_TAIL_GENERATE,
-  TASK_ACTIONS.REFERENCE_GENERATE,
-  TASK_ACTIONS.REMIX_GENERATE,
-]);
-
-function formatTime(timestamp?: number): string {
-  if (!timestamp || timestamp <= 0) return "-";
-  return formatTimestampToDate(timestamp, "seconds");
-}
+// Video-generation actions / formatTime 已随弹窗本体迁至 dialogs/task-details-dialog.tsx。
 
 function parseTaskData(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
@@ -170,93 +148,10 @@ function TaskRefetchCell({ log }: { log: TaskLog }) {
 
 // 仅超级管理员可见：查看单个任务的完整请求/响应数据（含提示词、分辨率、
 // 上游返回、视频地址与 token 消耗）。普通管理员、代理商与自助用户不渲染该按钮。
-// 复用统一的 RelayDetailsDialog（与使用日志详情同一份弹窗代码），任务侧额外
-// 传入 basicRows 与视频预览地址。
+// 弹窗本体复用共享 TaskDetailsDialog（与使用日志关联任务的详情同一份代码）。
 function TaskDetailsCell({ log }: { log: TaskLog }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false });
-
-  const properties = log.properties ?? {};
-  const model =
-    properties.origin_model_name || properties.upstream_model_name || "-";
-  const durationSec =
-    log.finish_time && log.submit_time && log.finish_time >= log.submit_time
-      ? log.finish_time - log.submit_time
-      : 0;
-
-  const isSuccess = log.status === TASK_STATUS.SUCCESS;
-  const isVideoAction = VIDEO_ACTIONS.has(log.action);
-  // 直链过期/报错时的鉴权代理回退；仅成功的视频任务适用。
-  const videoProxyUrl =
-    isSuccess && isVideoAction && log.task_id
-      ? `/v1/videos/${log.task_id}/content`
-      : "";
-
-  // 传入参数优先展示用户提交的完整请求体快照（base64 已截断）；
-  // 旧任务无快照时回退到 properties（仅含 prompt 与模型名）。
-  const requestJson =
-    prettyJson(log.request_data) || prettyJson(log.properties);
-  const responseJson = prettyJson(log.data);
-
-  const basicRows: RelayDetailRow[] = [
-    {
-      className: "sm:col-span-2",
-      label: t("Task ID"),
-      mono: true,
-      value: (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="break-all">{log.task_id || "-"}</span>
-          {log.task_id && (
-            <button
-              type="button"
-              onClick={() => copyToClipboard(log.task_id)}
-              title={t("Copy to clipboard")}
-              className="text-muted-foreground hover:text-foreground shrink-0"
-            >
-              {copiedText === log.task_id ? (
-                <Check className="size-3 text-green-600" />
-              ) : (
-                <Copy className="size-3" />
-              )}
-            </button>
-          )}
-        </span>
-      ),
-    },
-    { label: t("Platform"), value: t(log.platform) || "-" },
-    {
-      label: t("Action"),
-      value: t(taskActionMapper.getLabel(log.action)) || log.action || "-",
-    },
-    {
-      label: t("Status"),
-      value: (
-        <StatusBadge
-          label={t(
-            taskStatusMapper.getLabel(log.status, log.status || "Submitting"),
-          )}
-          variant={taskStatusMapper.getVariant(log.status)}
-          size="sm"
-          copyable={false}
-          className="-ml-1.5"
-        />
-      ),
-    },
-    { label: t("Progress"), value: log.progress || "-" },
-    { label: t("Channel ID"), mono: true, value: log.channel_id || "-" },
-    { label: t("User"), value: log.username || String(log.user_id ?? "-") },
-    { label: t("Group"), value: log.group || "-" },
-    { label: t("Cost"), mono: true, value: formatLogQuota(log.quota ?? 0) },
-    { label: t("Submit Time"), mono: true, value: formatTime(log.submit_time) },
-    { label: t("Start Time"), mono: true, value: formatTime(log.start_time) },
-    { label: t("Finish Time"), mono: true, value: formatTime(log.finish_time) },
-    {
-      label: t("Duration"),
-      mono: true,
-      value: durationSec > 0 ? formatUseTime(durationSec) : "-",
-    },
-  ];
 
   return (
     <>
@@ -269,26 +164,7 @@ function TaskDetailsCell({ log }: { log: TaskLog }) {
         <Info className="size-3.5" />
         <span>{t("Details")}</span>
       </button>
-      <RelayDetailsDialog
-        open={open}
-        onOpenChange={setOpen}
-        title={
-          <>
-            <Info className="h-5 w-5" />
-            {t("Task Details")}
-          </>
-        }
-        description={t("View the full request and response data for this task")}
-        basicRows={basicRows}
-        requestModel={model}
-        upstreamModel={properties.upstream_model_name}
-        requestUrl={properties.request_url}
-        requestJson={requestJson}
-        responseJson={responseJson}
-        resultUrl={log.result_url}
-        videoProxyUrl={videoProxyUrl}
-        failReason={log.fail_reason}
-      />
+      <TaskDetailsDialog task={log} open={open} onOpenChange={setOpen} />
     </>
   );
 }

@@ -27,6 +27,8 @@ import type {
   GetLogBodiesResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
+  LogsScope,
+  TaskLog,
   UserInfo,
 } from './types'
 
@@ -151,6 +153,23 @@ export const getUserTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getAgentTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogsFromPath('/api/agent/tasks', params)
+
+// 使用日志关联任务的详情：列表接口支持 task_id 精确过滤，故按 task_id 拉取单个任务，
+// 使使用日志详情与任务日志详情渲染同一份任务数据。可见范围随 scope 由服务端强制。
+export async function getTaskById(
+  scope: LogsScope,
+  taskId: string
+): Promise<TaskLog | null> {
+  const params: GetTaskLogsParams = { task_id: taskId, p: 1, page_size: 1 }
+  const res =
+    scope === 'admin'
+      ? await getAllTaskLogs(params)
+      : scope === 'agent'
+        ? await getAgentTaskLogs(params)
+        : await getUserTaskLogs(params)
+  const first = res.data?.items?.[0]
+  return (first as TaskLog | undefined) ?? null
+}
 
 // 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
 // data.result 为后端结算摘要码（settled_adjusted/settled_exact/refunded/
