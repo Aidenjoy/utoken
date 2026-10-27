@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  ArrowLeftRight,
   BadgePercent,
   BarChart3,
   BookOpen,
@@ -400,7 +401,7 @@ export function useSidebarData(): SidebarData {
                   icon: ReceiptText,
                 },
                 {
-                  title: t('Billing Center'),
+                  title: t('User Billing'),
                   url: '/billing',
                   icon: CreditCard,
                 },
@@ -455,9 +456,15 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.ADMIN,
           },
           {
-            title: t('Billing Center'),
+            title: t('User Billing'),
             url: '/billing',
             icon: ReceiptText,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Channel Billing'),
+            url: '/channel-billing',
+            icon: ArrowLeftRight,
             requiredRole: ROLE.ADMIN,
           },
           {

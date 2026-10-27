@@ -56,6 +56,7 @@ import { Route as AuthenticatedDirectorIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedCostCalculatorIndexRouteImport } from './routes/_authenticated/cost-calculator/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
+import { Route as AuthenticatedChannelBillingIndexRouteImport } from './routes/_authenticated/channel-billing/index'
 import { Route as AuthenticatedBillingIndexRouteImport } from './routes/_authenticated/billing/index'
 import { Route as AuthenticatedAssetSyncIndexRouteImport } from './routes/_authenticated/asset-sync/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
@@ -354,6 +355,12 @@ const AuthenticatedChannelsIndexRoute =
   AuthenticatedChannelsIndexRouteImport.update({
     id: '/channels/',
     path: '/channels/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedChannelBillingIndexRoute =
+  AuthenticatedChannelBillingIndexRouteImport.update({
+    id: '/channel-billing/',
+    path: '/channel-billing/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedBillingIndexRoute =
@@ -695,6 +702,7 @@ export interface FileRoutesByFullPath {
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/billing/': typeof AuthenticatedBillingIndexRoute
+  '/channel-billing/': typeof AuthenticatedChannelBillingIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -788,6 +796,7 @@ export interface FileRoutesByTo {
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync': typeof AuthenticatedAssetSyncIndexRoute
   '/billing': typeof AuthenticatedBillingIndexRoute
+  '/channel-billing': typeof AuthenticatedChannelBillingIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator': typeof AuthenticatedCostCalculatorIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
@@ -885,6 +894,7 @@ export interface FileRoutesById {
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/_authenticated/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/_authenticated/billing/': typeof AuthenticatedBillingIndexRoute
+  '/_authenticated/channel-billing/': typeof AuthenticatedChannelBillingIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
@@ -982,6 +992,7 @@ export interface FileRouteTypes {
     | '/asset-library/'
     | '/asset-sync/'
     | '/billing/'
+    | '/channel-billing/'
     | '/channels/'
     | '/cost-calculator/'
     | '/dashboard/'
@@ -1075,6 +1086,7 @@ export interface FileRouteTypes {
     | '/asset-library'
     | '/asset-sync'
     | '/billing'
+    | '/channel-billing'
     | '/channels'
     | '/cost-calculator'
     | '/dashboard'
@@ -1171,6 +1183,7 @@ export interface FileRouteTypes {
     | '/_authenticated/asset-library/'
     | '/_authenticated/asset-sync/'
     | '/_authenticated/billing/'
+    | '/_authenticated/channel-billing/'
     | '/_authenticated/channels/'
     | '/_authenticated/cost-calculator/'
     | '/_authenticated/dashboard/'
@@ -1562,6 +1575,13 @@ declare module '@tanstack/react-router' {
       path: '/channels'
       fullPath: '/channels/'
       preLoaderRoute: typeof AuthenticatedChannelsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/channel-billing/': {
+      id: '/_authenticated/channel-billing/'
+      path: '/channel-billing'
+      fullPath: '/channel-billing/'
+      preLoaderRoute: typeof AuthenticatedChannelBillingIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/billing/': {
@@ -2054,6 +2074,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
   AuthenticatedAssetSyncIndexRoute: typeof AuthenticatedAssetSyncIndexRoute
   AuthenticatedBillingIndexRoute: typeof AuthenticatedBillingIndexRoute
+  AuthenticatedChannelBillingIndexRoute: typeof AuthenticatedChannelBillingIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCostCalculatorIndexRoute: typeof AuthenticatedCostCalculatorIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
@@ -2111,6 +2132,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
   AuthenticatedAssetSyncIndexRoute: AuthenticatedAssetSyncIndexRoute,
   AuthenticatedBillingIndexRoute: AuthenticatedBillingIndexRoute,
+  AuthenticatedChannelBillingIndexRoute: AuthenticatedChannelBillingIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedCostCalculatorIndexRoute: AuthenticatedCostCalculatorIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
