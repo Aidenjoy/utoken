@@ -165,7 +165,7 @@ export const VIDEO_STORAGE_KEYS = {
   VIDEO_TASKS: 'playground_video_tasks',
 } as const
 
-export const VIDEO_MAX_DURATION = 15 // 视频总时长上限（秒）
+export const VIDEO_MAX_DURATION = 30 // 参考视频总时长上限（秒）；模型已支持长视频，由 15 放宽至 30
 export const AUDIO_MAX_DURATION = 15 // 音频总时长上限（秒）
 export const MAX_VIDEOS = 3 // 最多视频数
 export const MAX_AUDIOS = 3 // 最多音频数
