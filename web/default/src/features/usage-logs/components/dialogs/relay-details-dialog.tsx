@@ -172,8 +172,8 @@ interface RelayDetailsDialogProps {
   // heading (and status badge) while sharing one body layout.
   title?: React.ReactNode;
   description?: string;
-  // Basic Info rows (task logs assemble these from TaskLog; usage logs fold their
-  // identifiers into extraSections instead and omit this).
+  // Basic Info rows：任务日志与通用日志都从各自日志类型组装后传入，
+  // 保证两种详情共用同一「基本信息」版式。
   basicRows?: RelayDetailRow[];
   // Optional Model / Upstream Model rows shown atop the Input Parameters block.
   requestModel?: string;
@@ -189,8 +189,6 @@ interface RelayDetailsDialogProps {
   resultUrl?: string;
   videoProxyUrl?: string;
   failReason?: string;
-  // 使用日志把计费/倍率/订阅等 sections 原样插入此处（见 usage-billing-sections）。
-  extraSections?: React.ReactNode;
 }
 
 export function RelayDetailsDialog(props: RelayDetailsDialogProps) {
@@ -271,8 +269,6 @@ export function RelayDetailsDialog(props: RelayDetailsDialogProps) {
               </div>
             </DetailSection>
           )}
-
-          {props.extraSections}
 
           {/* Input parameters */}
           <DetailSection
