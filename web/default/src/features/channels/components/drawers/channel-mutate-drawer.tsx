@@ -70,6 +70,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { ComboboxInput } from "@/components/ui/combobox-input";
 import {
   Form,
   FormControl,
@@ -111,7 +112,6 @@ import {
   useSecureVerification,
 } from "@/features/auth/secure-verification";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
-import { useHiddenClickUnlock } from "@/hooks/use-hidden-click-unlock";
 import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
@@ -766,24 +766,6 @@ export function ChannelMutateDrawer({
   const currentUpstreamModelUpdateIgnoredModels = form.watch(
     "upstream_model_update_ignored_models",
   );
-  const {
-    unlocked: doubaoApiEditUnlocked,
-    handleClick: handleApiConfigSecretClick,
-    reset: resetDoubaoApiUnlock,
-  } = useHiddenClickUnlock({
-    requiredClicks: 10,
-    disabled: ![45, 60].includes(currentType) || sensitiveLocked,
-    onUnlock: () => {
-      toast.info(t("Doubao custom API address editing unlocked"));
-    },
-  });
-
-  useEffect(() => {
-    if (!open) {
-      resetDoubaoApiUnlock();
-    }
-  }, [open, resetDoubaoApiUnlock]);
-
   const applyConnectionInfo = useCallback(
     (connectionInfo: ChannelConnectionInfo) => {
       form.setValue("key", connectionInfo.key, {
@@ -966,9 +948,9 @@ export function ChannelMutateDrawer({
   const providerRequiresBaseUrl = [3, 8, 36, 45, 60].includes(currentType);
   const providerRequiresOther = [3, 18, 21, 39, 41, 49].includes(currentType);
   // VolcEngine (45) and VolcEngine Image (60) pick from the official Ark
-  // regions; the free-form URL input stays behind the hidden 10-click unlock.
-  const showArkRegionSelect =
-    [45, 60].includes(currentType) && !doubaoApiEditUnlocked;
+  // endpoints; the field is an editable combobox, so a custom URL can be typed
+  // directly and no hidden unlock is needed anymore.
+  const showArkRegionSelect = [45, 60].includes(currentType);
   // Types that render a dedicated API-address field; the generic Base URL
   // input must stay hidden for them so the two never conflict.
   const hasDedicatedBaseUrlField = [3, 8, 22, 36, 45, 59, 60].includes(
@@ -2678,98 +2660,56 @@ export function ChannelMutateDrawer({
                                 name="base_url"
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel
-                                      className="cursor-pointer select-none"
-                                      onClick={handleApiConfigSecretClick}
-                                    >
-                                      {t("API Base URL *")}
-                                    </FormLabel>
-                                    <Select
-                                      items={[
-                                        {
-                                          value:
-                                            "https://ark.cn-beijing.volces.com",
-                                          label: t(
-                                            "https://ark.cn-beijing.volces.com",
-                                          ),
-                                        },
-                                        {
-                                          value:
-                                            "https://ark.cn-beijing.volces.com/api/plan/v3",
-                                          label: t(
-                                            "https://ark.cn-beijing.volces.com/api/plan/v3 (Agent Plan)",
-                                          ),
-                                        },
-                                        {
-                                          value:
-                                            "https://ark.ap-southeast.bytepluses.com",
-                                          label: t(
-                                            "https://ark.ap-southeast.bytepluses.com",
-                                          ),
-                                        },
-                                      ]}
-                                      onValueChange={field.onChange}
-                                      value={
-                                        field.value === "doubao-coding-plan"
-                                          ? "https://ark.cn-beijing.volces.com"
-                                          : field.value ||
-                                            "https://ark.cn-beijing.volces.com"
-                                      }
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent
-                                        alignItemWithTrigger={false}
-                                      >
-                                        <SelectGroup>
-                                          <SelectItem value="https://ark.cn-beijing.volces.com">
-                                            {t(
-                                              "https://ark.cn-beijing.volces.com",
-                                            )}
-                                          </SelectItem>
-                                          <SelectItem value="https://ark.cn-beijing.volces.com/api/plan/v3">
-                                            {t(
-                                              "https://ark.cn-beijing.volces.com/api/plan/v3 (Agent Plan)",
-                                            )}
-                                          </SelectItem>
-                                          <SelectItem value="https://ark.ap-southeast.bytepluses.com">
-                                            {t(
-                                              "https://ark.ap-southeast.bytepluses.com",
-                                            )}
-                                          </SelectItem>
-                                        </SelectGroup>
-                                      </SelectContent>
-                                    </Select>
-                                    <FormDescription>
-                                      {t("Select the API endpoint region")}
-                                    </FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            )}
-
-                            {/* VolcEngine (type 45) - Custom API URL (unlocked) */}
-                            {currentType === 45 && doubaoApiEditUnlocked && (
-                              <FormField
-                                control={form.control}
-                                name="base_url"
-                                render={({ field }) => (
-                                  <FormItem>
                                     <FormLabel>{t("API Base URL *")}</FormLabel>
                                     <FormControl>
-                                      <Input
+                                      <ComboboxInput
+                                        options={[
+                                          {
+                                            value:
+                                              "https://ark.cn-beijing.volces.com",
+                                            label: t(
+                                              "https://ark.cn-beijing.volces.com",
+                                            ),
+                                          },
+                                          {
+                                            value:
+                                              "https://ark.cn-beijing.volces.com/api/plan/v3",
+                                            label: t(
+                                              "https://ark.cn-beijing.volces.com/api/plan/v3 (Agent Plan)",
+                                            ),
+                                          },
+                                          {
+                                            value:
+                                              "https://ark.cn-beijing.volces.com/api/coding/v3",
+                                            label: t(
+                                              "https://ark.cn-beijing.volces.com/api/coding/v3 (Coding Plan)",
+                                            ),
+                                          },
+                                          {
+                                            value:
+                                              "https://ark.ap-southeast.bytepluses.com",
+                                            label: t(
+                                              "https://ark.ap-southeast.bytepluses.com",
+                                            ),
+                                          },
+                                        ]}
+                                        value={
+                                          field.value === "doubao-coding-plan"
+                                            ? "https://ark.cn-beijing.volces.com"
+                                            : field.value ||
+                                              "https://ark.cn-beijing.volces.com"
+                                        }
+                                        onValueChange={field.onChange}
+                                        allowCustomValue
                                         placeholder={t(
                                           "e.g., https://ark.cn-beijing.volces.com",
                                         )}
-                                        {...field}
                                       />
                                     </FormControl>
                                     <FormDescription>
-                                      {t("Enter custom API endpoint URL")}
+                                      {t(
+                                        "Select a preset API endpoint or enter a custom URL",
+                                      )}
                                     </FormDescription>
                                     <FormMessage />
                                   </FormItem>
