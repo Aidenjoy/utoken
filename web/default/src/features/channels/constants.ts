@@ -282,6 +282,7 @@ export const DEFAULT_CHANNEL_VALUES = {
   weight: 0,
   auto_ban: 1,
   remark: "",
+  info: "",
 } as const;
 
 // ============================================================================
@@ -345,6 +346,7 @@ export const FIELD_PLACEHOLDERS = {
   TEST_MODEL: "Model to use for testing",
   TAG: "Optional tag for grouping channels",
   REMARK: "Optional notes about this channel",
+  INFO: "Brief description of this channel, shown on the channel card",
   PARAM_OVERRIDE: '{"temperature": 0.7}',
   HEADER_OVERRIDE: '{"X-Custom-Header": "value"}',
   STATUS_CODE_MAPPING: '{"400": "500"}',
@@ -366,7 +368,9 @@ export const FIELD_DESCRIPTIONS = {
   AUTO_BAN: "Automatically disable channel on repeated failures",
   STATUS_CODE_MAPPING: "Map response status codes (JSON format)",
   TAG: "Group channels by tag for batch operations",
-  REMARK: "Internal notes (not shown to users)",
+  REMARK:
+    "Internal notepad (opening date, commercial use, issues...). Not shown directly; hover the icon on the channel card to view.",
+  INFO: "Display only. Not used in routing, billing, or any other logic.",
   SETTING: "Channel-specific settings (JSON format)",
   PARAM_OVERRIDE: "Override request parameters (JSON format)",
   HEADER_OVERRIDE: "Override request headers (JSON format)",

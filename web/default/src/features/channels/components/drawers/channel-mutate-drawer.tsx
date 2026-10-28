@@ -732,7 +732,6 @@ export function ChannelMutateDrawer({
   const currentTestModel = form.watch("test_model");
   const currentAutoBan = form.watch("auto_ban");
   const currentTag = form.watch("tag");
-  const currentRemark = form.watch("remark");
   const currentStatusCodeMapping = form.watch("status_code_mapping");
   const currentParamOverride = form.watch("param_override");
   const currentHeaderOverride = form.watch("header_override");
@@ -994,9 +993,7 @@ export function ChannelMutateDrawer({
     currentTestModel?.trim() ||
     (currentAutoBan ?? 1) !== 1,
   );
-  const internalNotesConfigured = Boolean(
-    currentTag?.trim() || currentRemark?.trim(),
-  );
+  const internalNotesConfigured = Boolean(currentTag?.trim());
   const overrideRulesConfigured = Boolean(
     hasConfiguredOverrideValue(currentStatusCodeMapping) ||
     hasConfiguredOverrideValue(currentParamOverride) ||
@@ -2039,6 +2036,49 @@ export function ChannelMutateDrawer({
                                     {...field}
                                   />
                                 </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="info"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>{t("Channel Info")}</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    placeholder={t(FIELD_PLACEHOLDERS.INFO)}
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t(FIELD_DESCRIPTIONS.INFO)}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="remark"
+                            render={({ field }) => (
+                              <FormItem className="sm:col-span-2">
+                                <FormLabel>{t("Remark")}</FormLabel>
+                                <FormControl>
+                                  <Textarea
+                                    placeholder={t(
+                                      FIELD_PLACEHOLDERS.REMARK,
+                                    )}
+                                    rows={6}
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t(FIELD_DESCRIPTIONS.REMARK)}
+                                </FormDescription>
                                 <FormMessage />
                               </FormItem>
                             )}
@@ -4173,29 +4213,6 @@ export function ChannelMutateDrawer({
                                     </FormControl>
                                     <FormDescription>
                                       {t(FIELD_DESCRIPTIONS.TAG)}
-                                    </FormDescription>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name="remark"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>{t("Remark")}</FormLabel>
-                                    <FormControl>
-                                      <Textarea
-                                        placeholder={t(
-                                          FIELD_PLACEHOLDERS.REMARK,
-                                        )}
-                                        rows={2}
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormDescription>
-                                      {t(FIELD_DESCRIPTIONS.REMARK)}
                                     </FormDescription>
                                     <FormMessage />
                                   </FormItem>

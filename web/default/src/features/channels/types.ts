@@ -63,6 +63,7 @@ export const channelSchema = z.object({
   param_override: z.string().nullish(),
   header_override: z.string().nullish(),
   remark: z.string().default(''),
+  info: z.string().default(''),
   max_input_tokens: z.number().default(0),
   channel_info: channelInfoSchema.default({
     is_multi_key: false,
@@ -352,6 +353,7 @@ export interface ChannelFormData {
   status_code_mapping?: string
   tag?: string
   remark?: string
+  info?: string
   setting?: string
   param_override?: string
   header_override?: string

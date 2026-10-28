@@ -50,7 +50,8 @@ type Channel struct {
 	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
 	ParamOverride     *string `json:"param_override" gorm:"type:text"`
 	HeaderOverride    *string `json:"header_override" gorm:"type:text"`
-	Remark            *string `json:"remark" gorm:"type:varchar(255)" validate:"max=255"`
+	Remark            *string `json:"remark" gorm:"type:text"`                          // 内部备注（记事本），卡片上仅悬停图标可见
+	Info              *string `json:"info" gorm:"type:varchar(255)" validate:"max=255"` // 渠道信息：仅显示的中文描述，不参与路由/计费等逻辑
 	// add after v0.8.5
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 

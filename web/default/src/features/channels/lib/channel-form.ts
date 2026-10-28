@@ -159,7 +159,11 @@ export const channelFormSchema = z
     tag: z.string().optional(),
     remark: z
       .string()
-      .max(255, "Remark must be less than 255 characters")
+      .max(5000, "Remark must be less than 5000 characters")
+      .optional(),
+    info: z
+      .string()
+      .max(255, "Channel Info must be less than 255 characters")
       .optional(),
     setting: z
       .string()
@@ -336,6 +340,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   status_code_mapping: "",
   tag: "",
   remark: "",
+  info: "",
   setting: "",
   param_override: "",
   header_override: "",
@@ -526,6 +531,7 @@ export function transformChannelToFormDefaults(
     status_code_mapping: channel.status_code_mapping || "",
     tag: channel.tag || "",
     remark: channel.remark || "",
+    info: channel.info || "",
     setting: channel.setting || "",
     param_override: channel.param_override || "",
     header_override: channel.header_override || "",
@@ -813,6 +819,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
     remark: formData.remark || "",
+    info: formData.info || "",
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,
     header_override: formData.header_override || null,
@@ -860,6 +867,7 @@ export function transformFormDataToUpdatePayload(
     status_code_mapping: formData.status_code_mapping || null,
     tag: formData.tag || null,
     remark: formData.remark || "",
+    info: formData.info || "",
     setting: buildSettingJSON(formData),
     param_override: formData.param_override || null,
     header_override: formData.header_override || null,
@@ -885,6 +893,7 @@ export function transformFormDataToUpdatePayload(
   payload.test_model = formData.test_model || "";
   payload.tag = formData.tag || "";
   payload.remark = formData.remark || "";
+  payload.info = formData.info || "";
   payload.model_mapping = formData.model_mapping || "";
   payload.status_code_mapping = formData.status_code_mapping || "";
   payload.param_override = formData.param_override || "";

@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  CircleAlert,
   ListOrdered,
   Shuffle,
   SlidersHorizontal,
@@ -53,7 +54,6 @@ import {
   getCurrencyLabel,
 } from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
-import { truncateText } from '@/lib/utils'
 
 import { getCodexUsage } from '../api'
 import { CHANNEL_STATUS_CONFIG, MODEL_FETCHABLE_TYPES } from '../constants'
@@ -665,21 +665,33 @@ export function useChannelsColumns(
                   )}
                   <UpstreamUpdateTags channel={channel} />
                 </div>
-                {channel.remark && (
-                  <TooltipProvider delay={200}>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <span className='text-muted-foreground text-xs' />
-                        }
-                      >
-                        {truncateText(channel.remark, 40)}
-                      </TooltipTrigger>
-                      <TooltipContent side='bottom' className='max-w-xs'>
-                        {channel.remark}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                {(channel.info || channel.remark) && (
+                  <div className='flex min-w-0 items-center gap-1'>
+                    {channel.info && (
+                      <span className='text-muted-foreground truncate text-xs'>
+                        {channel.info}
+                      </span>
+                    )}
+                    {channel.remark && (
+                      <TooltipProvider delay={200}>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <span className='cursor-help shrink-0' />
+                            }
+                          >
+                            <CircleAlert className='h-3.5 w-3.5 text-amber-500' />
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side='bottom'
+                            className='max-w-xs whitespace-pre-wrap'
+                          >
+                            {channel.remark}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
