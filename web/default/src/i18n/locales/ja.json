@@ -4768,6 +4768,7 @@
     "Profile": "プロフィール",
     "Profile updated successfully": "プロフィールが正常に更新されました",
     "Programming": "プログラミング",
+    "Protocol Details": "プロトコル詳細",
     "Progress": "進捗",
     "Project": "プロジェクト",
     "Project deleted": "プロジェクトを削除しました",
@@ -6003,7 +6004,6 @@
     "Target Path (optional)": "ターゲットパス（任意）",
     "Target User": "対象ユーザー",
     "Task": "タスク",
-    "Task Details": "タスク詳細",
     "Task History": "タスク履歴",
     "Task ID": "タスクID",
     "Task ID:": "タスクID：",
@@ -7110,7 +7110,6 @@
     "视频": "動画",
     "音频": "音声"
   },
-  "Re-query": "再問い合わせ",
   "Re-query upstream and settle billing": "上流へ再問い合わせして課金を確定",
   "Task re-queried and settled": "タスクを再問い合わせして確定しました",
   "Re-query failed": "再問い合わせに失敗しました"

@@ -4768,6 +4768,7 @@
     "Profile": "个人资料",
     "Profile updated successfully": "个人资料更新成功",
     "Programming": "编程",
+    "Protocol Details": "协议详情",
     "Progress": "进度",
     "Project": "项目",
     "Project deleted": "项目已删除",
@@ -6003,7 +6004,6 @@
     "Target Path (optional)": "目标路径（可选）",
     "Target User": "目标用户",
     "Task": "任务",
-    "Task Details": "任务详情",
     "Task History": "历史任务",
     "Task ID": "任务 ID",
     "Task ID:": "任务 ID：",
@@ -7110,7 +7110,6 @@
     "视频": "视频",
     "音频": "音频"
   },
-  "Re-query": "重新查询",
   "Re-query upstream and settle billing": "重新查询上游并结算计费",
   "Task re-queried and settled": "任务已重新查询并结算",
   "Re-query failed": "重新查询失败"

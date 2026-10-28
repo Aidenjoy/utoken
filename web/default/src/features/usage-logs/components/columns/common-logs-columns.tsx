@@ -66,6 +66,7 @@ import {
 } from '../../lib/utils'
 import type { LogOtherData, LogsScope } from '../../types'
 import { CommonLogDetailsDialog } from '../dialogs/common-log-details-dialog'
+import { DetailsDialog } from '../dialogs/details-dialog'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
@@ -1001,9 +1002,9 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
                 <span className='text-muted-foreground/40'>—</span>
               )}
             </button>
-            <CommonLogDetailsDialog
+            <DetailsDialog
               log={log}
-              scope={scope}
+              isAdmin={isAdmin}
               open={dialogOpen}
               onOpenChange={setDialogOpen}
             />
@@ -1054,7 +1055,7 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
               className='text-foreground flex items-center gap-1 text-xs hover:underline'
             >
               <Info className='size-3.5' />
-              <span>{t('Details')}</span>
+              <span>{t('Protocol Details')}</span>
             </button>
             <CommonLogDetailsDialog
               log={log}

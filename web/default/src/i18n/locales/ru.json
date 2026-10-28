@@ -4768,6 +4768,7 @@
     "Profile": "Профиль",
     "Profile updated successfully": "Профиль успешно обновлён",
     "Programming": "Программирование",
+    "Protocol Details": "Детали протокола",
     "Progress": "Прогресс",
     "Project": "Проект",
     "Project deleted": "Проект удалён",
@@ -6003,7 +6004,6 @@
     "Target Path (optional)": "Целевой путь (необязательно)",
     "Target User": "Целевой пользователь",
     "Task": "Задача",
-    "Task Details": "Детали задачи",
     "Task History": "История задач",
     "Task ID": "ID задачи",
     "Task ID:": "ID задачи:",
@@ -7110,7 +7110,6 @@
     "视频": "Видео",
     "音频": "Аудио"
   },
-  "Re-query": "Повторный запрос",
   "Re-query upstream and settle billing": "Повторно запросить апстрим и произвести расчёт",
   "Task re-queried and settled": "Задача повторно запрошена и рассчитана",
   "Re-query failed": "Ошибка повторного запроса"

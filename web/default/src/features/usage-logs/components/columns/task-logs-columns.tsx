@@ -141,7 +141,7 @@ function TaskRefetchCell({ log }: { log: TaskLog }) {
       className="text-foreground flex items-center gap-1 text-xs hover:underline disabled:opacity-50"
     >
       <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-      <span>{t("Re-query")}</span>
+      <span>{t("Retry")}</span>
     </button>
   );
 }
@@ -162,7 +162,7 @@ function TaskDetailsCell({ log }: { log: TaskLog }) {
         className="text-foreground flex items-center gap-1 text-xs hover:underline"
       >
         <Info className="size-3.5" />
-        <span>{t("Details")}</span>
+        <span>{t("Protocol Details")}</span>
       </button>
       <TaskDetailsDialog task={log} open={open} onOpenChange={setOpen} />
     </>

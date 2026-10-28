@@ -4768,6 +4768,7 @@
     "Profile": "Hồ sơ",
     "Profile updated successfully": "Hồ sơ đã được cập nhật thành công",
     "Programming": "Lập trình",
+    "Protocol Details": "Chi tiết giao thức",
     "Progress": "Tiến độ",
     "Project": "Dự án",
     "Project deleted": "Đã xóa dự án",
@@ -6003,7 +6004,6 @@
     "Target Path (optional)": "Đường dẫn đích (tùy chọn)",
     "Target User": "Người dùng mục tiêu",
     "Task": "Nhiệm vụ",
-    "Task Details": "Chi tiết tác vụ",
     "Task History": "Lịch sử tác vụ",
     "Task ID": "Mã nhiệm vụ",
     "Task ID:": "ID nhiệm vụ:",
@@ -7110,7 +7110,6 @@
     "视频": "Video",
     "音频": "Âm thanh"
   },
-  "Re-query": "Truy vấn lại",
   "Re-query upstream and settle billing": "Truy vấn lại upstream và quyết toán phí",
   "Task re-queried and settled": "Tác vụ đã được truy vấn lại và quyết toán",
   "Re-query failed": "Truy vấn lại thất bại"

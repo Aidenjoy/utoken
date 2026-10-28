@@ -4768,6 +4768,7 @@
     "Profile": "Profile",
     "Profile updated successfully": "Profile updated successfully",
     "Programming": "Programming",
+    "Protocol Details": "Protocol Details",
     "Progress": "Progress",
     "Project": "Project",
     "Project deleted": "Project deleted",
@@ -6003,7 +6004,6 @@
     "Target Path (optional)": "Target Path (optional)",
     "Target User": "Target User",
     "Task": "Task",
-    "Task Details": "Task Details",
     "Task History": "Task History",
     "Task ID": "Task ID",
     "Task ID:": "Task ID:",
@@ -7110,7 +7110,6 @@
     "视频": "Video",
     "音频": "Audio"
   },
-  "Re-query": "Re-query",
   "Re-query upstream and settle billing": "Re-query upstream and settle billing",
   "Task re-queried and settled": "Task re-queried and settled",
   "Re-query failed": "Re-query failed"

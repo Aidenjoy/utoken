@@ -4768,6 +4768,7 @@
     "Profile": "個人資料",
     "Profile updated successfully": "個人資料更新成功",
     "Programming": "編程",
+    "Protocol Details": "協議詳情",
     "Progress": "進度",
     "Project": "項目",
     "Project deleted": "專案已刪除",
@@ -6003,7 +6004,6 @@
     "Target Path (optional)": "目標路徑（可選）",
     "Target User": "目標用戶",
     "Task": "任務",
-    "Task Details": "任務詳情",
     "Task History": "歷史任務",
     "Task ID": "任務 ID",
     "Task ID:": "任務 ID：",
@@ -7110,7 +7110,6 @@
     "视频": "Video",
     "音频": "Audio"
   },
-  "Re-query": "重新查詢",
   "Re-query upstream and settle billing": "重新查詢上游並結算計費",
   "Task re-queried and settled": "任務已重新查詢並結算",
   "Re-query failed": "重新查詢失敗"

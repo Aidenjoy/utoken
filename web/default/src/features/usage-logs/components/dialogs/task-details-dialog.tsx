@@ -72,7 +72,7 @@ export function TaskDetailsDialog({
   const title = (
     <>
       <Info className='h-5 w-5' />
-      {t('Task Details')}
+      {t('Protocol Details')}
     </>
   )
   const description = t(

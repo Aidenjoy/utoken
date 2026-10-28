@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Info } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -164,6 +164,12 @@ export function CommonLogDetailsDialog({
     <RelayDetailsDialog
       open={open}
       onOpenChange={onOpenChange}
+      title={
+        <>
+          <Info className='h-5 w-5' />
+          {t('Protocol Details')}
+        </>
+      }
       basicRows={basicRows}
       requestModel={log.model_name || undefined}
       upstreamModel={other?.upstream_model_name}
