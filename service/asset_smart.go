@@ -53,12 +53,14 @@ type SmartAssetResolution struct {
 // ResolveSmartAssetRefs 解析全部 yun 引用并收敛到同一渠道
 // （asset:// 引用会把整个请求锁定到单一渠道，多引用必须同渠道）。
 //
-// 渠道挑选优先级（候选集 = 分组下启用该模型的渠道 ∩ 已配置素材协议的渠道）：
+// 候选集 = 分组下启用该模型的渠道 ∩ 支持 requiredResolution 的渠道 ∩ 已配置素材
+// 协议的渠道，按渠道优先级降序（同级按 ID 升序）排列；requiredResolution 为空时
+// 不按分辨率过滤。在候选集内挑选：
 //  1. 所有引用都有 active 副本的渠道，直接复用；
 //  2. 所有引用都已有副本的渠道（pending/failed 交由提交预检以既有文案拦截，不重复上传）；
-//  3. 否则取首个候选渠道，缺副本的引用现场调用 syncToChannel 上传，转为 pending，
-//     本次提交随后被预检以「审核中」拦截，轮询转 active 后重试即成功。
-func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups []string) ([]*SmartAssetResolution, int, error) {
+//  3. 否则取首个（即优先级最高的）候选渠道，缺副本的引用现场调用 syncToChannel 上传，
+//     转为 pending，本次提交随后被预检以「审核中」拦截，轮询转 active 后重试即成功。
+func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups []string, requiredResolution string) ([]*SmartAssetResolution, int, error) {
 	if len(refs) == 0 {
 		return nil, 0, nil
 	}
@@ -71,10 +73,10 @@ func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups [
 		sources = append(sources, source)
 	}
 
-	candidates := smartAssetCandidateChannels(modelName, groups)
+	candidates := smartAssetCandidateChannels(modelName, groups, requiredResolution)
 	if len(candidates) == 0 {
 		return nil, 0, &SmartAssetError{Kind: SmartAssetNoModelChannel, Ref: refs[0],
-			Detail: fmt.Sprintf("no enabled channel serves model %s in groups %v", modelName, groups)}
+			Detail: fmt.Sprintf("no enabled channel serves model %s in groups %v (resolution %q)", modelName, groups, requiredResolution)}
 	}
 	protocolChannels := filterAssetProtocolChannels(candidates)
 	if len(protocolChannels) == 0 {
@@ -142,19 +144,38 @@ func loadOwnedSourceAsset(userId int, ref string) (*model.SourceAsset, error) {
 	return source, nil
 }
 
-// smartAssetCandidateChannels 枚举候选渠道：各分组下启用该模型的渠道并集（升序去重）。
-func smartAssetCandidateChannels(modelName string, groups []string) []int {
+// smartAssetCandidateChannels 枚举候选渠道：各分组下启用该模型的渠道并集，剔除
+// 不支持本次请求分辨率的渠道，再按渠道优先级降序（同级按 ID 升序）排列。
+// 副本会被同步到挑中的渠道，因此候选顺序直接决定素材落到哪个上游账号；
+// 与无素材请求的选路语义保持一致，避免两条路径挑出不同渠道而重复上传。
+func smartAssetCandidateChannels(modelName string, groups []string, requiredResolution string) []int {
 	seen := map[int]bool{}
 	var ids []int
 	for _, g := range groups {
 		for _, id := range model.GetEnabledChannelIdsForGroupModel(g, modelName) {
-			if !seen[id] {
-				seen[id] = true
-				ids = append(ids, id)
+			if seen[id] {
+				continue
 			}
+			seen[id] = true
+			// 把素材同步到不支持该分辨率的渠道，只会在上游被拒且白花一次上传+审核。
+			if !model.ChannelSupportsResolution(id, modelName, requiredResolution) {
+				continue
+			}
+			ids = append(ids, id)
 		}
 	}
-	sort.Ints(ids)
+	priorities := make(map[int]int64, len(ids))
+	for _, id := range ids {
+		if channel, err := model.CacheGetChannel(id); err == nil && channel != nil {
+			priorities[id] = channel.GetPriority()
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		if priorities[ids[i]] != priorities[ids[j]] {
+			return priorities[ids[i]] > priorities[ids[j]]
+		}
+		return ids[i] < ids[j]
+	})
 	return ids
 }
 

@@ -93,7 +93,7 @@ func TestResolveSmartAssetRefsSyncsWhenNoCopy(t *testing.T) {
 	seedSmartAbility(t, "default", "seedance-lite", 30)
 	seedSmartSourceAsset(t, 500, 42)
 
-	resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-500"}, "seedance-lite", []string{"default"})
+	resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-500"}, "seedance-lite", []string{"default"}, "")
 	require.NoError(t, err)
 	assert.Equal(t, 30, channelId)
 	require.Len(t, resolutions, 1)
@@ -131,7 +131,7 @@ func TestResolveSmartAssetRefsReusesExistingCopies(t *testing.T) {
 			seedSmartSourceAsset(t, 501, 42)
 			seedSmartCopy(t, 501, 42, 30, tt.upstreamId, tt.copyStatus)
 
-			resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-501"}, "seedance-lite", []string{"default"})
+			resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-501"}, "seedance-lite", []string{"default"}, "")
 			require.NoError(t, err)
 			assert.Equal(t, 30, channelId)
 			require.Len(t, resolutions, 1)
@@ -152,7 +152,7 @@ func TestResolveSmartAssetRefsGuards(t *testing.T) {
 		seedSmartAbility(t, "default", "seedance-lite", 30)
 		seedSmartSourceAsset(t, 502, 43)
 
-		_, _, err := ResolveSmartAssetRefs(42, []string{"yun-502"}, "seedance-lite", []string{"default"})
+		_, _, err := ResolveSmartAssetRefs(42, []string{"yun-502"}, "seedance-lite", []string{"default"}, "")
 		assert.Equal(t, SmartAssetNotFound, smartErrorKind(t, err))
 		assert.Zero(t, stub.uploadCalls)
 	})
@@ -161,7 +161,7 @@ func TestResolveSmartAssetRefsGuards(t *testing.T) {
 		stub := &stubAssetAdapter{}
 		setupSmartAssetTest(t, stub)
 		for _, ref := range []string{"yun-abc", "yun-0", "yun-"} {
-			_, _, err := ResolveSmartAssetRefs(42, []string{ref}, "seedance-lite", []string{"default"})
+			_, _, err := ResolveSmartAssetRefs(42, []string{ref}, "seedance-lite", []string{"default"}, "")
 			assert.Equal(t, SmartAssetNotFound, smartErrorKind(t, err), "ref=%s", ref)
 		}
 	})
@@ -172,7 +172,7 @@ func TestResolveSmartAssetRefsGuards(t *testing.T) {
 		seedAssetChannel(t, 30, common.ChannelStatusEnabled, "ark_official")
 		seedSmartSourceAsset(t, 503, 42)
 
-		_, _, err := ResolveSmartAssetRefs(42, []string{"yun-503"}, "unknown-model", []string{"default"})
+		_, _, err := ResolveSmartAssetRefs(42, []string{"yun-503"}, "unknown-model", []string{"default"}, "")
 		assert.Equal(t, SmartAssetNoModelChannel, smartErrorKind(t, err))
 	})
 
@@ -186,7 +186,7 @@ func TestResolveSmartAssetRefsGuards(t *testing.T) {
 		seedSmartAbility(t, "default", "seedance-lite", 32)
 		seedSmartSourceAsset(t, 504, 42)
 
-		_, _, err := ResolveSmartAssetRefs(42, []string{"yun-504"}, "seedance-lite", []string{"default"})
+		_, _, err := ResolveSmartAssetRefs(42, []string{"yun-504"}, "seedance-lite", []string{"default"}, "")
 		assert.Equal(t, SmartAssetNoProtocolChannel, smartErrorKind(t, err))
 		assert.Zero(t, stub.uploadCalls)
 	})
@@ -208,7 +208,7 @@ func TestResolveSmartAssetRefsConvergence(t *testing.T) {
 		seedSmartCopy(t, 600, 42, 32, "up-600b", model.AssetStatusActive)
 		seedSmartCopy(t, 601, 42, 32, "up-601", model.AssetStatusActive)
 
-		resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-600", "yun-601"}, "seedance-lite", []string{"default"})
+		resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-600", "yun-601"}, "seedance-lite", []string{"default"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, 32, channelId, "601 只在 32 active，应收敛到 32")
 		assert.Equal(t, "up-600b", resolutions[0].UpstreamAssetId)
@@ -229,7 +229,7 @@ func TestResolveSmartAssetRefsConvergence(t *testing.T) {
 		seedSmartCopy(t, 603, 42, 30, "up-603", model.AssetStatusPending)
 		seedSmartCopy(t, 603, 42, 32, "up-603b", model.AssetStatusActive)
 
-		resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-602", "yun-603"}, "seedance-lite", []string{"default"})
+		resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-602", "yun-603"}, "seedance-lite", []string{"default"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, 30, channelId, "无全 active 渠道时收敛到全有副本的 30")
 		assert.Equal(t, model.AssetStatusActive, resolutions[0].Status)
@@ -248,7 +248,7 @@ func TestResolveSmartAssetRefsConvergence(t *testing.T) {
 		seedSmartSourceAsset(t, 605, 42)
 		seedSmartCopy(t, 604, 42, 30, "up-604", model.AssetStatusActive)
 
-		resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-604", "yun-605"}, "seedance-lite", []string{"default"})
+		resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-604", "yun-605"}, "seedance-lite", []string{"default"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, 30, channelId)
 		assert.Equal(t, model.AssetStatusActive, resolutions[0].Status)
@@ -256,6 +256,58 @@ func TestResolveSmartAssetRefsConvergence(t *testing.T) {
 		assert.Equal(t, "up-605", resolutions[1].UpstreamAssetId)
 		assert.Equal(t, 1, stub.uploadCalls, "只应同步缺副本的引用")
 	})
+}
+
+// TestResolveSmartAssetRefsRespectsResolutionAndPriority 智能素材挑渠道必须遵守
+// 能力矩阵与优先级：做不了请求分辨率的渠道不进候选（否则副本同步上去也会被上游
+// 拒绝，白花一次上传+审核），无副本可选时落到优先级最高的渠道。
+func TestResolveSmartAssetRefsRespectsResolutionAndPriority(t *testing.T) {
+	savedCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = savedCache })
+
+	stub := &stubAssetAdapter{uploadAssetID: "up-900"}
+	setupSmartAssetTest(t, stub)
+	// 30：优先级低、黑名单挡 4k、已有 active 副本；31：优先级高、无黑名单、无副本。
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 30, Name: "low", Key: "sk-test", Status: common.ChannelStatusEnabled,
+		Priority:      common.GetPointer(int64(1)),
+		Setting:       common.GetPointer(`{"resolution_blacklist":{"seedance-lite":["4k"]}}`),
+		OtherSettings: `{"asset_upload_protocol":"ark_official"}`,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{
+		Id: 31, Name: "high", Key: "sk-test", Status: common.ChannelStatusEnabled,
+		Priority:      common.GetPointer(int64(9)),
+		OtherSettings: `{"asset_upload_protocol":"ark_official"}`,
+	}).Error)
+	seedSmartAbility(t, "default", "seedance-lite", 30)
+	seedSmartAbility(t, "default", "seedance-lite", 31)
+	seedSmartSourceAsset(t, 900, 42)
+	seedSmartSourceAsset(t, 901, 42)
+	seedSmartCopy(t, 900, 42, 30, "up-on-30", model.AssetStatusActive)
+
+	// 480p：30 不在黑名单内且副本 active → 复用副本，优先级让位于「不重复上传」。
+	resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-900"}, "seedance-lite", []string{"default"}, "480p")
+	require.NoError(t, err)
+	assert.Equal(t, 30, channelId)
+	require.Len(t, resolutions, 1)
+	assert.Equal(t, "up-on-30", resolutions[0].UpstreamAssetId)
+	assert.Equal(t, model.AssetStatusActive, resolutions[0].Status)
+	assert.Zero(t, stub.uploadCalls)
+
+	// 4k：30 被能力矩阵剔除 → 只能落到 31，现场同步一次副本。
+	resolutions, channelId, err = ResolveSmartAssetRefs(42, []string{"yun-900"}, "seedance-lite", []string{"default"}, "4k")
+	require.NoError(t, err)
+	assert.Equal(t, 31, channelId)
+	require.Len(t, resolutions, 1)
+	assert.Equal(t, "up-900", resolutions[0].UpstreamAssetId)
+	assert.Equal(t, model.AssetStatusPending, resolutions[0].Status)
+	assert.Equal(t, 1, stub.uploadCalls)
+
+	// 无任何副本时按优先级降序取首个候选：31(优先级9) 而非 30(优先级1)。
+	_, channelId, err = ResolveSmartAssetRefs(42, []string{"yun-901"}, "seedance-lite", []string{"default"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, 31, channelId)
 }
 
 // TestResolveSmartAssetRefsSyncFailure 上游上传失败时返回 sync_failed 并带上游错误详情。
@@ -266,7 +318,7 @@ func TestResolveSmartAssetRefsSyncFailure(t *testing.T) {
 	seedSmartAbility(t, "default", "seedance-lite", 30)
 	seedSmartSourceAsset(t, 610, 42)
 
-	_, _, err := ResolveSmartAssetRefs(42, []string{"yun-610"}, "seedance-lite", []string{"default"})
+	_, _, err := ResolveSmartAssetRefs(42, []string{"yun-610"}, "seedance-lite", []string{"default"}, "")
 	require.Error(t, err)
 	assert.Equal(t, SmartAssetSyncFailed, smartErrorKind(t, err))
 	assert.Contains(t, err.Error(), "invalid media")

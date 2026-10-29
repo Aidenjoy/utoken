@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -60,88 +61,79 @@ func GetAllEnableAbilities() []Ability {
 	return abilities
 }
 
-func getPriority(group string, model string, retry int) (int, error) {
-
-	var priorities []int
-	err := DB.Model(&Ability{}).
-		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
-		Order("priority DESC").              // 按优先级降序排序
-		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
-
-	if err != nil {
-		// 处理错误
-		return 0, err
+// abilityPriority 空值安全读取 abilities.priority：列虽有 default:0，但早于该
+// 默认值写入的历史行仍可能是 NULL。
+func abilityPriority(ability Ability) int64 {
+	if ability.Priority == nil {
+		return 0
 	}
-
-	if len(priorities) == 0 {
-		// 如果没有查询到优先级，则返回错误
-		return 0, errors.New("数据库一致性被破坏")
-	}
-
-	// 确定要使用的优先级
-	var priorityToUse int
-	if retry >= len(priorities) {
-		// 如果重试次数大于优先级数，则使用最小的优先级
-		priorityToUse = priorities[len(priorities)-1]
-	} else {
-		priorityToUse = priorities[retry]
-	}
-	return priorityToUse, nil
+	return *ability.Priority
 }
 
-func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
-	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
-	if retry != 0 {
-		priority, err := getPriority(group, model, retry)
-		if err != nil {
-			return nil, err
-		} else {
-			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
+// filterAbilitiesByPriorityTier 只保留目标优先级层的候选：retry=0 取最高层，
+// retry=N 取降序排列后的第 N 层，超出层数时落到最低层，与内存缓存选路
+// （GetRandomSatisfiedChannel）的分层语义一致。
+//
+// 分层必须发生在请求路径/分辨率过滤之后：若先按未过滤的候选取 MAX(priority)，
+// 「最高优先级渠道做不了该分辨率」会让候选集直接变空，低优先级但可用的渠道
+// 永远选不到，请求以「无可用渠道」失败而不是落到能做的渠道上。
+func filterAbilitiesByPriorityTier(abilities []Ability, retry int) []Ability {
+	if len(abilities) == 0 {
+		return abilities
+	}
+	unique := make(map[int64]bool, len(abilities))
+	for _, ability := range abilities {
+		unique[abilityPriority(ability)] = true
+	}
+	tiers := make([]int64, 0, len(unique))
+	for priority := range unique {
+		tiers = append(tiers, priority)
+	}
+	sort.Slice(tiers, func(i, j int) bool { return tiers[i] > tiers[j] })
+
+	if retry >= len(tiers) {
+		retry = len(tiers) - 1
+	}
+	if retry < 0 {
+		retry = 0
+	}
+	target := tiers[retry]
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		if abilityPriority(ability) == target {
+			filtered = append(filtered, ability)
 		}
 	}
-
-	return channelQuery, nil
+	return filtered
 }
 
 func GetChannel(group string, model string, retry int, requestPath string, requiredResolution string) (*Channel, error) {
 	var abilities []Ability
-
-	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
-	if err != nil {
-		return nil, err
-	}
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) || common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
-	} else {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
-	}
+	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Order("weight DESC").Find(&abilities).Error
 	if err != nil {
 		return nil, err
 	}
 	abilities = filterAbilitiesByRequestPath(abilities, requestPath)
 	abilities = filterAbilitiesByResolution(abilities, model, requiredResolution)
-	channel := Channel{}
-	if len(abilities) > 0 {
-		// Randomly choose one
-		weightSum := uint(0)
-		for _, ability_ := range abilities {
-			weightSum += ability_.Weight + 10
-		}
-		// Randomly choose one
-		weight := common.GetRandomInt(int(weightSum))
-		for _, ability_ := range abilities {
-			weight -= int(ability_.Weight) + 10
-			//log.Printf("weight: %d, ability weight: %d", weight, *ability_.Weight)
-			if weight <= 0 {
-				channel.Id = ability_.ChannelId
-				break
-			}
-		}
-	} else {
+	abilities = filterAbilitiesByPriorityTier(abilities, retry)
+	if len(abilities) == 0 {
 		return nil, nil
+	}
+
+	// 同层内按权重加权随机，+10 保底使权重为 0 的渠道仍可被选中。
+	weightSum := uint(0)
+	for _, ability := range abilities {
+		weightSum += ability.Weight + 10
+	}
+	weight := common.GetRandomInt(int(weightSum))
+	channel := Channel{}
+	for _, ability := range abilities {
+		weight -= int(ability.Weight) + 10
+		if weight <= 0 {
+			channel.Id = ability.ChannelId
+			break
+		}
 	}
 	err = DB.First(&channel, "id = ?", channel.Id).Error
 	return &channel, err

@@ -151,11 +151,19 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
+				// 分辨率是选路的能力维度之一（渠道 × 模型 × 分辨率），必须在首次选路
+				// 之前解析出来：控制器只在重试时才会重新选路，首次尝试直接复用这里
+				// 选定的渠道，漏传就等于分辨率过滤在主链路上完全不生效。
+				requiredResolution := ""
+				if c.GetInt("relay_mode") == relayconstant.RelayModeVideoSubmit {
+					requiredResolution = ExtractRequestedResolution(c)
+				}
+
 				// asset:// 素材引用：素材 ID 只在注册它的渠道上游有效，
 				// 命中时强制锁定到素材所属渠道，跳过亲和性与随机选择。
 				// 智能素材（yun- 引用）在此处解析、同步并改写为真实上游 ID。
 				if isVideoSubmitPath(c.Request.URL.Path) && c.Request.Method == http.MethodPost {
-					lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"), modelRequest.Model, usingGroup)
+					lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"), modelRequest.Model, usingGroup, requiredResolution)
 					if lockErr != nil {
 						abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
 						return
@@ -205,11 +213,12 @@ func Distribute() func(c *gin.Context) {
 
 				if channel == nil {
 					channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
-						Ctx:         c,
-						ModelName:   modelRequest.Model,
-						TokenGroup:  usingGroup,
-						RequestPath: c.Request.URL.Path,
-						Retry:       common.GetPointer(0),
+						Ctx:                c,
+						ModelName:          modelRequest.Model,
+						TokenGroup:         usingGroup,
+						RequestPath:        c.Request.URL.Path,
+						RequiredResolution: requiredResolution,
+						Retry:              common.GetPointer(0),
 					})
 					if err != nil {
 						showGroup := usingGroup
@@ -226,6 +235,10 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if channel == nil {
+						if requiredResolution != "" {
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoChannelForResolution, map[string]any{"Group": usingGroup, "Model": modelRequest.Model, "Resolution": requiredResolution}), types.ErrorCodeModelNotFound)
+							return
+						}
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
@@ -330,6 +343,36 @@ func getJSONStringValue(result gjson.Result, field string) (string, error) {
 		return "", fmt.Errorf("field %s must be a string", field)
 	}
 	return result.String(), nil
+}
+
+// ExtractRequestedResolution 从任务提交体中解析用户要求的分辨率，作为选路的
+// (渠道 × 模型 × 分辨率) 能力矩阵输入。同时覆盖官方协议顶层 resolution 与统一
+// 视频协议 metadata.resolution 两种来源；两者都缺失（走上游默认档）或非 JSON
+// 请求体时返回空串，表示不按分辨率过滤。
+func ExtractRequestedResolution(c *gin.Context) string {
+	bodyStorage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return ""
+	}
+	var probe struct {
+		Resolution string         `json:"resolution"`
+		Metadata   map[string]any `json:"metadata"`
+	}
+	decodeErr := common.DecodeJson(bodyStorage, &probe)
+	// 读后复位，保证下游直接读 c.Request.Body 时仍拿到完整请求体
+	if _, seekErr := bodyStorage.Seek(0, io.SeekStart); seekErr == nil {
+		c.Request.Body = io.NopCloser(bodyStorage)
+	}
+	if decodeErr != nil {
+		return ""
+	}
+	res := strings.TrimSpace(probe.Resolution)
+	if res == "" {
+		if metaRes, ok := probe.Metadata["resolution"].(string); ok {
+			res = strings.TrimSpace(metaRes)
+		}
+	}
+	return strings.ToLower(res)
 }
 
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {

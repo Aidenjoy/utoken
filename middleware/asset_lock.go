@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -96,21 +97,15 @@ func (e *AssetLockError) Error() string {
 //   - 渠道素材（上游 ID）：按既有逻辑校验归属与同渠道收敛。
 //
 // 两类可混用，但最终必须收敛到同一渠道，否则报渠道冲突。
-func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, usingGroup string) (int, error) {
-	storage, err := common.GetBodyStorage(c)
+//
+// requiredResolution 为本次请求要求的分辨率：智能素材据此只挑支持该分辨率的
+// 渠道；渠道素材所属渠道不支持该分辨率时改走智能解析（见
+// fallbackToResolutionCapableChannel），避免把请求硬发到必然拒绝它的上游。
+func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, usingGroup string, requiredResolution string) (int, error) {
+	body, err := readBodyForAssetRefs(c)
 	if err != nil {
 		return 0, err
 	}
-	body, err := storage.Bytes()
-	if err != nil {
-		return 0, err
-	}
-	// 复位 body，保证下游 relay 流程可正常重读
-	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
-		return 0, seekErr
-	}
-	c.Request.Body = io.NopCloser(storage)
-
 	assetIDs := ExtractAssetIDs(body)
 	if len(assetIDs) == 0 {
 		return 0, nil
@@ -127,19 +122,9 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, u
 
 	lockedChannelId := 0
 	if len(smartRefs) > 0 {
-		resolutions, channelId, resolveErr := service.ResolveSmartAssetRefs(
-			userId, smartRefs, modelName, smartAssetCandidateGroups(c, usingGroup))
+		channelId, resolveErr := resolveSmartAssetRefs(c, userId, smartRefs, modelName, usingGroup, requiredResolution)
 		if resolveErr != nil {
-			return 0, translateSmartAssetError(c, resolveErr, modelName, usingGroup)
-		}
-		mapping := make(map[string]string, len(resolutions))
-		for _, r := range resolutions {
-			mapping[r.Ref] = r.UpstreamAssetId
-		}
-		if newBody := rewriteAssetRefs(body, mapping); !bytes.Equal(newBody, body) {
-			if replaceErr := common.ReplaceBodyStorage(c, newBody); replaceErr != nil {
-				return 0, replaceErr
-			}
+			return 0, resolveErr
 		}
 		lockedChannelId = channelId
 	}
@@ -152,12 +137,121 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, u
 			}
 			return 0, validateErr
 		}
+		if requiredResolution != "" && !model.ChannelSupportsResolution(channelId, modelName, requiredResolution) {
+			fallbackChannelId, fallbackErr := fallbackToResolutionCapableChannel(
+				c, userId, upstreamRefs, modelName, usingGroup, requiredResolution, channelId)
+			if fallbackErr != nil {
+				return 0, fallbackErr
+			}
+			if fallbackChannelId > 0 {
+				channelId = fallbackChannelId
+			}
+		}
 		if lockedChannelId > 0 && channelId != lockedChannelId {
 			return 0, translateAssetLockError(c, &AssetLockError{Kind: AssetLockChannelConflict, Asset: upstreamRefs[0]})
 		}
 		lockedChannelId = channelId
 	}
 	return lockedChannelId, nil
+}
+
+// resolveSmartAssetRefs 解析智能素材引用，把 body 中的 yun 引用改写为所选渠道上的
+// 真实上游素材 ID，返回全部引用收敛到的渠道 ID。
+func resolveSmartAssetRefs(c *gin.Context, userId int, refs []string, modelName string, usingGroup string, requiredResolution string) (int, error) {
+	resolutions, channelId, err := service.ResolveSmartAssetRefs(
+		userId, refs, modelName, smartAssetCandidateGroups(c, usingGroup), requiredResolution)
+	if err != nil {
+		return 0, translateSmartAssetError(c, err, modelName, usingGroup)
+	}
+	mapping := make(map[string]string, len(resolutions))
+	for _, r := range resolutions {
+		mapping[r.Ref] = r.UpstreamAssetId
+	}
+	if rewriteErr := applyAssetRefRewrite(c, mapping); rewriteErr != nil {
+		return 0, rewriteErr
+	}
+	return channelId, nil
+}
+
+// fallbackToResolutionCapableChannel 处理「素材所属渠道不支持本次请求分辨率」的冲突：
+// 副本只在其所属渠道的上游有效，硬发过去必被上游拒绝。若这些副本都源自智能素材
+// （source_assets），就按智能引用重新挑选支持该分辨率的渠道、必要时现场同步副本，
+// 并把 body 中的旧上游 ID 改写为新渠道上的副本 ID，返回新渠道 ID。
+// 任一素材没有源素材（旧数据或直接注册的上游素材）时无从同步，返回 0 维持原锁定。
+func fallbackToResolutionCapableChannel(c *gin.Context, userId int, upstreamRefs []string, modelName string, usingGroup string, requiredResolution string, lockedChannelId int) (int, error) {
+	assets, err := model.GetUserAssetsByAssetIDs(userId, upstreamRefs)
+	if err != nil || len(assets) != len(upstreamRefs) {
+		return 0, nil
+	}
+	byAssetId := make(map[string]*model.Asset, len(assets))
+	for _, asset := range assets {
+		byAssetId[asset.AssetID] = asset
+	}
+	refs := make([]string, 0, len(upstreamRefs))
+	for _, id := range upstreamRefs {
+		asset := byAssetId[id]
+		if asset == nil || asset.SourceAssetId == nil || *asset.SourceAssetId <= 0 {
+			return 0, nil
+		}
+		refs = append(refs, service.SmartAssetRefPrefix+strconv.FormatInt(*asset.SourceAssetId, 10))
+	}
+
+	resolutions, channelId, err := service.ResolveSmartAssetRefs(
+		userId, refs, modelName, smartAssetCandidateGroups(c, usingGroup), requiredResolution)
+	if err != nil {
+		var smartErr *service.SmartAssetError
+		if errors.As(err, &smartErr) &&
+			(smartErr.Kind == service.SmartAssetNoModelChannel || smartErr.Kind == service.SmartAssetNoProtocolChannel) {
+			return 0, fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorNoChannelForResolution, map[string]any{
+				"Group": usingGroup, "Model": modelName, "Resolution": requiredResolution,
+			}))
+		}
+		return 0, translateSmartAssetError(c, err, modelName, usingGroup)
+	}
+	mapping := make(map[string]string, len(resolutions))
+	for i, resolution := range resolutions {
+		mapping[upstreamRefs[i]] = resolution.UpstreamAssetId
+	}
+	if rewriteErr := applyAssetRefRewrite(c, mapping); rewriteErr != nil {
+		return 0, rewriteErr
+	}
+	common.SysLog(fmt.Sprintf("[Asset] channel %d does not support %s for model %s, assets %v re-resolved to channel %d",
+		lockedChannelId, requiredResolution, modelName, upstreamRefs, channelId))
+	return channelId, nil
+}
+
+// readBodyForAssetRefs 读取请求体原文并复位，保证下游 relay 流程可正常重读。
+func readBodyForAssetRefs(c *gin.Context) ([]byte, error) {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return nil, err
+	}
+	body, err := storage.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
+		return nil, seekErr
+	}
+	c.Request.Body = io.NopCloser(storage)
+	return body, nil
+}
+
+// applyAssetRefRewrite 按 mapping 改写请求体中的 asset:// 引用并回写存储。
+// 智能解析与分辨率回退都会改写引用，统一走这里以免两处 body 处理漂移。
+func applyAssetRefRewrite(c *gin.Context, mapping map[string]string) error {
+	if len(mapping) == 0 {
+		return nil
+	}
+	body, err := readBodyForAssetRefs(c)
+	if err != nil {
+		return err
+	}
+	newBody := rewriteAssetRefs(body, mapping)
+	if bytes.Equal(newBody, body) {
+		return nil
+	}
+	return common.ReplaceBodyStorage(c, newBody)
 }
 
 // rewriteAssetRefs 把 body 中的智能素材引用替换为真实上游素材 ID。

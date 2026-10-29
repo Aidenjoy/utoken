@@ -111,7 +111,7 @@ func TestResolveAssetLockedChannelIdSmartRef(t *testing.T) {
 	body := `{"model":"seedance-lite","content":[{"video_url":{"url":"asset://yun-700"}}]}`
 	c := newAssetBodyContext(t, body)
 
-	channelId, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default")
+	channelId, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "")
 	require.NoError(t, err)
 	assert.Equal(t, 40, channelId)
 	assert.Equal(t, 1, stub.uploadCalls, "无副本时应现场同步一次")
@@ -136,7 +136,7 @@ func TestResolveAssetLockedChannelIdSmartErrors(t *testing.T) {
 		setupSmartAssetMiddlewareTest(t, stub)
 		c := newAssetBodyContext(t, `{"content":[{"video_url":{"url":"asset://yun-404"}}]}`)
 
-		_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default")
+		_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "yun-404")
 		assert.Zero(t, stub.uploadCalls)
@@ -157,7 +157,7 @@ func TestResolveAssetLockedChannelIdSmartErrors(t *testing.T) {
 		}).Error)
 		c := newAssetBodyContext(t, `{"content":[{"video_url":{"url":"asset://yun-701"}}]}`)
 
-		_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default")
+		_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "素材上传协议")
 		assert.Zero(t, stub.uploadCalls)
@@ -186,7 +186,7 @@ func TestResolveAssetLockedChannelIdMixedConflict(t *testing.T) {
 	body := `{"content":[{"video_url":{"url":"asset://yun-800"}},{"image_url":{"url":"asset://upstream-on-51"}}]}`
 	c := newAssetBodyContext(t, body)
 
-	_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default")
+	_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), i18n.Translate(i18n.LangZhCN, i18n.MsgDistributorAssetChannelConflict))
 }
@@ -201,12 +201,174 @@ func TestResolveAssetLockedChannelIdUpstreamOnlyUnchanged(t *testing.T) {
 	body := `{"content":[{"image_url":{"url":"asset://plain-upstream"}}]}`
 	c := newAssetBodyContext(t, body)
 
-	channelId, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default")
+	channelId, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "")
 	require.NoError(t, err)
 	assert.Equal(t, 60, channelId)
 	assert.Equal(t, []byte(body), currentBodyBytes(t, c))
 	assert.Equal(t, int64(len(body)), c.Request.ContentLength)
 	assert.Zero(t, stub.uploadCalls)
+}
+
+// seedance4kBlacklistSetting (模型 × 分辨率) 能力黑名单：seedance-lite 做不了 4k。
+const seedance4kBlacklistSetting = `{"resolution_blacklist":{"seedance-lite":["4k"]}}`
+
+// seedResolutionChannel 建一个启用且带素材协议的渠道，并登记 default 分组下的
+// seedance-lite 能力；setting 为空表示不配黑名单（即全分辨率可用）。
+func seedResolutionChannel(t *testing.T, id int, priority int64, setting string) {
+	t.Helper()
+	channel := &model.Channel{
+		Id: id, Name: "ch", Key: "sk-test", Status: common.ChannelStatusEnabled,
+		Priority:      common.GetPointer(priority),
+		OtherSettings: `{"asset_upload_protocol":"ark_official"}`,
+	}
+	if setting != "" {
+		channel.Setting = common.GetPointer(setting)
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "default", Model: "seedance-lite", ChannelId: id, Enabled: true,
+	}).Error)
+}
+
+// TestResolveAssetLockedChannelIdResolutionFallback 素材锁定的渠道做不了本次请求的
+// 分辨率时，不能把请求硬发到必然拒绝它的上游：副本源自智能素材就改走智能
+// 同步（改锁渠道 + 改写 body）；无源素材的旧副本维持原锁定，不阻断提交。
+func TestResolveAssetLockedChannelIdResolutionFallback(t *testing.T) {
+	require.NoError(t, i18n.Init())
+
+	t.Run("supported resolution keeps the locked channel", func(t *testing.T) {
+		savedCache := common.MemoryCacheEnabled
+		common.MemoryCacheEnabled = false
+		t.Cleanup(func() { common.MemoryCacheEnabled = savedCache })
+
+		stub := &stubSmartAssetAdapter{uploadAssetID: "up-on-42"}
+		setupSmartAssetMiddlewareTest(t, stub)
+		seedResolutionChannel(t, 41, 9, seedance4kBlacklistSetting)
+		seedResolutionChannel(t, 42, 1, "")
+		require.NoError(t, (&model.SourceAsset{
+			ID: 800, UserID: 9, Name: "smart", AssetType: model.AssetTypeVideo,
+			SourceURL: "http://tos/smart.mp4", Status: model.AssetStatusActive,
+		}).Insert())
+		sid := int64(800)
+		require.NoError(t, (&model.Asset{
+			UserID: 9, ChannelID: 41, AssetID: "up-on-41", SourceAssetId: &sid,
+			Name: "smart", AssetType: model.AssetTypeVideo, Status: model.AssetStatusActive,
+			SourceURL: "http://tos/smart.mp4",
+		}).Insert())
+
+		body := `{"resolution":"480p","content":[{"image_url":{"url":"asset://up-on-41"}}]}`
+		c := newAssetBodyContext(t, body)
+
+		channelId, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "480p")
+		require.NoError(t, err)
+		assert.Equal(t, 41, channelId)
+		assert.Equal(t, []byte(body), currentBodyBytes(t, c), "支持的分辨率不应改写请求体")
+		assert.Zero(t, stub.uploadCalls)
+	})
+
+	t.Run("unsupported resolution re-resolves to a capable channel", func(t *testing.T) {
+		savedCache := common.MemoryCacheEnabled
+		common.MemoryCacheEnabled = false
+		t.Cleanup(func() { common.MemoryCacheEnabled = savedCache })
+
+		stub := &stubSmartAssetAdapter{uploadAssetID: "up-on-42"}
+		setupSmartAssetMiddlewareTest(t, stub)
+		seedResolutionChannel(t, 41, 9, seedance4kBlacklistSetting)
+		seedResolutionChannel(t, 42, 1, "")
+		require.NoError(t, (&model.SourceAsset{
+			ID: 801, UserID: 9, Name: "smart", AssetType: model.AssetTypeVideo,
+			SourceURL: "http://tos/smart.mp4", Status: model.AssetStatusActive,
+		}).Insert())
+		sid := int64(801)
+		require.NoError(t, (&model.Asset{
+			UserID: 9, ChannelID: 41, AssetID: "up-on-41", SourceAssetId: &sid,
+			Name: "smart", AssetType: model.AssetTypeVideo, Status: model.AssetStatusActive,
+			SourceURL: "http://tos/smart.mp4",
+		}).Insert())
+
+		c := newAssetBodyContext(t, `{"resolution":"4k","content":[{"image_url":{"url":"asset://up-on-41"}}]}`)
+
+		channelId, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "4k")
+		require.NoError(t, err)
+		assert.Equal(t, 42, channelId, "41 做不了 4k，必须改锁到能做的 42")
+		assert.Equal(t, 1, stub.uploadCalls, "新渠道无副本，应现场同步一次")
+
+		newBody := currentBodyBytes(t, c)
+		assert.Equal(t, []string{"up-on-42"}, ExtractAssetIDs(newBody), "旧渠道的上游 ID 已失效，body 必须改写")
+		assert.Equal(t, int64(len(newBody)), c.Request.ContentLength)
+	})
+
+	t.Run("legacy copy without source asset keeps the lock", func(t *testing.T) {
+		savedCache := common.MemoryCacheEnabled
+		common.MemoryCacheEnabled = false
+		t.Cleanup(func() { common.MemoryCacheEnabled = savedCache })
+
+		stub := &stubSmartAssetAdapter{uploadAssetID: "up-on-42"}
+		setupSmartAssetMiddlewareTest(t, stub)
+		seedResolutionChannel(t, 41, 9, seedance4kBlacklistSetting)
+		seedResolutionChannel(t, 42, 1, "")
+		seedAsset(t, 9, 41, "legacy-on-41")
+
+		body := `{"resolution":"4k","content":[{"image_url":{"url":"asset://legacy-on-41"}}]}`
+		c := newAssetBodyContext(t, body)
+
+		channelId, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "4k")
+		require.NoError(t, err)
+		assert.Equal(t, 41, channelId, "无源素材时无从同步，只能维持原锁定")
+		assert.Equal(t, []byte(body), currentBodyBytes(t, c))
+		assert.Zero(t, stub.uploadCalls)
+	})
+
+	t.Run("no capable channel reports the resolution", func(t *testing.T) {
+		savedCache := common.MemoryCacheEnabled
+		common.MemoryCacheEnabled = false
+		t.Cleanup(func() { common.MemoryCacheEnabled = savedCache })
+
+		stub := &stubSmartAssetAdapter{uploadAssetID: "up-on-42"}
+		setupSmartAssetMiddlewareTest(t, stub)
+		seedResolutionChannel(t, 41, 9, seedance4kBlacklistSetting)
+		seedResolutionChannel(t, 42, 1, seedance4kBlacklistSetting)
+		require.NoError(t, (&model.SourceAsset{
+			ID: 802, UserID: 9, Name: "smart", AssetType: model.AssetTypeVideo,
+			SourceURL: "http://tos/smart.mp4", Status: model.AssetStatusActive,
+		}).Insert())
+		sid := int64(802)
+		require.NoError(t, (&model.Asset{
+			UserID: 9, ChannelID: 41, AssetID: "up-on-41", SourceAssetId: &sid,
+			Name: "smart", AssetType: model.AssetTypeVideo, Status: model.AssetStatusActive,
+			SourceURL: "http://tos/smart.mp4",
+		}).Insert())
+
+		c := newAssetBodyContext(t, `{"resolution":"4k","content":[{"image_url":{"url":"asset://up-on-41"}}]}`)
+
+		_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "4k")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "4k", "报错必须告知是哪个分辨率无可用渠道")
+		assert.Zero(t, stub.uploadCalls)
+	})
+}
+
+// TestExtractRequestedResolution 选路的分辨率输入同时覆盖官方协议顶层 resolution
+// 与统一视频协议 metadata.resolution，且解析后请求体仍可完整重读。
+func TestExtractRequestedResolution(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"top level trimmed and lowercased", `{"resolution":" 4K "}`, "4k"},
+		{"metadata fallback", `{"metadata":{"resolution":" 1080p "}}`, "1080p"},
+		{"top level wins over metadata", `{"resolution":"4k","metadata":{"resolution":"720p"}}`, "4k"},
+		{"absent means upstream default", `{"duration":4}`, ""},
+		{"non json body", `resolution=4k`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newAssetBodyContext(t, tt.body)
+			assert.Equal(t, tt.want, ExtractRequestedResolution(c))
+			assert.Equal(t, tt.body, string(currentBodyBytes(t, c)), "解析不得破坏下游重读请求体")
+		})
+	}
 }
 
 // 确认改写后下游仍可正常重读 body（ReadAll 拿到改写内容）。
@@ -228,7 +390,7 @@ func TestRewrittenBodyIsReadableDownstream(t *testing.T) {
 	body := `{"content":[{"video_url":{"url":"asset://yun-900"}}]}`
 	c := newAssetBodyContext(t, body)
 
-	_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default")
+	_, err := ResolveAssetLockedChannelId(c, 9, "seedance-lite", "default", "")
 	require.NoError(t, err)
 
 	downstream, err := io.ReadAll(c.Request.Body)

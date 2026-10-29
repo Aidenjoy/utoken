@@ -244,6 +244,28 @@ func filterChannelsByResolution(channels []int, model string, requiredResolution
 	return filtered
 }
 
+// ChannelSupportsResolution 判断渠道在 (模型 × 分辨率) 上是否可用，让选路之外的
+// 调用方（素材锁定、智能素材挑渠道）复用同一份能力矩阵判定，避免各处自行解析
+// setting。resolution 为空、或渠道未配置黑名单时视为支持（向后兼容）；内存缓存
+// 开启时读缓存的黑名单，渠道读不到时不阻断，交由后续选路与提交预检处理。
+func ChannelSupportsResolution(channelId int, modelName string, resolution string) bool {
+	res := strings.ToLower(strings.TrimSpace(resolution))
+	if res == "" {
+		return true
+	}
+	if common.MemoryCacheEnabled {
+		channelSyncLock.RLock()
+		blacklist := channel2resolutionBlacklist[channelId]
+		channelSyncLock.RUnlock()
+		return dto.ResolutionSupported(blacklist, modelName, res)
+	}
+	channel, err := GetChannelById(channelId, true)
+	if err != nil || channel == nil {
+		return true
+	}
+	return dto.ResolutionSupported(channel.GetSetting().ResolutionBlacklist, modelName, res)
+}
+
 // filterChannelsByRequestPath restricts candidates by request path. Only Advanced
 // Custom (type 58) channels are path-checked: they are kept only when one of their
 // configured routes matches requestPath. All other channel types always pass.

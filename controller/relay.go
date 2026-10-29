@@ -361,31 +361,6 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
-// extractRequestedResolution 从任务提交体中解析用户要求的分辨率，用于在选路阶段
-// 按 (渠道 × 模型 × 分辨率) 能力矩阵过滤渠道。同时覆盖官方协议顶层 resolution
-// 与统一视频协议 metadata.resolution 两种来源；两者都缺失（走上游默认档）时返回
-// 空串。GetBodyStorage 每次调用都会 Seek(0)，故提交前读取不影响重试循环内重读。
-func extractRequestedResolution(c *gin.Context) string {
-	bodyStorage, err := common.GetBodyStorage(c)
-	if err != nil {
-		return ""
-	}
-	var probe struct {
-		Resolution string         `json:"resolution"`
-		Metadata   map[string]any `json:"metadata"`
-	}
-	if err := common.DecodeJson(bodyStorage, &probe); err != nil {
-		return ""
-	}
-	res := strings.TrimSpace(probe.Resolution)
-	if res == "" {
-		if metaRes, ok := probe.Metadata["resolution"].(string); ok {
-			res = strings.TrimSpace(metaRes)
-		}
-	}
-	return strings.ToLower(res)
-}
-
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
 	if openaiErr == nil {
 		return false
@@ -576,7 +551,7 @@ func RelayTask(c *gin.Context) {
 		TokenGroup:         relayInfo.TokenGroup,
 		ModelName:          relayInfo.OriginModelName,
 		RequestPath:        c.Request.URL.Path,
-		RequiredResolution: extractRequestedResolution(c),
+		RequiredResolution: middleware.ExtractRequestedResolution(c),
 		Retry:              common.GetPointer(0),
 	}
 

@@ -192,6 +192,9 @@ type ensureSourceAssetRequest struct {
 	SourceAssetId int64  `json:"source_asset_id"`
 	Model         string `json:"model"`
 	Group         string `json:"group"`
+	// Resolution 可选：与视频提交保持同一套挑渠道语义，让预热把副本同步到
+	// 提交时真正会选中的渠道；为空时不按分辨率过滤。
+	Resolution string `json:"resolution"`
 }
 
 // EnsureSourceAsset 智能素材预热：按视频提交同一套解析逻辑挑选渠道，
@@ -210,7 +213,7 @@ func EnsureSourceAsset(c *gin.Context) {
 	}
 
 	ref := service.SmartAssetRefPrefix + strconv.FormatInt(req.SourceAssetId, 10)
-	resolutions, channelId, err := service.ResolveSmartAssetRefs(userId, []string{ref}, req.Model, ensureCandidateGroups(userId, req.Group))
+	resolutions, channelId, err := service.ResolveSmartAssetRefs(userId, []string{ref}, req.Model, ensureCandidateGroups(userId, req.Group), req.Resolution)
 	if err != nil {
 		status := http.StatusBadRequest
 		var smartErr *service.SmartAssetError
