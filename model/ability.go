@@ -105,7 +105,7 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 	return channelQuery, nil
 }
 
-func GetChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
+func GetChannel(group string, model string, retry int, requestPath string, requiredResolution string) (*Channel, error) {
 	var abilities []Ability
 
 	var err error = nil
@@ -122,6 +122,7 @@ func GetChannel(group string, model string, retry int, requestPath string) (*Cha
 		return nil, err
 	}
 	abilities = filterAbilitiesByRequestPath(abilities, requestPath)
+	abilities = filterAbilitiesByResolution(abilities, model, requiredResolution)
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one
@@ -186,6 +187,47 @@ func filterAbilitiesByRequestPath(abilities []Ability, requestPath string) []Abi
 			continue
 		}
 		if config != nil && config.SupportsPath(requestPath) {
+			filtered = append(filtered, ability)
+		}
+	}
+	return filtered
+}
+
+// filterAbilitiesByResolution 是 filterChannelsByResolution 的 DB（非内存缓存）
+// 选路路径版本：按 (渠道 × 模型 × 分辨率) 三维能力剔除对 requiredResolution
+// 不支持的渠道。requiredResolution 为空时不过滤；未配置黑名单的渠道视为支持
+// 全部分辨率（向后兼容）。加载渠道失败时回退未过滤候选，避免阻断选路。
+func filterAbilitiesByResolution(abilities []Ability, model string, requiredResolution string) []Ability {
+	res := strings.ToLower(strings.TrimSpace(requiredResolution))
+	if res == "" || len(abilities) == 0 {
+		return abilities
+	}
+
+	channelIds := make([]int, 0, len(abilities))
+	seen := make(map[int]struct{}, len(abilities))
+	for _, ability := range abilities {
+		if _, ok := seen[ability.ChannelId]; ok {
+			continue
+		}
+		seen[ability.ChannelId] = struct{}{}
+		channelIds = append(channelIds, ability.ChannelId)
+	}
+
+	var channels []*Channel
+	if err := DB.Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+		return abilities
+	}
+
+	blacklists := make(map[int]map[string][]string, len(channels))
+	for _, channel := range channels {
+		if blacklist := channel.GetSetting().ResolutionBlacklist; len(blacklist) > 0 {
+			blacklists[channel.Id] = blacklist
+		}
+	}
+
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		if dto.ResolutionSupported(blacklists[ability.ChannelId], model, res) {
 			filtered = append(filtered, ability)
 		}
 	}

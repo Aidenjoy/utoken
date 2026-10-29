@@ -111,6 +111,8 @@ import {
   SecureVerificationDialog,
   useSecureVerification,
 } from "@/features/auth/secure-verification";
+import { getPricing } from "@/features/pricing/api";
+import { getSeedanceTiers } from "@/features/pricing/lib/seed-price";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import {
   ADMIN_PERMISSION_ACTIONS,
@@ -286,6 +288,7 @@ const SENSITIVE_FORM_FIELDS = [
   "pass_through_body_enabled",
   "system_prompt",
   "system_prompt_override",
+  "resolution_blacklist",
   "allow_service_tier",
   "disable_store",
   "allow_safety_identifier",
@@ -348,6 +351,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.thinking_to_content ||
     values.pass_through_body_enabled ||
     values.system_prompt_override ||
+    Object.keys(values.resolution_blacklist ?? {}).length > 0 ||
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
@@ -675,6 +679,14 @@ export function ChannelMutateDrawer({
     queryFn: () => getPrefillGroups("model"),
   });
 
+  // 模型广场定价缓存：用于判断哪些模型配置了 4k 分辨率单价，只有这些模型
+  // 才需要在渠道级展示「支持 4K」开关（能力矩阵是 渠道 × 模型 × 分辨率）。
+  const { data: pricingData } = useQuery({
+    queryKey: ["pricing"],
+    queryFn: getPricing,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { copyToClipboard } = useCopyToClipboard();
 
   const {
@@ -764,6 +776,51 @@ export function ChannelMutateDrawer({
   );
   const currentUpstreamModelUpdateIgnoredModels = form.watch(
     "upstream_model_update_ignored_models",
+  );
+  const currentResolutionBlacklist = form.watch("resolution_blacklist");
+  // 渠道已配置模型中，属于「配了 4k 单价的 seedance 计费模型」的子集：只有这些
+  // 模型才展示 4K 支持开关。顺序与 models 字段一致，避免开关跳动。
+  const resolution4kModels = useMemo(() => {
+    const models4k = new Set(
+      (pricingData?.data ?? [])
+        .filter((model) =>
+          (getSeedanceTiers(model) ?? []).some(
+            (tier) => tier.resolution === "4k",
+          ),
+        )
+        .map((model) => model.model_name),
+    );
+    return parseModelsString(currentModels ?? "").filter((model) =>
+      models4k.has(model),
+    );
+  }, [pricingData, currentModels]);
+
+  // 切换某模型是否支持 4k：支持=从黑名单移除 4k，不支持=加入黑名单。不可变
+  // 更新；模型无其余分辨率时删除该键，避免落库空数组。
+  const toggleResolution4kSupport = useCallback(
+    (model: string, supported: boolean) => {
+      const next: Record<string, string[]> = {
+        ...currentResolutionBlacklist,
+      };
+      const resolutions = new Set(
+        (next[model] ?? []).map((r) => r.trim().toLowerCase()).filter(Boolean),
+      );
+      if (supported) {
+        resolutions.delete("4k");
+      } else {
+        resolutions.add("4k");
+      }
+      if (resolutions.size > 0) {
+        next[model] = [...resolutions];
+      } else {
+        delete next[model];
+      }
+      form.setValue("resolution_blacklist", next, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    },
+    [currentResolutionBlacklist, form],
   );
   const applyConnectionInfo = useCallback(
     (connectionInfo: ChannelConnectionInfo) => {
@@ -1006,7 +1063,8 @@ export function ChannelMutateDrawer({
     currentDisableTaskPollingSleep ||
     currentProxy?.trim() ||
     currentSystemPrompt?.trim() ||
-    currentSystemPromptOverride,
+    currentSystemPromptOverride ||
+    Object.keys(currentResolutionBlacklist ?? {}).length > 0,
   );
   let fieldPassthroughConfigured = false;
   if (currentType === 1 || currentType === 57) {
@@ -4686,6 +4744,50 @@ export function ChannelMutateDrawer({
                                 </FormItem>
                               )}
                             />
+
+                            {resolution4kModels.length > 0 && (
+                              <div className="space-y-2">
+                                <FormLabel>{t("Resolution Support")}</FormLabel>
+                                <div className="divide-border divide-y rounded-md border">
+                                  {resolution4kModels.map((model) => {
+                                    const blocked4k = (
+                                      currentResolutionBlacklist?.[model] ?? []
+                                    )
+                                      .map((r) => r.trim().toLowerCase())
+                                      .includes("4k");
+                                    return (
+                                      <div
+                                        key={model}
+                                        className="flex items-center justify-between px-4 py-3"
+                                      >
+                                        <div className="space-y-0.5">
+                                          <div className="text-sm font-medium">
+                                            {model}
+                                          </div>
+                                          <FormDescription>
+                                            {t("Supports 4K resolution")}
+                                          </FormDescription>
+                                        </div>
+                                        <Switch
+                                          checked={!blocked4k}
+                                          onCheckedChange={(checked) =>
+                                            toggleResolution4kSupport(
+                                              model,
+                                              checked,
+                                            )
+                                          }
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <FormDescription>
+                                  {t(
+                                    "Turn off to skip this channel for 4K requests and route them to other channels",
+                                  )}
+                                </FormDescription>
+                              </div>
+                            )}
                           </fieldset>
                         </div>
 

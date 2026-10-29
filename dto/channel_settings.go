@@ -13,6 +13,33 @@ type ChannelSettings struct {
 	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
 	SystemPrompt           string `json:"system_prompt,omitempty"`
 	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
+	// ResolutionBlacklist 按模型列出该渠道不支持的分辨率，例如
+	// {"doubao-seedance-2-0-260128": ["4k"]}。未列出的模型视为支持全部分辨率
+	// （向后兼容）。选路阶段据此把不支持请求分辨率的渠道从候选集剔除，避免
+	// 4K 请求打到做不了 4K 的渠道后才失败。分辨率比较大小写/空格不敏感。
+	ResolutionBlacklist map[string][]string `json:"resolution_blacklist,omitempty"`
+}
+
+// ResolutionSupported 依据「模型 → 不支持的分辨率」黑名单判断 model 能否服务
+// resolution。resolution 为空（用户未指定，走上游默认档）时恒为 true；黑名单为空
+// 或未包含该模型时视为支持全部分辨率。比较大小写/空格不敏感。
+func ResolutionSupported(blacklist map[string][]string, model, resolution string) bool {
+	res := strings.ToLower(strings.TrimSpace(resolution))
+	if res == "" || len(blacklist) == 0 {
+		return true
+	}
+	for _, blocked := range blacklist[model] {
+		if strings.ToLower(strings.TrimSpace(blocked)) == res {
+			return false
+		}
+	}
+	return true
+}
+
+// SupportsResolution 是 ResolutionSupported 的方法形式，供持有完整 ChannelSettings
+// 的调用方（如非内存缓存选路）直接使用。
+func (s ChannelSettings) SupportsResolution(model, resolution string) bool {
+	return ResolutionSupported(s.ResolutionBlacklist, model, resolution)
 }
 
 type VertexKeyType string

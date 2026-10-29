@@ -195,6 +195,7 @@ export const channelFormSchema = z
     pass_through_body_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
+    resolution_blacklist: z.record(z.string(), z.array(z.string())).optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(["json", "api_key"]).optional(), // Vertex AI specific
@@ -357,6 +358,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   pass_through_body_enabled: false,
   system_prompt: "",
   system_prompt_override: false,
+  resolution_blacklist: {},
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: "json",
@@ -406,6 +408,7 @@ export function transformChannelToFormDefaults(
     pass_through_body_enabled: false,
     system_prompt: "",
     system_prompt_override: false,
+    resolution_blacklist: {} as Record<string, string[]>,
   };
 
   if (channel.setting) {
@@ -418,6 +421,7 @@ export function transformChannelToFormDefaults(
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || "",
         system_prompt_override: parsed.system_prompt_override || false,
+        resolution_blacklist: parsed.resolution_blacklist || {},
       };
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -578,7 +582,7 @@ export function transformChannelToFormDefaults(
  * Build the setting JSON string from form extra settings
  */
 function buildSettingJSON(formData: ChannelFormValues): string {
-  const settingObj = {
+  const settingObj: Record<string, unknown> = {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
     proxy: formData.proxy || "",
@@ -586,6 +590,22 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     system_prompt: formData.system_prompt || "",
     system_prompt_override: formData.system_prompt_override || false,
   };
+  // 分辨率黑名单仅收录显式配置了不支持分辨率的模型；归一化大小写/去重后
+  // 为空的模型条目丢弃，整表为空时不写入，保持 setting JSON 简洁。
+  const blacklist: Record<string, string[]> = {};
+  for (const [model, resolutions] of Object.entries(
+    formData.resolution_blacklist || {},
+  )) {
+    const cleaned = [
+      ...new Set(
+        (resolutions || []).map((r) => r.trim().toLowerCase()).filter(Boolean),
+      ),
+    ];
+    if (cleaned.length > 0) blacklist[model] = cleaned;
+  }
+  if (Object.keys(blacklist).length > 0) {
+    settingObj.resolution_blacklist = blacklist;
+  }
   return JSON.stringify(settingObj);
 }
 

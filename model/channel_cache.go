@@ -21,6 +21,11 @@ var channelsIDM map[int]*Channel                     // all channels include dis
 // channel2advancedCustomConfig caches parsed Advanced Custom (type 58) configs so
 // path-aware selection avoids re-parsing JSON per request. Refreshed on full sync.
 var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
+
+// channel2resolutionBlacklist 缓存每个渠道预解析的「模型 → 不支持的分辨率」黑名单
+// （见 dto.ChannelSettings.ResolutionBlacklist），使按分辨率选路时无需在热路径反复
+// 解析 setting JSON。仅收录显式配置了黑名单的渠道；随全量同步刷新。
+var channel2resolutionBlacklist map[int]map[string][]string
 var channelSyncLock sync.RWMutex
 
 // InitChannelCache 重建本节点渠道/能力缓存，并广播失效通知让其它节点立即重建。
@@ -39,6 +44,7 @@ func reloadChannelCacheFromDB() {
 	}
 	newChannelId2channel := make(map[int]*Channel)
 	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
+	newChannel2resolutionBlacklist := make(map[int]map[string][]string)
 	var channels []*Channel
 	DB.Find(&channels)
 	for _, channel := range channels {
@@ -47,6 +53,10 @@ func reloadChannelCacheFromDB() {
 			if config := channel.GetOtherSettings().AdvancedCustom; config != nil {
 				newChannel2advancedCustomConfig[channel.Id] = config
 			}
+		}
+		// 预解析分辨率黑名单，避免按分辨率选路时在热路径反复解析 setting JSON。
+		if blacklist := channel.GetSetting().ResolutionBlacklist; len(blacklist) > 0 {
+			newChannel2resolutionBlacklist[channel.Id] = blacklist
 		}
 	}
 	var abilities []*Ability
@@ -103,6 +113,7 @@ func reloadChannelCacheFromDB() {
 	}
 	channelsIDM = newChannelId2channel
 	channel2advancedCustomConfig = newChannel2advancedCustomConfig
+	channel2resolutionBlacklist = newChannel2resolutionBlacklist
 	channelSyncLock.Unlock()
 	common.SysLog("channels synced from database")
 }
@@ -115,10 +126,10 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
+func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string, requiredResolution string) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannel(group, model, retry, requestPath)
+		return GetChannel(group, model, retry, requestPath, requiredResolution)
 	}
 
 	channelSyncLock.RLock()
@@ -126,11 +137,13 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 
 	// First, try to find channels with the exact model name.
 	channels := filterChannelsByRequestPath(group2model2channels[group][model], requestPath)
+	channels = filterChannelsByResolution(channels, model, requiredResolution)
 
 	// If no channels found, try to find channels with the normalized model name.
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
 		channels = filterChannelsByRequestPath(group2model2channels[group][normalizedModel], requestPath)
+		channels = filterChannelsByResolution(channels, model, requiredResolution)
 	}
 
 	if len(channels) == 0 {
@@ -210,6 +223,25 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+// filterChannelsByResolution 剔除对当前请求分辨率不支持的渠道。能力矩阵是
+// (渠道 × 模型 × 分辨率) 三维：黑名单按模型分列（见 dto.ResolutionSupported）。
+// requiredResolution 为空（用户未指定，走上游默认档）时不过滤。未收录进
+// channel2resolutionBlacklist 的渠道视为支持全部分辨率（向后兼容）。
+// 调用方必须持有 channelSyncLock（读锁）；缓存切片只读不改。
+func filterChannelsByResolution(channels []int, model string, requiredResolution string) []int {
+	res := strings.ToLower(strings.TrimSpace(requiredResolution))
+	if res == "" || len(channels) == 0 {
+		return channels
+	}
+	filtered := make([]int, 0, len(channels))
+	for _, channelId := range channels {
+		if dto.ResolutionSupported(channel2resolutionBlacklist[channelId], model, res) {
+			filtered = append(filtered, channelId)
+		}
+	}
+	return filtered
 }
 
 // filterChannelsByRequestPath restricts candidates by request path. Only Advanced

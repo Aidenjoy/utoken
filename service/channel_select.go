@@ -12,12 +12,15 @@ import (
 )
 
 type RetryParam struct {
-	Ctx          *gin.Context
-	TokenGroup   string
-	ModelName    string
-	RequestPath  string
-	Retry        *int
-	resetNextTry bool
+	Ctx         *gin.Context
+	TokenGroup  string
+	ModelName   string
+	RequestPath string
+	// RequiredResolution 为本次请求要求的分辨率（如 "4k"），用于在选路阶段
+	// 按 (渠道 × 模型 × 分辨率) 能力矩阵剔除不支持的渠道。为空时不按分辨率过滤。
+	RequiredResolution string
+	Retry              *int
+	resetNextTry       bool
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -116,7 +119,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = pickChannelSkippingOpenCircuits(autoGroup, param.ModelName, priorityRetry, param.RequestPath)
+			channel, _ = pickChannelSkippingOpenCircuits(autoGroup, param.ModelName, priorityRetry, param.RequestPath, param.RequiredResolution)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -154,7 +157,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = pickChannelSkippingOpenCircuits(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestPath)
+		channel, err = pickChannelSkippingOpenCircuits(param.TokenGroup, param.ModelName, param.GetRetry(), param.RequestPath, param.RequiredResolution)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}
@@ -168,11 +171,11 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 // 因此对熔断渠道做有限次重抽即可。全部候选都熔断时返回最后一次的结果，
 // 而不是直接失败——熔断是保护而非绝对禁止，让请求继续尝试比直接拒绝
 // 更符合可用性预期，上游可能已经恢复。
-func pickChannelSkippingOpenCircuits(group, modelName string, retry int, requestPath string) (*model.Channel, error) {
+func pickChannelSkippingOpenCircuits(group, modelName string, retry int, requestPath string, requiredResolution string) (*model.Channel, error) {
 	const maxPicks = 3
 	var lastChannel *model.Channel
 	for i := 0; i < maxPicks; i++ {
-		channel, err := model.GetRandomSatisfiedChannel(group, modelName, retry, requestPath)
+		channel, err := model.GetRandomSatisfiedChannel(group, modelName, retry, requestPath, requiredResolution)
 		if err != nil {
 			return nil, err
 		}

@@ -87,6 +87,11 @@ export interface ChannelSettings {
   pass_through_body_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean
+  /**
+   * 按模型列出该渠道不支持的分辨率（如 { "doubao-seedance-2-0": ["4k"] }）。
+   * 未列出的模型视为支持全部分辨率；选路阶段据此剔除做不了该分辨率的渠道。
+   */
+  resolution_blacklist?: Record<string, string[]>
 }
 
 export interface ChannelOtherSettings {
