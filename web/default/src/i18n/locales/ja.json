@@ -7114,7 +7114,8 @@
     "最多上传2张图片（首帧和尾帧）": "画像は2枚まで（先頭・最終フレーム）",
     "图片": "画像",
     "视频": "動画",
-    "音频": "音声"
+    "音频": "音声",
+    "Unlimited ({{quota}} available)": "無制限（利用可能 {{quota}}）"
   },
   "Re-query upstream and settle billing": "上流へ再問い合わせして課金を確定",
   "Task re-queried and settled": "タスクを再問い合わせして確定しました",

@@ -132,6 +132,9 @@ export interface OrgSummary {
   pool_quota_hidden?: boolean
   /** Pool balance still allocatable to member sub-quotas; absent when the pool is hidden. */
   quota_headroom?: number
+  /** Quota the caller can still spend: their sub-quota remainder, or the pool
+   *  balance for uncapped members (always present, even when the pool is hidden). */
+  available_quota?: number
   member_count?: number
   cache_enabled?: boolean
   /** Enterprise wallet-lockdown flag (admin-controlled). Absent when the user

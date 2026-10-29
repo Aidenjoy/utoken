@@ -7114,7 +7114,8 @@
     "最多上传2张图片（首帧和尾帧）": "Upload up to 2 images (first and last frame)",
     "图片": "Image",
     "视频": "Video",
-    "音频": "Audio"
+    "音频": "Audio",
+    "Unlimited ({{quota}} available)": "Unlimited ({{quota}} available)"
   },
   "Re-query upstream and settle billing": "Re-query upstream and settle billing",
   "Task re-queried and settled": "Task re-queried and settled",

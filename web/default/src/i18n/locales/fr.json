@@ -7114,7 +7114,8 @@
     "最多上传2张图片（首帧和尾帧）": "Télécharger jusqu'à 2 images (première et dernière image)",
     "图片": "Image",
     "视频": "Vidéo",
-    "音频": "Audio"
+    "音频": "Audio",
+    "Unlimited ({{quota}} available)": "Illimité ({{quota}} disponibles)"
   },
   "Re-query upstream and settle billing": "Re-interroger l'amont et régler la facturation",
   "Task re-queried and settled": "Tâche re-interrogée et réglée",

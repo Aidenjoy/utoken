@@ -7114,7 +7114,8 @@
     "最多上传2张图片（首帧和尾帧）": "最多上传2张图片（首帧和尾帧）",
     "图片": "图片",
     "视频": "视频",
-    "音频": "音频"
+    "音频": "音频",
+    "Unlimited ({{quota}} available)": "无限制（可用 {{quota}}）"
   },
   "Re-query upstream and settle billing": "重新查询上游并结算计费",
   "Task re-queried and settled": "任务已重新查询并结算",

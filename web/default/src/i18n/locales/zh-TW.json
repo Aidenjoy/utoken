@@ -7114,7 +7114,8 @@
     "最多上传2张图片（首帧和尾帧）": "Upload up to 2 images (first and last frame)",
     "图片": "Image",
     "视频": "Video",
-    "音频": "Audio"
+    "音频": "Audio",
+    "Unlimited ({{quota}} available)": "無限制（可用 {{quota}}）"
   },
   "Re-query upstream and settle billing": "重新查詢上游並結算計費",
   "Task re-queried and settled": "任務已重新查詢並結算",

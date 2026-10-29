@@ -156,8 +156,12 @@ type orgSummaryResponse struct {
 	PoolUsedQuota int    `json:"pool_used_quota"`
 	PoolHidden    bool   `json:"pool_quota_hidden"`
 	QuotaHeadroom int    `json:"quota_headroom"`
-	MemberCount   int64  `json:"member_count"`
-	CacheEnabled  bool   `json:"cache_enabled"`
+	// AvailableQuota 成员当前还能消费的额度：有上限成员即子额度余量；无上限成员
+	// 的消耗全部走共享池，可用额度就是池余额——即使企业隐藏了池余额也必须给出，
+	// 否则"无限制"对成员不含任何可用信息。
+	AvailableQuota int   `json:"available_quota"`
+	MemberCount    int64 `json:"member_count"`
+	CacheEnabled   bool  `json:"cache_enabled"`
 	// 企业钱包策略（禁用个人账户）：前端据此隐藏充值/兑换/订阅入口，并在管理员充值时
 	// 注明入池。非企业成员时这些字段缺省，前端按「不受限」处理。
 	DisablePersonalWallet bool `json:"disable_personal_wallet"`
@@ -205,6 +209,11 @@ func GetOrgSummary(c *gin.Context) {
 	resp.CanTopUp = policy.CanTopUp()
 	resp.TopUpToPool = policy.TopUpOrgId() > 0
 	resp.CanUsePersonalWallet = policy.CanUsePersonalWallet()
+	if member.QuotaLimit <= 0 {
+		resp.AvailableQuota = org.Quota
+	} else {
+		resp.AvailableQuota = member.RemainQuota()
+	}
 	// 池余额可见性由 HidePoolQuota 控制（零值 false 即默认可见）；
 	// 企业管理员与系统管理员始终可见，便于核对余额
 	if !org.HidePoolQuota || member.IsAdmin() || middleware.IsSystemAdmin(c) {

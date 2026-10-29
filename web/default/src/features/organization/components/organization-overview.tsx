@@ -117,7 +117,9 @@ export function OrganizationOverview() {
             </span>
             <span className='tabular-nums'>
               {unlimited
-                ? t('Unlimited')
+                ? t('Unlimited ({{quota}} available)', {
+                    quota: formatQuota(summary.available_quota ?? 0),
+                  })
                 : `${formatLogQuota(quotaUsed)} / ${formatLogQuota(quotaLimit)}`}
             </span>
           </div>

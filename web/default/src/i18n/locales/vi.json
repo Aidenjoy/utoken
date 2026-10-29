@@ -7114,7 +7114,8 @@
     "最多上传2张图片（首帧和尾帧）": "Tải lên tối đa 2 hình ảnh (khung đầu và khung cuối)",
     "图片": "Hình ảnh",
     "视频": "Video",
-    "音频": "Âm thanh"
+    "音频": "Âm thanh",
+    "Unlimited ({{quota}} available)": "Không giới hạn (khả dụng {{quota}})"
   },
   "Re-query upstream and settle billing": "Truy vấn lại upstream và quyết toán phí",
   "Task re-queried and settled": "Tác vụ đã được truy vấn lại và quyết toán",
