@@ -106,8 +106,8 @@ export function AppHeader({
 }: AppHeaderProps) {
   // Prioritize dynamically generated links from backend
   const dynamicLinks = useTopNavLinks()
-  // 控制台顶栏仅保留「首页」「开发者中心」，联系客服以弹窗形式单独渲染，其余导航项由侧边栏承担
-  const consoleNavHrefs = new Set(['/', '/docs'])
+  // 控制台顶栏保留「首页」「模型广场」「文档」，联系客服以弹窗形式单独渲染，其余导航项由侧边栏承担
+  const consoleNavHrefs = new Set(['/', '/pricing', '/docs'])
   const links = (dynamicLinks.length > 0 ? dynamicLinks : navLinks).filter(
     (link) => consoleNavHrefs.has(link.href)
   )
