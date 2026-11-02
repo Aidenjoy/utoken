@@ -55,10 +55,14 @@ type SmartAssetResolution struct {
 //
 // 候选集 = 分组下启用该模型的渠道 ∩ 支持 requiredResolution 的渠道 ∩ 已配置素材
 // 协议的渠道，按渠道优先级降序（同级按 ID 升序）排列；requiredResolution 为空时
-// 不按分辨率过滤。在候选集内挑选：
+// 不按分辨率过滤。
+//
+// 选渠道严格按优先级：只在候选中优先级最高的那一层内挑选，低优先级渠道即使已
+// 有现成副本也不会被选中——否则带素材的请求会长期绕过优先级调度，与不带素材
+// 的请求走出两套渠道分布。层内挑选顺序：
 //  1. 所有引用都有 active 副本的渠道，直接复用；
 //  2. 所有引用都已有副本的渠道（pending/failed 交由提交预检以既有文案拦截，不重复上传）；
-//  3. 否则取首个（即优先级最高的）候选渠道，缺副本的引用现场调用 syncToChannel 上传，
+//  3. 否则取层内首个（即 ID 最小的）渠道，缺副本的引用现场调用 syncToChannel 上传，
 //     转为 pending，本次提交随后被预检以「审核中」拦截，轮询转 active 后重试即成功。
 func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups []string, requiredResolution string) ([]*SmartAssetResolution, int, error) {
 	if len(refs) == 0 {
@@ -73,7 +77,7 @@ func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups [
 		sources = append(sources, source)
 	}
 
-	candidates := smartAssetCandidateChannels(modelName, groups, requiredResolution)
+	candidates, priorities := smartAssetCandidateChannels(modelName, groups, requiredResolution)
 	if len(candidates) == 0 {
 		return nil, 0, &SmartAssetError{Kind: SmartAssetNoModelChannel, Ref: refs[0],
 			Detail: fmt.Sprintf("no enabled channel serves model %s in groups %v (resolution %q)", modelName, groups, requiredResolution)}
@@ -97,7 +101,7 @@ func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups [
 		}
 	}
 
-	channelId, needSyncIdx := chooseSmartAssetChannel(protocolChannels, copies)
+	channelId, needSyncIdx := chooseSmartAssetChannel(highestPriorityTier(protocolChannels, priorities), copies)
 	resolutions := make([]*SmartAssetResolution, 0, len(sources))
 	for i, source := range sources {
 		res := &SmartAssetResolution{Ref: refs[i], SourceAssetId: source.ID, ChannelId: channelId}
@@ -144,11 +148,22 @@ func loadOwnedSourceAsset(userId int, ref string) (*model.SourceAsset, error) {
 	return source, nil
 }
 
+// channelPriority 读取渠道优先级，渠道读不到时按 0 处理（与 GetPriority 对 nil
+// 的口径一致），避免因单个渠道缺失就把整批候选的排序打乱。
+func channelPriority(channelId int) int64 {
+	channel, err := model.CacheGetChannel(channelId)
+	if err != nil || channel == nil {
+		return 0
+	}
+	return channel.GetPriority()
+}
+
 // smartAssetCandidateChannels 枚举候选渠道：各分组下启用该模型的渠道并集，剔除
-// 不支持本次请求分辨率的渠道，再按渠道优先级降序（同级按 ID 升序）排列。
+// 不支持本次请求分辨率的渠道，再按渠道优先级降序（同级按 ID 升序）排列，并
+// 返回排序用的优先级快照（避免下游分层时重复查渠道）。
 // 副本会被同步到挑中的渠道，因此候选顺序直接决定素材落到哪个上游账号；
 // 与无素材请求的选路语义保持一致，避免两条路径挑出不同渠道而重复上传。
-func smartAssetCandidateChannels(modelName string, groups []string, requiredResolution string) []int {
+func smartAssetCandidateChannels(modelName string, groups []string, requiredResolution string) ([]int, map[int]int64) {
 	seen := map[int]bool{}
 	var ids []int
 	for _, g := range groups {
@@ -166,9 +181,7 @@ func smartAssetCandidateChannels(modelName string, groups []string, requiredReso
 	}
 	priorities := make(map[int]int64, len(ids))
 	for _, id := range ids {
-		if channel, err := model.CacheGetChannel(id); err == nil && channel != nil {
-			priorities[id] = channel.GetPriority()
-		}
+		priorities[id] = channelPriority(id)
 	}
 	sort.Slice(ids, func(i, j int) bool {
 		if priorities[ids[i]] != priorities[ids[j]] {
@@ -176,7 +189,28 @@ func smartAssetCandidateChannels(modelName string, groups []string, requiredReso
 		}
 		return ids[i] < ids[j]
 	})
-	return ids
+	return ids, priorities
+}
+
+// highestPriorityTier 截取候选中优先级最高的那一层。candidates 已按优先级降序
+// 排列，因此只需取首部优先级相同的连续段。必须在协议过滤之后调用：最高层可能
+// 整层都没配素材上传协议，那时应在剩下的渠道里重新取最高层。
+//
+// 素材副本的「现成可用」不能跨层压过优先级：低优先级渠道上有 active 副本就选中
+// 它，等于带素材的请求永远绕过优先级调度，与不带素材的请求走出两套渠道分布。
+func highestPriorityTier(candidates []int, priorities map[int]int64) []int {
+	if len(candidates) == 0 {
+		return candidates
+	}
+	top := priorities[candidates[0]]
+	tier := make([]int, 0, len(candidates))
+	for _, id := range candidates {
+		if priorities[id] != top {
+			break
+		}
+		tier = append(tier, id)
+	}
+	return tier
 }
 
 // filterAssetProtocolChannels 只保留启用且已配置素材上传协议的渠道
@@ -196,10 +230,11 @@ func filterAssetProtocolChannels(channelIds []int) []int {
 	return result
 }
 
-// chooseSmartAssetChannel 把所有引用收敛到同一渠道：优先全 active，其次全有副本；
-// 都没有时取首个候选渠道，返回值中 needSync[i]=true 表示第 i 个引用在该渠道缺副本、需现场同步。
-func chooseSmartAssetChannel(candidates []int, copies []map[int]*model.Asset) (int, map[int]bool) {
-	for _, ch := range candidates {
+// chooseSmartAssetChannel 在同一优先级层内把所有引用收敛到同一渠道：优先全 active，
+// 其次全有副本；都没有时取层内首个渠道，返回值中 needSync[i]=true 表示第 i 个引用
+// 在该渠道缺副本、需现场同步。tier 必须是 highestPriorityTier 的结果。
+func chooseSmartAssetChannel(tier []int, copies []map[int]*model.Asset) (int, map[int]bool) {
+	for _, ch := range tier {
 		allActive := true
 		for _, byChannel := range copies {
 			row := byChannel[ch]
@@ -212,7 +247,7 @@ func chooseSmartAssetChannel(candidates []int, copies []map[int]*model.Asset) (i
 			return ch, nil
 		}
 	}
-	for _, ch := range candidates {
+	for _, ch := range tier {
 		allCopied := true
 		for _, byChannel := range copies {
 			if byChannel[ch] == nil {
@@ -224,7 +259,7 @@ func chooseSmartAssetChannel(candidates []int, copies []map[int]*model.Asset) (i
 			return ch, nil
 		}
 	}
-	ch := candidates[0]
+	ch := tier[0]
 	needSync := map[int]bool{}
 	for i, byChannel := range copies {
 		if byChannel[ch] == nil {

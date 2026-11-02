@@ -258,6 +258,21 @@ func TestResolveSmartAssetRefsConvergence(t *testing.T) {
 	})
 }
 
+// seedSmartChannel 建一个启用且已配置素材协议的渠道；priority 决定智能挑选的
+// 层级，setting 为空表示不配分辨率黑名单（即全分辨率可用）。
+func seedSmartChannel(t *testing.T, id int, priority int64, setting string) {
+	t.Helper()
+	channel := &model.Channel{
+		Id: id, Name: "ch", Key: "sk-test", Status: common.ChannelStatusEnabled,
+		Priority:      common.GetPointer(priority),
+		OtherSettings: `{"asset_upload_protocol":"ark_official"}`,
+	}
+	if setting != "" {
+		channel.Setting = common.GetPointer(setting)
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+}
+
 // TestResolveSmartAssetRefsRespectsResolutionAndPriority 智能素材挑渠道必须遵守
 // 能力矩阵与优先级：做不了请求分辨率的渠道不进候选（否则副本同步上去也会被上游
 // 拒绝，白花一次上传+审核），无副本可选时落到优先级最高的渠道。
@@ -268,25 +283,17 @@ func TestResolveSmartAssetRefsRespectsResolutionAndPriority(t *testing.T) {
 
 	stub := &stubAssetAdapter{uploadAssetID: "up-900"}
 	setupSmartAssetTest(t, stub)
-	// 30：优先级低、黑名单挡 4k、已有 active 副本；31：优先级高、无黑名单、无副本。
-	require.NoError(t, model.DB.Create(&model.Channel{
-		Id: 30, Name: "low", Key: "sk-test", Status: common.ChannelStatusEnabled,
-		Priority:      common.GetPointer(int64(1)),
-		Setting:       common.GetPointer(`{"resolution_blacklist":{"seedance-lite":["4k"]}}`),
-		OtherSettings: `{"asset_upload_protocol":"ark_official"}`,
-	}).Error)
-	require.NoError(t, model.DB.Create(&model.Channel{
-		Id: 31, Name: "high", Key: "sk-test", Status: common.ChannelStatusEnabled,
-		Priority:      common.GetPointer(int64(9)),
-		OtherSettings: `{"asset_upload_protocol":"ark_official"}`,
-	}).Error)
+	const lite4kBlacklist = `{"resolution_blacklist":{"seedance-lite":["4k"]}}`
+	// 30：优先级高、黑名单挡 4k、已有 active 副本；31：优先级低、无黑名单、无副本。
+	seedSmartChannel(t, 30, 9, lite4kBlacklist)
+	seedSmartChannel(t, 31, 1, "")
 	seedSmartAbility(t, "default", "seedance-lite", 30)
 	seedSmartAbility(t, "default", "seedance-lite", 31)
 	seedSmartSourceAsset(t, 900, 42)
 	seedSmartSourceAsset(t, 901, 42)
 	seedSmartCopy(t, 900, 42, 30, "up-on-30", model.AssetStatusActive)
 
-	// 480p：30 不在黑名单内且副本 active → 复用副本，优先级让位于「不重复上传」。
+	// 480p：30 不在黑名单内、属于最高优先级层且副本 active → 复用副本不上传。
 	resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-900"}, "seedance-lite", []string{"default"}, "480p")
 	require.NoError(t, err)
 	assert.Equal(t, 30, channelId)
@@ -295,7 +302,8 @@ func TestResolveSmartAssetRefsRespectsResolutionAndPriority(t *testing.T) {
 	assert.Equal(t, model.AssetStatusActive, resolutions[0].Status)
 	assert.Zero(t, stub.uploadCalls)
 
-	// 4k：30 被能力矩阵剔除 → 只能落到 31，现场同步一次副本。
+	// 4k：30 被能力矩阵剔除，剩下的 31 就是最高层 → 现场同步一次副本，
+	// 而不是因为「没有渠道支持」直接失败。
 	resolutions, channelId, err = ResolveSmartAssetRefs(42, []string{"yun-900"}, "seedance-lite", []string{"default"}, "4k")
 	require.NoError(t, err)
 	assert.Equal(t, 31, channelId)
@@ -304,10 +312,48 @@ func TestResolveSmartAssetRefsRespectsResolutionAndPriority(t *testing.T) {
 	assert.Equal(t, model.AssetStatusPending, resolutions[0].Status)
 	assert.Equal(t, 1, stub.uploadCalls)
 
-	// 无任何副本时按优先级降序取首个候选：31(优先级9) 而非 30(优先级1)。
+	// 无任何副本时同步到优先级最高的渠道：30(优先级9) 而非 31(优先级1)。
 	_, channelId, err = ResolveSmartAssetRefs(42, []string{"yun-901"}, "seedance-lite", []string{"default"}, "")
 	require.NoError(t, err)
+	assert.Equal(t, 30, channelId)
+}
+
+// TestResolveSmartAssetRefsStrictPriority 副本可用性不得跨优先级层压过优先级：
+// 低优先级渠道上有现成 active 副本也不能把请求拉过去，否则带素材的请求会
+// 长期绕过优先级调度；复用现成副本只在最高优先级层内生效。
+func TestResolveSmartAssetRefsStrictPriority(t *testing.T) {
+	savedCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = savedCache })
+
+	stub := &stubAssetAdapter{uploadAssetID: "up-new"}
+	setupSmartAssetTest(t, stub)
+	seedSmartChannel(t, 30, 1, "") // 低优先级，持有 active 副本
+	seedSmartChannel(t, 31, 9, "") // 最高优先级层，无副本
+	seedSmartChannel(t, 32, 9, "") // 与 31 同层，持有 active 副本
+	for _, id := range []int{30, 31, 32} {
+		seedSmartAbility(t, "default", "seedance-lite", id)
+	}
+	seedSmartSourceAsset(t, 910, 42)
+	seedSmartSourceAsset(t, 911, 42)
+	seedSmartCopy(t, 910, 42, 30, "up-on-30", model.AssetStatusActive)
+	seedSmartCopy(t, 910, 42, 32, "up-on-32", model.AssetStatusActive)
+
+	// 最高层 {31,32} 内复用 32 的 active 副本；30 的副本再可用也不降级。
+	resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"yun-910"}, "seedance-lite", []string{"default"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, 32, channelId)
+	require.Len(t, resolutions, 1)
+	assert.Equal(t, "up-on-32", resolutions[0].UpstreamAssetId)
+	assert.Zero(t, stub.uploadCalls)
+
+	// 最高层全都没有副本时，同步到层内首个渠道 31，仍不降级到有副本的 30。
+	resolutions, channelId, err = ResolveSmartAssetRefs(42, []string{"yun-911"}, "seedance-lite", []string{"default"}, "")
+	require.NoError(t, err)
 	assert.Equal(t, 31, channelId)
+	require.Len(t, resolutions, 1)
+	assert.Equal(t, model.AssetStatusPending, resolutions[0].Status)
+	assert.Equal(t, 1, stub.uploadCalls)
 }
 
 // TestResolveSmartAssetRefsSyncFailure 上游上传失败时返回 sync_failed 并带上游错误详情。
