@@ -36,6 +36,7 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   Tooltip,
@@ -58,8 +59,10 @@ import {
   isTagAggregateRow,
   getChannelTypeIcon,
   getChannelTypeLabel,
+  getChannelModelKinds,
 } from '../lib'
 import type { Channel, ChannelSortBy } from '../types'
+import type { ChannelModelKind } from '../lib'
 import { ChannelCard } from './channel-card'
 import { useChannelsColumns } from './channels-columns'
 import { useChannels } from './channels-provider'
@@ -70,6 +73,9 @@ const CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY = 'channels:column-visibility'
 const CHANNELS_COLUMN_SIZING_STORAGE_KEY = 'channels:column-sizing'
 const CHANNELS_VIEW_MODE_STORAGE_KEY = 'channels:view-mode'
 const CHANNELS_STATUS_FILTER_STORAGE_KEY = 'channel-status-filter'
+// When quick kind/disabled toggles are active we fetch every page (server caps
+// page_size at 100) and filter client-side so counts/pagination stay consistent.
+const CLIENT_FILTER_FETCH_SIZE = 100
 
 const CHANNEL_SORTABLE_COLUMNS = new Set<ChannelSortBy>([
   'id',
@@ -99,6 +105,17 @@ export function ChannelsTable() {
 
   // Table state
   const [sorting, setSorting] = useState<SortingState>([])
+
+  // Quick kind / disabled toggles (client-side post-filter over a full fetch)
+  const [kindFilters, setKindFilters] = useState<ChannelModelKind[]>([])
+  const [hideDisabled, setHideDisabled] = useState(false)
+  const clientFilterActive = kindFilters.length > 0 || hideDisabled
+
+  const toggleKind = (kind: ChannelModelKind, on: boolean) => {
+    setKindFilters((prev) =>
+      on ? [...prev, kind] : prev.filter((k) => k !== kind)
+    )
+  }
 
   // URL state management
   const {
@@ -177,6 +194,12 @@ export function ChannelsTable() {
   // Determine whether to use search or regular list API
   const shouldSearch = Boolean(globalFilter?.trim() || modelFilter.trim())
 
+  // Effective server pagination: fetch a full page when quick toggles are on.
+  const effectivePage = clientFilterActive ? 1 : pagination.pageIndex + 1
+  const effectivePageSize = clientFilterActive
+    ? CLIENT_FILTER_FETCH_SIZE
+    : pagination.pageSize
+
   const sortParams = useMemo(() => {
     const activeSort = sorting[0]
     if (
@@ -238,69 +261,111 @@ export function ChannelsTable() {
       tag_mode: enableTagMode,
       id_sort: idSort,
       ...sortParams,
-      p: pagination.pageIndex + 1,
-      page_size: pagination.pageSize,
+      p: effectivePage,
+      page_size: effectivePageSize,
     }),
     queryFn: async () => {
-      if (shouldSearch) {
-        return searchChannels({
-          keyword: globalFilter,
-          model: modelFilter,
-          group:
-            groupFilter.length > 0 && !groupFilter.includes('all')
-              ? groupFilter[0]
-              : undefined,
-          status:
-            statusFilter.length > 0 && !statusFilter.includes('all')
-              ? statusFilter[0]
-              : undefined,
-          type:
-            typeFilter.length > 0 && !typeFilter.includes('all')
-              ? Number(typeFilter[0])
-              : undefined,
-          tag_mode: enableTagMode,
-          id_sort: idSort,
-          ...sortParams,
-          p: pagination.pageIndex + 1,
-          page_size: pagination.pageSize,
-        })
-      } else {
-        return getChannels({
-          group:
-            groupFilter.length > 0 && !groupFilter.includes('all')
-              ? groupFilter[0]
-              : undefined,
-          status:
-            statusFilter.length > 0 && !statusFilter.includes('all')
-              ? statusFilter[0]
-              : undefined,
-          type:
-            typeFilter.length > 0 && !typeFilter.includes('all')
-              ? Number(typeFilter[0])
-              : undefined,
-          tag_mode: enableTagMode,
-          id_sort: idSort,
-          ...sortParams,
-          p: pagination.pageIndex + 1,
-          page_size: pagination.pageSize,
-        })
+      const baseParams = {
+        group:
+          groupFilter.length > 0 && !groupFilter.includes('all')
+            ? groupFilter[0]
+            : undefined,
+        status:
+          statusFilter.length > 0 && !statusFilter.includes('all')
+            ? statusFilter[0]
+            : undefined,
+        type:
+          typeFilter.length > 0 && !typeFilter.includes('all')
+            ? Number(typeFilter[0])
+            : undefined,
+        tag_mode: enableTagMode,
+        id_sort: idSort,
+        ...sortParams,
       }
+      const fetchPage = (p: number, pageSize: number) =>
+        shouldSearch
+          ? searchChannels({
+              keyword: globalFilter,
+              model: modelFilter,
+              ...baseParams,
+              p,
+              page_size: pageSize,
+            })
+          : getChannels({ ...baseParams, p, page_size: pageSize })
+
+      if (!clientFilterActive) {
+        return fetchPage(pagination.pageIndex + 1, pagination.pageSize)
+      }
+
+      // Quick toggles filter client-side, so pull every page to see the full
+      // channel set (the server caps page_size at 100).
+      const first = await fetchPage(1, CLIENT_FILTER_FETCH_SIZE)
+      const total = first?.data?.total || 0
+      const items = [...(first?.data?.items || [])]
+      const pageCount = Math.ceil(total / CLIENT_FILTER_FETCH_SIZE)
+      if (pageCount > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: pageCount - 1 }, (_, i) =>
+            fetchPage(i + 2, CLIENT_FILTER_FETCH_SIZE)
+          )
+        )
+        for (const page of rest) items.push(...(page?.data?.items || []))
+      }
+      return { ...first, data: { ...first.data, items, total } }
     },
     placeholderData: (previousData) => previousData,
   })
 
-  // Apply tag aggregation if tag mode is enabled
-  const channels = useMemo(() => {
+  // Apply quick kind/disabled toggles client-side over the full fetch.
+  const filteredChannels = useMemo(() => {
     const rawChannels = data?.data?.items || []
+    if (!clientFilterActive) return rawChannels
+    return rawChannels.filter((channel) => {
+      if (hideDisabled && channel.status !== CHANNEL_STATUS.ENABLED) {
+        return false
+      }
+      if (kindFilters.length > 0) {
+        const kinds = getChannelModelKinds(channel)
+        if (!kindFilters.some((k) => kinds.includes(k))) return false
+      }
+      return true
+    })
+  }, [data, clientFilterActive, hideDisabled, kindFilters])
 
-    if (enableTagMode && rawChannels.length > 0) {
-      return aggregateChannelsByTag(rawChannels)
+  // Apply tag aggregation if tag mode is enabled, then slice for client paging.
+  const channels = useMemo(() => {
+    let rows = filteredChannels
+    if (enableTagMode && rows.length > 0) {
+      rows = aggregateChannelsByTag(rows)
     }
+    if (clientFilterActive) {
+      const start = pagination.pageIndex * pagination.pageSize
+      rows = rows.slice(start, start + pagination.pageSize)
+    }
+    return rows
+  }, [
+    filteredChannels,
+    enableTagMode,
+    clientFilterActive,
+    pagination.pageIndex,
+    pagination.pageSize,
+  ])
 
-    return rawChannels
-  }, [data, enableTagMode])
+  const totalCount = useMemo(() => {
+    if (!clientFilterActive) return data?.data?.total || 0
+    if (enableTagMode && filteredChannels.length > 0) {
+      return aggregateChannelsByTag(filteredChannels).length
+    }
+    return filteredChannels.length
+  }, [clientFilterActive, data, enableTagMode, filteredChannels])
 
-  const totalCount = data?.data?.total || 0
+  // Jump back to the first page when the quick toggles turn on.
+  useEffect(() => {
+    if (clientFilterActive && pagination.pageIndex !== 0) {
+      onPaginationChange((prev) => ({ ...prev, pageIndex: 0 }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientFilterActive])
   const typeCounts = data?.data?.type_counts
 
   // Columns configuration
@@ -459,6 +524,38 @@ export function ChannelsTable() {
             singleSelect: true,
           },
         ],
+        afterFilters: (
+          <div className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+            <label className='text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1.5 text-xs select-none'>
+              <Checkbox
+                checked={kindFilters.includes('llm')}
+                onCheckedChange={(v) => toggleKind('llm', v === true)}
+              />
+              {t('Language Model')}
+            </label>
+            <label className='text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1.5 text-xs select-none'>
+              <Checkbox
+                checked={kindFilters.includes('image')}
+                onCheckedChange={(v) => toggleKind('image', v === true)}
+              />
+              {t('Image Model')}
+            </label>
+            <label className='text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1.5 text-xs select-none'>
+              <Checkbox
+                checked={kindFilters.includes('video')}
+                onCheckedChange={(v) => toggleKind('video', v === true)}
+              />
+              {t('Video Model')}
+            </label>
+            <label className='text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-1.5 text-xs select-none'>
+              <Checkbox
+                checked={hideDisabled}
+                onCheckedChange={(v) => setHideDisabled(v === true)}
+              />
+              {t('Hide Disabled')}
+            </label>
+          </div>
+        ),
         preActions: (
           <Tooltip>
             <TooltipTrigger

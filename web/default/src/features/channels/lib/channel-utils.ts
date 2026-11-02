@@ -232,6 +232,39 @@ export function parseModelsList(models: string): string[] {
     .filter((m) => m.length > 0);
 }
 
+// ============================================================================
+// Model Kind Classification (language / image / video)
+// ============================================================================
+
+export type ChannelModelKind = "llm" | "image" | "video";
+
+const VIDEO_MODEL_PATTERN =
+  /seedance|sora|kling|vidu|veo|video|wan2|hailuo|pixverse|mochi/i;
+const IMAGE_MODEL_PATTERN =
+  /dall|gpt-image|image|midjourney|flux|seedream|cogview|nano-banana|ideogram|recraft|mj-|imagen/i;
+
+/**
+ * Classify a single model name into a broad capability kind.
+ * Heuristic based on well-known model-name families; defaults to language.
+ */
+export function classifyModelKind(model: string): ChannelModelKind {
+  if (VIDEO_MODEL_PATTERN.test(model)) return "video";
+  if (IMAGE_MODEL_PATTERN.test(model)) return "image";
+  return "llm";
+}
+
+/**
+ * The set of capability kinds a channel serves, derived from its model list.
+ * A channel with no models configured is treated as a language channel.
+ */
+export function getChannelModelKinds(channel: Channel): ChannelModelKind[] {
+  const models = parseModelsList(channel.models);
+  if (models.length === 0) return ["llm"];
+  const kinds = new Set<ChannelModelKind>();
+  for (const m of models) kinds.add(classifyModelKind(m));
+  return [...kinds];
+}
+
 /**
  * Parse comma-separated groups list.
  * Sorts with 'default' group first, then locale-sorted alphabetically.
