@@ -28,7 +28,7 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
-	DeletedAt          gorm.DeletedAt `gorm:"index"`
+	DeletedAt          gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
 
 func (token *Token) Clean() {
@@ -82,8 +82,13 @@ func (token *Token) GetIpLimits() []string {
 // userId<=0（仅管理员全部用户视角）不限归属，但排除归属用户已注销的令牌：
 // 用户软删或硬删后，relay 鉴权取不到用户缓存会直接拒绝，这些密钥已不可用。
 // 子查询依赖 User 的软删默认作用域，同时覆盖已硬删的用户。
-func tokenScopeQuery(userId int) *gorm.DB {
+// includeDeleted 为真时连同已软删的令牌一起返回（仅管理员排查用）；
+// 不限归属视角仍沿用上面的用户存在性过滤，不因该开关放大范围。
+func tokenScopeQuery(userId int, includeDeleted bool) *gorm.DB {
 	query := DB.Model(&Token{})
+	if includeDeleted {
+		query = DB.Unscoped().Model(&Token{})
+	}
 	if userId > 0 {
 		return query.Where("user_id = ?", userId)
 	}
@@ -92,9 +97,9 @@ func tokenScopeQuery(userId int) *gorm.DB {
 
 // GetAllUserTokens 分页查询令牌；userId>0 限定该用户，userId<=0 表示不限用户。
 // 不限用户仅服务于管理员归属过滤，调用方必须先行完成管理员鉴权。
-func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
+func GetAllUserTokens(userId int, startIdx int, num int, includeDeleted bool) ([]*Token, error) {
 	var tokens []*Token
-	query := tokenScopeQuery(userId)
+	query := tokenScopeQuery(userId, includeDeleted)
 	err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
@@ -168,7 +173,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	countCap := maxTokens
 	hasFuzzy := strings.Contains(keyword, "%") || strings.Contains(token, "%")
 	if userId > 0 && hasFuzzy {
-		count, err := CountUserTokens(userId)
+		count, err := CountUserTokens(userId, false)
 		if err != nil {
 			common.SysLog("failed to count user tokens: " + err.Error())
 			return nil, 0, errors.New("获取令牌数量失败")
@@ -180,7 +185,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		countCap = searchAllUsersHardCap
 	}
 
-	baseQuery := tokenScopeQuery(userId)
+	baseQuery := tokenScopeQuery(userId, false)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -278,6 +283,18 @@ func GetTokenById(id int) (*Token, error) {
 			}
 		})
 	}
+	return &token, err
+}
+
+// GetTokenByIdIncludeDeleted 按 ID 读取令牌，包含已软删的行，仅供管理员排查与
+// 复制历史密钥使用。刻意不写 Redis 缓存：已删除的令牌不可用于鉴权，
+// 若被写入缓存会让它在缓存有效期内重新变成可用密钥。
+func GetTokenByIdIncludeDeleted(id int) (*Token, error) {
+	if id == 0 {
+		return nil, errors.New("id 为空！")
+	}
+	token := Token{Id: id}
+	err := DB.Unscoped().First(&token, "id = ?", id).Error
 	return &token, err
 }
 
@@ -485,10 +502,12 @@ func decreaseTokenQuota(id int, quota int) error {
 }
 
 // CountUserTokens 统计令牌数；userId>0 限定该用户，userId<=0 表示全部用户
-// （仅管理员归属过滤路径可传 0），用于分页。
-func CountUserTokens(userId int) (int64, error) {
+// （仅管理员归属过滤路径可传 0），用于分页。includeDeleted 需与配对的
+// GetAllUserTokens 一致，否则分页总数与列表口径不符；令牌数量上限校验恒传 false，
+// 已删除的令牌不占用用户可创建数量。
+func CountUserTokens(userId int, includeDeleted bool) (int64, error) {
 	var total int64
-	query := tokenScopeQuery(userId)
+	query := tokenScopeQuery(userId, includeDeleted)
 	err := query.Count(&total).Error
 	return total, err
 }

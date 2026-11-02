@@ -7115,7 +7115,13 @@
     "图片": "Изображение",
     "视频": "Видео",
     "音频": "Аудио",
-    "Unlimited ({{quota}} available)": "Без лимита (доступно {{quota}})"
+    "Unlimited ({{quota}} available)": "Без лимита (доступно {{quota}})",
+    "Include deleted keys": "Включая удалённые ключи",
+    "Deleted key": "Ключ удалён",
+    "{{count}} key(s) in total": "Всего ключей: {{count}}",
+    "All models": "Все модели",
+    "Deletion time": "Время удаления",
+    "Only the first {{count}} keys are shown": "Показаны только первые {{count}} ключей"
   },
   "Re-query upstream and settle billing": "Повторно запросить апстрим и произвести расчёт",
   "Task re-queried and settled": "Задача повторно запрошена и рассчитана",

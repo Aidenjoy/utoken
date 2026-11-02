@@ -7115,7 +7115,13 @@
     "图片": "画像",
     "视频": "動画",
     "音频": "音声",
-    "Unlimited ({{quota}} available)": "無制限（利用可能 {{quota}}）"
+    "Unlimited ({{quota}} available)": "無制限（利用可能 {{quota}}）",
+    "Include deleted keys": "削除済みのキーを含める",
+    "Deleted key": "削除済み",
+    "{{count}} key(s) in total": "合計 {{count}} 件のキー",
+    "All models": "すべてのモデル",
+    "Deletion time": "削除日時",
+    "Only the first {{count}} keys are shown": "先頭 {{count}} 件のキーのみ表示しています"
   },
   "Re-query upstream and settle billing": "上流へ再問い合わせして課金を確定",
   "Task re-queried and settled": "タスクを再問い合わせして確定しました",

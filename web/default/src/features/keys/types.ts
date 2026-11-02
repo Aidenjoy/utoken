@@ -48,6 +48,8 @@ export const apiKeySchema = z.object({
   // 归属用户：列表恒返回 user_id；username 仅管理员跨用户查看时附加
   user_id: z.number().optional(),
   username: z.string().optional(),
+  // 软删时间：仅管理员带 includeDeleted 查询时可能非空，用于标注「已删除」
+  deleted_at: z.string().nullish(),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>
@@ -67,6 +69,8 @@ export interface GetApiKeysParams {
   size?: number
   // 管理员归属过滤：缺省=自己，0=全部用户，N=指定用户；非管理员后端忽略
   userId?: number
+  // 管理员专属：连同已删除的密钥一起返回；非管理员后端忽略
+  includeDeleted?: boolean
 }
 
 export interface GetApiKeysResponse {

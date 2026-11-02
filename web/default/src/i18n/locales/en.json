@@ -7115,7 +7115,13 @@
     "图片": "Image",
     "视频": "Video",
     "音频": "Audio",
-    "Unlimited ({{quota}} available)": "Unlimited ({{quota}} available)"
+    "Unlimited ({{quota}} available)": "Unlimited ({{quota}} available)",
+    "Include deleted keys": "Include deleted keys",
+    "Deleted key": "Deleted key",
+    "{{count}} key(s) in total": "{{count}} key(s) in total",
+    "All models": "All models",
+    "Deletion time": "Deletion time",
+    "Only the first {{count}} keys are shown": "Only the first {{count}} keys are shown"
   },
   "Re-query upstream and settle billing": "Re-query upstream and settle billing",
   "Task re-queried and settled": "Task re-queried and settled",

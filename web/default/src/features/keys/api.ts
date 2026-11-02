@@ -35,11 +35,12 @@ import type {
 export async function getApiKeys(
   params: GetApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
-  const { p = 1, size = 10, userId } = params
+  const { p = 1, size = 10, userId, includeDeleted } = params
   const queryParams = new URLSearchParams()
   queryParams.set('p', String(p))
   queryParams.set('size', String(size))
   if (userId != null) queryParams.set('userId', String(userId))
+  if (includeDeleted) queryParams.set('includeDeleted', 'true')
   const res = await api.get(`/api/token/?${queryParams.toString()}`)
   return res.data
 }

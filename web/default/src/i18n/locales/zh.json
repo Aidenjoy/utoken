@@ -7115,7 +7115,13 @@
     "图片": "图片",
     "视频": "视频",
     "音频": "音频",
-    "Unlimited ({{quota}} available)": "无限制（可用 {{quota}}）"
+    "Unlimited ({{quota}} available)": "无限制（可用 {{quota}}）",
+    "Include deleted keys": "包含已删除密钥",
+    "Deleted key": "已删除",
+    "{{count}} key(s) in total": "共 {{count}} 个密钥",
+    "All models": "全部模型",
+    "Deletion time": "删除时间",
+    "Only the first {{count}} keys are shown": "仅显示前 {{count}} 个密钥"
   },
   "Re-query upstream and settle billing": "重新查询上游并结算计费",
   "Task re-queried and settled": "任务已重新查询并结算",

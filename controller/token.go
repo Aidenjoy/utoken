@@ -101,13 +101,17 @@ func buildMaskedTokenResponsesWithOwner(c *gin.Context, tokens []*model.Token, s
 
 func GetAllTokens(c *gin.Context) {
 	scopeUserID := tokenOwnerScope(c)
+	// 已软删的令牌只对管理员可见：运营需要在页面上核对客户「删掉」的密钥（明文仍在库里），
+	// 而不是去查数据库。普通用户恒为 false，忽略越权参数。
+	includeDeleted, _ := strconv.ParseBool(c.Query("includeDeleted"))
+	includeDeleted = includeDeleted && model.IsAdmin(c.GetInt("id"))
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(scopeUserID, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, err := model.GetAllUserTokens(scopeUserID, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), includeDeleted)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(scopeUserID)
+	total, _ := model.CountUserTokens(scopeUserID, includeDeleted)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponsesWithOwner(c, tokens, scopeUserID))
 	common.ApiSuccess(c, pageInfo)
@@ -130,12 +134,13 @@ func SearchTokens(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
-// readableToken 读取用于展示的令牌：管理员可读取任意用户的令牌（跨用户查看与复制密钥），
+// readableToken 读取用于展示的令牌：管理员可读取任意用户的令牌（跨用户查看与复制密钥，
+// 含已软删的历史令牌，客户删掉密钥后运营仍需在页面上取回明文），
 // 普通用户仅能读取自己的。写入类接口不使用该放宽，仍严格按归属校验。
 func readableToken(c *gin.Context, id int) (*model.Token, error) {
 	userId := c.GetInt("id")
 	if model.IsAdmin(userId) {
-		return model.GetTokenById(id)
+		return model.GetTokenByIdIncludeDeleted(id)
 	}
 	return model.GetTokenByIds(id, userId)
 }
@@ -278,7 +283,7 @@ func AddToken(c *gin.Context) {
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
-	count, err := model.CountUserTokens(ownerId)
+	count, err := model.CountUserTokens(ownerId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return

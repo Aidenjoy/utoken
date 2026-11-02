@@ -84,7 +84,8 @@ export function UserApiKeyCreateDialog(props: Props) {
         return
       }
       const keyResult = await fetchTokenKey(result.data.id)
-      setCreatedKey(keyResult.data?.key || null)
+      // 与密钥页一致：展示/复制的都是可直接调用的 sk- 形式
+      setCreatedKey(keyResult.data?.key ? `sk-${keyResult.data.key}` : null)
     } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {

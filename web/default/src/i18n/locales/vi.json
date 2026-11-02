@@ -7115,7 +7115,13 @@
     "图片": "Hình ảnh",
     "视频": "Video",
     "音频": "Âm thanh",
-    "Unlimited ({{quota}} available)": "Không giới hạn (khả dụng {{quota}})"
+    "Unlimited ({{quota}} available)": "Không giới hạn (khả dụng {{quota}})",
+    "Include deleted keys": "Bao gồm các khóa đã xóa",
+    "Deleted key": "Khóa đã xóa",
+    "{{count}} key(s) in total": "Tổng cộng {{count}} khóa",
+    "All models": "Tất cả mô hình",
+    "Deletion time": "Thời gian xóa",
+    "Only the first {{count}} keys are shown": "Chỉ hiển thị {{count}} khóa đầu tiên"
   },
   "Re-query upstream and settle billing": "Truy vấn lại upstream và quyết toán phí",
   "Task re-queried and settled": "Tác vụ đã được truy vấn lại và quyết toán",
