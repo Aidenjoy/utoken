@@ -92,16 +92,18 @@ func (s *VideoGenerationService) SubmitVideoTask(cfg directorCallConfig, req Vid
 // QueryVideoTask 查询视频任务，返回 status（processing/success/failed）与视频地址
 func (s *VideoGenerationService) QueryVideoTask(cfg directorCallConfig, taskID string) (string, string, error) {
 	url := relayBaseURL() + "/v1/video/generations/" + taskID
-	// 兼容两种查询响应：后台任务格式（data.status=SUCCESS / data.result_url）
-	// 与 OpenAI video 格式（status=completed / metadata.url），以实际返回为准
+	// 兼容通用任务、OpenAI video 与方舟官方协议三种查询响应，以实际返回为准。
 	var result struct {
-		Status   string            `json:"status"` // OpenAI 格式：queued/in_progress/completed/failed
+		Status   string            `json:"status"` // OpenAI：completed；方舟：succeeded
 		Metadata map[string]string `json:"metadata"`
-		Error    *struct {
+		Content  struct {
+			VideoURL string `json:"video_url"`
+		} `json:"content"`
+		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
 		Data *struct {
-			Status     string `json:"status"` // 后台格式：SUCCESS/FAILURE 等大写枚举
+			Status     string `json:"status"` // 通用格式：SUCCESS/FAILURE 等大写枚举
 			FailReason string `json:"fail_reason"`
 			ResultURL  string `json:"result_url"`
 		} `json:"data"`
@@ -127,13 +129,17 @@ func (s *VideoGenerationService) QueryVideoTask(cfg directorCallConfig, taskID s
 			return "processing", "", nil
 		}
 	}
-	// OpenAI video 格式兜底
+	// OpenAI video 与方舟官方协议兜底
 	switch result.Status {
-	case "completed":
-		if result.Metadata["url"] == "" {
+	case "completed", "succeeded":
+		videoURL := result.Metadata["url"]
+		if result.Status == "succeeded" {
+			videoURL = result.Content.VideoURL
+		}
+		if videoURL == "" {
 			return "failed", "", errors.New("任务成功但未返回视频地址")
 		}
-		return "success", result.Metadata["url"], nil
+		return "success", videoURL, nil
 	case "failed":
 		msg := "任务失败"
 		if result.Error != nil {
