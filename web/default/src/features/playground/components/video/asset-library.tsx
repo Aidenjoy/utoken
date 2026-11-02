@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ZoomableImage } from '@/components/zoomable-image'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
 import { useIsSuperAdmin } from '@/hooks/use-admin'
@@ -90,10 +91,11 @@ function assetPreview(asset: Asset) {
     )
   }
   return (
-    <img
+    <ZoomableImage
       src={src}
       alt={asset.name}
-      className='size-full object-cover'
+      className='size-full'
+      fit='cover'
       referrerPolicy='no-referrer'
     />
   )

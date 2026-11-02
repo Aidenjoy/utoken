@@ -44,6 +44,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ZoomableImage } from '@/components/zoomable-image'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
 
@@ -85,10 +86,11 @@ function sourcePreview(asset: SourceAsset) {
     )
   }
   return (
-    <img
+    <ZoomableImage
       src={asset.source_url}
       alt={asset.name}
-      className='size-full object-cover'
+      className='size-full'
+      fit='cover'
       referrerPolicy='no-referrer'
     />
   )

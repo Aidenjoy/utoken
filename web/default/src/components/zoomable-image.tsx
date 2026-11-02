@@ -10,6 +10,7 @@ export function ZoomableImage(props: {
   alt?: string
   className?: string
   fit?: 'cover' | 'contain'
+  referrerPolicy?: React.ImgHTMLAttributes<HTMLImageElement>['referrerPolicy']
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
@@ -25,6 +26,7 @@ export function ZoomableImage(props: {
           src={props.src}
           alt={props.alt ?? ''}
           loading='lazy'
+          referrerPolicy={props.referrerPolicy}
           className={cn(
             'size-full',
             props.fit === 'contain' ? 'object-contain' : 'object-cover'
@@ -40,6 +42,7 @@ export function ZoomableImage(props: {
           <img
             src={props.src}
             alt={props.alt ?? ''}
+            referrerPolicy={props.referrerPolicy}
             className='max-h-[85vh] max-w-[calc(90vw-1rem)] rounded-md object-contain'
           />
         </DialogContent>
