@@ -7121,7 +7121,8 @@
     "{{count}} key(s) in total": "{{count}} key(s) in total",
     "All models": "All models",
     "Deletion time": "Deletion time",
-    "Only the first {{count}} keys are shown": "Only the first {{count}} keys are shown"
+    "Only the first {{count}} keys are shown": "Only the first {{count}} keys are shown",
+    "By username": "By username"
   },
   "Re-query upstream and settle billing": "Re-query upstream and settle billing",
   "Task re-queried and settled": "Task re-queried and settled",

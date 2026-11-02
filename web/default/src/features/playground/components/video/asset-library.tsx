@@ -44,6 +44,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
 
 import {
   deleteAsset,
@@ -104,6 +105,7 @@ function ChannelAssetsPanel({
   className,
 }: AssetLibraryContentProps) {
   const { t } = useTranslation()
+  const isSuperAdmin = useIsSuperAdmin()
   const [providers, setProviders] = useState<AssetProvider[]>([])
   const [channelId, setChannelId] = useState<number>(0)
   const [assets, setAssets] = useState<Asset[]>([])
@@ -113,15 +115,33 @@ function ChannelAssetsPanel({
   const [url, setUrl] = useState('')
   const [assetType, setAssetType] = useState<AssetType>('Image')
   const [name, setName] = useState('')
+  const [ownerScope, setOwnerScope] = useState<'self' | 'all' | 'user'>('self')
+  const [ownerUsername, setOwnerUsername] = useState('')
   const [copiedAssetId, setCopiedAssetId] = useState<number | null>(null)
   const copyResetTimer = useRef<number | undefined>(undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // owner 作用域仅超管可用：self=本人（默认），all=全部用户，user=指定用户名。
+  let ownerParam: string | undefined
+  if (isSuperAdmin && ownerScope === 'all') {
+    ownerParam = 'all'
+  } else if (isSuperAdmin && ownerScope === 'user') {
+    ownerParam = ownerUsername.trim() || undefined
+  }
+  const showUsername = isSuperAdmin && ownerScope !== 'self'
+
   const reloadAssets = useCallback(
-    async (opts: { silent?: boolean; channelId?: number } = {}) => {
+    async (
+      opts: { silent?: boolean; channelId?: number; owner?: string } = {}
+    ) => {
       if (!opts.silent) setLoading(true)
       try {
-        const list = await listAssets(opts.channelId)
+        const list = await listAssets(
+          opts.channelId,
+          undefined,
+          undefined,
+          opts.owner
+        )
         setAssets(list)
       } finally {
         if (!opts.silent) setLoading(false)
@@ -135,10 +155,10 @@ function ChannelAssetsPanel({
   useEffect(() => {
     if (!hasPendingAsset) return
     const timer = setInterval(() => {
-      void reloadAssets({ silent: true, channelId })
+      void reloadAssets({ silent: true, channelId, owner: ownerParam })
     }, 3000)
     return () => clearInterval(timer)
-  }, [hasPendingAsset, channelId, reloadAssets])
+  }, [hasPendingAsset, channelId, ownerParam, reloadAssets])
 
   useEffect(() => {
     let cancelled = false
@@ -157,11 +177,16 @@ function ChannelAssetsPanel({
     }
   }, [])
 
-  // 素材绑定「用户 × 渠道」，跨渠道不通用，列表只展示当前所选渠道
+  // 素材绑定「用户 × 渠道」，跨渠道不通用，列表只展示当前所选渠道。
+  // 指定用户名时对输入做防抖，避免逐字触发查询。
   useEffect(() => {
     if (!channelId) return
-    void reloadAssets({ channelId })
-  }, [channelId, reloadAssets])
+    const delay = ownerScope === 'user' ? 400 : 0
+    const timer = setTimeout(() => {
+      void reloadAssets({ channelId, owner: ownerParam })
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [channelId, ownerParam, ownerScope, reloadAssets])
 
   const handleRegister = async (registerUrl: string, registerName: string) => {
     if (!channelId) {
@@ -288,7 +313,12 @@ function ChannelAssetsPanel({
 
       {/* Register form */}
       <div className='border-border/60 bg-muted/40 dark:bg-muted/20 shrink-0 space-y-3 rounded-xl border p-3'>
-        <div className='grid grid-cols-[1fr_10rem] gap-2'>
+        <div
+          className={cn(
+            'grid gap-2',
+            isSuperAdmin ? 'grid-cols-[8rem_8rem_1fr]' : 'grid-cols-[1fr_10rem]'
+          )}
+        >
           <div className='space-y-1.5'>
             <div className='text-muted-foreground text-xs font-medium'>
               {t('Channel')}
@@ -337,6 +367,43 @@ function ChannelAssetsPanel({
               </SelectContent>
             </Select>
           </div>
+          {isSuperAdmin && (
+            <div className='space-y-1.5'>
+              <div className='text-muted-foreground text-xs font-medium'>
+                {t('Owner')}
+              </div>
+              <div className='flex gap-2'>
+                <Select
+                  value={ownerScope}
+                  onValueChange={(v) =>
+                    setOwnerScope(v as 'self' | 'all' | 'user')
+                  }
+                  items={[
+                    { value: 'self', label: t('Mine') },
+                    { value: 'all', label: t('All users') },
+                    { value: 'user', label: t('By username') },
+                  ]}
+                >
+                  <SelectTrigger className='w-32 shrink-0'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='self'>{t('Mine')}</SelectItem>
+                    <SelectItem value='all'>{t('All users')}</SelectItem>
+                    <SelectItem value='user'>{t('By username')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {ownerScope === 'user' && (
+                  <Input
+                    className='min-w-0 flex-1'
+                    value={ownerUsername}
+                    onChange={(e) => setOwnerUsername(e.target.value)}
+                    placeholder={t('Enter username')}
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </div>
         <div className='grid grid-cols-[1fr_14rem] gap-2'>
           <div className='space-y-1.5'>
@@ -438,6 +505,14 @@ function ChannelAssetsPanel({
                 </button>
               </div>
               <div className='space-y-1 p-2'>
+                {showUsername && asset.username && (
+                  <div
+                    className='text-primary truncate text-[11px] font-medium'
+                    title={asset.username}
+                  >
+                    @{asset.username}
+                  </div>
+                )}
                 {asset.name && (
                   <div
                     className='truncate text-xs font-medium'

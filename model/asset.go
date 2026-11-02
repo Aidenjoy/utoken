@@ -41,6 +41,9 @@ type Asset struct {
 	GroupID       string `json:"group_id" gorm:"type:varchar(191)"`
 	ProjectName   string `json:"project_name" gorm:"type:varchar(191)"`
 	ErrorMsg      string `json:"error_msg" gorm:"type:text"`
+
+	// Username 仅超管全量视角下由控制层填充（非持久化），普通用户查询不返回。
+	Username string `json:"username,omitempty" gorm:"-"`
 }
 
 func (Asset) TableName() string {
@@ -116,7 +119,23 @@ func GetAssetsByChannel(channelId int, startIdx int, num int) ([]*Asset, error) 
 	return assets, query.Order("id desc").Limit(num).Offset(startIdx).Find(&assets).Error
 }
 
-// GetAssetByChannelAndSourceURL 按渠道 + 源 URL 定位已存在副本。
+// GetAssetsForAdmin 超管全量视角：userIds 为空表示所有用户，否则限定这批用户；
+// channelId>0 时进一步按渠道过滤。供超管查看全部/指定用户素材使用。
+func GetAssetsForAdmin(userIds []int, channelId int, num int) ([]*Asset, error) {
+	if num == 0 {
+		num = 100
+	}
+	var assets []*Asset
+	query := DB.Model(&Asset{})
+	if len(userIds) > 0 {
+		query = query.Where("user_id IN ?", userIds)
+	}
+	if channelId > 0 {
+		query = query.Where("channel_id = ?", channelId)
+	}
+	err := query.Order("id desc").Limit(num).Find(&assets).Error
+	return assets, err
+}
 // 供 SourceAssetId 为空（直接按 URL 注册）的素材在跨渠道同步时做幂等预检。
 func GetAssetByChannelAndSourceURL(channelId int, sourceURL string) (*Asset, error) {
 	var asset Asset
@@ -136,6 +155,21 @@ func DeleteAssetById(id int64, userId int) (string, error) {
 		return "", errors.New("asset not found or not owned by user")
 	}
 	return "", nil
+}
+
+// AdminDeleteAssetById 超管按记录 ID 删除素材本地登记（不限归属；上游无删除 API，远端素材保留）。
+func AdminDeleteAssetById(id int64) error {
+	if id == 0 {
+		return errors.New("asset id is required")
+	}
+	result := DB.Where("id = ?", id).Delete(&Asset{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("asset not found")
+	}
+	return nil
 }
 
 // DeleteAssetsByUserAndAssetID 按「用户 + 上游素材 ID」删除渠道素材记录，返回删除行数。

@@ -759,13 +759,36 @@ func persistAssetGroupID(channel *model.Channel, groupID string) error {
 		Updates(map[string]interface{}{"settings": channel.OtherSettings}).Error
 }
 
-// ListAssets 列出本人素材（?channel_id= 过滤），pending 素材顺带向上游刷新状态。
+// ListAssets 列出素材（?channel_id= 过滤），pending 素材顺带向上游刷新状态。
+// 默认仅本人素材；超管可用 ?owner=all 查看全部用户、?owner=<username> 查看指定用户，
+// 此时返回体额外填充 username 字段。
 // ?model=（可选 ?group=）进一步过滤：素材只在注册它的渠道上游有效，
 // 因此仅返回渠道在当前分组（或用户可用分组）下支持该模型的素材。
 func ListAssets(c *gin.Context) {
 	userId := c.GetInt("id")
 	channelId, _ := strconv.Atoi(c.Query("channel_id"))
-	assets, err := model.GetUserAssets(userId, channelId, 0, 100)
+
+	// owner 作用域：仅超管可跨用户查看，其他角色一律回落为本人。
+	isSuperAdmin := c.GetInt("role") >= common.RoleRootUser
+	owner := c.Query("owner")
+	var assets []*model.Asset
+	var err error
+	crossUser := false
+	if isSuperAdmin && owner != "" && owner != "self" {
+		crossUser = true
+		if owner == "all" {
+			assets, err = model.GetAssetsForAdmin(nil, channelId, 100)
+		} else {
+			target, uerr := model.GetUserByUsername(owner)
+			if uerr != nil || target == nil {
+				c.JSON(http.StatusOK, gin.H{"assets": []*model.Asset{}})
+				return
+			}
+			assets, err = model.GetAssetsForAdmin([]int{target.Id}, channelId, 100)
+		}
+	} else {
+		assets, err = model.GetUserAssets(userId, channelId, 0, 100)
+	}
 	if err != nil {
 		assetJSONError(c, http.StatusInternalServerError, "query_data_error", err.Error())
 		return
@@ -792,6 +815,22 @@ func ListAssets(c *gin.Context) {
 		assets = filtered
 	}
 
+	if crossUser && len(assets) > 0 {
+		ids := make([]int, 0, len(assets))
+		seen := make(map[int]bool, len(assets))
+		for _, a := range assets {
+			if !seen[a.UserID] {
+				seen[a.UserID] = true
+				ids = append(ids, a.UserID)
+			}
+		}
+		if names, nerr := model.GetUsernamesByIDs(ids); nerr == nil {
+			for _, a := range assets {
+				a.Username = names[a.UserID]
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"assets": assets})
 }
 
@@ -814,11 +853,20 @@ func GetAsset(c *gin.Context) {
 }
 
 // DeleteAsset 删除本地素材记录（上游无删除 API，远端素材保留）。
+// 超管可删除任意用户的素材；其他角色仅限本人。
 func DeleteAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		assetJSONError(c, http.StatusBadRequest, "invalid_request", "invalid asset id")
+		return
+	}
+	if c.GetInt("role") >= common.RoleRootUser {
+		if err := model.AdminDeleteAssetById(id); err != nil {
+			assetJSONError(c, http.StatusNotFound, "not_found", err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true})
 		return
 	}
 	if _, err := model.DeleteAssetById(id, userId); err != nil {

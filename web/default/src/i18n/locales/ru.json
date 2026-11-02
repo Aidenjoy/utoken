@@ -7121,7 +7121,8 @@
     "{{count}} key(s) in total": "Всего ключей: {{count}}",
     "All models": "Все модели",
     "Deletion time": "Время удаления",
-    "Only the first {{count}} keys are shown": "Показаны только первые {{count}} ключей"
+    "Only the first {{count}} keys are shown": "Показаны только первые {{count}} ключей",
+    "By username": "По имени пользователя"
   },
   "Re-query upstream and settle billing": "Повторно запросить апстрим и произвести расчёт",
   "Task re-queried and settled": "Задача повторно запрошена и рассчитана",

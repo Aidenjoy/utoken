@@ -207,6 +207,8 @@ export interface Asset {
   group_id: string
   project_name: string
   error_msg: string
+  /** Present only in the super-admin cross-user view */
+  username?: string
 }
 
 export interface AssetProvider {

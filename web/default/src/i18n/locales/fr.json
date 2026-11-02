@@ -7121,7 +7121,8 @@
     "{{count}} key(s) in total": "{{count}} clé(s) au total",
     "All models": "Tous les modèles",
     "Deletion time": "Date de suppression",
-    "Only the first {{count}} keys are shown": "Seules les {{count}} premières clés sont affichées"
+    "Only the first {{count}} keys are shown": "Seules les {{count}} premières clés sont affichées",
+    "By username": "Par nom d'utilisateur"
   },
   "Re-query upstream and settle billing": "Re-interroger l'amont et régler la facturation",
   "Task re-queried and settled": "Tâche re-interrogée et réglée",

@@ -293,13 +293,15 @@ export async function registerAsset(payload: {
 export async function listAssets(
   channelId?: number,
   model?: string,
-  group?: string
+  group?: string,
+  owner?: string
 ): Promise<Asset[]> {
   try {
     const params: Record<string, unknown> = {}
     if (channelId) params.channel_id = channelId
     if (model) params.model = model
     if (group) params.group = group
+    if (owner) params.owner = owner
     const res = await api.get(ASSET_API_ENDPOINTS.LIST, {
       params: Object.keys(params).length > 0 ? params : undefined,
       skipErrorHandler: true,

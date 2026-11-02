@@ -7121,7 +7121,8 @@
     "{{count}} key(s) in total": "共 {{count}} 個密鑰",
     "All models": "全部模型",
     "Deletion time": "刪除時間",
-    "Only the first {{count}} keys are shown": "僅顯示前 {{count}} 個密鑰"
+    "Only the first {{count}} keys are shown": "僅顯示前 {{count}} 個密鑰",
+    "By username": "依使用者名稱"
   },
   "Re-query upstream and settle billing": "重新查詢上游並結算計費",
   "Task re-queried and settled": "任務已重新查詢並結算",

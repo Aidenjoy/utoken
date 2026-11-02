@@ -7121,7 +7121,8 @@
     "{{count}} key(s) in total": "Tổng cộng {{count}} khóa",
     "All models": "Tất cả mô hình",
     "Deletion time": "Thời gian xóa",
-    "Only the first {{count}} keys are shown": "Chỉ hiển thị {{count}} khóa đầu tiên"
+    "Only the first {{count}} keys are shown": "Chỉ hiển thị {{count}} khóa đầu tiên",
+    "By username": "Theo tên người dùng"
   },
   "Re-query upstream and settle billing": "Truy vấn lại upstream và quyết toán phí",
   "Task re-queried and settled": "Tác vụ đã được truy vấn lại và quyết toán",

@@ -7121,7 +7121,8 @@
     "{{count}} key(s) in total": "合計 {{count}} 件のキー",
     "All models": "すべてのモデル",
     "Deletion time": "削除日時",
-    "Only the first {{count}} keys are shown": "先頭 {{count}} 件のキーのみ表示しています"
+    "Only the first {{count}} keys are shown": "先頭 {{count}} 件のキーのみ表示しています",
+    "By username": "ユーザー名で指定"
   },
   "Re-query upstream and settle billing": "上流へ再問い合わせして課金を確定",
   "Task re-queried and settled": "タスクを再問い合わせして確定しました",
