@@ -21,7 +21,7 @@ import type { ReactNode } from 'react'
 import { CodeBlock } from './code-block'
 import { InlineCode, Note, P } from './doc-typography'
 
-export type DocsTabId = 'language' | 'image' | 'video'
+export type DocsTabId = 'language' | 'image' | 'video' | 'faq'
 
 export interface DocSection {
   id: string
@@ -696,9 +696,122 @@ curl -X DELETE ${baseUrl}/api/assets/yun-123 \\
   ]
 }
 
+function FaqItem(props: { q: string; a: ReactNode }) {
+  return (
+    <div className='border-border/60 bg-card/40 rounded-xl border px-4 py-3'>
+      <p className='mb-1.5 text-sm font-medium'>{props.q}</p>
+      <P>{props.a}</P>
+    </div>
+  )
+}
+
+function buildFaqSections(siteUrl: string): DocSection[] {
+  return [
+    {
+      id: 'faq-compliance',
+      title: '真人与合规',
+      body: (
+        <>
+          <FaqItem
+            q='Q1：能通过真人人脸核验吗？'
+            a='人脸需要使用素材库核验后才能生成视频：把真人图片上传到素材库，素材通过审核后，生成视频时使用 assetID。生成视频时直接使用真人图片存在合规风险，会造成生成视频失败。'
+          />
+          <FaqItem
+            q='Q2：有高级创作权益包吗？'
+            a='有高级创作权益包，支持100万个素材。'
+          />
+          <FaqItem
+            q='Q3：素材上传接口是什么？'
+            a={
+              <>
+                参考{' '}
+                <a
+                  href={`${siteUrl}/docs#video-asset-upload`}
+                  className='text-primary hover:underline'
+                >
+                  素材库 API
+                </a>
+                。分为智能素材库和特定渠道素材库：直接上传就是智能素材库，上传时指定
+                channel
+                就是特定渠道素材库。智能素材库在切换渠道时会自动同步素材到下一个渠道，特定渠道素材库在切换渠道的时候需要自行管理素材。
+              </>
+            }
+          />
+        </>
+      ),
+    },
+    {
+      id: 'faq-quota',
+      title: '限流与配额',
+      body: (
+        <FaqItem
+          q='Q4：网站并发如何？'
+          a='接口请求 rpm600（每分钟接口请求数 600）；素材上传 QPM 20（真人虚拟素材库每分钟上传 20 个），和火山方舟一致。如果需要更大的并发需要提前报备并开通指定的 url。'
+        />
+      ),
+    },
+    {
+      id: 'faq-billing',
+      title: '接入与计费',
+      body: (
+        <>
+          <FaqItem q='Q5：平台跟火山是直连吗？' a='是，协议透传。' />
+          <FaqItem
+            q='Q6：计费按 token 还是按秒？'
+            a={
+              <>
+                按 token，和官方计价方式一致。同一模型按分辨率和是否带视频输入费用不同，不同模型费用也不同，费用请参考{' '}
+                <a
+                  href={`${siteUrl}/pricing`}
+                  className='text-primary hover:underline'
+                >
+                  模型广场
+                </a>
+                。
+              </>
+            }
+          />
+          <FaqItem
+            q='Q7：平台如何计费？'
+            a='提交任务时先预扣一笔费用，任务完成后按官方返回的实际 token 消耗结算，多退少补。'
+          />
+          <FaqItem q='Q8：失败的任务扣费吗？' a='不扣。失败任务不扣费。' />
+        </>
+      ),
+    },
+    {
+      id: 'faq-models',
+      title: '模型与能力',
+      body: (
+        <>
+          <FaqItem
+            q='Q9：支持哪些模型？文本/图像/视频三类能力都通吗？'
+            a='文本/图像/视频三类能力全部打通。'
+          />
+          <FaqItem
+            q='Q10：任务详情能回读吗？方便对账吗？'
+            a='支持。任务查询接口可回读任务号、状态、进度、结果地址、token 用量等，便于对账。'
+          />
+        </>
+      ),
+    },
+    {
+      id: 'faq-stability',
+      title: '稳定性与交付定位',
+      body: (
+        <FaqItem
+          q='Q11：供给稳定性如何？能承载正式交付吗？'
+          a='上游资源火山方舟，上游波动时可静默切换渠道，提升系统稳定性。'
+        />
+      ),
+    },
+  ]
+}
+
 export function getDocSections(tab: DocsTabId, siteUrl: string): DocSection[] {
   if (tab === 'image') return buildImageSections(siteUrl)
   if (tab === 'video') return buildVideoSections(siteUrl)
+  if (tab === 'faq') return buildFaqSections(siteUrl)
   return buildLanguageSections(siteUrl)
 }
 

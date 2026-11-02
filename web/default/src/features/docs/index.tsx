@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  CircleHelp,
   Clapperboard,
   Globe,
   Image as ImageIcon,
@@ -44,6 +45,7 @@ const TABS: { id: DocsTabId; label: string; icon: LucideIcon }[] = [
   { id: 'language', label: '语言模型', icon: MessageSquareText },
   { id: 'image', label: '图片模型', icon: ImageIcon },
   { id: 'video', label: '视频模型', icon: Clapperboard },
+  { id: 'faq', label: '常见问题', icon: CircleHelp },
 ]
 
 const TAB_ACTIVE_STYLES: Record<DocsTabId, string> = {
@@ -52,6 +54,7 @@ const TAB_ACTIVE_STYLES: Record<DocsTabId, string> = {
   image:
     'border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300',
   video: 'border-sky-500/60 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  faq: 'border-rose-500/60 bg-rose-500/10 text-rose-700 dark:text-rose-300',
 }
 
 function GettingStartedCard(props: {
