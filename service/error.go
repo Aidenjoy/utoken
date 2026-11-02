@@ -210,6 +210,12 @@ func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
 }
 
 // TaskErrorFromAPIError 将 PreConsumeBilling 返回的 NewAPIError 转换为 TaskError。
+//
+// 必须原样带上 APIError：预扣费失败全部是用户侧/本地错误（令牌或钱包额度不足、
+// 重复 requestId、企业停用、计费写库失败），都带 SkipRetry，多数还带
+// NoRecordErrorLog。丢掉它会让控制器把错误重新包成 bad_response_status_code 的
+// 「渠道错误」，于是一次用户额度不足会被记成每个重试渠道各一行错误日志（文案完全
+// 相同、只有 channel_id 不同），并真的换渠道再试一遍。
 func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 	if apiErr == nil {
 		return nil
@@ -219,5 +225,6 @@ func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 		Message:    apiErr.Err.Error(),
 		StatusCode: apiErr.StatusCode,
 		Error:      apiErr.Err,
+		APIError:   apiErr,
 	}
 }

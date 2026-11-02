@@ -25,6 +25,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import { getTaskById } from '../../api'
+import { LOG_TYPE_ENUM } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import { useLogBodies } from '../../hooks/use-log-bodies'
 import { parseLogOther } from '../../lib/format'
@@ -62,26 +63,32 @@ export function CommonLogDetailsDialog({
   const taskId = other?.task_id
 
   // 关联任务行的详情数据源是任务本身；打开时按 scope 拉取单个任务。
-  const [task, setTask] = useState<TaskLog | null>(null)
+  const [taskResult, setTaskResult] = useState<{
+    id: string
+    value: TaskLog | null
+  } | null>(null)
   useEffect(() => {
-    if (!open || !taskId) {
-      setTask(null)
-      return
-    }
+    if (!open || !taskId) return
     let cancelled = false
     getTaskById(scope, taskId)
       .then((found) => {
-        if (!cancelled) setTask(found)
+        if (!cancelled) setTaskResult({ id: taskId, value: found })
       })
       .catch(() => {
-        if (!cancelled) setTask(null)
+        if (!cancelled) setTaskResult({ id: taskId, value: null })
       })
     return () => {
       cancelled = true
     }
   }, [open, taskId, scope])
+  const task =
+    open && taskResult && taskResult.id === taskId ? taskResult.value : null
 
   const { requestData, responseData } = useLogBodies(log.request_id, open && !taskId)
+  // 错误行的 content 已含当次上游状态码与原始报错，必须按行展示。log_bodies 按
+  // request_id 共享，重试多个渠道时若用它做错误响应，会把最后一次失败显示到每一行。
+  const responseSnapshot =
+    log.type === LOG_TYPE_ENUM.ERROR && log.content ? log.content : responseData
 
   // 关联到任务的行：完全复用任务日志详情弹窗，保证两处逐字段一致。
   if (taskId) {
@@ -175,7 +182,7 @@ export function CommonLogDetailsDialog({
       upstreamModel={other?.upstream_model_name}
       requestUrl={other?.request_url}
       requestJson={prettyJson(requestData)}
-      responseJson={prettyJson(responseData)}
+      responseJson={prettyJson(responseSnapshot)}
     />
   )
 }

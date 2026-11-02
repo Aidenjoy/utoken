@@ -405,12 +405,14 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
 		// 保存错误日志到mysql中
+		// 渠道身份（id/name/type）一律取 channelError，即构造这个错误时实际在用的渠道，
+		// 不读 gin context：重试循环里 context 的 channel_id 会被下一次选渠道覆盖，一旦
+		// 调用时序或异步化有变动，读 context 就会把渠道 A 的错误记到渠道 B 头上。
 		userId := c.GetInt("id")
 		tokenName := c.GetString("token_name")
 		modelName := c.GetString("original_model")
 		tokenId := c.GetInt("token_id")
 		userGroup := c.GetString("group")
-		channelId := c.GetInt("channel_id")
 		other := make(map[string]interface{})
 		if c.Request != nil && c.Request.URL != nil {
 			other["request_path"] = c.Request.URL.Path
@@ -418,13 +420,12 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other["error_type"] = err.GetErrorType()
 		other["error_code"] = err.GetErrorCode()
 		other["status_code"] = err.StatusCode
-		other["channel_id"] = channelId
-		other["channel_name"] = c.GetString("channel_name")
-		other["channel_type"] = c.GetInt("channel_type")
+		other["channel_id"] = channelError.ChannelId
+		other["channel_name"] = channelError.ChannelName
+		other["channel_type"] = channelError.ChannelType
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
-		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
-		if isMultiKey {
+		if channelError.IsMultiKey {
 			adminInfo["is_multi_key"] = true
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
@@ -435,7 +436,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }
@@ -523,6 +524,15 @@ func RelayTaskFetch(c *gin.Context) {
 }
 
 func RelayTask(c *gin.Context) {
+	requestId := c.GetString(common.RequestIdKey)
+	defer func() {
+		// task 错误行各自持有当次上游响应（logs.content），这里只补共享的请求快照；
+		// 成功任务的请求/响应已在 tasks 表，不重复写 log_bodies。
+		if c.Writer.Status() >= http.StatusBadRequest {
+			saveRelayBodySnapshotData(c, requestId, nil)
+		}
+	}()
+
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
@@ -593,11 +603,11 @@ func RelayTask(c *gin.Context) {
 			break
 		}
 
-		if !taskErr.LocalError {
+		if channelErr := taskErrorAsChannelError(taskErr); channelErr != nil {
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+				channelErr)
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {
@@ -733,8 +743,16 @@ func saveRelayBodySnapshot(c *gin.Context, requestId string, w *relayBodyWriter)
 	if w == nil {
 		return
 	}
+	saveRelayBodySnapshotData(c, requestId, w.body.Bytes())
+}
+
+// saveRelayBodySnapshotData 按 request_id 保存请求/响应快照，供同步中继与 task 错误
+// 两种入口复用。response 可为空：task 错误的上游响应保存在各错误行的 content 中，
+// 前端按行展示，避免同一 request_id 重试多个渠道时共享响应造成串渠道展示。
+// 读取与脱敏在调用方 goroutine 内完成，仅把最终字节交给异步写库。
+func saveRelayBodySnapshotData(c *gin.Context, requestId string, response []byte) {
 	reqBody := truncateRelaySnapshot(snapshotRelayRequestBody(c))
-	respBody := truncateRelaySnapshot(logger.RedactBase64(w.body.Bytes()))
+	respBody := truncateRelaySnapshot(logger.RedactBase64(response))
 	if len(reqBody) == 0 && len(respBody) == 0 {
 		return
 	}
@@ -794,8 +812,32 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	c.JSON(taskErr.StatusCode, taskErr)
 }
 
+// taskErrorAsChannelError 把任务提交失败换算成「渠道视角」的错误，供 processChannelError
+// 判定是否禁用渠道、是否落错误日志；返回 nil 表示这次失败不是渠道故障（LocalError，
+// 如取渠道失败、读请求体失败、适配器校验不通过），不该走渠道错误处理。
+//
+// 本地生成的类型化错误（预扣费失败、重复 requestId 等）必须原样下传：重新包成
+// bad_response_status_code 会丢掉真实 error_code 与 SkipRetry / NoRecordErrorLog 选项，
+// 用户令牌余额不足就会被当成渠道故障——生产上曾因此把一次余额不足记成每个重试渠道
+// 各一行文案完全相同的错误日志（channel 14/5/33/27…），看起来像所有渠道同时欠费。
+// 只有来自上游响应的错误才归一化为 bad_response_status_code。
+func taskErrorAsChannelError(taskErr *dto.TaskError) *types.NewAPIError {
+	if taskErr == nil || taskErr.LocalError {
+		return nil
+	}
+	if taskErr.APIError != nil {
+		return taskErr.APIError
+	}
+	return types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
+}
+
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
+		return false
+	}
+	// 本地生成的类型化错误自带 SkipRetry 语义（预扣费失败、重复 requestId 等）：换渠道
+	// 不可能让它成功，继续重试只会在每个渠道上各产生一行同样文案的错误日志。
+	if types.IsSkipRetryError(taskErr.APIError) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
