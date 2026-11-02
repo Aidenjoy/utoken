@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { buildQueryParams } from './lib/utils'
+import { buildQueryParams } from './lib/query-params'
 import type {
   GetLogsParams,
   GetLogsResponse,
@@ -118,7 +118,7 @@ export async function getUserInfo(
 }
 
 // 使用日志详情：按 request_id 拉取请求/返回体快照（base64 已脱敏、超限已截断）。
-// 可见范围在服务端强制（管理员任意 / 本人自己的 / 代理商名下成员），越权返回空。
+// 仅超级管理员可见，权限在服务端强制；其他角色即使知道 request_id 也返回空。
 export async function getLogBodies(
   requestId: string
 ): Promise<GetLogBodiesResponse> {
@@ -161,12 +161,14 @@ export async function getTaskById(
   taskId: string
 ): Promise<TaskLog | null> {
   const params: GetTaskLogsParams = { task_id: taskId, p: 1, page_size: 1 }
-  const res =
-    scope === 'admin'
-      ? await getAllTaskLogs(params)
-      : scope === 'agent'
-        ? await getAgentTaskLogs(params)
-        : await getUserTaskLogs(params)
+  let res: GetLogsResponse
+  if (scope === 'admin') {
+    res = await getAllTaskLogs(params)
+  } else if (scope === 'agent') {
+    res = await getAgentTaskLogs(params)
+  } else {
+    res = await getUserTaskLogs(params)
+  }
   const first = res.data?.items?.[0]
   return (first as TaskLog | undefined) ?? null
 }

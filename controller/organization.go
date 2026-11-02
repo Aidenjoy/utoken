@@ -243,6 +243,9 @@ func GetOrganization(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// 企业管理员非超管：剥离内部费率口径（采购折扣/期望折扣/费率），
+	// 企业自身折扣仍经 model_discounts 下发；超管详情（AdminGetOrganization）保留全部。
+	org.StripInternalRateFields()
 	memberCount, _ := model.CountOrgMembers(org.Id)
 	headroom, _ := model.GetOrgQuotaHeadroom(org.Id)
 	common.ApiSuccess(c, gin.H{

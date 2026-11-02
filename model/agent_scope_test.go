@@ -52,7 +52,7 @@ func TestListAgentMemberIdsAndOptions(t *testing.T) {
 
 // TestGetAgentScopedLogs 锁定代理商范围日志：只返回 userIds 内的行，空 ids 直接
 // 返回空（绝不落到“无过滤 = 全量”），且经 formatUserLogs 剥离 admin_info 等
-// 管理员专属字段（最小权限）。
+// 管理员专属字段与内部费率（最小权限，口径与普通用户 self 视图一致）。
 func TestGetAgentScopedLogs(t *testing.T) {
 	truncateTables(t)
 
@@ -68,7 +68,8 @@ func TestGetAgentScopedLogs(t *testing.T) {
 		}
 	}
 	// 成员 1、2 各一条；非成员 99 一条（含 admin_info，验证不会泄漏给代理商）。
-	require.NoError(t, DB.Create(mk(1, `{"admin_info":{"quota_saturation":{"op":"x"}},"group_ratio":2}`)).Error)
+	// 成员 1 同时带 group_ratio（内部费率）与 task_id（非费率业务字段）。
+	require.NoError(t, DB.Create(mk(1, `{"admin_info":{"quota_saturation":{"op":"x"}},"group_ratio":2,"task_id":"agent-task"}`)).Error)
 	require.NoError(t, DB.Create(mk(2, `{}`)).Error)
 	require.NoError(t, DB.Create(mk(99, `{"admin_info":{"secret":1}}`)).Error)
 
@@ -78,11 +79,13 @@ func TestGetAgentScopedLogs(t *testing.T) {
 	require.Len(t, logs, 2)
 	gotIds := []int{logs[0].UserId, logs[1].UserId}
 	assert.ElementsMatch(t, []int{1, 2}, gotIds)
-	// admin_info 被剥离，非管理员字段（group_ratio）保留
+	// admin_info 与内部费率（group_ratio）一并剥离，代理商口径与普通用户 self 一致；
+	// 非费率业务字段（task_id）保留。
 	for _, l := range logs {
 		assert.NotContains(t, l.Other, "admin_info")
+		assert.NotContains(t, l.Other, "group_ratio")
 	}
-	assert.Contains(t, logs[0].Other+logs[1].Other, "group_ratio")
+	assert.Contains(t, logs[0].Other+logs[1].Other, "agent-task")
 
 	// 空 ids → 空结果（不回退全量）
 	logs, total, err = GetAgentScopedLogs(nil, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "")

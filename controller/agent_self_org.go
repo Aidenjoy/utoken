@@ -56,6 +56,11 @@ func ListAgentOrganizations(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 代理商非超管：剥离名下企业的内部费率口径（采购折扣/期望折扣/费率），
+	// 代理商查看企业折扣走 model_discounts 与自己的授权下限。
+	for _, org := range orgs {
+		org.StripInternalRateFields()
+	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(orgs)
 	common.ApiSuccess(c, pageInfo)
@@ -113,6 +118,7 @@ func CreateAgentOrganization(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	created.StripInternalRateFields()
 	recordManageAudit(c, "org.agent_bind", map[string]interface{}{
 		"id":     created.Id,
 		"name":   orgAuditName(created),
@@ -169,6 +175,7 @@ func UpdateAgentOrganization(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	updated.StripInternalRateFields()
 	recordManageAudit(c, "org.agent_update", map[string]interface{}{
 		"id":    org.Id,
 		"name":  orgAuditName(updated),

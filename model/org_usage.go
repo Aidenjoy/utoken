@@ -287,9 +287,9 @@ func GetOrgLogs(userIds []int, startTimestamp int64, endTimestamp int64, modelNa
 	if err = foldTaskSettlements(logs); err != nil {
 		return logs, total, err
 	}
-	if err = attachLogChannelNames(logs); err != nil {
-		return logs, total, err
-	}
+	// 企业管理员不是超管：日志口径必须与普通用户/代理商 self 视图一致，
+	// 剥离渠道身份、上游标识与全部内部费率，避免经企业账单 F12 反推成本与上游。
+	StripAdminOnlyLogFields(logs)
 	return logs, total, nil
 }
 

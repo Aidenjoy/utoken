@@ -267,6 +267,7 @@ export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
       cell: ({ row }) => {
         const log = row.original;
         const taskId = row.getValue("task_id") as string;
+        const platformLabel = log.platform ? `${t(log.platform)} · ` : "";
         if (!taskId) {
           return <span className="text-muted-foreground/60 text-xs">-</span>;
         }
@@ -280,7 +281,7 @@ export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
               className="border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono"
             />
             <span className="text-muted-foreground/60 truncate text-[11px]">
-              {t(log.platform)} · {t(taskActionMapper.getLabel(log.action))}
+              {platformLabel}{t(taskActionMapper.getLabel(log.action))}
             </span>
           </div>
         );

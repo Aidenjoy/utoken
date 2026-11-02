@@ -23,22 +23,44 @@ func CloseResponseBodyGracefully(httpResponse *http.Response) {
 	}
 }
 
+// copyableUpstreamHeaders is the allow-list of standard, functionally-necessary
+// response headers forwarded from upstream to the client: body typing
+// (Content-Type / Content-Disposition / Content-Encoding), media range seeking
+// (Accept-Ranges / Content-Range) and caching (Cache-Control / Expires / ETag /
+// Last-Modified). Keys must be in http.CanonicalHeaderKey form (note "ETag"
+// canonicalizes to "Etag"). Everything else is dropped fail-closed so a normal
+// user cannot fingerprint the upstream provider/channel via headers such as
+// Server, Via, vendor X-* identifiers, CDN/trace IDs or upstream rate-limit
+// counters.
+var copyableUpstreamHeaders = map[string]struct{}{
+	"Content-Type":        {},
+	"Content-Disposition": {},
+	"Content-Encoding":    {},
+	"Content-Range":       {},
+	"Accept-Ranges":       {},
+	"Cache-Control":       {},
+	"Expires":             {},
+	"Etag":                {},
+	"Last-Modified":       {},
+}
+
 // ShouldCopyUpstreamHeader checks whether a given upstream response header
-// should be copied to the client response. It returns false for Content-Length
-// (managed separately) and X-Oneapi-Request-Id (to preserve the local instance
-// ID). When the upstream header is X-Oneapi-Request-Id, the value is captured
-// into the Gin context for later logging.
+// should be copied to the client response. Only the standard headers in
+// copyableUpstreamHeaders are forwarded; Content-Length is managed separately.
+// The upstream X-Oneapi-Request-Id is captured into the Gin context for later
+// logging but never forwarded, so the local instance/vendor ID is not leaked.
 func ShouldCopyUpstreamHeader(c *gin.Context, k string, v []string) bool {
-	if strings.EqualFold(k, "Content-Length") {
-		return false
-	}
 	if strings.EqualFold(k, common.RequestIdKey) {
 		if c != nil && len(v) > 0 {
 			c.Set(common.UpstreamRequestIdKey, v[0])
 		}
 		return false
 	}
-	return true
+	if strings.EqualFold(k, "Content-Length") {
+		return false
+	}
+	_, ok := copyableUpstreamHeaders[http.CanonicalHeaderKey(k)]
+	return ok
 }
 
 func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {

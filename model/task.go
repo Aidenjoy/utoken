@@ -190,13 +190,16 @@ func (t *Task) GetUpstreamTaskID() string {
 	return t.TaskID
 }
 
-// GetResultURL 获取任务结果 URL（视频地址等）
-// 新数据存在 PrivateData.ResultURL 中；旧数据回退到 FailReason（历史兼容）
+// GetResultURL 获取任务结果 URL（视频地址等）。
+// 旧成功任务把结果地址存在 FailReason 中；非成功任务的 FailReason 是错误信息，不能作为结果地址返回。
 func (t *Task) GetResultURL() string {
 	if t.PrivateData.ResultURL != "" {
 		return t.PrivateData.ResultURL
 	}
-	return t.FailReason
+	if t.Status == TaskStatusSuccess {
+		return t.FailReason
+	}
+	return ""
 }
 
 // GenerateTaskID 生成对外暴露的 task_xxxx 格式 ID

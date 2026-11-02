@@ -146,26 +146,87 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
-// StripAdminOnlyLogFields 就地剥离日志中仅供管理员查看的字段：渠道名，以及 Other 内的
-// admin_info（调试信息）、audit_info（操作人/路由审计）、stream_status。普通用户的 self
-// 视图与代理商范围化视图都以此字段口径为基线。与 formatUserLogs 的区别是不重排展示 id，
+// StripAdminOnlyLogFields 就地剥离普通用户与代理商不应看到的上游/内部字段：渠道、
+// 上游请求标识与原始 tokens，Other 内的上游地址、模型映射、协议转换、管理员审计信息，
+// 以及全部内部费率/单价/折扣/分层计费表达式与任务倍率（时长、分辨率、张数等）。
+// 费率只对超管对账有意义，普通用户/令牌/代理商/企业管理员经日志 F12 都不应能反推成本口径。
+// 与 formatUserLogs 的区别是不重排展示 id，
 // 因此适用于按时间排序、需保持原始 id 的场景（如代理商账单消耗复用 GetBillingConsumption
 // 返回的原始日志）。
 func StripAdminOnlyLogFields(logs []*Log) {
 	for i := range logs {
+		logs[i].ChannelId = 0
 		logs[i].ChannelName = ""
+		logs[i].TokenId = 0
+		logs[i].UpstreamRequestId = ""
+		logs[i].UpstreamPromptTokens = 0
+		logs[i].UpstreamCompletionTokens = 0
+		logs[i].Content = sanitizeUserLogContent(logs[i].Content)
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
 			// Remove admin-only debug fields.
 			delete(otherMap, "admin_info")
+			delete(otherMap, "channel_id")
+			delete(otherMap, "channel_name")
+			delete(otherMap, "channel_type")
 			// Remove operation-audit details (operator/route info), admin-only.
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			delete(otherMap, "request_url")
+			delete(otherMap, "request_conversion")
+			delete(otherMap, "is_model_mapped")
+			delete(otherMap, "upstream_model_name")
+			// Remove internal billing rates: every *_ratio* / *_price* multiplier and unit
+			// price (Contains, not HasSuffix, so variants like cache_creation_ratio_5m are
+			// caught), resolution-keyed ratios, discounts, tiered-billing expressions, and the
+			// task OtherRatios expanded to top level (duration/resolution/count multipliers).
+			for key := range otherMap {
+				if strings.Contains(key, "_ratio") || strings.Contains(key, "_price") ||
+					strings.HasPrefix(key, "resolution-") {
+					delete(otherMap, key)
+				}
+			}
+			for _, key := range userHiddenBillingKeys {
+				delete(otherMap, key)
+			}
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
+}
+
+// userHiddenBillingKeys 是不带 _ratio/_price 后缀、却仍暴露内部计费口径的 Other 键：
+// 折扣与折前额度、分层计费表达式，以及任务提交/结算展开到顶层的时长、尺寸、张数等倍率。
+var userHiddenBillingKeys = []string{
+	"discount", "original_quota",
+	"billing_mode", "expr_b64", "matched_tier",
+	"user_discount", "seconds", "size", "n", "duration", "video_input", "prompt_extend",
+}
+
+// sanitizeUserLogContent 剥离任务计费日志正文里嵌入的费率/倍率明细，仅保留动作标签，
+// 避免普通用户经日志内容反推内部计费公式。覆盖两类写入：提交日志的
+// 「, 计算参数：seconds: 4.00, size: 1.67」与差额结算的
+// 「token重算：tokens=..., modelRatio=..., groupRatio=..., otherMultiplier=...」。
+// 超管视图不走 StripAdminOnlyLogFields，正文原样保留供对账。
+func sanitizeUserLogContent(content string) string {
+	if idx := strings.Index(content, "计算参数"); idx != -1 {
+		content = strings.TrimRight(content[:idx], ", ，、 ")
+	}
+	for _, marker := range []string{"modelRatio=", "groupRatio=", "otherMultiplier=", "modelPrice=", "completionRatio="} {
+		idx := strings.Index(content, marker)
+		if idx == -1 {
+			continue
+		}
+		if sep := strings.LastIndexAny(content[:idx], "：:"); sep != -1 {
+			content = content[:sep]
+		} else {
+			content = content[:idx]
+		}
+		content = strings.TrimRight(content, ", ，、 ")
+		break
+	}
+	return content
 }
 
 func formatUserLogs(logs []*Log, startIdx int) {

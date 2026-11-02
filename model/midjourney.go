@@ -54,8 +54,8 @@ func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryPara
 		query = query.Where("submit_time <= ?", queryParams.EndTimestamp)
 	}
 
-	// 获取数据
-	err = query.Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
+	// 普通用户绘图日志不暴露内部渠道、任务结算字段与原始上游错误。
+	err = query.Omit("channel_id", "quota", "fail_reason").Order("id desc").Limit(num).Offset(startIdx).Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -85,6 +85,8 @@ func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourn
 	}
 	if len(queryParams.UserIDs) != 0 {
 		query = query.Where("user_id in (?)", queryParams.UserIDs)
+		// UserIDs 仅用于外部代理商范围查询；管理员全量视图仍保留运营字段。
+		query = query.Omit("channel_id", "quota", "fail_reason")
 	}
 
 	// 获取数据

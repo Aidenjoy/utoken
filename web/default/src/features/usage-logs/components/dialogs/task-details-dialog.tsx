@@ -139,7 +139,7 @@ export function TaskDetailsDialog({
         </span>
       ),
     },
-    { label: t('Platform'), value: t(task.platform) || '-' },
+    { label: t('Platform'), value: task.platform ? t(task.platform) : '-' },
     {
       label: t('Action'),
       value: t(taskActionMapper.getLabel(task.action)) || task.action || '-',

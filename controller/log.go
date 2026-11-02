@@ -179,8 +179,7 @@ func DeleteHistoryLogs(c *gin.Context) {
 }
 
 // GetLogBodies 使用日志详情的「传入/传出参数」快照查询：GET /api/log/bodies?request_id=...
-// 挂在日志 UserAuth 路由组，可见范围与日志列表一致（管理员任意 / 本人自己的 /
-// 代理商名下成员范围内的）。先按 request_id（已有索引 idx_logs_request_id）定位日志行归属
+// 协议快照仅超级管理员可见。先按 request_id（已有索引 idx_logs_request_id）定位日志行归属
 // 用户；查不到日志行返回 404，越权返回空数据（不泄露该 request_id 是否有快照）。
 func GetLogBodies(c *gin.Context) {
 	requestId := c.Query("request_id")
@@ -224,29 +223,7 @@ func GetLogBodies(c *gin.Context) {
 	})
 }
 
-// canViewLogBodies 判定当前登录用户是否可查看 ownerId 的日志快照：管理员放行、本人放行、
-// 代理商放行其名下成员，其余一律拒绝。agent_id 不在 UserAuth 上下文，故按当前用户查
-// agents 表判定身份（与 middleware.AgentAuth 同源）。
+// canViewLogBodies 与前端协议详情入口保持同一权限口径：仅超级管理员可查看。
 func canViewLogBodies(c *gin.Context, ownerId int) bool {
-	if c.GetInt("role") >= common.RoleAdminUser {
-		return true
-	}
-	selfId := c.GetInt("id")
-	if selfId > 0 && selfId == ownerId {
-		return true
-	}
-	agent, err := model.GetAgentByUserId(selfId)
-	if err != nil || agent.Status != model.AgentStatusEnabled {
-		return false
-	}
-	memberIds, err := model.ListAgentMemberIds(agent.Id)
-	if err != nil {
-		return false
-	}
-	for _, id := range memberIds {
-		if id == ownerId {
-			return true
-		}
-	}
-	return false
+	return c.GetInt("role") == common.RoleRootUser
 }

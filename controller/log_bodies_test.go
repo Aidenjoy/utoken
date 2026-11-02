@@ -68,11 +68,11 @@ func setupLogBodiesFixtures(t *testing.T) {
 	require.NoError(t, db.Create(&model.User{Id: 3, Username: "nonmember", AffCode: "aff-nonmember", AgentId: 0, Quota: 100}).Error)
 }
 
-// TestGetLogBodiesAdminCanViewAny 锁定管理员放行：role>=ADMIN 可取任意人的快照。
-func TestGetLogBodiesAdminCanViewAny(t *testing.T) {
+// TestGetLogBodiesSuperAdminCanViewAny 锁定超级管理员可取任意人的协议快照。
+func TestGetLogBodiesSuperAdminCanViewAny(t *testing.T) {
 	setupLogBodiesFixtures(t)
 
-	c, w := newLogBodiesContext("req-owner", common.RoleAdminUser, 999)
+	c, w := newLogBodiesContext("req-owner", common.RoleRootUser, 999)
 	GetLogBodies(c)
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -83,8 +83,8 @@ func TestGetLogBodiesAdminCanViewAny(t *testing.T) {
 	assert.Equal(t, "owner-resp", resp.Data.ResponseData)
 }
 
-// TestGetLogBodiesSelfCanViewOwn 锁定本人放行：普通用户可取自己日志的快照。
-func TestGetLogBodiesSelfCanViewOwn(t *testing.T) {
+// TestGetLogBodiesSelfGetsEmpty 锁定普通用户即使查询本人日志也不能读取协议快照。
+func TestGetLogBodiesSelfGetsEmpty(t *testing.T) {
 	setupLogBodiesFixtures(t)
 
 	c, w := newLogBodiesContext("req-owner", common.RoleCommonUser, 1)
@@ -94,11 +94,25 @@ func TestGetLogBodiesSelfCanViewOwn(t *testing.T) {
 	var resp logBodiesResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp.Success)
-	assert.Equal(t, "owner-req", resp.Data.RequestData)
-	assert.Equal(t, "owner-resp", resp.Data.ResponseData)
+	assert.Empty(t, resp.Data.RequestData)
+	assert.Empty(t, resp.Data.ResponseData)
 }
 
-// TestGetLogBodiesAgentCanViewMember 锁定代理商放行名下成员：agent(user 50) 可取成员(user 2)的快照。
+func TestGetLogBodiesRegularAdminGetsEmpty(t *testing.T) {
+	setupLogBodiesFixtures(t)
+
+	c, w := newLogBodiesContext("req-owner", common.RoleAdminUser, 999)
+	GetLogBodies(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp logBodiesResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp.Success)
+	assert.Empty(t, resp.Data.RequestData)
+	assert.Empty(t, resp.Data.ResponseData)
+}
+
+// TestGetLogBodiesAgentCanViewMember 锁定代理商即使查询名下成员也不能读取协议快照。
 func TestGetLogBodiesAgentCanViewMember(t *testing.T) {
 	setupLogBodiesFixtures(t)
 
@@ -109,8 +123,8 @@ func TestGetLogBodiesAgentCanViewMember(t *testing.T) {
 	var resp logBodiesResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp.Success)
-	assert.Equal(t, "member-req", resp.Data.RequestData)
-	assert.Equal(t, "member-resp", resp.Data.ResponseData)
+	assert.Empty(t, resp.Data.RequestData)
+	assert.Empty(t, resp.Data.ResponseData)
 }
 
 // TestGetLogBodiesAgentCannotViewNonMember 锁定代理商越权回空：成员外(user 3)的快照返回
@@ -148,7 +162,7 @@ func TestGetLogBodiesOtherUserGetsEmpty(t *testing.T) {
 func TestGetLogBodiesMissingLogReturns404(t *testing.T) {
 	setupLogBodiesFixtures(t)
 
-	c, w := newLogBodiesContext("req-does-not-exist", common.RoleAdminUser, 999)
+	c, w := newLogBodiesContext("req-does-not-exist", common.RoleRootUser, 999)
 	GetLogBodies(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -162,7 +176,7 @@ func TestGetLogBodiesMissingLogReturns404(t *testing.T) {
 func TestGetLogBodiesNoSnapshotReturnsEmpty(t *testing.T) {
 	setupLogBodiesFixtures(t)
 
-	c, w := newLogBodiesContext("req-nobodies", common.RoleAdminUser, 999)
+	c, w := newLogBodiesContext("req-nobodies", common.RoleRootUser, 999)
 	GetLogBodies(c)
 
 	require.Equal(t, http.StatusOK, w.Code)

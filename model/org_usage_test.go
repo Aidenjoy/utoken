@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -83,4 +85,42 @@ func TestGetOrgLogsBillingViewFullRefund(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, 0, got[0].Quota, "全额退款后净额为 0")
 	assert.Equal(t, 30, got[0].UseTime)
+}
+
+// TestGetOrgLogsStripsChannelAndRates 守护企业日志口径与普通用户 self 视图一致：
+// 企业管理员经 /api/org/logs F12 不应看到渠道身份、上游标识或任何内部费率。
+func TestGetOrgLogsStripsChannelAndRates(t *testing.T) {
+	setupOrgFixture(t)
+	t.Cleanup(func() {
+		DB.Exec("DELETE FROM logs")
+	})
+
+	org := seedOrg(t, 1, 1000, OrgStatusEnabled)
+	member := seedOrgMember(t, org, 303, OrgRoleMember, 0, OrgMemberStatusEnabled)
+	userId := member.UserId
+
+	base := time.Now().Unix()
+	require.NoError(t, DB.Create(&Log{
+		UserId: userId, CreatedAt: base, Type: LogTypeConsume, ModelName: "video-model",
+		ChannelId: 14, Quota: 1000, PromptTokens: 10, CompletionTokens: 5,
+		UpstreamRequestId: "upstream-req-1",
+		Other:             `{"is_task":true,"task_id":"org_priv_1","model_ratio":15,"model_price":0.004,"group_ratio":2,"discount":0.8,"original_quota":1250,"channel_id":14,"channel_name":"internal-channel","request_url":"https://internal.example.com","seconds":4}`,
+	}).Error)
+
+	got, total, err := GetOrgLogs([]int{userId}, 0, 0, "", 0, 0, 20)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, got, 1)
+
+	row := got[0]
+	assert.Zero(t, row.ChannelId, "渠道号必须剥离")
+	assert.Empty(t, row.ChannelName, "渠道名必须剥离")
+	assert.Empty(t, row.UpstreamRequestId, "上游请求标识必须剥离")
+
+	parsed, err := common.StrToMap(row.Other)
+	require.NoError(t, err)
+	for _, key := range []string{"model_ratio", "model_price", "group_ratio", "discount", "original_quota", "channel_id", "channel_name", "request_url", "seconds"} {
+		assert.NotContains(t, parsed, key, "企业日志不得泄露 %q", key)
+	}
+	assert.Equal(t, "org_priv_1", parsed["task_id"], "task_id 需保留以支撑折叠")
 }

@@ -35,7 +35,11 @@ func GetAllTask(c *gin.Context) {
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, true))
+	taskDtos := tasksToDto(items, true)
+	if c.GetInt("role") != common.RoleRootUser {
+		stripTaskProtocolDetails(taskDtos)
+	}
+	pageInfo.SetItems(taskDtos)
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -59,7 +63,7 @@ func GetUserTask(c *gin.Context) {
 	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllUserTask(userId, queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, false))
+	pageInfo.SetItems(tasksToPublicDto(items, false))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -92,31 +96,71 @@ func AdminRefetchTask(c *gin.Context) {
 	if latest == nil {
 		latest = task
 	}
-	common.ApiSuccess(c, gin.H{"task": relay.TaskModel2Dto(latest), "result": summary})
+	taskDto := relay.TaskModel2Dto(latest)
+	if c.GetInt("role") != common.RoleRootUser {
+		stripTaskProtocolDetails([]*dto.TaskDto{taskDto})
+	}
+	common.ApiSuccess(c, gin.H{"task": taskDto, "result": summary})
+}
+
+// stripTaskProtocolDetails 允许管理员查看任务列表的运营字段，但协议快照仅超级管理员可见。
+func stripTaskProtocolDetails(tasks []*dto.TaskDto) {
+	for _, task := range tasks {
+		task.Data = nil
+		task.RequestData = nil
+		if properties, ok := task.Properties.(model.Properties); ok {
+			task.Properties = dto.PublicTaskProperties{
+				OriginModelName: properties.OriginModelName,
+			}
+		} else {
+			task.Properties = nil
+		}
+	}
+}
+
+// tasksToPublicDto 构造普通用户或代理商任务日志。网页列表不返回上游协议快照；
+// 仅代理商视图保留成员身份，用于区分其名下的不同用户。
+func tasksToPublicDto(tasks []*model.Task, includeUser bool) []*dto.PublicTaskDto {
+	if includeUser {
+		fillTaskUsernames(tasks)
+	}
+	result := make([]*dto.PublicTaskDto, len(tasks))
+	for i, task := range tasks {
+		result[i] = relay.TaskModel2PublicDto(task)
+		result[i].Data = nil
+		if includeUser {
+			result[i].UserId = task.UserId
+			result[i].Username = task.Username
+		}
+	}
+	return result
+}
+
+func fillTaskUsernames(tasks []*model.Task) {
+	userIdMap := make(map[int]*model.UserBase)
+	userIds := types.NewSet[int]()
+	for _, task := range tasks {
+		userIds.Add(task.UserId)
+	}
+	for _, userId := range userIds.Items() {
+		cacheUser, err := model.GetUserCache(userId)
+		if err == nil {
+			userIdMap[userId] = cacheUser
+		}
+	}
+	for _, task := range tasks {
+		if user, ok := userIdMap[task.UserId]; ok {
+			task.Username = user.Username
+		}
+	}
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
-	var userIdMap map[int]*model.UserBase
 	if fillUser {
-		userIdMap = make(map[int]*model.UserBase)
-		userIds := types.NewSet[int]()
-		for _, task := range tasks {
-			userIds.Add(task.UserId)
-		}
-		for _, userId := range userIds.Items() {
-			cacheUser, err := model.GetUserCache(userId)
-			if err == nil {
-				userIdMap[userId] = cacheUser
-			}
-		}
+		fillTaskUsernames(tasks)
 	}
 	result := make([]*dto.TaskDto, len(tasks))
 	for i, task := range tasks {
-		if fillUser {
-			if user, ok := userIdMap[task.UserId]; ok {
-				task.Username = user.Username
-			}
-		}
 		result[i] = relay.TaskModel2Dto(task)
 	}
 	return result

@@ -436,8 +436,8 @@ func GetAgentLogsStat(c *gin.Context) {
 	})
 }
 
-// GetAgentTasks 代理商范围化的任务日志（同步任务）。以 UserIDs 强制范围，用户名回填
-// （tasksToDto 第二参 true）以便区分成员；不接受 username/channel 文本筛选。
+// GetAgentTasks 代理商范围化的任务日志（同步任务）。以 UserIDs 强制范围并回填用户名
+// 以便区分成员；不返回渠道、计费、上游平台或协议快照，不接受 username/channel 文本筛选。
 func GetAgentTasks(c *gin.Context) {
 	allowedIds, err := agentLogScope(c)
 	if err != nil {
@@ -448,7 +448,7 @@ func GetAgentTasks(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	if len(effectiveIds) == 0 {
 		pageInfo.SetTotal(0)
-		pageInfo.SetItems([]*dto.TaskDto{})
+		pageInfo.SetItems([]*dto.PublicTaskDto{})
 		common.ApiSuccess(c, pageInfo)
 		return
 	}
@@ -466,7 +466,7 @@ func GetAgentTasks(c *gin.Context) {
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, true))
+	pageInfo.SetItems(tasksToPublicDto(items, true))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -494,6 +494,15 @@ func GetAgentMidjourney(c *gin.Context) {
 	}
 	items := model.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.CountAllTasks(queryParams)
+	// 代理商不是超管：绘图日志口径必须与普通用户 self 视图一致——self 走
+	// GetAllUserTask 的 Omit("channel_id", "quota", "fail_reason")，此处 GetAllTasks 与
+	// 管理员端点共用（管理员需保留渠道），故在 handler 内剥离内部渠道、任务结算额度
+	// 与原始上游错误，避免经代理商绘图日志 F12 反推上游渠道与成本。
+	for _, midjourney := range items {
+		midjourney.ChannelId = 0
+		midjourney.Quota = 0
+		midjourney.FailReason = ""
+	}
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
 			midjourney.ImageUrl = system_setting.ServerAddress + "/mj/image/" + midjourney.MjId

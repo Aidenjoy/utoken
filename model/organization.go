@@ -129,6 +129,18 @@ func (o *Organization) syncResponseFields() {
 	o.ModelDiscountMap = floors
 }
 
+// StripInternalRateFields 隐藏企业内部费率建模三件套：token_rate（=期望折扣/采购折扣）、
+// expected_discount（客户期望折扣）、purchase_discount（渠道采购成本折扣）。这三者由系统
+// 管理员设置，反映运营商上游采购成本与费率口径；企业管理员与代理商均无权查看，否则可经
+// 企业设置页或代理商企业列表 F12 反推成本与毛利。企业/代理商查看折扣一律走 model_discounts
+// （售价侧，由 syncResponseFields 回填，不受此方法影响）。超管详情与列表
+// （AdminGetOrganization / AdminGetAllOrganizations）不调用此方法，保留全部字段用于对账。
+func (o *Organization) StripInternalRateFields() {
+	o.TokenRate = 0
+	o.ExpectedDiscount = 0
+	o.PurchaseDiscount = 0
+}
+
 func (Organization) TableName() string {
 	return "organizations"
 }

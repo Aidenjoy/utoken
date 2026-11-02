@@ -254,15 +254,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
 
-	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）
-	otherRatios := info.PriceData.OtherRatios()
-	if otherRatios == nil {
-		otherRatios = map[string]float64{}
-	}
-	ratiosJSON, _ := common.Marshal(otherRatios)
-	c.Header("X-New-Api-Other-Ratios", string(ratiosJSON))
-
-	// 11. 解析响应
+	// 10. 解析响应
 	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return nil, taskErr
@@ -363,7 +355,7 @@ func sunoFetchRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.Ta
 			return
 		}
 		for _, task := range taskModels {
-			tasks = append(tasks, TaskModel2Dto(task))
+			tasks = append(tasks, TaskModel2PublicDto(task))
 		}
 	} else {
 		tasks = make([]any, 0)
@@ -391,7 +383,7 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
-		Data: TaskModel2Dto(originTask),
+		Data: TaskModel2PublicDto(originTask),
 	})
 	return
 }
@@ -413,10 +405,22 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
+	isOpenAIVideoAPI := strings.HasPrefix(c.Request.URL.Path, "/v1/videos/")
+	isUnifiedVideoAPI := strings.HasPrefix(c.Request.URL.Path, "/v1/video/generations/")
+	isArkNativeTask := originTask.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeArkNative)) ||
+		originTask.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeBaiduDataBuilder))
+	isKlingOfficialAPI := strings.HasPrefix(c.Request.URL.Path, "/kling/v1/videos/") &&
+		originTask.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeKling))
 
-	// 火山方舟官方协议路径：查询响应透传上游（格式与实时性与官方一致）
-	if strings.HasPrefix(c.Request.RequestURI, "/api/v3/contents/generations/tasks") {
+	// Kling 官方查询协议直接返回上游响应快照，不能回退成内部任务模型。
+	if isKlingOfficialAPI && len(originTask.Data) > 0 {
+		respBody = originTask.Data
+		return
+	}
+
+	// 火山方舟官方协议路径：查询响应透传上游（格式与实时性与官方一致）。统一视频
+	// 查询路径上的方舟系任务也走同一分支，绝不能回退成包含内部字段的 TaskDto。
+	if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") || (isUnifiedVideoAPI && isArkNativeTask) {
 		if realtime := arkNativePassthroughFetch(originTask); len(realtime) > 0 {
 			respBody = realtime
 			return
@@ -438,7 +442,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if isOpenAIVideoAPI {
 		adaptor := GetTaskAdaptor(originTask.Platform)
 		if adaptor == nil {
-			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
+			taskResp = service.TaskErrorWrapperLocal(errors.New("invalid channel id"), "invalid_channel_id", http.StatusBadRequest)
 			return
 		}
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
@@ -450,14 +454,17 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 			respBody = openAIVideoData
 			return
 		}
-		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)
+		taskResp = service.TaskErrorWrapperLocal(errors.New("not_implemented"), "not_implemented", http.StatusNotImplemented)
 		return
 	}
 
-	// 通用 TaskDto 格式
+	// 通用公开格式：只输出字段白名单。TaskModel2Dto 面向管理后台，含用户、渠道、
+	// 计费、内部 request_url 与请求快照，不能用于公开 API；通用视频格式也不透传上游快照。
+	publicTask := TaskModel2PublicDto(originTask)
+	publicTask.Data = nil
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
-		Data: TaskModel2Dto(originTask),
+		Data: publicTask,
 	})
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
@@ -619,6 +626,30 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 		return "queued"
 	default:
 		return "processing"
+	}
+}
+
+func TaskModel2PublicDto(task *model.Task) *dto.PublicTaskDto {
+	failReason := ""
+	if task.Status == model.TaskStatusFailure && task.FailReason != "" {
+		failReason = "task failed"
+	}
+	return &dto.PublicTaskDto{
+		CreatedAt:  task.CreatedAt,
+		UpdatedAt:  task.UpdatedAt,
+		TaskID:     task.TaskID,
+		Action:     task.Action,
+		Status:     string(task.Status),
+		FailReason: failReason,
+		ResultURL:  task.GetResultURL(),
+		SubmitTime: task.SubmitTime,
+		StartTime:  task.StartTime,
+		FinishTime: task.FinishTime,
+		Progress:   task.Progress,
+		Properties: dto.PublicTaskProperties{
+			OriginModelName: task.Properties.OriginModelName,
+		},
+		Data: task.Data,
 	}
 }
 

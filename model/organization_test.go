@@ -69,6 +69,42 @@ func reloadOrg(t *testing.T, id int) *Organization {
 	return org
 }
 
+// TestStripInternalRateFieldsHidesCostKeepsSaleDiscount 锁定企业内部费率三件套的剥离口径：
+// token_rate / expected_discount / purchase_discount 属成本与费率侧（仅超管可见），必须清零；
+// model_discounts 属售价侧（企业/代理商可查看自身折扣），经 syncResponseFields 回填后不受影响。
+// 同时校验 JSON 线格式：清零后字段名仍在（值为 0，与超管响应结构一致），真实成本/费率值不再出现在序列化结果里，
+// 因此企业管理员或代理商即便 F12 抓包也无法反推上游采购成本与毛利。
+func TestStripInternalRateFieldsHidesCostKeepsSaleDiscount(t *testing.T) {
+	org := &Organization{
+		TokenRate:        1.16,
+		ExpectedDiscount: 0.91,
+		PurchaseDiscount: 0.77,
+		ModelDiscounts:   `{"gpt-4o":0.85}`,
+	}
+	org.syncResponseFields()
+	require.InDelta(t, 0.85, org.ModelDiscountMap["gpt-4o"], 1e-9)
+
+	org.StripInternalRateFields()
+
+	assert.Zero(t, org.TokenRate)
+	assert.Zero(t, org.ExpectedDiscount)
+	assert.Zero(t, org.PurchaseDiscount)
+	// 售价侧折扣不受成本剥离影响
+	assert.InDelta(t, 0.85, org.ModelDiscountMap["gpt-4o"], 1e-9)
+
+	raw, err := common.Marshal(org)
+	require.NoError(t, err)
+	body := string(raw)
+	// 字段名保留（超管响应结构不变），值已归零
+	assert.Contains(t, body, `"token_rate"`)
+	assert.Contains(t, body, `"expected_discount"`)
+	assert.Contains(t, body, `"purchase_discount"`)
+	// 真实成本/费率值不得出现在剥离后的序列化结果中
+	assert.NotContains(t, body, "1.16")
+	assert.NotContains(t, body, "0.91")
+	assert.NotContains(t, body, "0.77")
+}
+
 func reloadMember(t *testing.T, id int) *OrgMember {
 	t.Helper()
 	member, err := GetOrgMemberById(id)
