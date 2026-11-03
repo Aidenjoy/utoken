@@ -99,7 +99,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			if service.ShouldMaskUpstreamKeywordError(newAPIError) {
+				// 命中失败关键词（通常是上游渠道欠费/不可用）：对下游隐藏上游原文，统一
+				// 返回「请稍后重试」。上面这行内部日志与渠道禁用通知仍保留真实原因。
+				newAPIError.ReplaceClientMessage(common.MessageWithRequestId(service.UpstreamKeywordMaskMessage, requestId))
+			} else {
+				newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -798,6 +804,9 @@ func truncateRelaySnapshot(b []byte) []byte {
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
+	} else if service.ShouldMaskUpstreamKeywordError(taskErrorAsChannelError(taskErr)) {
+		// 命中失败关键词（通常是上游渠道欠费/不可用）：对下游隐藏上游原文，统一返回「请稍后重试」
+		taskErr.Message = service.UpstreamKeywordMaskMessage
 	}
 	// 火山方舟官方协议路径：错误响应也对齐官方结构，客户端无需适配两种错误格式
 	if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") {

@@ -46,3 +46,30 @@ func TestToOpenAIErrorUsesErrorTypeWhenNothingElseAvailable(t *testing.T) {
 	assert.Equal(t, string(ErrorTypeOpenAIError), apiErr.ToOpenAIError().Message)
 	assert.Equal(t, string(ErrorTypeOpenAIError), apiErr.ToClaudeError().Message)
 }
+
+// ReplaceClientMessage must rewrite the message the client actually sees. For upstream
+// OpenAI/Claude-typed errors, ToOpenAIError/ToClaudeError emit RelayError.Message, so setting
+// Err alone (SetMessage) would still leak the raw upstream text; ReplaceClientMessage covers
+// both while leaving type/code intact.
+func TestReplaceClientMessageOverridesUpstreamMessage(t *testing.T) {
+	upstream := OpenAIError{
+		Message: "token quota is not enough, token remain quota: ¥1.252816",
+		Type:    "invalid_request_error",
+		Code:    "insufficient_quota",
+	}
+	apiErr := WithOpenAIError(upstream, http.StatusForbidden)
+
+	apiErr.ReplaceClientMessage("请稍后重试")
+
+	oaiErr := apiErr.ToOpenAIError()
+	assert.Equal(t, "请稍后重试", oaiErr.Message)
+	assert.Equal(t, "invalid_request_error", oaiErr.Type)
+	assert.Equal(t, "insufficient_quota", oaiErr.Code)
+	assert.Equal(t, "请稍后重试", apiErr.ToClaudeError().Message)
+	assert.Equal(t, "请稍后重试", apiErr.Error())
+}
+
+func TestReplaceClientMessageNilSafe(t *testing.T) {
+	var apiErr *NewAPIError
+	apiErr.ReplaceClientMessage("请稍后重试")
+}

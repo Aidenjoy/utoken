@@ -59,9 +59,37 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 		return true
 	}
 
+	return MatchedFailureKeyword(err)
+}
+
+// UpstreamKeywordMaskMessage 命中失败关键词时统一返回给下游的提示。这类错误通常意味着
+// 上游渠道本身不可用（如渠道欠费），不应把上游原文（含内部额度等细节）透传给客户端。
+const UpstreamKeywordMaskMessage = "请稍后重试"
+
+// MatchedFailureKeyword 判断错误信息是否命中任一「失败关键词」（大小写不敏感的子串匹配，
+// 与渠道自动禁用共用同一套关键词与 AC 自动机）。
+func MatchedFailureKeyword(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
 	lowerMessage := strings.ToLower(err.Error())
-	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
-	return search
+	matched, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
+	return matched
+}
+
+// ShouldMaskUpstreamKeywordError 判断是否要把下游看到的错误信息替换成「请稍后重试」，
+// 对应 ShouldDisableChannel 的关键词分支：自动禁用开启、不是 skip-retry 的本地错误、
+// 且上游信息命中失败关键词。skip-retry 守卫很关键——用户自己令牌额度不足
+// （ErrorCodePreConsumeTokenQuotaFailed）同样带「quota」字样，但那是用户侧错误，必须
+// 原样返回，不能被当成上游渠道故障掩盖掉。
+func ShouldMaskUpstreamKeywordError(err *types.NewAPIError) bool {
+	if !common.AutomaticDisableChannelEnabled {
+		return false
+	}
+	if types.IsSkipRetryError(err) {
+		return false
+	}
+	return MatchedFailureKeyword(err)
 }
 
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {

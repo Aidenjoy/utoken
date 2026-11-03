@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -197,4 +198,35 @@ func TestTaskErrorFromAPIErrorKeepsLocalBillingSemantics(t *testing.T) {
 // 「没有错误」当成一次失败去重试。
 func TestTaskErrorFromAPIErrorNil(t *testing.T) {
 	assert.Nil(t, TaskErrorFromAPIError(nil))
+}
+
+// TestShouldMaskUpstreamKeywordError 锁定「命中失败关键词时把下游消息换成请稍后重试」的
+// 边界：上游渠道欠费要掩码，但用户自己令牌额度不足（同样带 quota 字样、却是 skip-retry 的
+// 本地错误）必须原样返回，否则客户会被误导去重试一个重试也不会成功的请求。
+func TestShouldMaskUpstreamKeywordError(t *testing.T) {
+	oldKeywords := operation_setting.AutomaticDisableKeywords
+	oldEnabled := common.AutomaticDisableChannelEnabled
+	t.Cleanup(func() {
+		operation_setting.AutomaticDisableKeywords = oldKeywords
+		common.AutomaticDisableChannelEnabled = oldEnabled
+	})
+	operation_setting.AutomaticDisableKeywords = []string{"token quota is not enough"}
+	common.AutomaticDisableChannelEnabled = true
+
+	const upstreamMsg = "token quota is not enough, token remain quota: ¥1.252816, need quota: ¥12.750000"
+	// 上游渠道返回的欠费错误：OpenAI 型、非 skip-retry
+	upstreamOutOfQuota := types.NewOpenAIError(errors.New(upstreamMsg), types.ErrorCodeBadResponseStatusCode, http.StatusForbidden)
+	// 用户自己令牌额度不足：本地预扣费错误，带 skip-retry
+	userOwnQuota := types.NewErrorWithStatusCode(errors.New(upstreamMsg), types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	// 未命中关键词的上游错误
+	otherUpstream := types.NewOpenAIError(errors.New("internal server error"), types.ErrorCodeBadResponseStatusCode, http.StatusInternalServerError)
+
+	assert.True(t, ShouldMaskUpstreamKeywordError(upstreamOutOfQuota))
+	assert.False(t, ShouldMaskUpstreamKeywordError(userOwnQuota))
+	assert.False(t, ShouldMaskUpstreamKeywordError(otherUpstream))
+	assert.False(t, ShouldMaskUpstreamKeywordError(nil))
+
+	// 自动禁用关闭时关键词机制整体不生效，不掩码
+	common.AutomaticDisableChannelEnabled = false
+	assert.False(t, ShouldMaskUpstreamKeywordError(upstreamOutOfQuota))
 }
