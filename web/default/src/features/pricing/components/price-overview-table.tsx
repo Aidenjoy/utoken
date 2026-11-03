@@ -292,10 +292,15 @@ export function PriceOverviewTable(props: PriceOverviewTableProps) {
             // Zebra striping stays continuous across vendor groups; rowspan
             // cells ignore tr backgrounds, so the stripe goes on every td.
             const stripe = rowIndex % 2 === 1 ? 'bg-muted/60' : 'bg-card'
-            const cellClass = cn(
-              'border-border border-b border-r px-4 py-3 last:border-r-0',
-              stripe
-            )
+            const cellBorder =
+              'border-border border-b border-r px-4 py-3 last:border-r-0'
+            const cellClass = cn(cellBorder, stripe)
+            // The spanning model cell must NOT inherit the per-row stripe: its
+            // color would otherwise jump with whichever parity its first row
+            // lands on (white for one model, grey for the next). Keep it on a
+            // stable card background so the merged label column reads clean,
+            // while the per-row data columns keep their odd/even zebra.
+            const modelCellClass = cn(cellBorder, 'bg-card')
             const tier = row.tier
             const fallbackPrice =
               tier && tier.resolution === null && !tier.withVideo
@@ -319,7 +324,7 @@ export function PriceOverviewTable(props: PriceOverviewTableProps) {
                     rowSpan={
                       row.modelRowSpan > 1 ? row.modelRowSpan : undefined
                     }
-                    className={cn(cellClass, 'align-middle')}
+                    className={cn(modelCellClass, 'align-middle')}
                   >
                     <ModelName
                       model={row.model}
