@@ -34,8 +34,13 @@ import { getModelsSectionNavItems } from '@/features/system-settings/models/sect
 import { getOperationsSectionNavItems } from '@/features/system-settings/operations/section-registry.tsx'
 import { getSecuritySectionNavItems } from '@/features/system-settings/security/section-registry.tsx'
 import { getSiteSectionNavItems } from '@/features/system-settings/site/section-registry.tsx'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import type { NavGroup, SidebarView } from '../types'
+
+// 被授予「模型定价」权限的管理员（非超管）侧栏里只保留这一项，与路由守卫保持一致。
+const MODEL_PRICING_URL = '/system-settings/billing/model-pricing'
 
 /**
  * Sidebar nav groups for the System Settings nested view.
@@ -45,6 +50,25 @@ import type { NavGroup, SidebarView } from '../types'
  * scopes the items as "administration" actions.
  */
 function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
+  const user = useAuthStore.getState().auth.user
+  if (user?.role !== ROLE.SUPER_ADMIN) {
+    return [
+      {
+        id: 'system-administration',
+        title: t('System Administration'),
+        items: [
+          {
+            title: t('Billing & Payment'),
+            icon: CreditCard,
+            items: getBillingSectionNavItems(t).filter(
+              (item) => item.url === MODEL_PRICING_URL
+            ),
+          },
+        ],
+      },
+    ]
+  }
+
   return [
     {
       id: 'system-administration',

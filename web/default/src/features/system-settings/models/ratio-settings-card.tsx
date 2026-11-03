@@ -26,6 +26,8 @@ import * as z from 'zod'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { resetModelRatios } from '../api'
 import { SettingsPageTitleStatusPortal } from '../components/settings-page-context'
@@ -153,6 +155,16 @@ export function RatioSettingsCard({
   const updateOption = useUpdateOption()
   const queryClient = useQueryClient()
   const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const user = useAuthStore((state) => state.auth.user)
+  const isRoot = user?.role === ROLE.SUPER_ADMIN
+  // 上游价格同步走 /api/ratio_sync、重置价格走 /api/option/rest_model_ratio，二者都仅超管可用；
+  // 被授予模型定价权限的管理员看不到这两个入口，只能编辑价格、增删模型。
+  const effectiveTabs = useMemo(
+    () =>
+      isRoot ? visibleTabs : visibleTabs.filter((tab) => tab !== 'upstream-sync'),
+    [isRoot, visibleTabs]
+  )
 
   const resetMutation = useMutation({
     mutationFn: resetModelRatios,
@@ -411,8 +423,8 @@ export function RatioSettingsCard({
       2: 'grid-cols-2',
       3: 'grid-cols-3',
       4: 'grid-cols-4',
-    }[visibleTabs.length] ?? 'grid-cols-4'
-  const defaultTab = visibleTabs[0] ?? 'models'
+    }[effectiveTabs.length] ?? 'grid-cols-4'
+  const defaultTab = effectiveTabs[0] ?? 'models'
 
   const renderTabContent = (tab: RatioTabId) => {
     if (tab === 'models') {
@@ -421,7 +433,7 @@ export function RatioSettingsCard({
           form={modelForm}
           savedValues={savedModelValues}
           onSave={saveModelRatios}
-          onReset={handleResetRatios}
+          onReset={isRoot ? handleResetRatios : undefined}
           isSaving={updateOption.isPending}
           isResetting={resetMutation.isPending}
         />
@@ -461,7 +473,7 @@ export function RatioSettingsCard({
 
   const renderTabSwitcher = () => (
     <TabsList className={`grid w-fit max-w-full ${tabsGridClass}`}>
-      {visibleTabs.map((tab) => (
+      {effectiveTabs.map((tab) => (
         <TabsTrigger key={tab} value={tab}>
           {t(tabLabels[tab])}
         </TabsTrigger>
@@ -471,7 +483,7 @@ export function RatioSettingsCard({
 
   return (
     <>
-      {visibleTabs.length === 1 ? (
+      {effectiveTabs.length === 1 ? (
         <SettingsSection title={t(titleKey)}>
           {renderTabContent(defaultTab)}
         </SettingsSection>
@@ -482,7 +494,7 @@ export function RatioSettingsCard({
           </SettingsPageTitleStatusPortal>
 
           <SettingsSection title={t(titleKey)}>
-            {visibleTabs.map((tab) => (
+            {effectiveTabs.map((tab) => (
               <TabsContent key={tab} value={tab}>
                 {renderTabContent(tab)}
               </TabsContent>

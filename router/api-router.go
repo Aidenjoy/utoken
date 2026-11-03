@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/service/authz"
 
 	// Import oauth package to register providers via init()
 	_ "github.com/QuantumNous/new-api/oauth"
@@ -274,8 +275,6 @@ func SetApiRouter(router *gin.Engine) {
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
-			optionRoute.GET("/", controller.GetOptions)
-			optionRoute.PUT("/", controller.UpdateOption)
 			optionRoute.POST("/payment_compliance", controller.ConfirmPaymentCompliance)
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
@@ -286,6 +285,16 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/waffo-pancake/save", controller.SaveWaffoPancake)
 			optionRoute.POST("/waffo-pancake/subscription-product", controller.CreateWaffoPancakeSubscriptionProduct)
 			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
+		}
+
+		// 模型定价读写：超管可读全部配置、可改任意键；被授予 billing/model_pricing 权限的
+		// 管理员同样走这两个接口，但 controller 会按定价键白名单收窄读到的配置与可改的键，
+		// 使其只能打开「系统管理-计费与支付-模型定价」并编辑价格、增删模型，而碰不到其它系统配置。
+		pricingOptionRoute := apiRouter.Group("/option")
+		pricingOptionRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.BillingModelPricing))
+		{
+			pricingOptionRoute.GET("/", controller.GetOptions)
+			pricingOptionRoute.PUT("/", controller.UpdateOption)
 		}
 
 		// Custom OAuth provider management (root only)

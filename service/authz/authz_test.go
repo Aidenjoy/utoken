@@ -105,6 +105,9 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 			ActionSensitiveWrite: true,
 			ActionSecretView:     false,
 		},
+		ResourceBilling: {
+			ActionModelPricing: false,
+		},
 	}, ExplicitUserPermissions(42))
 	assert.Equal(t, PermissionsMap{
 		ResourceChannel: {
@@ -132,6 +135,9 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 			ActionWrite:          true,
 			ActionSensitiveWrite: false,
 			ActionSecretView:     false,
+		},
+		ResourceBilling: {
+			ActionModelPricing: false,
 		},
 	}, ExplicitUserPermissions(42))
 	assert.Empty(t, ExplicitUserOverrides(42))
@@ -226,4 +232,27 @@ func TestCapabilitiesUseCatalogShape(t *testing.T) {
 	assert.True(t, capabilities[ResourceChannel][ActionWrite])
 	assert.False(t, capabilities[ResourceChannel][ActionSensitiveWrite])
 	assert.False(t, capabilities[ResourceChannel][ActionSecretView])
+}
+
+// TestBillingModelPricingDefaultsToRootOnly pins the core contract of the
+// 系统管理-计费与支付-模型定价 grant: it is NOT part of the admin baseline (so a plain
+// admin cannot manage model pricing), root always can, and a super-admin can
+// enable it for one specific admin without affecting any other admin.
+func TestBillingModelPricingDefaultsToRootOnly(t *testing.T) {
+	db := newAuthzTestDB(t)
+	require.NoError(t, Init(db))
+
+	assert.False(t, Can(7, common.RoleAdminUser, BillingModelPricing),
+		"model pricing must be off by default for a plain admin")
+	assert.True(t, Can(7, common.RoleRootUser, BillingModelPricing),
+		"root is a superuser and always allowed")
+
+	require.NoError(t, SetUserPermissions(7, PermissionsMap{
+		ResourceBilling: {ActionModelPricing: true},
+	}))
+
+	assert.True(t, Can(7, common.RoleAdminUser, BillingModelPricing),
+		"a per-user grant enables model pricing for that admin")
+	assert.False(t, Can(8, common.RoleAdminUser, BillingModelPricing),
+		"another admin without the grant is unaffected")
 }

@@ -64,7 +64,7 @@ type ModelRatioFormProps = {
   form: UseFormReturn<ModelFormValues>
   savedValues: ModelFormValues
   onSave: (values: ModelFormValues) => Promise<void>
-  onReset: () => void
+  onReset?: () => void
   isSaving: boolean
   isResetting: boolean
 }
@@ -197,16 +197,18 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   return (
     <div className='space-y-6'>
       <div className='flex flex-wrap justify-end gap-2'>
-        <Button
-          type='button'
-          variant='destructive'
-          size='sm'
-          onClick={onReset}
-          disabled={isResetting}
-        >
-          <RotateCcw data-icon='inline-start' />
-          {t('Reset prices')}
-        </Button>
+        {onReset && (
+          <Button
+            type='button'
+            variant='destructive'
+            size='sm'
+            onClick={onReset}
+            disabled={isResetting}
+          >
+            <RotateCcw data-icon='inline-start' />
+            {t('Reset prices')}
+          </Button>
+        )}
         {editMode === 'json' && (
           <Button
             type='button'

@@ -29,6 +29,31 @@ var completionRatioMetaOptionKeys = []string{
 	"AudioCompletionRatio",
 }
 
+// modelPricingOptionKeys 是「系统管理-计费与支付-模型定价」页面读写的全部配置键。
+// 被授予 billing/model_pricing 权限的管理员（非超管）只能读到、且只能修改这些键，
+// 从而可以编辑模型价格、增删模型，但碰不到站点/鉴权/支付/分组等其它系统配置。
+var modelPricingOptionKeys = map[string]struct{}{
+	"ModelPrice":                      {},
+	"ModelRatio":                      {},
+	"CompletionRatio":                 {},
+	"CacheRatio":                      {},
+	"CreateCacheRatio":                {},
+	"ImageRatio":                      {},
+	"AudioRatio":                      {},
+	"AudioCompletionRatio":            {},
+	"ExposeRatioEnabled":              {},
+	"billing_setting.billing_mode":    {},
+	"billing_setting.billing_expr":    {},
+	"billing_setting.seedance_config": {},
+	"billing_setting.seedream_config": {},
+	"tool_price_setting.prices":       {},
+}
+
+func isModelPricingOptionKey(key string) bool {
+	_, ok := modelPricingOptionKeys[key]
+	return ok
+}
+
 func isPaymentComplianceOptionKey(key string) bool {
 	return strings.HasPrefix(key, "payment_setting.compliance_")
 }
@@ -76,6 +101,7 @@ func buildCompletionRatioMetaValue(optionValues map[string]string) string {
 }
 
 func GetOptions(c *gin.Context) {
+	isRoot := c.GetInt("role") >= common.RoleRootUser
 	var options []*model.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
@@ -87,6 +113,10 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "secret") ||
 			strings.HasSuffix(k, "api_key")
 		if isSensitiveKey {
+			continue
+		}
+		// 非超管（被授予模型定价权限的管理员）只返回定价相关键，避免泄露其它系统配置。
+		if !isRoot && !isModelPricingOptionKey(k) {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -125,6 +155,11 @@ func UpdateOption(c *gin.Context) {
 			"success": false,
 			"message": "无效的参数",
 		})
+		return
+	}
+	// 非超管只能修改定价相关键；其余系统配置一律拒绝，防止越权改站点/鉴权/支付等设置。
+	if c.GetInt("role") < common.RoleRootUser && !isModelPricingOptionKey(option.Key) {
+		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
 		return
 	}
 	switch option.Value.(type) {
