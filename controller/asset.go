@@ -444,7 +444,7 @@ func registerAssetForUser(userId int, req assetUploadRequest) (*assetRegisterRes
 		req.Name = fmt.Sprintf("asset-%d", time.Now().Unix())
 	}
 	// 未指定渠道（channel_id 与 channel 均为空）→ 登记为智能素材：
-	// 不绑定渠道，返回 yun-<id> 稳定引用，视频提交/预热时自动路由到服务该模型的渠道并按需同步。
+	// 不绑定渠道，返回 asset-<时间戳>-sm<三位数字> 稳定引用，视频提交/预热时自动路由到服务该模型的渠道并按需同步。
 	if req.ChannelId <= 0 && strings.TrimSpace(req.Channel) == "" {
 		source, regErr := registerSourceAssetFromURL(userId, req.URL, req.AssetType, req.Name)
 		if regErr != nil {
@@ -597,11 +597,11 @@ func RelayUploadAsset(c *gin.Context) {
 		relayAssetJSON(c, 1, regErr.msg, nil)
 		return
 	}
-	// 智能素材（未指定渠道）：返回 yun-<id> 稳定引用，视频任务中以 asset://yun-<id> 引用，
-	// 提交时自动路由到服务该模型的渠道并按需同步。
+	// 智能素材（未指定渠道）：返回 asset-<时间戳>-sm<三位数字> 稳定引用，视频任务中以
+	// asset://<引用> 提交，自动路由到服务该模型的渠道并按需同步。
 	if result.SourceAsset != nil {
 		relayAssetJSON(c, 0, "ok", gin.H{
-			"Id":    service.SmartAssetRefPrefix + strconv.FormatInt(result.SourceAsset.ID, 10),
+			"Id":    result.SourceAsset.RefID,
 			"Name":  result.SourceAsset.Name,
 			"Smart": true,
 		})
@@ -621,7 +621,7 @@ func RelayUploadAsset(c *gin.Context) {
 func RelayGetAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	assetID := c.Param("id")
-	if strings.HasPrefix(assetID, service.SmartAssetRefPrefix) {
+	if service.IsSmartAssetRef(assetID) {
 		relayGetSmartAsset(c, userId, assetID)
 		return
 	}
@@ -646,22 +646,17 @@ func RelayGetAsset(c *gin.Context) {
 	})
 }
 
-// relayGetSmartAsset 处理智能素材（yun-<id>）的状态查询：智能素材渠道无关，
-// 就绪与否取决于视频提交时自动路由到的那个渠道，故返回源素材本体 + 各渠道副本。
+// relayGetSmartAsset 处理智能素材（asset-<时间戳>-sm<三位数字>，兼容旧版 yun-<id>）的
+// 状态查询：智能素材渠道无关，就绪与否取决于视频提交时自动路由到的那个渠道，故返回
+// 源素材本体 + 各渠道副本。
 // 汇总 Status：任一副本 active 即 Active；否则有 pending 或尚无副本为 Pending（首次引用时自动同步）；全 failed 为 Failed。
 func relayGetSmartAsset(c *gin.Context, userId int, ref string) {
-	idStr := strings.TrimPrefix(ref, service.SmartAssetRefPrefix)
-	sourceId, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	source, err := service.ResolveSourceAssetRef(ref)
+	if err != nil || source == nil || source.UserID != userId {
 		relayAssetJSON(c, 1, "asset not found", nil)
 		return
 	}
-	source, err := model.GetSourceAssetById(sourceId)
-	if err != nil || source.UserID != userId {
-		relayAssetJSON(c, 1, "asset not found", nil)
-		return
-	}
-	copies, _ := model.GetAssetsBySourceAssetId(sourceId)
+	copies, _ := model.GetAssetsBySourceAssetId(source.ID)
 	refreshPendingAssets(copies)
 
 	anyActive, anyPending := false, false
@@ -690,7 +685,7 @@ func relayGetSmartAsset(c *gin.Context, userId int, ref string) {
 		})
 	}
 	relayAssetJSON(c, 0, "ok", gin.H{
-		"Id":         ref,
+		"Id":         source.RefID,
 		"Name":       source.Name,
 		"AssetType":  source.AssetType,
 		"Status":     relayAssetStatus(status),
@@ -709,7 +704,7 @@ func relayGetSmartAsset(c *gin.Context, userId int, ref string) {
 func RelayDeleteAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	assetID := c.Param("id")
-	if strings.HasPrefix(assetID, service.SmartAssetRefPrefix) {
+	if service.IsSmartAssetRef(assetID) {
 		relayDeleteSmartAsset(c, userId, assetID)
 		return
 	}
@@ -726,28 +721,22 @@ func RelayDeleteAsset(c *gin.Context) {
 }
 
 // relayDeleteSmartAsset 删除智能素材：先级联删除其各渠道副本记录，再删除源素材登记。
-// 删除后 yun-<id> 与 asset://yun-<id> 引用均失效；上游素材保留。
+// 删除后该引用与 asset://<引用> 均失效；上游素材保留。
 func relayDeleteSmartAsset(c *gin.Context, userId int, ref string) {
-	idStr := strings.TrimPrefix(ref, service.SmartAssetRefPrefix)
-	sourceId, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	source, err := service.ResolveSourceAssetRef(ref)
+	if err != nil || source == nil || source.UserID != userId {
 		relayAssetJSON(c, 1, "asset not found", nil)
 		return
 	}
-	source, err := model.GetSourceAssetById(sourceId)
-	if err != nil || source.UserID != userId {
-		relayAssetJSON(c, 1, "asset not found", nil)
-		return
-	}
-	if err := model.DeleteAssetsBySourceAssetId(sourceId); err != nil {
+	if err := model.DeleteAssetsBySourceAssetId(source.ID); err != nil {
 		relayAssetJSON(c, 1, err.Error(), nil)
 		return
 	}
-	if err := model.DeleteSourceAssetById(sourceId, userId); err != nil {
+	if err := model.DeleteSourceAssetById(source.ID, userId); err != nil {
 		relayAssetJSON(c, 1, err.Error(), nil)
 		return
 	}
-	relayAssetJSON(c, 0, "ok", gin.H{"Id": ref, "Deleted": true})
+	relayAssetJSON(c, 0, "ok", gin.H{"Id": source.RefID, "Deleted": true})
 }
 
 // persistAssetGroupID 将自动创建的默认素材组 ID 回写到渠道 other settings。

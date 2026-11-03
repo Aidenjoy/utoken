@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,15 +11,39 @@ import (
 	"github.com/QuantumNous/new-api/model"
 )
 
-// 智能素材引用解析：把 asset://yun-<源素材ID> 转换为「当前模型可用渠道」上
+// 智能素材引用解析：把 asset://<智能素材引用> 转换为「当前模型可用渠道」上
 // 的真实上游素材 ID。上传时素材只落自有 TOS（source_assets），不绑定渠道；
 // 视频提交（Distribute）或预热（/pg/source-assets/ensure）时按所选模型挑选
 // 渠道、确保副本存在，再由中间件把引用改写为上游 ID 并锁定渠道。
 // 两条路径共用本文件的解析逻辑，避免两套实现漂移。
 
-// SmartAssetRefPrefix 智能素材引用 ID 前缀（完整引用形如 asset://yun-123）。
-// 上游素材 ID 不带该前缀，解析时按前缀分流。
-const SmartAssetRefPrefix = "yun-"
+// LegacySmartAssetRefPrefix 旧版智能素材引用前缀（asset://yun-<源素材ID>）。
+// 新版引用改为 asset-<年月日时分秒>-sm<三位数字>（与官方渠道素材同构，见
+// model.SourceAsset.RefID）；历史 yun- 引用仍可能存在于客户系统或在途请求中，
+// 故保留解析能力，只是不再生成。
+const LegacySmartAssetRefPrefix = "yun-"
+
+// smartAssetRefPattern 匹配新版智能素材引用：asset-<14位年月日时分秒>-sm<3位数字>。
+// 官方渠道素材后缀是随机字母数字串，sm+纯数字后缀用于与之区分。
+var smartAssetRefPattern = regexp.MustCompile(`^asset-\d{14}-sm\d{3}$`)
+
+// IsSmartAssetRef 判断一个 asset:// 引用是否为智能素材（新版格式或旧版 yun- 前缀）。
+func IsSmartAssetRef(id string) bool {
+	return strings.HasPrefix(id, LegacySmartAssetRefPrefix) || smartAssetRefPattern.MatchString(id)
+}
+
+// ResolveSourceAssetRef 按引用加载源素材：旧版 yun-<id> 解析为主键，新版按 ref_id 查。
+// 格式非法或未命中返回错误（model.ErrNotFound / gorm record-not-found）。
+func ResolveSourceAssetRef(ref string) (*model.SourceAsset, error) {
+	if strings.HasPrefix(ref, LegacySmartAssetRefPrefix) {
+		id, err := strconv.ParseInt(strings.TrimPrefix(ref, LegacySmartAssetRefPrefix), 10, 64)
+		if err != nil || id <= 0 {
+			return nil, model.ErrNotFound
+		}
+		return model.GetSourceAssetById(id)
+	}
+	return model.GetSourceAssetByRefId(ref)
+}
 
 // SmartAssetErrorKind 智能素材解析失败类型（middleware/controller 据此翻译用户文案）。
 type SmartAssetErrorKind string
@@ -133,15 +158,11 @@ func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups [
 	return resolutions, channelId, nil
 }
 
-// loadOwnedSourceAsset 按 yun-<id> 引用加载源素材并校验归属。
+// loadOwnedSourceAsset 按引用（新版 ref_id 或旧版 yun-<id>）加载源素材并校验归属。
 // 不存在与非本人返回同一错误，避免泄露他人素材的存在性。
 func loadOwnedSourceAsset(userId int, ref string) (*model.SourceAsset, error) {
 	notFound := &SmartAssetError{Kind: SmartAssetNotFound, Ref: ref, Detail: "source asset missing or not owned"}
-	id, err := strconv.ParseInt(strings.TrimPrefix(ref, SmartAssetRefPrefix), 10, 64)
-	if err != nil || id <= 0 {
-		return nil, notFound
-	}
-	source, err := model.GetSourceAssetById(id)
+	source, err := ResolveSourceAssetRef(ref)
 	if err != nil || source == nil || source.UserID != userId {
 		return nil, notFound
 	}

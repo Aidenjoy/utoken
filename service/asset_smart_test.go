@@ -369,3 +369,87 @@ func TestResolveSmartAssetRefsSyncFailure(t *testing.T) {
 	assert.Equal(t, SmartAssetSyncFailed, smartErrorKind(t, err))
 	assert.Contains(t, err.Error(), "invalid media")
 }
+
+// TestIsSmartAssetRef 智能素材引用分类：新版 asset-<14位时间戳>-sm<3位数字> 与旧版
+// yun- 前缀判为智能；官方渠道素材（随机字母数字后缀）以及 sm 后含字母、位数或时间戳
+// 长度不符的近似串一律判为非智能，避免把上游渠道素材误路由成智能素材。
+func TestIsSmartAssetRef(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want bool
+	}{
+		{"new format", "asset-20260907221226-sm042", true},
+		{"new format sm000 boundary", "asset-20260907221226-sm000", true},
+		{"new format sm999 boundary", "asset-20260907221226-sm999", true},
+		{"legacy yun prefix", "yun-5", true},
+		{"legacy yun multi digit", "yun-500", true},
+		{"official channel asset", "asset-20260716111338-vwmxj", false},
+		{"official channel asset 2", "asset-20260916162454-hfkl5", false},
+		{"sm suffix with letters", "asset-20260907221226-sm4a2", false},
+		{"sm suffix two digits", "asset-20260907221226-sm42", false},
+		{"sm suffix four digits", "asset-20260907221226-sm4200", false},
+		{"timestamp 13 digits", "asset-2026090722122-sm042", false},
+		{"timestamp 15 digits", "asset-202609072212266-sm042", false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsSmartAssetRef(tt.id))
+		})
+	}
+}
+
+// TestResolveSourceAssetRef 引用解析：新版按 ref_id 查库，旧版 yun-<id> 解析为主键；
+// 未命中或非法格式返回错误（上层统一翻译为 not_found，不泄露存在性）。
+func TestResolveSourceAssetRef(t *testing.T) {
+	setupSmartAssetTest(t, &stubAssetAdapter{})
+	require.NoError(t, (&model.SourceAsset{
+		ID: 700, RefID: "asset-20260907221226-sm042", UserID: 42,
+		Name: "smart", AssetType: model.AssetTypeVideo,
+		SourceURL: "http://tos/smart.mp4", Status: model.AssetStatusActive,
+	}).Insert())
+
+	t.Run("new ref_id resolves to the source asset", func(t *testing.T) {
+		got, err := ResolveSourceAssetRef("asset-20260907221226-sm042")
+		require.NoError(t, err)
+		assert.Equal(t, int64(700), got.ID)
+	})
+	t.Run("legacy yun-<id> still resolves", func(t *testing.T) {
+		got, err := ResolveSourceAssetRef("yun-700")
+		require.NoError(t, err)
+		assert.Equal(t, int64(700), got.ID)
+	})
+	t.Run("unknown ref_id is not found", func(t *testing.T) {
+		_, err := ResolveSourceAssetRef("asset-20260907221226-sm999")
+		assert.Error(t, err)
+	})
+	t.Run("malformed legacy id is not found", func(t *testing.T) {
+		_, err := ResolveSourceAssetRef("yun-abc")
+		assert.ErrorIs(t, err, model.ErrNotFound)
+	})
+}
+
+// TestResolveSmartAssetRefsNewRefFormat 新版 ref_id 引用走完整解析链：按 ref_id 定位
+// 源素材、挑渠道、缺副本时现场同步，与旧版 yun- 引用行为一致。
+func TestResolveSmartAssetRefsNewRefFormat(t *testing.T) {
+	stub := &stubAssetAdapter{uploadAssetID: "up-700"}
+	setupSmartAssetTest(t, stub)
+	seedAssetChannel(t, 30, common.ChannelStatusEnabled, "ark_official")
+	seedSmartAbility(t, "default", "seedance-lite", 30)
+	require.NoError(t, (&model.SourceAsset{
+		ID: 700, RefID: "asset-20260907221226-sm042", UserID: 42,
+		Name: "smart", AssetType: model.AssetTypeVideo,
+		SourceURL: "http://tos/smart.mp4", Status: model.AssetStatusActive,
+	}).Insert())
+
+	resolutions, channelId, err := ResolveSmartAssetRefs(42, []string{"asset-20260907221226-sm042"}, "seedance-lite", []string{"default"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, 30, channelId)
+	require.Len(t, resolutions, 1)
+	assert.Equal(t, int64(700), resolutions[0].SourceAssetId)
+	assert.Equal(t, model.AssetStatusPending, resolutions[0].Status)
+	assert.Equal(t, "up-700", resolutions[0].UpstreamAssetId)
+	assert.Equal(t, 1, stub.uploadCalls)
+}
+

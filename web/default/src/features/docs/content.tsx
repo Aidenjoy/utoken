@@ -303,9 +303,8 @@ function buildVideoSections(siteUrl: string): DocSection[] {
           <P>
             参考生成支持文本 + 参考图（0-9 张）+ 参考视频（0-3 个）+
             参考音频（0-3
-            个）自由组合，示例中的各项按需删减即可；音频不可单独参考，至少搭配一张图片或一个视频。参考图片支持三种写法：直接
-            URL、渠道素材 <InlineCode>asset://asset-&lt;上游ID&gt;</InlineCode>
-            、智能素材 <InlineCode>asset://yun-&lt;id&gt;</InlineCode>
+            个）自由组合，示例中的各项按需删减即可；音频不可单独参考，至少搭配一张图片或一个视频。参考图片支持两种写法：直接
+            URL，或素材库引用 <InlineCode>asset://&lt;素材ID&gt;</InlineCode>
             （真人虚拟素材上传见「素材库 API」一节）。
           </P>
           <CodeBlock
@@ -500,15 +499,12 @@ curl -X GET ${tasksUrl}/{task_id} \\
       body: (
         <>
           <P>
-            先上传真人虚拟素材，再在视频任务 <InlineCode>content</InlineCode>{' '}
-            中以 <InlineCode>asset://&lt;素材ID&gt;</InlineCode>{' '}
-            引用。素材分两种： 不传 <InlineCode>channel</InlineCode>{' '}
-            为智能素材（推荐，渠道无关，返回{' '}
-            <InlineCode>yun-&lt;id&gt;</InlineCode>）；传{' '}
-            <InlineCode>channel</InlineCode> 为渠道素材（绑定指定渠道，返回{' '}
-            <InlineCode>asset-&lt;上游ID&gt;</InlineCode>）。
+            上传真人虚拟素材后会得到一个素材 ID，在视频任务{' '}
+            <InlineCode>content</InlineCode> 中以{' '}
+            <InlineCode>asset://&lt;素材ID&gt;</InlineCode> 引用即可。默认上传为
+            智能素材：提交视频时系统会自动把它同步到服务该模型的渠道，你无需
+            关心素材具体落在哪个渠道。
           </P>
-          <P>智能素材（推荐）：</P>
           <CodeBlock
             method='POST'
             url={`${baseUrl}/api/assets/upload`}
@@ -520,12 +516,12 @@ curl -X GET ${tasksUrl}/{task_id} \\
 }`}
           />
           <CodeBlock
-            title='响应内容（data.Id 即 yun-<id>，视频任务中以 asset://yun-<id> 引用）'
+            title='响应内容（data.Id 即素材 ID，视频任务中以 asset://<data.Id> 引用）'
             lang='json'
-            code='{"code":0,"message":"ok","data":{"Id":"yun-123","Name":"test","Smart":true}}'
+            code='{"code":0,"message":"ok","data":{"Id":"asset-20260907221226-sm042","Name":"test","Smart":true}}'
           />
           <CodeBlock
-            title='curl 示例（智能素材）'
+            title='curl 示例'
             lang='bash'
             code={`curl -X POST ${baseUrl}/api/assets/upload \\
   -H "Authorization: Bearer sk-你的token" \\
@@ -536,50 +532,21 @@ curl -X GET ${tasksUrl}/{task_id} \\
     "name": "test"
   }'`}
           />
-          <P>渠道素材（传 channel，绑定到指定渠道）：</P>
-          <CodeBlock
-            method='POST'
-            url={`${baseUrl}/api/assets/upload`}
-            lang='json'
-            code={`{
-  "url": "https://picsum.photos/id/1074/800/600",
-  "asset_type": "Image",
-  "name": "test",
-  "channel": "qd1"
-}`}
-          />
-          <CodeBlock
-            title='响应内容（渠道素材）'
-            lang='json'
-            code='{"code":0,"message":"ok","data":{"Id":"asset-20260716111338-vwmxj"}}'
-          />
-          <CodeBlock
-            title='curl 示例（渠道素材）'
-            lang='bash'
-            code={`curl -X POST ${baseUrl}/api/assets/upload \\
-  -H "Authorization: Bearer sk-你的token" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "url": "https://picsum.photos/id/1074/800/600",
-    "asset_type": "Image",
-    "name": "test",
-    "channel": "qd1"
-  }'`}
-          />
           <Note>
             <InlineCode>asset_type</InlineCode> 取值{' '}
             <InlineCode>Image</InlineCode> / <InlineCode>Video</InlineCode> /{' '}
             <InlineCode>Audio</InlineCode>；<InlineCode>url</InlineCode>{' '}
             必须是公网可访问的 http(s) 地址；<InlineCode>name</InlineCode>{' '}
-            可省略，省略时取 url 末段；同一 url 重复上传智能素材会复用。
+            可省略，省略时取 url 末段；同一 url 重复上传会复用已有素材。
           </Note>
           <Note>
-            <InlineCode>channel</InlineCode> 为资源分组名称，格式为{' '}
-            <InlineCode>qd</InlineCode> 前缀加数字（例如{' '}
+            智能素材与渠道素材：<InlineCode>channel</InlineCode>{' '}
+            选填。不传即智能素材（推荐），渠道无关，提交视频时自动路由并同步到
+            服务该模型的任意渠道；传入 <InlineCode>channel</InlineCode>
+            （资源分组名，格式为 <InlineCode>qd</InlineCode> 前缀加数字，例如{' '}
             <InlineCode>qd1</InlineCode>
-            ）：传了则注册为渠道素材，只在注册它的渠道上游可用；
-            不传则注册为智能素材，返回 <InlineCode>yun-&lt;id&gt;</InlineCode>
-            ，渠道无关，提交视频时自动路由到服务该模型的渠道并按需同步。
+            ）则注册为渠道素材，只在指定渠道上游可用、需自行管理，不会自动同步
+            到其他渠道。
           </Note>
           <Note>
             智能素材首次用于某个模型时会现场同步到服务该模型的渠道并送审，审核通常需
@@ -598,9 +565,7 @@ curl -X GET ${tasksUrl}/{task_id} \\
           <P>
             查询素材上传任务状态，<InlineCode>Active</InlineCode>{' '}
             后才可在视频任务中引用。<InlineCode>{'{asset_id}'}</InlineCode>{' '}
-            可为渠道素材 ID（<InlineCode>asset-...</InlineCode>
-            ）或智能素材引用（
-            <InlineCode>yun-...</InlineCode>）。
+            为上传返回的 <InlineCode>data.Id</InlineCode>。
           </P>
           <CodeBlock
             method='GET'
@@ -630,13 +595,13 @@ curl -X GET ${baseUrl}/api/assets/{asset_id} \\
 }`}
           />
           <CodeBlock
-            title='响应内容（智能素材 yun-...）'
+            title='响应内容（智能素材：额外返回 Smart 与各渠道同步状态）'
             lang='json'
             code={`{
   "code": 0,
   "message": "ok",
   "data": {
-    "Id": "yun-123",
+    "Id": "asset-20260907221226-sm042",
     "Name": "test",
     "AssetType": "Image",
     "Status": "Pending",
@@ -667,8 +632,7 @@ curl -X GET ${baseUrl}/api/assets/{asset_id} \\
         <>
           <P>
             删除已上传的素材登记。<InlineCode>{'{asset_id}'}</InlineCode>{' '}
-            可为智能素材引用（<InlineCode>yun-...</InlineCode>）或渠道素材 ID（
-            <InlineCode>asset-...</InlineCode>）。仅删除本地登记，TOS
+            为上传返回的 <InlineCode>data.Id</InlineCode>。仅删除本地登记，TOS
             原件与上游素材保留。
           </P>
           <CodeBlock
@@ -676,19 +640,18 @@ curl -X GET ${baseUrl}/api/assets/{asset_id} \\
             url={`${baseUrl}/api/assets/{asset_id}`}
             lang='bash'
             code={`# 将 {asset_id} 替换为上传素材返回的 data.Id
-curl -X DELETE ${baseUrl}/api/assets/yun-123 \\
+curl -X DELETE ${baseUrl}/api/assets/asset-20260907221226-sm042 \\
   -H "Authorization: Bearer sk-你的token"`}
           />
           <CodeBlock
             title='响应内容'
             lang='json'
-            code='{"code":0,"message":"ok","data":{"Id":"yun-123","Deleted":true}}'
+            code='{"code":0,"message":"ok","data":{"Id":"asset-20260907221226-sm042","Deleted":true}}'
           />
           <Note>
-            删除智能素材会级联删除其各渠道副本记录，删除后{' '}
-            <InlineCode>asset://yun-&lt;id&gt;</InlineCode> 与{' '}
-            <InlineCode>asset://asset-...</InlineCode>{' '}
-            引用均失效；删除不可恢复，请谨慎操作。
+            删除智能素材会级联删除其各渠道副本记录，删除后该素材的{' '}
+            <InlineCode>asset://&lt;素材ID&gt;</InlineCode>{' '}
+            引用即失效；删除不可恢复，请谨慎操作。
           </Note>
         </>
       ),
@@ -731,9 +694,9 @@ function buildFaqSections(siteUrl: string): DocSection[] {
                 >
                   素材库 API
                 </a>
-                。分为智能素材库和特定渠道素材库：直接上传就是智能素材库，上传时指定
+                。默认直接上传即为智能素材，切换渠道时会自动同步到下一个渠道，无需手动管理；若上传时指定
                 channel
-                就是特定渠道素材库。智能素材库在切换渠道时会自动同步素材到下一个渠道，特定渠道素材库在切换渠道的时候需要自行管理素材。
+                参数，则为特定渠道素材，只在该渠道可用、切换渠道时需自行管理。
               </>
             }
           />

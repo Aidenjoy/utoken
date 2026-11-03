@@ -186,6 +186,8 @@ export interface MediaItem {
   assetId?: string
   /** Channel the asset was registered on (asset:// is only valid there) */
   assetChannelId?: number
+  /** Numeric source-asset id (smart assets only; ref_id is not reversible) */
+  sourceId?: number
 }
 
 // Asset library (virtual portrait library) types
@@ -222,12 +224,14 @@ export interface AssetProvider {
  * to any channel. Per-channel copies (Asset rows) are synced on demand; the
  * `channels` field carries those copies with their sync status.
  *
- * The stable reference id used in the playground is `yun-<id>`, submitted as
- * `asset://yun-<id>`; the Distribute middleware rewrites it to the real
- * upstream asset id of whichever channel serves the selected model.
+ * The stable reference id (`ref_id`) looks like `asset-<YYYYMMDDHHMMSS>-sm<NNN>`
+ * and is submitted as `asset://<ref_id>`; the Distribute middleware rewrites it
+ * to the real upstream asset id of whichever channel serves the selected model.
  */
 export interface SourceAsset {
   id: number
+  /** Stable public reference, e.g. `asset-20260907221226-sm042` */
+  ref_id: string
   user_id: number
   name: string
   asset_type: AssetType

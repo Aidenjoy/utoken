@@ -43,6 +43,7 @@ func TestExtractAssetIDs(t *testing.T) {
 	}{
 		{"no refs", `{"model":"seedance-1-0"}`, nil},
 		{"single ref", `{"content":[{"image_url":{"url":"asset://asset-20260716111338-vwmxj"}}]}`, []string{"asset-20260716111338-vwmxj"}},
+		{"smart ref", `{"content":[{"image_url":{"url":"asset://asset-20260907221226-sm042"}}]}`, []string{"asset-20260907221226-sm042"}},
 		{"dedup and order", `asset://a-1 text asset://a-2 asset://a-1 asset://b_3`, []string{"a-1", "a-2", "b_3"}},
 		{"empty", ``, nil},
 	}

@@ -32,7 +32,7 @@ func IsChannelEnabledForGroupModel(group string, modelName string, channelID int
 
 // GetEnabledChannelIdsForGroupModel 返回指定分组下支持 modelName 的启用渠道 ID 列表。
 // 内存缓存开启时走缓存（含归一化模型名回退），否则查 abilities 表。
-// 智能素材（asset://yun-x）挑选同步渠道时用于枚举候选集；无结果返回 nil。
+// 智能素材（asset://<引用>）挑选同步渠道时用于枚举候选集；无结果返回 nil。
 func GetEnabledChannelIdsForGroupModel(group, modelName string) []int {
 	if group == "" || modelName == "" {
 		return nil

@@ -54,7 +54,6 @@ import {
   listSourceAssets,
   uploadSourceAsset,
 } from '../../api'
-import { SMART_ASSET_REF_PREFIX } from '../../constants'
 import type { AssetProvider, AssetType, SourceAsset } from '../../types'
 
 interface SmartAssetsPanelProps {
@@ -98,7 +97,8 @@ function sourcePreview(asset: SourceAsset) {
 
 /**
  * Smart-asset panel: upload once to our own TOS, then the playground rewrites
- * `asset://yun-<id>` to the right channel's upstream asset at submit time.
+ * `asset://asset-<YYYYMMDDHHMMSS>-sm<NNN>` to the right channel's upstream asset
+ * at submit time.
  * Channel-independent, so no channel/model/group selection is needed here; the
  * per-channel sync status is shown as chips on each card.
  */
@@ -178,7 +178,7 @@ export function SmartAssetsPanel({ className }: SmartAssetsPanelProps) {
 
   const handleCopyRef = useCallback(
     (asset: SourceAsset) => {
-      void copyToClipboard(`asset://${SMART_ASSET_REF_PREFIX}${asset.id}`).then(
+      void copyToClipboard(`asset://${asset.ref_id}`).then(
         (ok) => {
           if (!ok) {
             toast.error(t('Failed to copy'))
@@ -306,7 +306,7 @@ export function SmartAssetsPanel({ className }: SmartAssetsPanelProps) {
                 {/* Reference id + copy */}
                 <div className='flex items-start gap-0.5'>
                   <span className='text-muted-foreground/90 min-w-0 flex-1 font-mono text-[10px] leading-4 break-all'>
-                    {`${SMART_ASSET_REF_PREFIX}${asset.id}`}
+                    {asset.ref_id}
                   </span>
                   <button
                     type='button'

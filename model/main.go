@@ -340,6 +340,10 @@ func migrateDB() error {
 	if err := backfillTokenRateDiscounts(); err != nil {
 		return err
 	}
+	// 智能素材对外引用由 yun-<id> 改为 asset-<时间戳>-sm<三位数字>：为历史源素材补发 ref_id
+	if err := backfillSourceAssetRefIDs(); err != nil {
+		return err
+	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err

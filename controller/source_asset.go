@@ -212,7 +212,8 @@ func EnsureSourceAsset(c *gin.Context) {
 		return
 	}
 
-	ref := service.SmartAssetRefPrefix + strconv.FormatInt(req.SourceAssetId, 10)
+	// 内部解析引用：沿用旧版 yun-<id> 即可（ResolveSourceAssetRef 兼容），无需查 ref_id。
+	ref := service.LegacySmartAssetRefPrefix + strconv.FormatInt(req.SourceAssetId, 10)
 	resolutions, channelId, err := service.ResolveSmartAssetRefs(userId, []string{ref}, req.Model, ensureCandidateGroups(userId, req.Group), req.Resolution)
 	if err != nil {
 		status := http.StatusBadRequest

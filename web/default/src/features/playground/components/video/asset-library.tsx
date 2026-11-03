@@ -575,8 +575,9 @@ function ChannelAssetsPanel({
  * Asset library with two tabs:
  * - Channel assets: existing per-channel registration (URL / local upload),
  *   referenced by the upstream asset id.
- * - Smart assets: upload once to our own TOS, referenced as `asset://yun-<id>`
- *   and auto-routed to the channel that serves the selected model at submit time.
+ * - Smart assets: upload once to our own TOS, referenced as
+ *   `asset://asset-<YYYYMMDDHHMMSS>-sm<NNN>` and auto-routed to the channel
+ *   that serves the selected model at submit time.
  */
 export function AssetLibraryContent({
   model,

@@ -92,8 +92,9 @@ func (e *AssetLockError) Error() string {
 // 返回应锁定的渠道 ID；无引用返回 0, nil；校验失败返回已 i18n 的错误。
 //
 // 引用分两类：
-//   - 智能素材（yun- 前缀）：按 modelName × 候选分组解析源素材，挑选渠道、
-//     必要时现场同步，并把 body 中的 yun 引用改写为真实上游素材 ID；
+//   - 智能素材（asset-<时间戳>-sm<三位数字>，兼容旧版 yun- 前缀）：按 modelName ×
+//     候选分组解析源素材，挑选渠道、必要时现场同步，并把 body 中的智能引用改写为
+//     真实上游素材 ID；
 //   - 渠道素材（上游 ID）：按既有逻辑校验归属与同渠道收敛。
 //
 // 两类可混用，但最终必须收敛到同一渠道，否则报渠道冲突。
@@ -113,7 +114,7 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, u
 
 	var smartRefs, upstreamRefs []string
 	for _, id := range assetIDs {
-		if strings.HasPrefix(id, service.SmartAssetRefPrefix) {
+		if service.IsSmartAssetRef(id) {
 			smartRefs = append(smartRefs, id)
 		} else {
 			upstreamRefs = append(upstreamRefs, id)
@@ -193,7 +194,7 @@ func fallbackToResolutionCapableChannel(c *gin.Context, userId int, upstreamRefs
 		if asset == nil || asset.SourceAssetId == nil || *asset.SourceAssetId <= 0 {
 			return 0, nil
 		}
-		refs = append(refs, service.SmartAssetRefPrefix+strconv.FormatInt(*asset.SourceAssetId, 10))
+		refs = append(refs, service.LegacySmartAssetRefPrefix+strconv.FormatInt(*asset.SourceAssetId, 10))
 	}
 
 	resolutions, channelId, err := service.ResolveSmartAssetRefs(

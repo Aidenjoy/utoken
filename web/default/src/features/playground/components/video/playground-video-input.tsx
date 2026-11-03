@@ -38,7 +38,7 @@ import {
   MAX_REFERENCE_IMAGES,
   MAX_VIDEOS,
   RESOLUTIONS,
-  SMART_ASSET_REF_PREFIX,
+  isSmartAssetRef,
   SMART_VIDEO_DURATION,
   VIDEO_COUNT_RANGE,
   VIDEO_MODES,
@@ -148,13 +148,13 @@ export function PlaygroundVideoInput({
   // --- asset library assets shown in the @ mention popup ---
   const [libraryAssets, setLibraryAssets] = useState<Asset[]>([])
   // --- smart (source) assets shown in the @ mention popup ---
-  // Channel-independent: referenced as asset://yun-<id> and routed server-side.
+  // Channel-independent: referenced as asset://<ref_id> and routed server-side.
   const [librarySourceAssets, setLibrarySourceAssets] = useState<SourceAsset[]>(
     []
   )
   // De-dupe ensure pre-warm calls per (sourceId, model, group).
   const ensuredKeysRef = useRef<Set<string>>(new Set())
-  // Per-smart-asset (yun-<id>) channel-copy readiness for the current
+  // Per-smart-asset (ref_id) channel-copy readiness for the current
   // model/group, so submit can soft-block while a copy is still under review.
   const [smartAssetStatus, setSmartAssetStatus] = useState<
     Record<string, AssetStatus>
@@ -246,7 +246,7 @@ export function PlaygroundVideoInput({
   // instead of letting Distribute answer with a 400 after the fact.
   const hasPendingSmartAsset = config.mediaItems.some(
     (item) =>
-      item.assetId?.startsWith(SMART_ASSET_REF_PREFIX) &&
+      isSmartAssetRef(item.assetId) &&
       smartAssetStatus[item.assetId] === 'pending'
   )
 
@@ -732,12 +732,10 @@ export function PlaygroundVideoInput({
   }
 
   // Smart assets already added to the composer, filtered by the popup tab and
-  // de-duplicated against existing media items by their yun- reference id.
+  // de-duplicated against existing media items by their ref_id.
   const mentionSourceAssets = librarySourceAssets.filter(
     (asset) =>
-      !config.mediaItems.some(
-        (item) => item.assetId === `${SMART_ASSET_REF_PREFIX}${asset.id}`
-      ) &&
+      !config.mediaItems.some((item) => item.assetId === asset.ref_id) &&
       (mentionFilter === 'all' ||
         (mentionFilter === 'video'
           ? asset.asset_type === 'Video'
@@ -793,14 +791,13 @@ export function PlaygroundVideoInput({
   // inline "under review" hint), nudges the user, and starts polling. Failures
   // are ignored here — submit surfaces the authoritative error via Distribute.
   const ensureSourceAssetQuiet = useCallback(
-    (sourceId: number) => {
+    (sourceId: number, refId: string) => {
       const model = configRef.current.model
       const group = configRef.current.group
       if (!model) return
       const key = `${sourceId}:${model}:${group}`
       if (ensuredKeysRef.current.has(key)) return
       ensuredKeysRef.current.add(key)
-      const refId = `${SMART_ASSET_REF_PREFIX}${sourceId}`
       void ensureSourceAsset(sourceId, model, group).then((res) => {
         if (!res) return
         recordSmartStatus(refId, res.status)
@@ -824,9 +821,9 @@ export function PlaygroundVideoInput({
   useEffect(() => {
     if (config.mode !== 'reference') return
     for (const item of config.mediaItems) {
-      if (!item.assetId?.startsWith(SMART_ASSET_REF_PREFIX)) continue
-      const id = Number(item.assetId.slice(SMART_ASSET_REF_PREFIX.length))
-      if (!Number.isNaN(id)) ensureSourceAssetQuiet(id)
+      const refId = item.assetId
+      if (!isSmartAssetRef(refId) || item.sourceId == null) continue
+      ensureSourceAssetQuiet(item.sourceId, refId)
     }
   }, [
     config.mode,
@@ -839,9 +836,7 @@ export function PlaygroundVideoInput({
   // Stop polling smart assets that are no longer referenced in the composer.
   useEffect(() => {
     const activeRefs = new Set(
-      config.mediaItems
-        .map((item) => item.assetId)
-        .filter((id): id is string => !!id?.startsWith(SMART_ASSET_REF_PREFIX))
+      config.mediaItems.map((item) => item.assetId).filter(isSmartAssetRef)
     )
     for (const refId of Object.keys(smartPollTimersRef.current)) {
       if (!activeRefs.has(refId)) stopSmartPoll(refId)
@@ -858,10 +853,10 @@ export function PlaygroundVideoInput({
     }
   }, [])
 
-  // Add a smart asset as a media item; remoteUrl carries asset://yun-<id> and
+  // Add a smart asset as a media item; remoteUrl carries asset://<ref_id> and
   // flows through buildSubmitPayload unchanged, then pre-warm the channel copy.
   const handleSourceAssetSelect = (asset: SourceAsset) => {
-    const refId = `${SMART_ASSET_REF_PREFIX}${asset.id}`
+    const refId = asset.ref_id
     const item: MediaItem = {
       url: asset.source_url,
       remoteUrl: `asset://${refId}`,
@@ -873,13 +868,14 @@ export function PlaygroundVideoInput({
             : 'image',
       name: asset.name || refId,
       assetId: refId,
+      sourceId: asset.id,
     }
     onConfigChange({
       ...configRef.current,
       mediaItems: [...configRef.current.mediaItems, item],
     })
     handleMentionSelect(item)
-    ensureSourceAssetQuiet(asset.id)
+    ensureSourceAssetQuiet(asset.id, refId)
   }
 
   return (
@@ -1513,7 +1509,7 @@ export function PlaygroundVideoInput({
                   </div>
                   {mentionSourceAssets.map((asset) => (
                     <button
-                      key={`yun-${asset.id}`}
+                      key={asset.ref_id}
                       className='hover:bg-muted/60 flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors'
                       onClick={() => handleSourceAssetSelect(asset)}
                     >
@@ -1541,7 +1537,7 @@ export function PlaygroundVideoInput({
                       </div>
                       <div className='min-w-0 flex-1'>
                         <div className='truncate text-xs font-medium'>
-                          {asset.name || `${SMART_ASSET_REF_PREFIX}${asset.id}`}
+                          {asset.name || asset.ref_id}
                         </div>
                       </div>
                       <SparklesIcon
