@@ -216,18 +216,19 @@ export function useTopNavLinks(): TopNavLink[] {
     ],
   })
 
-  // Pricing
+  // Models and the dedicated price overview share the pricing module switch.
   const pricing = modules?.pricing
   if (pricing && typeof pricing === 'object' && pricing.enabled) {
     const requiresAuth = pricing.requireAuth && !isAuthed
-    links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
+    links.push({ title: t('Models'), href: '/pricing', requiresAuth })
+    links.push({ title: t('Price'), href: '/prices', requiresAuth })
   }
 
-  // Rankings — displayed as Model Square
+  // Rankings — displayed as Models
   const rankings = modules?.rankings
   if (rankings && typeof rankings === 'object' && rankings.enabled) {
     const requiresAuth = rankings.requireAuth && !isAuthed
-    links.push({ title: t('Model Square'), href: '/pricing', requiresAuth })
+    links.push({ title: t('Models'), href: '/pricing', requiresAuth })
   }
 
   // 文档 — 原「教程」一级菜单提升为直链，统一命名为「文档」。
