@@ -288,6 +288,30 @@ func RedisIncr(key string, delta int64) error {
 	return nil
 }
 
+// RedisIncrWithExpire 原子递增指定 key，并返回递增后的值。
+// 仅当 key 首次创建（递增结果等于 delta）时设置过期时间，从而形成
+// “从首次命中起倒计时、到期自动清零重计”的固定窗口计数器。
+func RedisIncrWithExpire(key string, delta int64, expiration time.Duration) (int64, error) {
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis INCR EXPIRE: key=%s, delta=%d, expiration=%s", key, delta, expiration))
+	}
+	ctx := context.Background()
+
+	val, err := RDB.IncrBy(ctx, key, delta).Result()
+	if err != nil {
+		return 0, fmt.Errorf("failed to incr key %s: %w", key, err)
+	}
+
+	// 首次创建：设置窗口过期时间；后续递增沿用已有 TTL，窗口到期自动清零。
+	if val == delta {
+		if err := RDB.Expire(ctx, key, expiration).Err(); err != nil {
+			return val, fmt.Errorf("failed to set expire on key %s: %w", key, err)
+		}
+	}
+
+	return val, nil
+}
+
 func RedisHIncrBy(key, field string, delta int64) error {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis HINCRBY: key=%s, field=%s, delta=%d", key, field, delta))

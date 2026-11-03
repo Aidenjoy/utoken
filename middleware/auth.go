@@ -121,10 +121,14 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if status.(int) == common.UserStatusDisabled {
+	if userStatus, ok := status.(int); ok && (userStatus == common.UserStatusDisabled || userStatus == common.UserStatusAutoDisabled) {
+		msgKey := i18n.MsgAuthUserBanned
+		if userStatus == common.UserStatusAutoDisabled {
+			msgKey = i18n.MsgUserAutoDisabled
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
+			"message": common.TranslateMessage(c, msgKey),
 		})
 		c.Abort()
 		return
@@ -310,9 +314,13 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			return
 		}
 		if userCache.Status != common.UserStatusEnabled {
+			msgKey := i18n.MsgAuthUserBanned
+			if userCache.Status == common.UserStatusAutoDisabled {
+				msgKey = i18n.MsgUserAutoDisabled
+			}
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
-				"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
+				"message": common.TranslateMessage(c, msgKey),
 			})
 			c.Abort()
 			return
@@ -425,7 +433,11 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		userEnabled := userCache.Status == common.UserStatusEnabled
 		if !userEnabled {
-			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
+			msgKey := i18n.MsgAuthUserBanned
+			if userCache.Status == common.UserStatusAutoDisabled {
+				msgKey = i18n.MsgUserAutoDisabled
+			}
+			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, msgKey))
 			return
 		}
 

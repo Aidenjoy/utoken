@@ -665,6 +665,14 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 	return &user, err
 }
 
+// UpdateUserStatus 仅更新用户状态列（跨库安全，供系统熔断等后台路径使用）。
+func UpdateUserStatus(userId int, status int) error {
+	if userId == 0 {
+		return errors.New("id 为空！")
+	}
+	return DB.Model(&User{}).Where("id = ?", userId).Update("status", status).Error
+}
+
 func GetUserIdByAffCode(affCode string) (int, error) {
 	if affCode == "" {
 		return 0, errors.New("affCode 为空！")

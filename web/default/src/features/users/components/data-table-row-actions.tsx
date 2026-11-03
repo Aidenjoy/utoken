@@ -155,7 +155,9 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     setEmailBindOpen(true)
   }
 
-  const isDisabled = user.status === USER_STATUS.DISABLED
+  const isDisabled =
+    user.status === USER_STATUS.DISABLED ||
+    user.status === USER_STATUS.AUTO_DISABLED
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
   // 当前登录者权限：用户管理员（运营）仅能启用/禁用/删除比自己角色低的用户

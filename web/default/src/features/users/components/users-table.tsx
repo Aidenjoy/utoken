@@ -49,7 +49,11 @@ import { useUsers } from './users-provider'
 const route = getRouteApi('/_authenticated/users/')
 
 function isDisabledUserRow(user: User) {
-  return isUserDeleted(user) || user.status === USER_STATUS.DISABLED
+  return (
+    isUserDeleted(user) ||
+    user.status === USER_STATUS.DISABLED ||
+    user.status === USER_STATUS.AUTO_DISABLED
+  )
 }
 
 // 点击搜索按钮后才提交的筛选快照；工具栏的输入/选择在此之前只是草稿，
