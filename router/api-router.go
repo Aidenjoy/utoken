@@ -192,6 +192,8 @@ func SetApiRouter(router *gin.Engine) {
 			agentSelfRoute.PUT("/members/:id/model_discounts", controller.UpdateAgentMemberModelDiscounts)
 			// 个人成员新建/踢出：代理商只能新建账号，没有认领既有用户的入口（见 CreateAgentMember）。
 			agentSelfRoute.POST("/members", middleware.CriticalRateLimit(), controller.CreateAgentMember)
+			// 快捷建企业+建成员（with-enterprise 用静态段，POST 树 /members 下无通配符冲突）。
+			agentSelfRoute.POST("/members/with-enterprise", middleware.CriticalRateLimit(), controller.CreateAgentEnterpriseWithMember)
 			agentSelfRoute.DELETE("/members/:id", controller.KickAgentMember)
 			// 我的企业：发展企业客户、企业折扣（下限内）与成员管理（与超管代管同等能力）。
 			agentSelfRoute.GET("/enterprises", controller.ListAgentOrganizations)
@@ -372,6 +374,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			billingRoute.GET("/recharge", controller.GetBillingRecharge)
 			billingRoute.GET("/recharge/export", controller.ExportBillingRecharge)
+			billingRoute.POST("/recharge/mark", controller.MarkBillingRecharge)
 			billingRoute.GET("/consumption", controller.GetBillingConsumption)
 			billingRoute.GET("/consumption/export", controller.ExportBillingConsumption)
 			// 渠道账单中心：上游对账（真实 tokens + 可选费率卡估算成本），仅管理员。

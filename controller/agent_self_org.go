@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -438,6 +439,134 @@ func CreateAgentMember(c *gin.Context) {
 		"agent":    agentId,
 	})
 	common.ApiSuccessI18n(c, i18n.MsgCreateSuccess, gin.H{
+		"user_id":  user.Id,
+		"username": user.Username,
+	})
+}
+
+type createAgentEnterpriseWithMemberRequest struct {
+	Org    createAgentOrganizationRequest `json:"org"`
+	Member struct {
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		DisplayName string `json:"display_name"`
+		Email       string `json:"email"`
+		OrgRole     string `json:"org_role"`
+	} `json:"member"`
+}
+
+// CreateAgentEnterpriseWithMember 代理商快捷添加企业成员：一次请求先创建企业（绑定到
+// 当前代理商），再在该企业下创建成员账号，省去「先建企业、再进企业建成员」两步。
+//
+// 校验顺序刻意把成员侧的全部预检（用户名/密码/角色/结构校验/查重）放在建企业之前，
+// 让可预期的业务失败都发生在任何写入之前；建企业之后仅剩的成员创建失败（如并发撞唯一
+// 索引）会补偿删除这个刚建出来的空企业，不留半成品。两条管理审计只在双成功后写入。
+func CreateAgentEnterpriseWithMember(c *gin.Context) {
+	var req createAgentEnterpriseWithMemberRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	name := model.NormalizeOrgName(req.Org.Name)
+	if !model.IsValidOrgName(name) {
+		common.ApiErrorI18n(c, i18n.MsgOrgNameInvalid)
+		return
+	}
+	req.Member.Username = strings.TrimSpace(req.Member.Username)
+	if req.Member.Username == "" {
+		common.ApiErrorI18n(c, i18n.MsgOrgUsernameRequired)
+		return
+	}
+	// 与 User.Password 的 validate:"min=8,max=20" 对齐，先给出可读提示
+	if len(req.Member.Password) < 8 || len(req.Member.Password) > 20 {
+		common.ApiErrorI18n(c, i18n.MsgOrgPasswordInvalid)
+		return
+	}
+	orgRole, ok := normalizeOrgRoleParam(c, req.Member.OrgRole)
+	if !ok {
+		return
+	}
+	displayName := strings.TrimSpace(req.Member.DisplayName)
+	if displayName == "" {
+		displayName = req.Member.Username
+	}
+	user := &model.User{
+		Username:    req.Member.Username,
+		Password:    req.Member.Password,
+		DisplayName: displayName,
+		Email:       strings.TrimSpace(req.Member.Email),
+	}
+	if err := common.Validate.Struct(user); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
+		return
+	}
+	// 建企业前预检用户名/邮箱占用，避免为注定失败的成员创建企业后再回滚。
+	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if exist {
+		common.ApiErrorI18n(c, i18n.MsgUserExists)
+		return
+	}
+
+	org := &model.Organization{
+		Name:        name,
+		DisplayName: strings.TrimSpace(req.Org.DisplayName),
+		Group:       model.DefaultUserGroup,
+	}
+	// 与 CreateAgentOrganization 相同口径：ownerUserId 传 0，管理员身份由成员角色给出。
+	if err := model.CreateOrganizationWithSetup(org, 0, 0); err != nil {
+		if errors.Is(err, model.ErrOrgNameTaken) {
+			common.ApiErrorI18n(c, i18n.MsgOrgNameTaken)
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	agentId := c.GetInt("agent_id")
+	// 企业已落库，此后任何失败都补偿删除这个空企业，保持「要么双成功要么无副作用」。
+	rollbackOrg := func(step string, err error) {
+		if delErr := model.DeleteOrganization(org.Id); delErr != nil {
+			common.SysError(fmt.Sprintf("[Agent] rollback org %d failed after %s: %v (delete: %v)", org.Id, step, err, delErr))
+			return
+		}
+		common.SysLog(fmt.Sprintf("[Agent] rolled back org %d after %s failed: %v", org.Id, step, err))
+	}
+	if err := model.SetOrganizationAgent(org.Id, agentId); err != nil {
+		rollbackOrg("agent bind", err)
+		common.ApiError(c, err)
+		return
+	}
+	member := &model.OrgMember{
+		OrgId:   org.Id,
+		OrgRole: orgRole,
+	}
+	if err := model.CreateOrgMemberUser(user, member); err != nil {
+		rollbackOrg("member create", err)
+		if errors.Is(err, model.ErrEmailAlreadyTaken) {
+			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "org.agent_bind", map[string]interface{}{
+		"id":     org.Id,
+		"name":   orgAuditName(org),
+		"agent":  agentId,
+		"action": "create",
+	})
+	recordManageAuditFor(c, user.Id, "org.member.create", map[string]interface{}{
+		"id":       org.Id,
+		"name":     orgAuditName(org),
+		"username": user.Username,
+		"role":     member.OrgRole,
+	})
+	common.ApiSuccessI18n(c, i18n.MsgCreateSuccess, gin.H{
+		"org_id":   org.Id,
+		"org_name": org.Name,
 		"user_id":  user.Id,
 		"username": user.Username,
 	})

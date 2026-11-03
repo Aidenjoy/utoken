@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Percent, Plus, Trash2 } from 'lucide-react'
+import { Building2, Percent, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -55,6 +55,7 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatModelDiscount } from '@/lib/discount'
 import { formatQuota, formatTimestampToDate } from '@/lib/format'
 
+import { EnterpriseMemberCreateDialog } from './components/enterprise-member-create-dialog'
 import { MemberCreateDialog } from './components/member-create-dialog'
 import { MemberDiscountDialog } from './components/member-discount-dialog'
 
@@ -76,6 +77,7 @@ export function AgentMembers() {
   const [editing, setEditing] = useState<AgentMember | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createEnterpriseOpen, setCreateEnterpriseOpen] = useState(false)
   const [kickTarget, setKickTarget] = useState<AgentMember | null>(null)
   const [isWorking, setIsWorking] = useState(false)
 
@@ -264,10 +266,20 @@ export function AgentMembers() {
   })
 
   const addMemberButton = (
-    <Button size='sm' onClick={() => setCreateOpen(true)}>
-      <Plus className='size-4' />
-      {t('Add Member')}
-    </Button>
+    <div className='flex items-center gap-2'>
+      <Button size='sm' onClick={() => setCreateOpen(true)}>
+        <Plus className='size-4' />
+        {t('Add Member')}
+      </Button>
+      <Button
+        size='sm'
+        variant='outline'
+        onClick={() => setCreateEnterpriseOpen(true)}
+      >
+        <Building2 className='size-4' />
+        {t('Add Enterprise Member')}
+      </Button>
+    </div>
   )
 
   return (
@@ -300,6 +312,11 @@ export function AgentMembers() {
         <MemberCreateDialog
           open={createOpen}
           onOpenChange={setCreateOpen}
+          onSuccess={refresh}
+        />
+        <EnterpriseMemberCreateDialog
+          open={createEnterpriseOpen}
+          onOpenChange={setCreateEnterpriseOpen}
           onSuccess={refresh}
         />
         <AlertDialog

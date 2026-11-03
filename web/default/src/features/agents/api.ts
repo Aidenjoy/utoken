@@ -432,6 +432,48 @@ export async function createMember(
   return res.data
 }
 
+/**
+ * Shortcut payload for creating an enterprise and one of its members in a
+ * single request. Mirrors the two-step flow (create enterprise, then add a
+ * member inside it) that this endpoint collapses for agents whose customers
+ * are always enterprises.
+ */
+export interface CreateMemberWithEnterprisePayload {
+  org: {
+    name: string
+    display_name?: string
+  }
+  member: {
+    username: string
+    password: string
+    display_name?: string
+    email?: string
+    org_role: string
+  }
+}
+
+/**
+ * Create an enterprise bound to this agent and, inside it, a member account in
+ * one step. The server pre-validates the member (username/email uniqueness,
+ * role) before creating the enterprise, and rolls the fresh enterprise back if
+ * the member creation still fails, so the operation is all-or-nothing. The new
+ * member inherits the enterprise's attribution (users.agent_id/org_id) and
+ * starts as a sub-account with no personal wallet.
+ */
+export async function createMemberWithEnterprise(
+  payload: CreateMemberWithEnterprisePayload
+): Promise<
+  ApiResponse<{
+    org_id: number
+    org_name: string
+    user_id: number
+    username: string
+  }>
+> {
+  const res = await api.post('/api/agent/members/with-enterprise', payload)
+  return res.data
+}
+
 /** Kick an individual member: unbinds their agent attribution. */
 export async function kickMember(userId: number): Promise<ApiResponse> {
   const res = await api.delete(`/api/agent/members/${userId}`)
