@@ -526,6 +526,7 @@ func GetAgentMemberOptions(c *gin.Context) {
 }
 
 // GetAgentBillingRecharge 代理商范围化的充值流水。强制 userScope=成员交集、orgScope=None；
+// AgentView 口径丢弃未标记的调额行（测试额度增减属平台内部信息）；
 // 相比管理员端点清空 operator（操作人）——代理商无权查看调额操作人等内部信息。
 func GetAgentBillingRecharge(c *gin.Context) {
 	allowedIds, err := agentLogScope(c)
@@ -534,7 +535,7 @@ func GetAgentBillingRecharge(c *gin.Context) {
 		return
 	}
 	filter := agentBillingFilter(c, effectiveScopeIds(c, allowedIds))
-	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end)
+	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end, model.RechargeQueryOptions{AgentView: true})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -577,7 +578,8 @@ func GetAgentBillingConsumption(c *gin.Context) {
 	})
 }
 
-// ExportAgentBillingRecharge 导出代理商范围化充值流水 CSV。相比管理员导出去掉「操作人」列。
+// ExportAgentBillingRecharge 导出代理商范围化充值流水 CSV。相比管理员导出去掉「操作人」列；
+// AgentView 口径下只含线上充值与已标记的线下充值/线下退款。
 func ExportAgentBillingRecharge(c *gin.Context) {
 	allowedIds, err := agentLogScope(c)
 	if err != nil {
@@ -585,12 +587,12 @@ func ExportAgentBillingRecharge(c *gin.Context) {
 		return
 	}
 	filter := agentBillingFilter(c, effectiveScopeIds(c, allowedIds))
-	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end)
+	records, stat, err := model.GetBillingRechargeRecords(filter.userScope, filter.orgScope, filter.start, filter.end, model.RechargeQueryOptions{AgentView: true})
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	header := []string{"时间", "类型", "对象", "金额", "支付金额", "支付方式", "订单号"}
+	header := []string{"时间", "类型", "资金性质", "对象", "金额", "支付金额", "支付方式", "订单号"}
 	rows := make([][]string, 0, len(records)+1)
 	var totalMoney float64
 	for _, record := range records {
@@ -598,6 +600,7 @@ func ExportAgentBillingRecharge(c *gin.Context) {
 		rows = append(rows, []string{
 			billingTimestamp(record.CreatedAt),
 			rechargeSourceText(record.Source),
+			rechargeOriginText(record),
 			rechargeTargetText(record),
 			logger.FormatQuota(record.Quota),
 			logger.FormatLocalCurrency(record.Money),
@@ -606,7 +609,7 @@ func ExportAgentBillingRecharge(c *gin.Context) {
 		})
 	}
 	rows = append(rows, []string{
-		"合计", "", "",
+		"合计", "", "", "",
 		logger.FormatQuota(stat.TotalQuota),
 		logger.FormatLocalCurrency(totalMoney),
 		"", "",

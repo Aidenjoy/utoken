@@ -15,13 +15,16 @@ import (
 // model 包的 TestMain 只迁移核心表，InviteCode 与 Agent 在此按需迁移。
 func setupInviteFixture(t *testing.T) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&InviteCode{}, &Agent{}, &User{}, &TopUp{}, &OrgMember{}))
+	require.NoError(t, DB.AutoMigrate(&InviteCode{}, &Agent{}, &User{}, &TopUp{}, &OrgMember{}, &QuotaTransfer{}, &QuotaAdjustMark{}))
 	cleanup := func() {
 		DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&InviteCode{})
 		DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Agent{})
 		DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&OrgMember{})
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM top_ups")
+		DB.Exec("DELETE FROM quota_transfers")
+		DB.Exec("DELETE FROM quota_adjust_marks")
+		DB.Exec("DELETE FROM logs")
 	}
 	cleanup()
 	t.Cleanup(cleanup)
@@ -377,7 +380,8 @@ func TestListAgentMembers(t *testing.T) {
 	assert.Nil(t, unbound)
 }
 
-// TestListAgentRechargeRecords 验证充值流水只含自己成员的成功记录。
+// TestListAgentRechargeRecords 验证充值流水只含自己成员的成功记录，
+// 并叠加已标记为线下充值/线下退款的调额行；未标记的测试额度增减不对代理商展示。
 func TestListAgentRechargeRecords(t *testing.T) {
 	setupInviteFixture(t)
 	seedAgent(t, 1, 11, `{"gpt-4o":0.8}`)
@@ -391,14 +395,31 @@ func TestListAgentRechargeRecords(t *testing.T) {
 	require.NoError(t, DB.Create(&TopUp{UserId: 301, Amount: 100, Money: 100, Status: common.TopUpStatusSuccess, TradeNo: "t-301-ok"}).Error)
 	require.NoError(t, DB.Create(&TopUp{UserId: 301, Amount: 20, Money: 20, Status: common.TopUpStatusPending, TradeNo: "t-301-pending"}).Error)
 	require.NoError(t, DB.Create(&TopUp{UserId: 302, Amount: 70, Money: 70, Status: common.TopUpStatusSuccess, TradeNo: "t-302-ok"}).Error)
+	// 成员 301 的调额：+500000 quota（=面值 1）标记为线下充值后应展示；
+	// -500000 未标记（测试额度收回）不得展示。
+	seedAdjustAudit(t, 900, "user.quota_add", map[string]interface{}{"target_user_id": 301, "quota_value": 500000})
+	require.NoError(t, MarkQuotaAdjustOffline(lastAdjustLogId(t, "user.quota_add"), QuotaAdjustMarkOfflineRecharge, "admin"))
+	seedAdjustAudit(t, 900, "user.quota_subtract", map[string]interface{}{"target_user_id": 301, "quota_value": 500000})
 
 	records, total, err := ListAgentRechargeRecords(1, &common.PageInfo{Page: 1, PageSize: 10})
 	require.NoError(t, err)
-	assert.Equal(t, int64(1), total, "only own members' successful top-ups")
-	require.Len(t, records, 1)
-	assert.Equal(t, 301, records[0].UserId)
-	assert.Equal(t, "u-301", records[0].Username)
-	assert.Equal(t, int64(100), records[0].Amount)
+	assert.Equal(t, int64(2), total, "own members' successful top-ups plus marked offline adjustments")
+	require.Len(t, records, 2)
+	bySource := map[string]*AgentRechargeRecord{}
+	for _, record := range records {
+		bySource[record.Source] = record
+	}
+	online := bySource[AgentRechargeSourceOnlineTopup]
+	require.NotNil(t, online)
+	assert.Equal(t, 301, online.UserId)
+	assert.Equal(t, "u-301", online.Username)
+	assert.Equal(t, int64(100), online.Amount)
+	offline := bySource[AgentRechargeSourceOfflineRecharge]
+	require.NotNil(t, offline, "marked offline recharge must be visible to the agent")
+	assert.Equal(t, 301, offline.UserId)
+	assert.Equal(t, int64(1), offline.Amount, "500000 quota converts to face value 1")
+	assert.Equal(t, 500000, offline.Quota)
+	assert.Empty(t, offline.TradeNo)
 
 	empty, emptyTotal, err := ListAgentRechargeRecords(999, &common.PageInfo{Page: 1, PageSize: 10})
 	require.NoError(t, err)

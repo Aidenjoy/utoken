@@ -99,13 +99,23 @@ export interface AgentMemberOption {
 }
 
 // A successful top-up made by one of the agent's members.
+/** Funding origin of an agent-visible recharge row: self-service online top-up,
+ * or an admin quota-adjust already marked offline (recharge/refund). */
+export type AgentRechargeSource =
+  | 'online_topup'
+  | 'offline_recharge'
+  | 'offline_refund'
+
 export interface AgentRechargeRecord {
   created_at: number
   user_id: number
   username: string
   display_name: string
+  source: AgentRechargeSource | string
   amount: number
   money: number
+  /** Raw quota for offline adjust rows; 0 for online top-ups. */
+  quota: number
   payment_method: string
   trade_no: string
 }

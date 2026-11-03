@@ -28,16 +28,30 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { SectionPageLayout } from '@/components/layout'
+import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { formatTimestampToDate } from '@/lib/format'
 
 import { listMyRecharge } from '@/features/agents/api'
 import type { AgentRechargeRecord } from '@/features/agents/types'
 
+const SOURCE_META: Record<string, { label: string; variant: StatusVariant }> = {
+  online_topup: { label: 'Online Top-up', variant: 'success' },
+  offline_recharge: { label: 'Offline Recharge', variant: 'teal' },
+  offline_refund: { label: 'Offline Refund', variant: 'red' },
+}
+
 // Amount / Money are both stored in currency units (face value vs. paid),
 // so they render as plain money — never through the quota formatter.
 function formatMoney(value: number): string {
   return value > 0 ? value.toFixed(2) : '-'
+}
+
+// Offline refund rows carry a negative face value; keep the sign and mirror the
+// billing center's rose/emerald coloring so agents read money direction at a glance.
+function formatSignedMoney(value: number): string {
+  if (value === 0) return '-'
+  return `${value < 0 ? '-' : ''}${Math.abs(value).toFixed(2)}`
 }
 
 /**
@@ -97,13 +111,35 @@ export function AgentRecharge() {
         size: 160,
       },
       {
+        accessorKey: 'source',
+        header: t('Type'),
+        cell: ({ row }) => {
+          const meta = SOURCE_META[row.original.source]
+          return (
+            <StatusBadge variant={meta?.variant ?? 'neutral'} copyable={false}>
+              {meta ? t(meta.label) : row.original.source}
+            </StatusBadge>
+          )
+        },
+        size: 130,
+      },
+      {
         accessorKey: 'amount',
         header: t('Recharge Amount'),
-        cell: ({ row }) => (
-          <span className='font-mono text-sm font-semibold tabular-nums'>
-            {formatMoney(row.original.amount)}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const amount = row.original.amount
+          return (
+            <span
+              className={
+                amount < 0
+                  ? 'font-mono text-sm font-semibold text-rose-500 tabular-nums'
+                  : 'font-mono text-sm font-semibold tabular-nums'
+              }
+            >
+              {formatSignedMoney(amount)}
+            </span>
+          )
+        },
         size: 140,
       },
       {

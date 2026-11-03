@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"math"
 	"regexp"
 	"sort"
@@ -16,8 +17,10 @@ import (
 // 充值流水由四类来源合并：在线支付(top_ups)、管理员对用户手动调额、
 // 管理员对企业额度池调额（后两者只有管理审计日志，无独立台账表）、
 // 用户自助把钱包余额转入企业池(quota_transfers)。
-// 每笔资金按来源定性为线上（用户自助刷卡）、线下（客户线下打款后由管理员调额）
-// 或内部转移（客户账户之间搬运，不产生新资金），三者分开统计才能对得清账。
+// 每笔资金按来源定性为线上（用户自助刷卡）、线下（客户线下打款后由管理员调额，
+// 且该调额行已被标记为线下充值/线下退款，见 quota_adjust_marks）或内部转移
+// （客户账户之间搬运，不产生新资金）；未标记的调额行是测试额度增减，
+// 不属于外部资金。各口径分开统计才能对得清账。
 const (
 	BillingSourceOnlineTopup = "online_topup"
 	BillingSourceUserAdjust  = "user_adjust"
@@ -46,16 +49,22 @@ type BillingRechargeRecord struct {
 	TradeNo       string  `json:"trade_no"`
 	Operator      string  `json:"operator"`
 	Action        string  `json:"action"`
+	// LogId 仅调额记录有值：对应审计日志行 ID，是线下标记（quota_adjust_marks）的键。
+	LogId int `json:"log_id"`
+	// Mark 为线下性质标记：offline_recharge/offline_refund，空串=未标记（测试额度增减）。
+	Mark string `json:"mark"`
 }
 
 // BillingRechargeStat 充值流水汇总。
 //
 // 口径按资金来源三分，互不重叠：
 //   - 线上 OnlineInflowQuota：用户自助在线支付入账
-//   - 线下 OfflineInflowQuota：客户线下打款后由管理员手动调增
+//   - 线下 OfflineInflowQuota：客户线下打款后由管理员调增、且已标记为线下充值
 //   - 内部 TransferInQuota/TransferOutQuota：钱包 ↔ 企业池自助搬运，不产生新资金
 //
-// InflowQuota/OutflowQuota 只统计外部资金（线上+线下），所以"总充值"永远是
+// 未标记的调额行是测试额度增减，只进 TestQuotaTotal 与 TotalQuota，
+// 不进任何外部资金口径；标记为线下退款（调减）计入 OutflowQuota。
+// InflowQuota/OutflowQuota 只统计外部资金（线上+已标记线下），所以"总充值"永远是
 // 真金白银的入口金额，不会被内部转移重复计入。
 // TotalQuota 是全部带符号记录之和：两个维度都在筛选范围内时转移天然净零，
 // 只筛一侧时只剩该侧那条记录，因此 TotalQuota 恒等于所选对象的余额变化。
@@ -68,6 +77,7 @@ type BillingRechargeStat struct {
 	OfflineInflowQuota int `json:"offline_inflow_quota"`
 	TransferInQuota    int `json:"transfer_in_quota"`
 	TransferOutQuota   int `json:"transfer_out_quota"`
+	TestQuotaTotal     int `json:"test_quota_total"`
 	BalanceQuota       int `json:"balance_quota"`
 }
 
@@ -264,24 +274,92 @@ func collectOnlineTopupRecords(userScope BillingScope, startTimestamp, endTimest
 }
 
 type manageAuditRow struct {
+	Id        int    `gorm:"column:id"`
 	CreatedAt int64  `gorm:"column:created_at"`
 	Username  string `gorm:"column:username"`
 	Other     string `gorm:"column:other"`
 }
 
-func collectAdjustRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) ([]*BillingRechargeRecord, error) {
-	actions := []string{"user.quota_add", "user.quota_subtract", "user.quota_override", "org.quota_adjust"}
+var quotaAdjustActions = []string{"user.quota_add", "user.quota_subtract", "user.quota_override", "org.quota_adjust"}
+
+// quotaAdjustActionCondition 拼审计日志的 action LIKE 过滤条件（other 列内嵌 JSON）。
+func quotaAdjustActionCondition() (string, []interface{}) {
 	condition := ""
-	args := make([]interface{}, 0, len(actions))
-	for i, action := range actions {
+	args := make([]interface{}, 0, len(quotaAdjustActions))
+	for i, action := range quotaAdjustActions {
 		if i > 0 {
 			condition += " OR "
 		}
 		condition += "other LIKE ?"
 		args = append(args, "%\"action\":\""+action+"\"%")
 	}
+	return condition, args
+}
+
+// parseManageAuditRow 把一行调额审计日志解析为充值流水记录；非调额行返回 nil。
+func parseManageAuditRow(row *manageAuditRow) *BillingRechargeRecord {
+	otherMap, _ := common.StrToMap(row.Other)
+	op, _ := otherMap["op"].(map[string]interface{})
+	if op == nil {
+		return nil
+	}
+	action := paramString(op, "action")
+	params, _ := op["params"].(map[string]interface{})
+	if params == nil {
+		return nil
+	}
+	quota, ok := adjustQuotaFromParams(action, params)
+	if !ok {
+		return nil
+	}
+	record := &BillingRechargeRecord{
+		Source:    BillingSourceUserAdjust,
+		CreatedAt: row.CreatedAt,
+		Operator:  row.Username,
+		Action:    action,
+		Quota:     quota,
+		LogId:     row.Id,
+	}
+	if action == "org.quota_adjust" {
+		orgId, orgOk := paramInt(params, "id")
+		if !orgOk {
+			return nil
+		}
+		record.Source = BillingSourceOrgAdjust
+		record.OrgId = orgId
+		record.OrgName = paramString(params, "name")
+	} else {
+		targetUserId, _ := paramInt(params, "target_user_id")
+		record.UserId = targetUserId
+	}
+	return record
+}
+
+// LookupQuotaAdjustRecord 按审计日志行 ID 取单条调额记录及其带符号额度，
+// 供线下标记接口校验目标确实是调额行。非调额行返回 (nil, 0, nil)。
+func LookupQuotaAdjustRecord(logId int) (*BillingRechargeRecord, int, error) {
+	var row manageAuditRow
+	err := LOG_DB.Model(&Log{}).
+		Select("id, created_at, username, other").
+		Where("id = ? AND type = ?", logId, LogTypeManage).
+		First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, 0, nil
+		}
+		return nil, 0, err
+	}
+	record := parseManageAuditRow(&row)
+	if record == nil {
+		return nil, 0, nil
+	}
+	return record, record.Quota, nil
+}
+
+func collectAdjustRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) ([]*BillingRechargeRecord, error) {
+	condition, args := quotaAdjustActionCondition()
 	tx := LOG_DB.Model(&Log{}).
-		Select("created_at, username, other").
+		Select("id, created_at, username, other").
 		Where("type = ?", LogTypeManage).
 		Where("("+condition+")", args...)
 	if startTimestamp != 0 {
@@ -296,42 +374,17 @@ func collectAdjustRecords(userScope, orgScope BillingScope, startTimestamp, endT
 	}
 
 	records := make([]*BillingRechargeRecord, 0, len(rows))
-	for _, row := range rows {
-		otherMap, _ := common.StrToMap(row.Other)
-		op, _ := otherMap["op"].(map[string]interface{})
-		if op == nil {
+	for i := range rows {
+		record := parseManageAuditRow(&rows[i])
+		if record == nil {
 			continue
 		}
-		action := paramString(op, "action")
-		params, _ := op["params"].(map[string]interface{})
-		if params == nil {
-			continue
-		}
-		quota, ok := adjustQuotaFromParams(action, params)
-		if !ok {
-			continue
-		}
-		record := &BillingRechargeRecord{
-			Source:    BillingSourceUserAdjust,
-			CreatedAt: row.CreatedAt,
-			Operator:  row.Username,
-			Action:    action,
-			Quota:     quota,
-		}
-		if action == "org.quota_adjust" {
-			orgId, orgOk := paramInt(params, "id")
-			if !orgOk || !orgScope.match(orgId) {
+		if record.Source == BillingSourceOrgAdjust {
+			if !orgScope.match(record.OrgId) {
 				continue
 			}
-			record.Source = BillingSourceOrgAdjust
-			record.OrgId = orgId
-			record.OrgName = paramString(params, "name")
-		} else {
-			targetUserId, _ := paramInt(params, "target_user_id")
-			if !userScope.match(targetUserId) {
-				continue
-			}
-			record.UserId = targetUserId
+		} else if !userScope.match(record.UserId) {
+			continue
 		}
 		records = append(records, record)
 	}
@@ -445,9 +498,11 @@ func collectWalletTransferRecords(userScope, orgScope BillingScope, startTimesta
 	return records, nil
 }
 
-// accumulateRechargeStat 按资金来源三分累加。
+// accumulateRechargeStat 按资金来源分流累加。
 // 内部转移不计入 Inflow/Outflow：一笔钱在客户自己账户之间搬运不是新资金，
 // 计进去会让"总充值"随转移次数虚增，对账时无法还原真实入账。
+// 调额行按线下标记分流：已标记才算线下充值/线下退款，
+// 未标记的是测试额度增减，只进 TestQuotaTotal 与 TotalQuota。
 func accumulateRechargeStat(stat *BillingRechargeStat, record *BillingRechargeRecord) {
 	stat.Count++
 	stat.TotalQuota += record.Quota
@@ -461,6 +516,20 @@ func accumulateRechargeStat(stat *BillingRechargeStat, record *BillingRechargeRe
 		stat.TransferInQuota += record.Quota
 	case BillingSourceWalletTransferOut:
 		stat.TransferOutQuota += record.Quota
+	case BillingSourceUserAdjust, BillingSourceOrgAdjust:
+		switch record.Mark {
+		case QuotaAdjustMarkOfflineRecharge:
+			if record.Quota > 0 {
+				stat.OfflineInflowQuota += record.Quota
+				stat.InflowQuota += record.Quota
+			}
+		case QuotaAdjustMarkOfflineRefund:
+			if record.Quota < 0 {
+				stat.OutflowQuota += record.Quota
+			}
+		default:
+			stat.TestQuotaTotal += record.Quota
+		}
 	default:
 		if record.Quota > 0 {
 			stat.OfflineInflowQuota += record.Quota
@@ -471,9 +540,36 @@ func accumulateRechargeStat(stat *BillingRechargeStat, record *BillingRechargeRe
 	}
 }
 
+// RechargeQueryOptions 充值流水查询的可选口径。
+type RechargeQueryOptions struct {
+	// AgentView 为代理商范围化视图：未标记的调额行（测试额度增减）
+	// 属平台内部信息，记录与统计一并丢弃，代理商只见线上与已标记线下。
+	AgentView bool
+}
+
+// attachQuotaAdjustMarks 批量回填调额记录的线下标记。
+func attachQuotaAdjustMarks(records []*BillingRechargeRecord) error {
+	logIds := make([]int, 0, len(records))
+	for _, record := range records {
+		if record.LogId != 0 {
+			logIds = append(logIds, record.LogId)
+		}
+	}
+	marks, err := GetQuotaAdjustMarks(logIds)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if mark, ok := marks[record.LogId]; ok {
+			record.Mark = mark.Mark
+		}
+	}
+	return nil
+}
+
 // GetBillingRechargeRecords 合并四类充值/加额来源，按时间倒序返回并汇总统计。
 // 用户/企业两个维度各自独立纳入记录：全部=该维度全部对象，无=该维度不产生记录。
-func GetBillingRechargeRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64) (records []*BillingRechargeRecord, stat BillingRechargeStat, err error) {
+func GetBillingRechargeRecords(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64, opts ...RechargeQueryOptions) (records []*BillingRechargeRecord, stat BillingRechargeStat, err error) {
 	online, err := collectOnlineTopupRecords(userScope, startTimestamp, endTimestamp)
 	if err != nil {
 		return nil, stat, err
@@ -488,6 +584,20 @@ func GetBillingRechargeRecords(userScope, orgScope BillingScope, startTimestamp,
 	}
 	records = append(online, adjusts...)
 	records = append(records, transfers...)
+	if err := attachQuotaAdjustMarks(records); err != nil {
+		return nil, stat, err
+	}
+	if len(opts) > 0 && opts[0].AgentView {
+		filtered := records[:0]
+		for _, record := range records {
+			isAdjust := record.Source == BillingSourceUserAdjust || record.Source == BillingSourceOrgAdjust
+			if isAdjust && record.Mark == "" {
+				continue
+			}
+			filtered = append(filtered, record)
+		}
+		records = filtered
+	}
 	if err := attachBillingUsernames(records); err != nil {
 		return nil, stat, err
 	}

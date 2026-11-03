@@ -76,6 +76,18 @@ export type BillingRechargeSource =
   | 'wallet_transfer_in'
   | 'wallet_transfer_out'
 
+/**
+ * Offline funding-nature marks for admin quota-adjust rows. Adjust rows without
+ * a mark are test-quota changes (a customer trial allocation), so they never
+ * count as offline inflow/outflow. Only marked rows are real offline money.
+ */
+export const QUOTA_ADJUST_MARK_OFFLINE_RECHARGE = 'offline_recharge'
+export const QUOTA_ADJUST_MARK_OFFLINE_REFUND = 'offline_refund'
+export type QuotaAdjustMark =
+  | typeof QUOTA_ADJUST_MARK_OFFLINE_RECHARGE
+  | typeof QUOTA_ADJUST_MARK_OFFLINE_REFUND
+  | ''
+
 export interface BillingRechargeRecord {
   source: BillingRechargeSource | string
   created_at: number
@@ -89,6 +101,10 @@ export interface BillingRechargeRecord {
   trade_no: string
   operator: string
   action: string
+  /** Audit-log row id for adjust sources; 0 for online/transfer rows. */
+  log_id: number
+  /** Offline funding mark; empty = unmarked test-quota adjust. */
+  mark: QuotaAdjustMark | string
 }
 
 /**
@@ -107,6 +123,8 @@ export interface BillingRechargeStat {
   offline_inflow_quota: number
   transfer_in_quota: number
   transfer_out_quota: number
+  /** Signed total of unmarked adjust rows (test-quota allocations). */
+  test_quota_total: number
   balance_quota: number
 }
 

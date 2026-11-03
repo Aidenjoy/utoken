@@ -11,16 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setupTransferFixture 在企业 fixture 之上迁移转移台账与充值订单表，
-// 并清理账单口径测试会写入的三类数据源（台账、订单、管理审计日志）。
+// setupTransferFixture 在企业 fixture 之上迁移转移台账、充值订单与线下标记表，
+// 并清理账单口径测试会写入的四类数据源（台账、订单、管理审计日志、标记）。
 func setupTransferFixture(t *testing.T) {
 	t.Helper()
 	setupOrgFixture(t)
-	require.NoError(t, DB.AutoMigrate(&QuotaTransfer{}, &TopUp{}))
+	require.NoError(t, DB.AutoMigrate(&QuotaTransfer{}, &TopUp{}, &QuotaAdjustMark{}))
 	cleanup := func() {
 		DB.Exec("DELETE FROM quota_transfers")
 		DB.Exec("DELETE FROM top_ups")
 		DB.Exec("DELETE FROM logs")
+		DB.Exec("DELETE FROM quota_adjust_marks")
 	}
 	cleanup()
 	t.Cleanup(cleanup)
@@ -235,10 +236,10 @@ func seedAdjustAudit(t *testing.T, operatorId int, action string, params map[str
 
 // TestGetBillingRechargeRecordsSeparatesFundingOrigins 锁定账单中心的对账口径。
 //
-// 场景是客户真实资金流：先自助线上刷卡 100，管理员再按线下打款给个人钱包加 50、
-// 给企业池加 200，最后用户把钱包里的 100 自助转进企业池。此时必须满足：
-//   - 线上/线下/内部三分互不重叠，"总充值"只认真金白银的入口金额，
-//     内部转移不会让同一笔钱被重复计入流入；
+// 场景是客户真实资金流：先自助线上刷卡 100，管理员再给个人钱包加 50、
+// 给企业池加 200（均未标记，属测试额度增减），最后用户把钱包里的 100 自助转进企业池。
+// 此时必须满足：
+//   - 线上/内部/测试各归各的口径，未标记调额不得计入线下流入；
 //   - 一行台账展开成「钱包 −100」与「池 +100」两条明细，共用同一订单号便于配对；
 //   - 两个筛选维度各自独立生效，净增加额恒等于所选对象的余额变化。
 func TestGetBillingRechargeRecordsSeparatesFundingOrigins(t *testing.T) {
@@ -282,12 +283,13 @@ func TestGetBillingRechargeRecordsSeparatesFundingOrigins(t *testing.T) {
 			wantStat: BillingRechargeStat{
 				Count:              5,
 				TotalQuota:         350,
-				InflowQuota:        350,
+				InflowQuota:        100,
 				OutflowQuota:       0,
 				OnlineInflowQuota:  100,
-				OfflineInflowQuota: 250,
+				OfflineInflowQuota: 0,
 				TransferInQuota:    100,
 				TransferOutQuota:   -100,
+				TestQuotaTotal:     250,
 				BalanceQuota:       350,
 			},
 		},
@@ -299,12 +301,13 @@ func TestGetBillingRechargeRecordsSeparatesFundingOrigins(t *testing.T) {
 			wantStat: BillingRechargeStat{
 				Count:              2,
 				TotalQuota:         300,
-				InflowQuota:        200,
+				InflowQuota:        0,
 				OutflowQuota:       0,
 				OnlineInflowQuota:  0,
-				OfflineInflowQuota: 200,
+				OfflineInflowQuota: 0,
 				TransferInQuota:    100,
 				TransferOutQuota:   0,
+				TestQuotaTotal:     200,
 				BalanceQuota:       300,
 			},
 		},
@@ -316,12 +319,13 @@ func TestGetBillingRechargeRecordsSeparatesFundingOrigins(t *testing.T) {
 			wantStat: BillingRechargeStat{
 				Count:              3,
 				TotalQuota:         50,
-				InflowQuota:        150,
+				InflowQuota:        100,
 				OutflowQuota:       0,
 				OnlineInflowQuota:  100,
-				OfflineInflowQuota: 50,
+				OfflineInflowQuota: 0,
 				TransferInQuota:    0,
 				TransferOutQuota:   -100,
+				TestQuotaTotal:     50,
 				BalanceQuota:       50,
 			},
 		},
@@ -333,12 +337,13 @@ func TestGetBillingRechargeRecordsSeparatesFundingOrigins(t *testing.T) {
 			wantStat: BillingRechargeStat{
 				Count:              3,
 				TotalQuota:         50,
-				InflowQuota:        150,
+				InflowQuota:        100,
 				OutflowQuota:       0,
 				OnlineInflowQuota:  100,
-				OfflineInflowQuota: 50,
+				OfflineInflowQuota: 0,
 				TransferInQuota:    0,
 				TransferOutQuota:   -100,
+				TestQuotaTotal:     50,
 				BalanceQuota:       50,
 			},
 		},

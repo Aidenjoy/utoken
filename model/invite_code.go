@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -306,6 +307,14 @@ type AgentMember struct {
 	Quota int `json:"quota"`
 }
 
+// 代理商充值记录行的来源类型：成员在线充值，或超管调额且已被标记为
+// 线下充值/线下退款（未标记的测试额度增减不对代理商展示）。
+const (
+	AgentRechargeSourceOnlineTopup     = "online_topup"
+	AgentRechargeSourceOfflineRecharge = "offline_recharge"
+	AgentRechargeSourceOfflineRefund   = "offline_refund"
+)
+
 // AgentRechargeRecord 代理商成员充值视图行：成员的成功充值流水。
 // 仅用于代理商自助端展示，不落库。
 type AgentRechargeRecord struct {
@@ -313,8 +322,10 @@ type AgentRechargeRecord struct {
 	UserId        int     `json:"user_id"`
 	Username      string  `json:"username"`
 	DisplayName   string  `json:"display_name"`
+	Source        string  `json:"source"`
 	Amount        int64   `json:"amount"`
 	Money         float64 `json:"money"`
+	Quota         int     `json:"quota"`
 	PaymentMethod string  `json:"payment_method"`
 	TradeNo       string  `json:"trade_no"`
 }
@@ -424,8 +435,9 @@ func ListAgentMembers(agentId int, pageInfo *common.PageInfo) (members []*AgentM
 	return members, total, nil
 }
 
-// ListAgentRechargeRecords 分页返回该代理商成员的成功充值流水，并回填用户名。
-// 先解析成员 id 集合再查充值表，避免跨表 JOIN 以保持三库兼容。
+// ListAgentRechargeRecords 代理商自助端充值记录：成员的成功在线充值，叠加
+// 超管对成员调额且已标记为线下充值/线下退款的行（AgentView 口径天然排除
+// 未标记的测试额度增减）。合并后按时间倒序内存分页，与账单中心的合并模式一致。
 func ListAgentRechargeRecords(agentId int, pageInfo *common.PageInfo) (records []*AgentRechargeRecord, total int64, err error) {
 	userIds, err := ListAgentMemberIds(agentId)
 	if err != nil {
@@ -434,23 +446,66 @@ func ListAgentRechargeRecords(agentId int, pageInfo *common.PageInfo) (records [
 	if len(userIds) == 0 {
 		return nil, 0, nil
 	}
-	q := DB.Model(&TopUp{}).Where("user_id IN ? AND status = ?", userIds, common.TopUpStatusSuccess)
-	if err = q.Count(&total).Error; err != nil {
+	userScope := BillingScope{Mode: BillingScopeIds, Ids: userIds}
+	orgScope := BillingScope{Mode: BillingScopeNone}
+	rows, _, err := GetBillingRechargeRecords(userScope, orgScope, 0, 0, RechargeQueryOptions{AgentView: true})
+	if err != nil {
 		return nil, 0, err
 	}
-	var topUps []TopUp
-	if err = q.Order("create_time desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&topUps).Error; err != nil {
-		return nil, 0, err
+	merged := make([]*AgentRechargeRecord, 0, len(rows))
+	for _, row := range rows {
+		record := &AgentRechargeRecord{
+			CreatedAt:     row.CreatedAt,
+			UserId:        row.UserId,
+			Username:      row.Username,
+			Quota:         row.Quota,
+			Money:         row.Money,
+			PaymentMethod: row.PaymentMethod,
+			TradeNo:       row.TradeNo,
+			Source:        AgentRechargeSourceOnlineTopup,
+		}
+		switch row.Source {
+		case BillingSourceOnlineTopup:
+			// 面值口径与 topUpGrantedQuota 一致：Stripe 按支付金额折算，其余按订单面值。
+			if row.Action == PaymentProviderStripe {
+				record.Amount = int64(row.Money)
+			} else {
+				record.Amount = int64(float64(row.Quota) / common.QuotaPerUnit)
+			}
+		case BillingSourceUserAdjust:
+			record.Source = row.Mark
+			record.Amount = int64(float64(row.Quota) / common.QuotaPerUnit)
+			record.Money = 0
+			record.PaymentMethod = ""
+			record.TradeNo = ""
+		default:
+			// AgentView + orgScope=None 下不会出现转移与企业调额行，防御性跳过。
+			continue
+		}
+		merged = append(merged, record)
 	}
-	if len(topUps) == 0 {
+	sort.SliceStable(merged, func(i, j int) bool {
+		return merged[i].CreatedAt > merged[j].CreatedAt
+	})
+	total = int64(len(merged))
+	start := pageInfo.GetStartIdx()
+	if start >= len(merged) {
 		return nil, total, nil
 	}
-	pageUserIds := make([]int, 0, len(topUps))
-	seen := make(map[int]struct{}, len(topUps))
-	for i := range topUps {
-		if _, ok := seen[topUps[i].UserId]; !ok {
-			seen[topUps[i].UserId] = struct{}{}
-			pageUserIds = append(pageUserIds, topUps[i].UserId)
+	end := start + pageInfo.GetPageSize()
+	if end > len(merged) {
+		end = len(merged)
+	}
+	records = merged[start:end]
+	if len(records) == 0 {
+		return records, total, nil
+	}
+	pageUserIds := make([]int, 0, len(records))
+	seen := make(map[int]struct{}, len(records))
+	for _, record := range records {
+		if _, ok := seen[record.UserId]; !ok {
+			seen[record.UserId] = struct{}{}
+			pageUserIds = append(pageUserIds, record.UserId)
 		}
 	}
 	var users []User
@@ -461,19 +516,11 @@ func ListAgentRechargeRecords(agentId int, pageInfo *common.PageInfo) (records [
 	for i := range users {
 		userById[users[i].Id] = users[i]
 	}
-	for i := range topUps {
-		tu := &topUps[i]
-		u := userById[tu.UserId]
-		records = append(records, &AgentRechargeRecord{
-			CreatedAt:     tu.CreateTime,
-			UserId:        tu.UserId,
-			Username:      u.Username,
-			DisplayName:   u.DisplayName,
-			Amount:        tu.Amount,
-			Money:         tu.Money,
-			PaymentMethod: tu.PaymentMethod,
-			TradeNo:       tu.TradeNo,
-		})
+	for _, record := range records {
+		if u, ok := userById[record.UserId]; ok {
+			record.Username = u.Username
+			record.DisplayName = u.DisplayName
+		}
 	}
 	return records, total, nil
 }

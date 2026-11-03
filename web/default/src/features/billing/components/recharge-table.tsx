@@ -16,9 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Download } from 'lucide-react'
+import { Download, MoreHorizontal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -31,11 +31,27 @@ import {
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
-import { downloadBillingRecharge, getBillingRecharge } from '../api'
-import type { BillingFilter, BillingRechargeRecord } from '../types'
+import {
+  downloadBillingRecharge,
+  getBillingRecharge,
+  markBillingRecharge,
+} from '../api'
+import {
+  QUOTA_ADJUST_MARK_OFFLINE_RECHARGE,
+  QUOTA_ADJUST_MARK_OFFLINE_REFUND,
+  type BillingFilter,
+  type BillingRechargeRecord,
+  type QuotaAdjustMark,
+} from '../types'
 import { BillingStatCards, type BillingStatItem } from './stat-cards'
 
 const SOURCE_META: Record<string, { label: string; variant: StatusVariant }> = {
@@ -49,8 +65,93 @@ const SOURCE_META: Record<string, { label: string; variant: StatusVariant }> = {
 /** Sources whose target account is the organization pool rather than a user. */
 const ORG_TARGET_SOURCES = new Set(['org_adjust', 'wallet_transfer_in'])
 
+/** Admin quota-adjust rows: their funding nature comes from the offline mark. */
+const ADJUST_SOURCES = new Set(['user_adjust', 'org_adjust'])
+
+/**
+ * Badge for a quota-adjust row, driven by its offline mark: marked rows are real
+ * offline money (recharge/refund), unmarked rows are test-quota changes.
+ */
+function adjustBadgeMeta(mark: string): {
+  label: string
+  variant: StatusVariant
+} {
+  if (mark === QUOTA_ADJUST_MARK_OFFLINE_RECHARGE) {
+    return { label: 'Offline Recharge', variant: 'teal' }
+  }
+  if (mark === QUOTA_ADJUST_MARK_OFFLINE_REFUND) {
+    return { label: 'Offline Refund', variant: 'red' }
+  }
+  return { label: 'Test Quota', variant: 'neutral' }
+}
+
 function formatMoney(money: number): string {
   return money > 0 ? formatLocalCurrencyAmount(money) : '-'
+}
+
+/**
+ * Admin-only control to classify an offline quota-adjust row. Positive adjusts
+ * can only become offline recharge, negative ones only offline refund; an
+ * already-marked row can be reverted to an unmarked test-quota change.
+ */
+function AdjustMarkActions({ record }: { record: BillingRechargeRecord }) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: (mark: QuotaAdjustMark) =>
+      markBillingRecharge(record.log_id, mark),
+    onSuccess: (result) => {
+      if (!result.success) {
+        toast.error(result.message || t('Failed to mark'))
+        return
+      }
+      toast.success(t('Marked successfully'))
+      queryClient.invalidateQueries({ queryKey: ['billing-recharge'] })
+    },
+    onError: () => toast.error(t('Failed to mark')),
+  })
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant='ghost'
+            className='data-popup-open:bg-muted flex h-8 w-8 p-0'
+            disabled={mutation.isPending}
+          />
+        }
+      >
+        <MoreHorizontal className='h-4 w-4' />
+        <span className='sr-only'>{t('Open menu')}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align='end' className='w-56'>
+        <DropdownMenuItem
+          disabled={
+            record.quota <= 0 ||
+            record.mark === QUOTA_ADJUST_MARK_OFFLINE_RECHARGE
+          }
+          onClick={() => mutation.mutate(QUOTA_ADJUST_MARK_OFFLINE_RECHARGE)}
+        >
+          {t('Mark as Offline Recharge')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={
+            record.quota >= 0 ||
+            record.mark === QUOTA_ADJUST_MARK_OFFLINE_REFUND
+          }
+          onClick={() => mutation.mutate(QUOTA_ADJUST_MARK_OFFLINE_REFUND)}
+        >
+          {t('Mark as Offline Refund')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!record.mark}
+          onClick={() => mutation.mutate('')}
+        >
+          {t('Revert to Test Quota')}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }
 
 interface RechargeTableProps {
@@ -109,10 +210,14 @@ export function RechargeTable({ filter, isAgent = false }: RechargeTableProps) {
         accessorKey: 'source',
         header: t('Type'),
         cell: ({ row }) => {
-          const meta = SOURCE_META[row.original.source]
+          const record = row.original
+          // 调额行的资金性质由线下标记决定：已标记=线下充值/退款，未标记=测试额度增减
+          const meta = ADJUST_SOURCES.has(record.source)
+            ? adjustBadgeMeta(record.mark)
+            : SOURCE_META[record.source]
           return (
             <StatusBadge variant={meta?.variant ?? 'neutral'} copyable={false}>
-              {meta ? t(meta.label) : row.original.source}
+              {meta ? t(meta.label) : record.source}
             </StatusBadge>
           )
         },
@@ -207,6 +312,18 @@ export function RechargeTable({ filter, isAgent = false }: RechargeTableProps) {
               ),
               size: 130,
             } satisfies ColumnDef<BillingRechargeRecord>,
+            {
+              id: 'actions',
+              header: t('Actions'),
+              cell: ({ row }: { row: { original: BillingRechargeRecord } }) => {
+                const record = row.original
+                if (!ADJUST_SOURCES.has(record.source) || !record.log_id) {
+                  return <span className='text-muted-foreground'>-</span>
+                }
+                return <AdjustMarkActions record={record} />
+              },
+              size: 64,
+            } satisfies ColumnDef<BillingRechargeRecord>,
           ]),
     ],
     [t, isAgent]
@@ -230,6 +347,16 @@ export function RechargeTable({ filter, isAgent = false }: RechargeTableProps) {
       value: formatLogQuota(stat?.offline_inflow_quota ?? 0),
       accent: 'bg-teal-500/70',
     },
+    // 测试额度增减（未标记调额）只对管理员有意义：AgentView 已在后端过滤为 0
+    ...(isAgent
+      ? []
+      : [
+          {
+            label: t('Test Quota'),
+            value: formatLogQuota(stat?.test_quota_total ?? 0),
+            accent: 'bg-slate-500/70',
+          },
+        ]),
     {
       label: t('Transferred to Pool'),
       value: formatLogQuota(stat?.transfer_in_quota ?? 0),

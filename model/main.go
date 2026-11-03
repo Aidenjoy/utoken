@@ -323,6 +323,7 @@ func migrateDB() error {
 		&Organization{},
 		&OrgMember{},
 		&QuotaTransfer{},
+		&QuotaAdjustMark{},
 		&Agent{},
 		&InviteCode{},
 		&PromptTemplate{},

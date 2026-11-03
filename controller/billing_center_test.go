@@ -8,23 +8,27 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestRechargeOriginTextClassifiesFundingSource 锁定账单导出里"资金性质"列的三分口径。
-// 对账时管理员靠这一列区分真金白银的入口金额（线上/线下）与客户账户之间的搬运
-// （内部转移）；任何新来源被静默归入"线下"都会让线下充值虚增，所以逐一枚举。
+// TestRechargeOriginTextClassifiesFundingSource 锁定账单导出里"资金性质"列的分流口径。
+// 对账时管理员靠这一列区分真金白银的入口金额（线上/已标记线下）与客户账户之间的
+// 搬运（内部转移）；调额行未标记时是测试额度增减，不得归入线下，否则线下充值虚增。
 func TestRechargeOriginTextClassifiesFundingSource(t *testing.T) {
 	tests := []struct {
-		source string
+		name   string
+		record *model.BillingRechargeRecord
 		want   string
 	}{
-		{model.BillingSourceOnlineTopup, "线上"},
-		{model.BillingSourceUserAdjust, "线下"},
-		{model.BillingSourceOrgAdjust, "线下"},
-		{model.BillingSourceWalletTransferIn, "内部转移"},
-		{model.BillingSourceWalletTransferOut, "内部转移"},
+		{"online top-up", &model.BillingRechargeRecord{Source: model.BillingSourceOnlineTopup}, "线上"},
+		{"unmarked user adjust is test quota", &model.BillingRechargeRecord{Source: model.BillingSourceUserAdjust}, "测试额度"},
+		{"unmarked org adjust is test quota", &model.BillingRechargeRecord{Source: model.BillingSourceOrgAdjust}, "测试额度"},
+		{"marked user adjust", &model.BillingRechargeRecord{Source: model.BillingSourceUserAdjust, Mark: model.QuotaAdjustMarkOfflineRecharge}, "线下充值"},
+		{"marked org adjust", &model.BillingRechargeRecord{Source: model.BillingSourceOrgAdjust, Mark: model.QuotaAdjustMarkOfflineRecharge}, "线下充值"},
+		{"marked refund", &model.BillingRechargeRecord{Source: model.BillingSourceUserAdjust, Mark: model.QuotaAdjustMarkOfflineRefund}, "线下退款"},
+		{"transfer in", &model.BillingRechargeRecord{Source: model.BillingSourceWalletTransferIn}, "内部转移"},
+		{"transfer out", &model.BillingRechargeRecord{Source: model.BillingSourceWalletTransferOut}, "内部转移"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.source, func(t *testing.T) {
-			assert.Equal(t, tt.want, rechargeOriginText(tt.source))
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, rechargeOriginText(tt.record))
 		})
 	}
 }

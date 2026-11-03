@@ -77,6 +77,45 @@ func GetBillingRecharge(c *gin.Context) {
 	})
 }
 
+// MarkBillingRecharge 把一条超管调额记录标记为线下充值/线下退款，或撤销标记
+// （恢复为测试额度增减）。目标必须是调额审计行，且标记方向须与额度符号一致。
+func MarkBillingRecharge(c *gin.Context) {
+	var req struct {
+		LogId int    `json:"log_id"`
+		Mark  string `json:"mark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "invalid request body: "+err.Error())
+		return
+	}
+	switch req.Mark {
+	case "", model.QuotaAdjustMarkOfflineRecharge, model.QuotaAdjustMarkOfflineRefund:
+	default:
+		common.ApiErrorMsg(c, "invalid mark")
+		return
+	}
+	record, _, err := model.LookupQuotaAdjustRecord(req.LogId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if record == nil {
+		common.ApiErrorMsg(c, "quota adjust record not found")
+		return
+	}
+	if err := model.MarkQuotaAdjustOffline(req.LogId, req.Mark, c.GetString("username")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	// 标记动作自身记审计，保证线下定性可追溯到操作人。
+	recordManageAuditFor(c, record.UserId, "billing.adjust_mark", map[string]interface{}{
+		"log_id": req.LogId,
+		"mark":   req.Mark,
+		"quota":  logger.LogQuota(record.Quota),
+	})
+	common.ApiSuccess(c, gin.H{"log_id": req.LogId, "mark": req.Mark})
+}
+
 func GetBillingConsumption(c *gin.Context) {
 	filter := parseBillingFilter(c)
 	pageInfo := common.GetPageQuery(c)
@@ -121,17 +160,25 @@ func rechargeSourceText(source string) string {
 	return source
 }
 
-// rechargeOriginText 资金性质：钱是用户自助线上付的、线下打款后由管理员调的，
-// 还是只在客户自己账户之间搬运。对账时按这一列拆分才不会把内部转移当成新入账。
-func rechargeOriginText(source string) string {
-	switch source {
+// rechargeOriginText 资金性质：钱是用户自助线上付的、线下打款后由管理员调额
+// 并已标记为线下充值/线下退款的，还是只在客户自己账户之间搬运。
+// 未标记的调额行是测试额度增减，不属于外部资金。
+func rechargeOriginText(record *model.BillingRechargeRecord) string {
+	switch record.Source {
 	case model.BillingSourceOnlineTopup:
 		return "线上"
 	case model.BillingSourceWalletTransferIn, model.BillingSourceWalletTransferOut:
 		return "内部转移"
-	default:
-		return "线下"
+	case model.BillingSourceUserAdjust, model.BillingSourceOrgAdjust:
+		switch record.Mark {
+		case model.QuotaAdjustMarkOfflineRecharge:
+			return "线下充值"
+		case model.QuotaAdjustMarkOfflineRefund:
+			return "线下退款"
+		}
+		return "测试额度"
 	}
+	return "未知"
 }
 
 // rechargeTargetText 渲染"对象"列。转移记录带上对手方，
@@ -181,7 +228,7 @@ func ExportBillingRecharge(c *gin.Context) {
 		rows = append(rows, []string{
 			billingTimestamp(record.CreatedAt),
 			rechargeSourceText(record.Source),
-			rechargeOriginText(record.Source),
+			rechargeOriginText(record),
 			rechargeTargetText(record),
 			logger.FormatQuota(record.Quota),
 			logger.FormatLocalCurrency(record.Money),

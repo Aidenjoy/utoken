@@ -30,6 +30,7 @@ import {
   type ChannelBillingQueryParams,
   type ChannelBillingRecord,
   type ChannelBillingStat,
+  type QuotaAdjustMark,
   type UpstreamPrices,
 } from './types'
 
@@ -108,6 +109,21 @@ export async function downloadBillingRecharge(
     disableDuplicate: true,
   })
   triggerBlobDownload(res.data as Blob, 'billing-recharge.csv')
+}
+
+/**
+ * Admin-only: classify an offline quota-adjust row as offline recharge/refund,
+ * or pass an empty mark to revert it to an unmarked test-quota change.
+ */
+export async function markBillingRecharge(
+  logId: number,
+  mark: QuotaAdjustMark
+): Promise<BillingApiResponse<{ log_id: number; mark: string }>> {
+  const res = await api.post('/api/billing/recharge/mark', {
+    log_id: logId,
+    mark,
+  })
+  return res.data
 }
 
 export async function downloadBillingConsumption(
