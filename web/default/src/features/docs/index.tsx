@@ -30,6 +30,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
+import { PageTopGlow } from '@/components/page-top-glow'
 import { PageTransition } from '@/components/page-transition'
 import { useStatus } from '@/hooks/use-status'
 import { cn } from '@/lib/utils'
@@ -121,21 +122,7 @@ export function DeveloperDocs() {
   return (
     <PublicLayout showMainContainer={false}>
       <div className='relative'>
-        <div
-          aria-hidden
-          className='pointer-events-none absolute inset-x-0 top-0 h-[520px] opacity-20 dark:opacity-[0.10]'
-          style={{
-            background: [
-              'radial-gradient(ellipse 55% 45% at 15% 20%, oklch(0.72 0.14 160 / 70%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 50% 40% at 85% 15%, oklch(0.65 0.15 250 / 60%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 40% 35% at 50% 60%, oklch(0.70 0.12 200 / 40%) 0%, transparent 70%)',
-            ].join(', '),
-            maskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-            WebkitMaskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-          }}
-        />
+        <PageTopGlow />
         <PageTransition className='relative mx-auto w-full max-w-6xl px-4 pt-20 pb-16 sm:px-6 sm:pt-24'>
           {/* 页头 */}
           <header className='mx-auto mb-10 max-w-3xl text-center sm:mb-14'>
