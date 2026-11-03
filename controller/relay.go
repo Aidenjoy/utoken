@@ -443,14 +443,14 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
 		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
-
-		// 熔断：仅统计视频模型的上游错误日志（processChannelError 仅对非本地/上游错误触达）。
-		// 1 分钟窗口内累计达阈值即自动禁用该用户，计数存 Redis 供集群共享。
-		if c.GetInt("relay_mode") == relayconstant.RelayModeVideoSubmit {
-			service.RecordVideoTaskError(userId)
-		}
 	}
 
+	// 熔断：仅统计视频模型的上游错误（processChannelError 仅对非本地/上游错误触达）。
+	// 独立于 ErrorLogEnabled（默认关闭），否则默认部署下熔断永不计数；保留 IsRecordErrorLog
+	// 以沿用「哪些上游错误值得计入」的既有口径。1 分钟窗口内累计达阈值即自动禁用该用户。
+	if types.IsRecordErrorLog(err) && c.GetInt("relay_mode") == relayconstant.RelayModeVideoSubmit {
+		service.RecordVideoTaskError(c.GetInt("id"))
+	}
 }
 
 func RelayMidjourney(c *gin.Context) {

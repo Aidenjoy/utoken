@@ -11,7 +11,7 @@ import (
 // 视频模型熔断：以固定窗口统计每个用户的上游错误次数，达到阈值即自动禁用该用户。
 // 计数放在 Redis 中，服务器集群各节点共享同一窗口；窗口到期自动清零重新计时。
 const (
-	videoErrorThreshold = 5          // 窗口内累计上游错误次数阈值
+	videoErrorThreshold = 5           // 窗口内累计上游错误次数阈值
 	videoErrorWindow    = time.Minute // 固定窗口长度（到期自动清零）
 )
 
@@ -31,43 +31,30 @@ func RecordVideoTaskError(userId int) {
 		return
 	}
 
-	key := videoErrorCounterKey(userId)
-	count, err := common.RedisIncrWithExpire(key, 1, videoErrorWindow)
+	count, err := common.RedisIncrWithExpire(videoErrorCounterKey(userId), 1, videoErrorWindow)
 	if err != nil {
 		common.SysError(fmt.Sprintf("circuit breaker incr failed for user %d: %s", userId, err.Error()))
 		return
 	}
-	if count < videoErrorThreshold {
+	// 仅在恰好达到阈值时触发一次：>阈值说明本窗口已触发过，直接跳过，避免重复禁用/重复审计。
+	// 计数器交由 TTL 自然过期，不主动删除——否则并发下可能误删其他请求刚创建的新窗口计数。
+	if count != videoErrorThreshold {
 		return
 	}
-
-	// 达到阈值：自动禁用并清理计数器，避免窗口内后续错误重复触发禁用逻辑。
 	autoDisableUser(userId, count)
-	if err := common.RedisDel(key); err != nil {
-		common.SysError(fmt.Sprintf("circuit breaker clear counter failed for user %d: %s", userId, err.Error()))
-	}
 }
 
 // autoDisableUser 将用户置为系统自动禁用（status=3）。跳过 root 用户与已禁用用户，保证幂等。
 // count 仅用于日志与审计文案，表示触发禁用时窗口内累计的错误次数。
 func autoDisableUser(userId int, count int64) {
-	user, err := model.GetUserById(userId, false)
+	// 条件更新：仅当用户仍为启用且非 root 时置为系统自动禁用，原子避免覆盖管理员的手动禁用；
+	// 多节点并发触发时只有一个能实际变更（changed=true），其余幂等返回，不重复失效缓存/写审计。
+	changed, err := model.AutoDisableUserIfEnabled(userId)
 	if err != nil {
-		common.SysError(fmt.Sprintf("circuit breaker get user %d failed: %s", userId, err.Error()))
-		return
-	}
-	// 永不自动禁用超级管理员。
-	if user.Role == common.RoleRootUser {
-		common.SysLog(fmt.Sprintf("circuit breaker skip disabling root user %d (video errors=%d)", userId, count))
-		return
-	}
-	// 已禁用（手动或自动）则幂等返回，避免覆盖 status=2 的手动禁用标识。
-	if user.Status != common.UserStatusEnabled {
-		return
-	}
-
-	if err := model.UpdateUserStatus(userId, common.UserStatusAutoDisabled); err != nil {
 		common.SysError(fmt.Sprintf("circuit breaker disable user %d failed: %s", userId, err.Error()))
+		return
+	}
+	if !changed {
 		return
 	}
 
@@ -81,5 +68,5 @@ func autoDisableUser(userId int, count int64) {
 
 	content := fmt.Sprintf("系统自动禁用：视频模型上游错误 %d 分钟内累计 %d 次，已触发熔断保护", int(videoErrorWindow.Minutes()), count)
 	model.RecordLog(userId, model.LogTypeSystem, content)
-	common.SysLog(fmt.Sprintf("circuit breaker auto-disabled user %d (username=%s, video errors=%d in %s)", userId, user.Username, count, videoErrorWindow))
+	common.SysLog(fmt.Sprintf("circuit breaker auto-disabled user %d (video errors=%d in %s)", userId, count, videoErrorWindow))
 }

@@ -288,6 +288,17 @@ func RedisIncr(key string, delta int64) error {
 	return nil
 }
 
+// redisIncrWithExpireScript 原子完成「递增 + 首次设窗口过期」。
+// 单键 Lua，兼容 Redis Cluster；避免 INCR 与 EXPIRE 两条命令之间进程崩溃/出错
+// 导致键无 TTL（窗口永不过期、跨窗口错误被错误累计）的问题。
+var redisIncrWithExpireScript = redis.NewScript(`
+local v = redis.call("INCRBY", KEYS[1], ARGV[1])
+if v == tonumber(ARGV[1]) then
+  redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return v
+`)
+
 // RedisIncrWithExpire 原子递增指定 key，并返回递增后的值。
 // 仅当 key 首次创建（递增结果等于 delta）时设置过期时间，从而形成
 // “从首次命中起倒计时、到期自动清零重计”的固定窗口计数器。
@@ -296,19 +307,10 @@ func RedisIncrWithExpire(key string, delta int64, expiration time.Duration) (int
 		SysLog(fmt.Sprintf("Redis INCR EXPIRE: key=%s, delta=%d, expiration=%s", key, delta, expiration))
 	}
 	ctx := context.Background()
-
-	val, err := RDB.IncrBy(ctx, key, delta).Result()
+	val, err := redisIncrWithExpireScript.Run(ctx, RDB, []string{key}, delta, expiration.Milliseconds()).Int64()
 	if err != nil {
-		return 0, fmt.Errorf("failed to incr key %s: %w", key, err)
+		return 0, fmt.Errorf("failed to incr key %s with expire: %w", key, err)
 	}
-
-	// 首次创建：设置窗口过期时间；后续递增沿用已有 TTL，窗口到期自动清零。
-	if val == delta {
-		if err := RDB.Expire(ctx, key, expiration).Err(); err != nil {
-			return val, fmt.Errorf("failed to set expire on key %s: %w", key, err)
-		}
-	}
-
 	return val, nil
 }
 

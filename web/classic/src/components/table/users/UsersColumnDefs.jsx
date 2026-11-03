@@ -117,6 +117,9 @@ const renderStatistics = (text, record, showEnableDisableModal, t) => {
   } else if (record.status === 2) {
     tagColor = 'red';
     tagText = t('已禁用');
+  } else if (record.status === 3) {
+    tagColor = 'red';
+    tagText = t('系统自动禁用');
   }
 
   const content = (

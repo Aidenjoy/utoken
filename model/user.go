@@ -665,12 +665,17 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 	return &user, err
 }
 
-// UpdateUserStatus 仅更新用户状态列（跨库安全，供系统熔断等后台路径使用）。
-func UpdateUserStatus(userId int, status int) error {
+// AutoDisableUserIfEnabled 仅当用户当前为启用状态且非 root 时，原子地置为系统自动禁用。
+// 条件更新保证：不会覆盖管理员的手动禁用（status=2），也不会禁用 root；
+// 返回是否实际发生了状态变更，供调用方在并发触发下去重缓存失效与审计写入。
+func AutoDisableUserIfEnabled(userId int) (bool, error) {
 	if userId == 0 {
-		return errors.New("id 为空！")
+		return false, errors.New("id 为空！")
 	}
-	return DB.Model(&User{}).Where("id = ?", userId).Update("status", status).Error
+	result := DB.Model(&User{}).
+		Where("id = ? AND status = ? AND role <> ?", userId, common.UserStatusEnabled, common.RoleRootUser).
+		Update("status", common.UserStatusAutoDisabled)
+	return result.RowsAffected > 0, result.Error
 }
 
 func GetUserIdByAffCode(affCode string) (int, error) {

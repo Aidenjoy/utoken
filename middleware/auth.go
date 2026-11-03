@@ -121,6 +121,16 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
+	if !useAccessToken {
+		if userId, ok := id.(int); ok {
+			userCache, cacheErr := model.GetUserCache(userId)
+			if cacheErr != nil {
+				common.SysLog(fmt.Sprintf("authHelper GetUserCache error for user %d: %v", userId, cacheErr))
+			} else {
+				status = userCache.Status
+			}
+		}
+	}
 	if userStatus, ok := status.(int); ok && (userStatus == common.UserStatusDisabled || userStatus == common.UserStatusAutoDisabled) {
 		msgKey := i18n.MsgAuthUserBanned
 		if userStatus == common.UserStatusAutoDisabled {
@@ -241,7 +251,17 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		// Try session auth first (dashboard users)
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
-			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
+			status, statusOK := session.Get("status").(int)
+			if userId, ok := id.(int); ok {
+				userCache, err := model.GetUserCache(userId)
+				if err != nil {
+					common.SysLog(fmt.Sprintf("TokenOrUserAuth GetUserCache error for user %d: %v", userId, err))
+				} else {
+					status = userCache.Status
+					statusOK = true
+				}
+			}
+			if statusOK && status == common.UserStatusEnabled {
 				c.Set("id", id)
 				c.Next()
 				return
