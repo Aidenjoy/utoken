@@ -91,6 +91,9 @@ func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 	case dto.AssetUploadProtocolBaiduDataBuilder:
 		// AK/SK 优先取 asset_ak/asset_sk，未配置时回落渠道密钥 "AK|SK"（构造函数内校验）
 		return newBaiduDataBuilderProtocol(cfg)
+	case dto.AssetUploadProtocolQihoo360:
+		// 360 智脑用渠道密钥做 Bearer 鉴权（与视频任务同一把 key），无需 AK/SK
+		return newQihoo360Protocol(cfg)
 	default:
 		return nil, fmt.Errorf("asset upload protocol is not enabled on this channel")
 	}

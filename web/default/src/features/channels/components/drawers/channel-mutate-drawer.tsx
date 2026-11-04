@@ -760,6 +760,28 @@ export function ChannelMutateDrawer({
   const assetUsesBearerAuth =
     currentAssetUploadProtocol === "ark_official" &&
     currentAssetAuthMode === "bearer";
+  // 360 智脑用渠道密钥做 Bearer 鉴权，同样不需要 AK/SK 与区域字段
+  const assetUsesChannelKey = currentAssetUploadProtocol === "qihoo360";
+  // 素材库 GroupId 字段说明按协议区分；用查表替代嵌套三元，避免层叠控制流
+  const assetGroupDescriptions: Record<string, string> = {
+    bit_official: t(
+      "Asset group of the Bit official asset library; if empty, a default group is created automatically",
+    ),
+    xswj_official: t(
+      "Asset group of the Xingshu Wuji asset library; if empty, a default group is created automatically",
+    ),
+    baidu_databuilder: t(
+      "Asset group of the Baidu DataBuilder asset library; if empty, a default group is created automatically",
+    ),
+    qihoo360: t(
+      "Asset group of the 360 AI asset library; if empty, a default group is created automatically",
+    ),
+  };
+  const assetGroupDescription =
+    assetGroupDescriptions[currentAssetUploadProtocol ?? ""] ??
+    t(
+      "Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically",
+    );
   const currentSystemPrompt = form.watch("system_prompt");
   const currentSystemPromptOverride = form.watch("system_prompt_override");
   const currentAllowServiceTier = form.watch("allow_service_tier");
@@ -2945,6 +2967,10 @@ export function ChannelMutateDrawer({
                                               value: "baidu_databuilder",
                                               label: t("Baidu DataBuilder"),
                                             },
+                                            {
+                                              value: "qihoo360",
+                                              label: t("360 AI"),
+                                            },
                                           ]}
                                           onValueChange={(value) =>
                                             field.onChange(
@@ -2982,6 +3008,9 @@ export function ChannelMutateDrawer({
                                               </SelectItem>
                                               <SelectItem value="baidu_databuilder">
                                                 {t("Baidu DataBuilder")}
+                                              </SelectItem>
+                                              <SelectItem value="qihoo360">
+                                                {t("360 AI")}
                                               </SelectItem>
                                             </SelectGroup>
                                           </SelectContent>
@@ -3054,7 +3083,9 @@ export function ChannelMutateDrawer({
                                     currentAssetUploadProtocol ===
                                       "xswj_official" ||
                                     currentAssetUploadProtocol ===
-                                      "baidu_databuilder") && (
+                                      "baidu_databuilder" ||
+                                    currentAssetUploadProtocol ===
+                                      "qihoo360") && (
                                     <>
                                       {currentAssetUploadProtocol ===
                                         "ark_official" && (
@@ -3139,7 +3170,8 @@ export function ChannelMutateDrawer({
                                           )}
                                         />
                                       )}
-                                      {!assetUsesBearerAuth && (
+                                      {!assetUsesBearerAuth &&
+                                        !assetUsesChannelKey && (
                                         <>
                                           <FormField
                                             control={form.control}
@@ -3185,24 +3217,7 @@ export function ChannelMutateDrawer({
                                               <Input {...field} />
                                             </FormControl>
                                             <FormDescription>
-                                              {currentAssetUploadProtocol ===
-                                              "bit_official"
-                                                ? t(
-                                                    "Asset group of the Bit official asset library; if empty, a default group is created automatically",
-                                                  )
-                                                : currentAssetUploadProtocol ===
-                                                    "xswj_official"
-                                                  ? t(
-                                                      "Asset group of the Xingshu Wuji asset library; if empty, a default group is created automatically",
-                                                    )
-                                                  : currentAssetUploadProtocol ===
-                                                      "baidu_databuilder"
-                                                    ? t(
-                                                        "Asset group of the Baidu DataBuilder asset library; if empty, a default group is created automatically",
-                                                      )
-                                                    : t(
-                                                        "Asset group used by the Volcengine CreateAsset API; if empty, a default group is created automatically",
-                                                      )}
+                                              {assetGroupDescription}
                                             </FormDescription>
                                             <FormMessage />
                                           </FormItem>
@@ -3224,6 +3239,7 @@ export function ChannelMutateDrawer({
                                         )}
                                       />
                                       {!assetUsesBearerAuth &&
+                                        !assetUsesChannelKey &&
                                         currentAssetUploadProtocol !==
                                           "baidu_databuilder" && (
                                           <FormField

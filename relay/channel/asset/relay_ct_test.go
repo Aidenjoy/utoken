@@ -126,6 +126,7 @@ func TestNewProtocol(t *testing.T) {
 			AssetUploadProtocol: dto.AssetUploadProtocolBitOfficial,
 			AssetAK:             "ak", AssetSK: "sk",
 		}, "*asset.ArkOfficialProtocol", ""},
+		{"qihoo360 without channel key", dto.ChannelOtherSettings{AssetUploadProtocol: dto.AssetUploadProtocolQihoo360}, "", "channel api key"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -149,6 +150,8 @@ func typeName(p Protocol) string {
 		return "*asset.ArkOfficialProtocol"
 	case *EcloudOfficialProtocol:
 		return "*asset.EcloudOfficialProtocol"
+	case *Qihoo360Protocol:
+		return "*asset.Qihoo360Protocol"
 	}
 	return "unknown"
 }

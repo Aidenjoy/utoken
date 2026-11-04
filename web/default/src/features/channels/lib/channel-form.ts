@@ -224,6 +224,7 @@ export const channelFormSchema = z
         "bit_official",
         "xswj_official",
         "baidu_databuilder",
+        "qihoo360",
       ])
       .optional(),
     asset_upload_path: z.string().optional(),
@@ -453,7 +454,8 @@ export function transformChannelToFormDefaults(
     | "ecloud"
     | "bit_official"
     | "xswj_official"
-    | "baidu_databuilder" = "";
+    | "baidu_databuilder"
+    | "qihoo360" = "";
   let assetUploadPath = "";
   let assetQueryPath = "";
   let assetAk = "";
@@ -497,7 +499,8 @@ export function transformChannelToFormDefaults(
         parsed.asset_upload_protocol === "ecloud" ||
         parsed.asset_upload_protocol === "bit_official" ||
         parsed.asset_upload_protocol === "xswj_official" ||
-        parsed.asset_upload_protocol === "baidu_databuilder"
+        parsed.asset_upload_protocol === "baidu_databuilder" ||
+        parsed.asset_upload_protocol === "qihoo360"
           ? parsed.asset_upload_protocol
           : "";
       assetUploadPath = String(parsed.asset_upload_path || "");
@@ -774,6 +777,12 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       settingsObj.asset_ak = (formData.asset_ak || "").trim();
       settingsObj.asset_sk = (formData.asset_sk || "").trim();
       settingsObj.asset_group_id = formData.asset_group_id || "";
+    }
+    // 360 智脑用渠道密钥做 Bearer 鉴权，仅需可选的素材库 GroupId 与 ProjectName，
+    // 不涉及 AK/SK、区域与网关地址。
+    if (formData.asset_upload_protocol === "qihoo360") {
+      settingsObj.asset_group_id = formData.asset_group_id || "";
+      settingsObj.asset_project_name = formData.asset_project_name || "";
     }
     // 素材网关地址只有「火山官方」协议可自定义（用于方舟兼容网关，如百度智能云）；
     // tokenbit / 星枢无极 / 移动云的网关是各自固定服务，落库也只会被后端忽略。
