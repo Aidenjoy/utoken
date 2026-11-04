@@ -5525,6 +5525,7 @@
     "Select model {{model}}": "Select model {{model}}",
     "Select model 1 (optional)": "Select model 1 (optional)",
     "Select model 2 (optional)": "Select model 2 (optional)",
+    "Select models": "Select models",
     "Select models (empty for allow all)": "Select models (empty for allow all)",
     "Select models and apply to channel models list.": "Select models and apply to channel models list.",
     "Select models or add custom ones": "Select models or add custom ones",

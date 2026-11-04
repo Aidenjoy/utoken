@@ -181,7 +181,10 @@ export type UpstreamPrices = Record<string, UpstreamPrice>
  */
 export interface ChannelBillingFilter {
   channelSel: string[]
-  modelName: string
+  /** Same scope convention as `channelSel`: [BILLING_SCOPE_ALL] = every model. */
+  modelSel: string[]
+  /** '' = all types; otherwise the backend model_type: text/image/video. */
+  modelType: string
   start?: number
   end?: number
 }

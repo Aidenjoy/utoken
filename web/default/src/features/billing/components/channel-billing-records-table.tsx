@@ -60,7 +60,8 @@ export function ChannelBillingRecordsTable({
     queryKey: [
       'channel-billing-records',
       filter.channelSel,
-      filter.modelName,
+      filter.modelSel,
+      filter.modelType,
       filter.start,
       filter.end,
     ],

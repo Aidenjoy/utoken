@@ -23,11 +23,18 @@ import { useTranslation } from 'react-i18next'
 
 import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getChannels } from '@/features/channels/api'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 
+import { fetchChannelBillingModels } from '../api'
 import {
   BILLING_SCOPE_ALL,
   normalizeBillingScope,
@@ -38,9 +45,13 @@ import { ChannelBillingRecordsTable } from './channel-billing-records-table'
 
 type ChannelBillingTab = 'records' | 'details'
 
+/** Sentinel value of the model-type select: no type constraint. */
+const MODEL_TYPE_ALL = 'all'
+
 interface ChannelFilterDraft {
   channelSel: string[]
-  modelName: string
+  modelSel: string[]
+  modelType: string
   start?: Date
   end?: Date
 }
@@ -51,7 +62,8 @@ function getDefaultDraft(): ChannelFilterDraft {
   start.setHours(0, 0, 0, 0)
   return {
     channelSel: [BILLING_SCOPE_ALL],
-    modelName: '',
+    modelSel: [BILLING_SCOPE_ALL],
+    modelType: '',
     start,
     end,
   }
@@ -85,10 +97,30 @@ export function ChannelBillingPanel() {
     [channelOptions, t]
   )
 
+  // 模型选项取日志中出现过的去重模型名（含已下线模型），与渠道下拉同构：
+  // 默认「全部」，可多选精确筛选。
+  const { data: modelOptions = [] } = useQuery({
+    queryKey: ['channel-billing-model-options'],
+    queryFn: async () => {
+      const result = await fetchChannelBillingModels()
+      return (result.data?.models ?? []).map((name) => ({
+        label: name,
+        value: name,
+      }))
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const modelScopeOptions = useMemo(
+    () => [{ value: BILLING_SCOPE_ALL, label: t('All') }, ...modelOptions],
+    [modelOptions, t]
+  )
+
   const filter = useMemo<ChannelBillingFilter>(
     () => ({
       channelSel: applied.channelSel,
-      modelName: applied.modelName.trim(),
+      modelSel: applied.modelSel,
+      modelType: applied.modelType,
       start: applied.start
         ? Math.floor(applied.start.getTime() / 1000)
         : undefined,
@@ -115,17 +147,40 @@ export function ChannelBillingPanel() {
             maxVisibleChips={2}
           />
 
-          <Input
-            className='h-9 min-w-[160px] flex-1 text-sm'
-            value={draft.modelName}
-            onChange={(e) =>
-              setDraft((current) => ({ ...current, modelName: e.target.value }))
+          <MultiSelect
+            className='min-w-[160px] flex-1'
+            options={modelScopeOptions}
+            selected={draft.modelSel}
+            onChange={(values) =>
+              setDraft((current) => ({
+                ...current,
+                modelSel: normalizeBillingScope(current.modelSel, values),
+              }))
             }
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') setApplied(draft)
-            }}
-            placeholder={t('Model name')}
+            placeholder={t('Select models')}
+            maxVisibleChips={2}
           />
+
+          <Select
+            value={draft.modelType || MODEL_TYPE_ALL}
+            onValueChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                modelType:
+                  !value || value === MODEL_TYPE_ALL ? '' : value,
+              }))
+            }
+          >
+            <SelectTrigger className='w-[130px]'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectItem value={MODEL_TYPE_ALL}>{t('All')}</SelectItem>
+              <SelectItem value='text'>{t('Language Model')}</SelectItem>
+              <SelectItem value='image'>{t('Image Model')}</SelectItem>
+              <SelectItem value='video'>{t('Video Model')}</SelectItem>
+            </SelectContent>
+          </Select>
 
           <CompactDateTimeRangePicker
             start={draft.start}

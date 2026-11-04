@@ -5525,6 +5525,7 @@
     "Select model {{model}}": "Выбрать модель {{model}}",
     "Select model 1 (optional)": "Выберите модель 1 (необязательно)",
     "Select model 2 (optional)": "Выберите модель 2 (необязательно)",
+    "Select models": "Выберите модели",
     "Select models (empty for allow all)": "Выбрать модели (пусто для разрешения всех)",
     "Select models and apply to channel models list.": "Выберите модели и примените к списку моделей каналов.",
     "Select models or add custom ones": "Выбрать модели или добавить пользовательские",

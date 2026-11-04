@@ -273,11 +273,78 @@ func TestGetChannelBillingRecordsFilters(t *testing.T) {
 	require.Len(t, byChannel, 1)
 	assert.Equal(t, 2, byChannel[0].ChannelId)
 
-	byModel, _, err := GetChannelBillingRecords(ChannelBillingFilter{ModelName: "gpt-b"})
+	byModel, _, err := GetChannelBillingRecords(ChannelBillingFilter{ModelNames: []string{"gpt-b"}})
 	require.NoError(t, err)
 	require.Len(t, byModel, 1)
 	assert.Equal(t, "gpt-b", byModel[0].ModelName)
 	assert.Equal(t, 1, byModel[0].ChannelId)
+
+	// 精确 IN 列表：gpt-a 在两个渠道都有用量，选中后两行都保留。
+	bySharedModel, _, err := GetChannelBillingRecords(ChannelBillingFilter{ModelNames: []string{"gpt-a"}})
+	require.NoError(t, err)
+	assert.Len(t, bySharedModel, 2)
+}
+
+// TestGetChannelBillingRecordsModelTypeFilter 锁定模型类型筛选口径：与前端
+// getModelCategory 同优先级（视频模式优先于图片模式，故 seedance-image 归视频），
+// 且类型筛选同时作用于聚合视图与明细分页视图。
+func TestGetChannelBillingRecordsModelTypeFilter(t *testing.T) {
+	truncateTables(t)
+	seedChannelBillingChannel(t, 1, "east")
+
+	base := int64(1700000000)
+	seedModel := func(modelName string) {
+		seedChannelBillingLog(t, &Log{Type: LogTypeConsume, ChannelId: 1, ModelName: modelName, CreatedAt: base, PromptTokens: 10, CompletionTokens: 5})
+	}
+	seedModel("gpt-a")              // text
+	seedModel("seedream-4-0")       // image
+	seedModel("hunyuan-image")      // image（含 image 但不含视频模式）
+	seedModel("seedance-2-0")       // video
+	seedModel("seedance-image-pro") // 同时命中图片与视频模式 → 视频优先
+
+	wantModels := func(modelType string) []string {
+		records, _, err := GetChannelBillingRecords(ChannelBillingFilter{ModelType: modelType})
+		require.NoError(t, err)
+		models := make([]string, 0, len(records))
+		for _, record := range records {
+			models = append(models, record.ModelName)
+		}
+		return models
+	}
+
+	assert.ElementsMatch(t, []string{"gpt-a"}, wantModels("text"))
+	assert.ElementsMatch(t, []string{"seedream-4-0", "hunyuan-image"}, wantModels("image"))
+	assert.ElementsMatch(t, []string{"seedance-2-0", "seedance-image-pro"}, wantModels("video"))
+
+	// 空类型不加条件：全部 5 行都在。
+	all, _, err := GetChannelBillingRecords(ChannelBillingFilter{})
+	require.NoError(t, err)
+	assert.Len(t, all, 5)
+
+	// 明细视图同口径：video 只返回两条视频行。
+	pageInfo := &common.PageInfo{Page: 1, PageSize: 50}
+	logs, total, err := GetChannelBillingDetails(ChannelBillingFilter{ModelType: "video"}, pageInfo)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	require.Len(t, logs, 2)
+	for _, log := range logs {
+		assert.Contains(t, []string{"seedance-2-0", "seedance-image-pro"}, log.ModelName)
+	}
+}
+
+// TestGetChannelBillingModelOptions 锁定模型下拉选项：去重、升序、排除空模型名。
+func TestGetChannelBillingModelOptions(t *testing.T) {
+	truncateTables(t)
+
+	base := int64(1700000000)
+	seedChannelBillingLog(t, &Log{Type: LogTypeConsume, ChannelId: 1, ModelName: "m-b", CreatedAt: base})
+	seedChannelBillingLog(t, &Log{Type: LogTypeConsume, ChannelId: 1, ModelName: "m-a", CreatedAt: base})
+	seedChannelBillingLog(t, &Log{Type: LogTypeConsume, ChannelId: 1, ModelName: "m-a", CreatedAt: base + 1})
+	seedChannelBillingLog(t, &Log{Type: LogTypeConsume, ChannelId: 1, ModelName: "", CreatedAt: base})
+
+	options, err := GetChannelBillingModelOptions()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"m-a", "m-b"}, options)
 }
 
 // TestChannelUpstreamPricesRoundTrip covers the rate-card persistence: values

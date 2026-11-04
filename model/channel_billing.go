@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -31,12 +32,63 @@ import (
 // 超限时报错提示缩小范围，而不是静默截断导致对不上账。
 const channelBillingRowCap = 100000
 
-// ChannelBillingFilter 渠道账单查询条件。ChannelIds 为空表示全部渠道。
+// ChannelBillingFilter 渠道账单查询条件。ChannelIds 为空表示全部渠道；
+// ModelNames 为空表示全部模型（非空时精确匹配 IN 列表）；ModelType 为空表示
+// 全部类型，取值 text/image/video，分类口径见 channelBillingVideoPatterns /
+// channelBillingImagePatterns。
 type ChannelBillingFilter struct {
 	ChannelIds []int
-	ModelName  string
+	ModelNames []string
+	ModelType  string
 	Start      int64
 	End        int64
+}
+
+// 模型类型分类口径与前端 web/default/src/lib/model-category.ts（价格页与本页
+// 共用同一套分类）保持一致：模式均为纯子串、视频优先于图片。修改时必须两处
+// 同步，否则同一模型在价格页与渠道账单会落进不同类型。
+var (
+	channelBillingVideoPatterns = []string{"seedance", "sora", "hailuo", "vidu", "kling", "jimeng", "veo", "wan-", "hunyuanvideo", "pika", "video"}
+	channelBillingImagePatterns = []string{"seedream", "dall-e", "gpt-image", "cogview", "flux", "imagen", "stable-diffusion", "sdxl", "kolors", "qwen-image", "hunyuan-image", "step-1x", "ideogram", "recraft", "t2i", "image"}
+)
+
+// IsChannelBillingModelType 校验 model_type 查询参数取值。
+func IsChannelBillingModelType(value string) bool {
+	switch value {
+	case "text", "image", "video":
+		return true
+	}
+	return false
+}
+
+// likeAnyCondition 拼大小写不敏感的子串 OR 条件：LOWER(col) LIKE ? OR …。
+// 模式均为不含 %/_ 的小写字面量，无需 ESCAPE；LOWER 与 LIKE 在三库及
+// ClickHouse 都可用（Postgres 的 LIKE 区分大小写，故两侧统一 LOWER）。
+func likeAnyCondition(column string, patterns []string) (string, []any) {
+	conds := make([]string, 0, len(patterns))
+	args := make([]any, 0, len(patterns))
+	for _, pattern := range patterns {
+		conds = append(conds, "LOWER("+column+") LIKE ?")
+		args = append(args, "%"+pattern+"%")
+	}
+	return "(" + strings.Join(conds, " OR ") + ")", args
+}
+
+// applyChannelBillingModelType 按前端 getModelCategory 的优先级收窄模型类型：
+// video 命中视频模式；image 命中图片模式但排除视频模式（如 seedance-image 归
+// 视频）；text 两者都排除。空类型不加条件。
+func applyChannelBillingModelType(tx *gorm.DB, modelType string) *gorm.DB {
+	videoCond, videoArgs := likeAnyCondition("model_name", channelBillingVideoPatterns)
+	imageCond, imageArgs := likeAnyCondition("model_name", channelBillingImagePatterns)
+	switch modelType {
+	case "video":
+		return tx.Where(videoCond, videoArgs...)
+	case "image":
+		return tx.Where(imageCond, imageArgs...).Where("NOT "+videoCond, videoArgs...)
+	case "text":
+		return tx.Where("NOT "+videoCond, videoArgs...).Where("NOT "+imageCond, imageArgs...)
+	}
+	return tx
 }
 
 // ChannelBillingRecord 按「日期 × 渠道 × 模型」聚合的一行。
@@ -82,11 +134,11 @@ type channelBillingRow struct {
 	CompletionTokens int64  `gorm:"column:completion_tokens"`
 }
 
-// channelBillingBaseQuery 构造对账行公共过滤：真实渠道、排除缓存命中、渠道/模型/时间。
+// channelBillingBaseQuery 构造对账行公共过滤：真实渠道、排除缓存命中、渠道/模型/类型/时间。
 // cache_hit 为新增列，存量行是 NULL，用 COALESCE 兼容三库。
 // recordsOnly=true 时额外限定「consume 且非 task_settle」（聚合口径）；
 // false 时纳入 consume+refund 全部行（明细审计视图）。
-func channelBillingBaseQuery(filter ChannelBillingFilter, recordsOnly bool) (*gorm.DB, error) {
+func channelBillingBaseQuery(filter ChannelBillingFilter, recordsOnly bool) *gorm.DB {
 	tx := LOG_DB.Model(&Log{}).
 		Where("channel_id > 0").
 		Where("COALESCE(cache_hit, " + commonFalseVal + ") = " + commonFalseVal)
@@ -99,19 +151,17 @@ func channelBillingBaseQuery(filter ChannelBillingFilter, recordsOnly bool) (*go
 	if len(filter.ChannelIds) > 0 {
 		tx = tx.Where("channel_id IN ?", filter.ChannelIds)
 	}
-	if filter.ModelName != "" {
-		var err error
-		if tx, err = applyExplicitLogTextFilter(tx, "model_name", filter.ModelName); err != nil {
-			return nil, err
-		}
+	if len(filter.ModelNames) > 0 {
+		tx = tx.Where("model_name IN ?", filter.ModelNames)
 	}
+	tx = applyChannelBillingModelType(tx, filter.ModelType)
 	if filter.Start != 0 {
 		tx = tx.Where("created_at >= ?", filter.Start)
 	}
 	if filter.End != 0 {
 		tx = tx.Where("created_at <= ?", filter.End)
 	}
-	return tx, nil
+	return tx
 }
 
 // channelBillingTokenExpr 上游真实 tokens 的 SQL 口径：
@@ -123,10 +173,7 @@ func channelBillingTokenExpr(column, upstreamColumn string) string {
 }
 
 func fetchChannelBillingRows(filter ChannelBillingFilter) ([]channelBillingRow, error) {
-	tx, err := channelBillingBaseQuery(filter, true)
-	if err != nil {
-		return nil, err
-	}
+	tx := channelBillingBaseQuery(filter, true)
 	var count int64
 	if err := tx.Session(&gorm.Session{}).Count(&count).Error; err != nil {
 		return nil, err
@@ -139,7 +186,7 @@ func fetchChannelBillingRows(filter ChannelBillingFilter) ([]channelBillingRow, 
 		order = clickHouseLogOrder("")
 	}
 	var rows []channelBillingRow
-	err = tx.Select(
+	err := tx.Select(
 		"created_at, channel_id, model_name, " +
 			channelBillingTokenExpr("prompt_tokens", "upstream_prompt_tokens") + " AS prompt_tokens, " +
 			channelBillingTokenExpr("completion_tokens", "upstream_completion_tokens") + " AS completion_tokens",
@@ -280,10 +327,7 @@ func applyChannelUpstreamCost(records []ChannelBillingRecord) (map[int]bool, err
 // 并回填渠道名。行内 tokens 的前端展示用 Log.UpstreamTokenUsage 同一口径
 // （结算行显示 0，表示不计入对账；退款行显示被退的上游用量）。
 func GetChannelBillingDetails(filter ChannelBillingFilter, pageInfo *common.PageInfo) (logs []*Log, total int64, err error) {
-	tx, err := channelBillingBaseQuery(filter, false)
-	if err != nil {
-		return nil, 0, err
-	}
+	tx := channelBillingBaseQuery(filter, false)
 	if err = tx.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -321,6 +365,26 @@ func GetChannelBillingDetails(filter ChannelBillingFilter, pageInfo *common.Page
 		log.ChannelName = nameById[log.ChannelId]
 	}
 	return logs, total, nil
+}
+
+// channelBillingModelOptionCap 模型下拉选项上限：distinct 模型名本身有限，
+// 上限只是防止异常脏数据把下拉撑到不可用。
+const channelBillingModelOptionCap = 2000
+
+// GetChannelBillingModelOptions 返回日志中出现过的去重模型名（升序），
+// 供渠道账单的模型多选下拉使用；包含已下线模型，保证历史对账仍可选到。
+func GetChannelBillingModelOptions() ([]string, error) {
+	var models []string
+	err := LOG_DB.Model(&Log{}).
+		Where("model_name != ''").
+		Distinct("model_name").
+		Order("model_name").
+		Limit(channelBillingModelOptionCap).
+		Pluck("model_name", &models).Error
+	if err != nil {
+		return nil, err
+	}
+	return models, nil
 }
 
 // GetChannelBillingDetailsAll 导出用：不分页拉取明细（带上限保护）。

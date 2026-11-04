@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -21,21 +22,52 @@ import (
 // 费率卡的估算，未配置价格时纯 token 对账。
 
 // parseChannelBillingFilter 解析渠道账单查询参数：
-// channel_ids 逗号列表（缺省全部）、model_name（含 % 走模糊）、时间戳范围。
-func parseChannelBillingFilter(c *gin.Context) model.ChannelBillingFilter {
-	filter := model.ChannelBillingFilter{
-		ModelName: c.Query("model_name"),
-	}
+// channel_ids 逗号列表（缺省全部）、model_names 逗号精确列表（缺省全部）、
+// model_type（text/image/video，缺省全部）、时间戳范围。
+// 参数非法时已写出错误响应并返回 false，调用方直接 return。
+func parseChannelBillingFilter(c *gin.Context) (model.ChannelBillingFilter, bool) {
+	filter := model.ChannelBillingFilter{}
 	if raw := c.Query("channel_ids"); raw != "" {
 		filter.ChannelIds = parseIntList(raw)
 	}
+	if raw := c.Query("model_names"); raw != "" {
+		for _, name := range strings.Split(raw, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				filter.ModelNames = append(filter.ModelNames, name)
+			}
+		}
+	}
+	if raw := c.Query("model_type"); raw != "" {
+		if !model.IsChannelBillingModelType(raw) {
+			common.ApiErrorMsg(c, "model_type 无效")
+			return filter, false
+		}
+		filter.ModelType = raw
+	}
 	filter.Start, _ = strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	filter.End, _ = strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
-	return filter
+	return filter, true
+}
+
+// GetChannelBillingModels 返回日志中出现过的去重模型名，供账单页模型多选下拉。
+func GetChannelBillingModels(c *gin.Context) {
+	models, err := model.GetChannelBillingModelOptions()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    gin.H{"models": models},
+	})
 }
 
 func GetChannelBilling(c *gin.Context) {
-	filter := parseChannelBillingFilter(c)
+	filter, ok := parseChannelBillingFilter(c)
+	if !ok {
+		return
+	}
 	records, stat, err := model.GetChannelBillingRecords(filter)
 	if err != nil {
 		common.ApiError(c, err)
@@ -49,7 +81,10 @@ func GetChannelBilling(c *gin.Context) {
 }
 
 func GetChannelBillingDetail(c *gin.Context) {
-	filter := parseChannelBillingFilter(c)
+	filter, ok := parseChannelBillingFilter(c)
+	if !ok {
+		return
+	}
 	pageInfo := common.GetPageQuery(c)
 	logs, total, err := model.GetChannelBillingDetails(filter, pageInfo)
 	if err != nil {
@@ -64,7 +99,10 @@ func GetChannelBillingDetail(c *gin.Context) {
 }
 
 func ExportChannelBilling(c *gin.Context) {
-	filter := parseChannelBillingFilter(c)
+	filter, ok := parseChannelBillingFilter(c)
+	if !ok {
+		return
+	}
 	records, stat, err := model.GetChannelBillingRecords(filter)
 	if err != nil {
 		common.ApiError(c, err)
@@ -98,7 +136,10 @@ func ExportChannelBilling(c *gin.Context) {
 }
 
 func ExportChannelBillingDetail(c *gin.Context) {
-	filter := parseChannelBillingFilter(c)
+	filter, ok := parseChannelBillingFilter(c)
+	if !ok {
+		return
+	}
 	logs, err := model.GetChannelBillingDetailsAll(filter)
 	if err != nil {
 		common.ApiError(c, err)

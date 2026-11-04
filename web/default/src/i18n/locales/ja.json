@@ -5525,6 +5525,7 @@
     "Select model {{model}}": "モデル {{model}} を選択",
     "Select model 1 (optional)": "モデル1を選択（任意）",
     "Select model 2 (optional)": "モデル2を選択（任意）",
+    "Select models": "モデルを選択",
     "Select models (empty for allow all)": "モデルを選択 (すべて許可する場合は空)",
     "Select models and apply to channel models list.": "モデルを選択し、チャネルモデルリストに適用します。",
     "Select models or add custom ones": "モデルを選択するか、カスタムモデルを追加",

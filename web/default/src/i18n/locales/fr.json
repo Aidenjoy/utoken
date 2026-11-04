@@ -5525,6 +5525,7 @@
     "Select model {{model}}": "Sélectionner le modèle {{model}}",
     "Select model 1 (optional)": "Sélectionnez le modèle 1 (facultatif)",
     "Select model 2 (optional)": "Sélectionnez le modèle 2 (facultatif)",
+    "Select models": "Sélectionner des modèles",
     "Select models (empty for allow all)": "Sélectionner les modèles (vide pour autoriser tout)",
     "Select models and apply to channel models list.": "Sélectionnez les modèles et appliquez-les à la liste des modèles de canaux.",
     "Select models or add custom ones": "Sélectionner des modèles ou en ajouter des personnalisés",

@@ -387,6 +387,7 @@ func SetApiRouter(router *gin.Engine) {
 			billingRoute.GET("/consumption", controller.GetBillingConsumption)
 			billingRoute.GET("/consumption/export", controller.ExportBillingConsumption)
 			// 渠道账单中心：上游对账（真实 tokens + 可选费率卡估算成本），仅管理员。
+			billingRoute.GET("/channel/models", controller.GetChannelBillingModels)
 			billingRoute.GET("/channel/records", controller.GetChannelBilling)
 			billingRoute.GET("/channel/records/export", controller.ExportChannelBilling)
 			billingRoute.GET("/channel/details", controller.GetChannelBillingDetail)

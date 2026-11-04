@@ -5525,6 +5525,7 @@
     "Select model {{model}}": "选择模型 {{model}}",
     "Select model 1 (optional)": "选择模特1（非必选）",
     "Select model 2 (optional)": "选择模特2（非必选）",
+    "Select models": "选择模型",
     "Select models (empty for allow all)": "选择模型（留空表示允许所有）",
     "Select models and apply to channel models list.": "选择模型并应用到渠道模型列表。",
     "Select models or add custom ones": "选择模型或添加自定义模型",

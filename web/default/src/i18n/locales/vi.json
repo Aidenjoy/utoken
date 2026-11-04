@@ -5525,6 +5525,7 @@
     "Select model {{model}}": "Chọn mô hình {{model}}",
     "Select model 1 (optional)": "Chọn người mẫu 1 (không bắt buộc)",
     "Select model 2 (optional)": "Chọn người mẫu 2 (không bắt buộc)",
+    "Select models": "Chọn mô hình",
     "Select models (empty for allow all)": "Chọn model (để trống nếu muốn cho",
     "Select models and apply to channel models list.": "Chọn mô hình và áp dụng cho danh sách mô hình kênh.",
     "Select models or add custom ones": "Chọn các mô hình hoặc thêm các mô hình tùy chỉnh",

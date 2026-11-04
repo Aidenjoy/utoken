@@ -74,13 +74,20 @@ export function ChannelBillingDetailsTable({
 
   useEffect(() => {
     setPagination((current) => ({ ...current, pageIndex: 0 }))
-  }, [filter.channelSel, filter.modelName, filter.start, filter.end])
+  }, [
+    filter.channelSel,
+    filter.modelSel,
+    filter.modelType,
+    filter.start,
+    filter.end,
+  ])
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'channel-billing-details',
       filter.channelSel,
-      filter.modelName,
+      filter.modelSel,
+      filter.modelType,
       filter.start,
       filter.end,
       pagination.pageIndex + 1,

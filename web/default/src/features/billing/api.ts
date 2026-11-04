@@ -150,7 +150,9 @@ function toChannelQueryParams(
   const out: Record<string, string> = {}
   const channelIds = billingScopeToParam(params.channelSel)
   if (channelIds) out.channel_ids = channelIds
-  if (params.modelName) out.model_name = params.modelName
+  const modelNames = billingScopeToParam(params.modelSel)
+  if (modelNames) out.model_names = modelNames
+  if (params.modelType) out.model_type = params.modelType
   if (params.start) out.start_timestamp = String(params.start)
   if (params.end) out.end_timestamp = String(params.end)
   if (params.p) out.p = String(params.p)
@@ -168,6 +170,20 @@ export async function fetchChannelBillingRecords(
 ): Promise<BillingApiResponse<ChannelBillingData>> {
   const res = await api.get('/api/billing/channel/records', {
     params: toChannelQueryParams(params),
+    disableDuplicate: true,
+  })
+  return res.data
+}
+
+/**
+ * Admin-only: distinct model names that appear in logs, backing the model
+ * multi-select of the channel billing filter (includes retired models so
+ * historical reconciliation can still pick them).
+ */
+export async function fetchChannelBillingModels(): Promise<
+  BillingApiResponse<{ models: string[] }>
+> {
+  const res = await api.get('/api/billing/channel/models', {
     disableDuplicate: true,
   })
   return res.data
