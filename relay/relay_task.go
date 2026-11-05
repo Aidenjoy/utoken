@@ -663,6 +663,8 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		UserId:      task.UserId,
 		Group:       task.Group,
 		ChannelId:   task.ChannelId,
+		ChannelName: task.ChannelName,
+		ChannelInfo: task.ChannelInfo,
 		Quota:       task.Quota,
 		Action:      task.Action,
 		Status:      string(task.Status),

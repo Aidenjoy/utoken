@@ -33,6 +33,7 @@ import { formatTimestampToDate, formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { formatDuration } from '../../lib/format'
+import { useUsageLogsContext } from '../usage-logs-provider'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
 
 /**
@@ -161,7 +162,8 @@ export function createDurationColumn<T>(config: {
 }
 
 /**
- * Create a channel column (admin only) - #id badge matching common logs
+ * Create a channel column (admin only) - two-line layout matching common logs:
+ * #id badge on top, channel name + (channel info) below
  */
 export function createChannelColumn<T>(config: {
   accessorKey?: string
@@ -174,20 +176,40 @@ export function createChannelColumn<T>(config: {
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title={headerLabel} />
     ),
-    cell: ({ row }) => {
+    cell: function ChannelCell({ row }) {
+      const { sensitiveVisible } = useUsageLogsContext()
       const channelId = row.getValue(accessorKey) as number
       if (!channelId) {
         return <span className='text-muted-foreground/60 text-xs'>-</span>
       }
+      const record = row.original as Record<string, unknown>
+      const channelName =
+        typeof record.channel_name === 'string' ? record.channel_name : ''
+      const channelInfo =
+        typeof record.channel_info === 'string' ? record.channel_info : ''
+      // 渠道信息以括号后缀附在名称后，与通用日志渠道列格式一致
+      const nameDisplay = sensitiveVisible
+        ? `${channelName}${channelInfo ? ` (${channelInfo})` : ''}`
+        : '••••'
       return (
-        <StatusBadge
-          label={`#${channelId}`}
-          autoColor={String(channelId)}
-          copyText={String(channelId)}
-          size='sm'
-          showDot={false}
-          className='font-mono'
-        />
+        <div className='flex max-w-[160px] flex-col gap-0.5'>
+          <StatusBadge
+            label={`#${channelId}`}
+            autoColor={String(channelId)}
+            copyText={String(channelId)}
+            size='sm'
+            showDot={false}
+            className='font-mono'
+          />
+          {channelName && (
+            <span
+              className='text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'
+              title={sensitiveVisible ? nameDisplay : undefined}
+            >
+              {nameDisplay}
+            </span>
+          )}
+        </div>
       )
     },
     meta: { label: headerLabel },

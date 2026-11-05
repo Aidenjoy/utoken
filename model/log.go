@@ -73,6 +73,7 @@ type Log struct {
 	IsStream          bool   `json:"is_stream"`
 	ChannelId         int    `json:"channel" gorm:"index"`
 	ChannelName       string `json:"channel_name" gorm:"->"`
+	ChannelInfo       string `json:"channel_info" gorm:"->"`
 	TokenId           int    `json:"token_id" gorm:"default:0;index"`
 	Group             string `json:"group" gorm:"index"`
 	Ip                string `json:"ip" gorm:"index;default:''"`
@@ -157,6 +158,7 @@ func StripAdminOnlyLogFields(logs []*Log) {
 	for i := range logs {
 		logs[i].ChannelId = 0
 		logs[i].ChannelName = ""
+		logs[i].ChannelInfo = ""
 		logs[i].TokenId = 0
 		logs[i].UpstreamRequestId = ""
 		logs[i].UpstreamPromptTokens = 0
@@ -798,7 +800,53 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	return logs, total, err
 }
 
-// attachLogChannelNames 批量回填日志的渠道名称（channels.name 不在 logs 表内）。
+// channelMeta 渠道的展示元数据（名称 + 仅展示用渠道信息）。
+type channelMeta struct {
+	Name string
+	Info string
+}
+
+// channelMetaByID 批量读取渠道展示元数据。内存缓存开启时走 CacheGetChannel，
+// 否则一次性批量查库，避免逐条 N+1。
+func channelMetaByID(channelIds []int) (map[int]channelMeta, error) {
+	result := make(map[int]channelMeta, len(channelIds))
+	if len(channelIds) == 0 {
+		return result, nil
+	}
+	if common.MemoryCacheEnabled {
+		for _, channelId := range channelIds {
+			cacheChannel, err := CacheGetChannel(channelId)
+			if err != nil {
+				continue
+			}
+			info := ""
+			if cacheChannel.Info != nil {
+				info = *cacheChannel.Info
+			}
+			result[channelId] = channelMeta{Name: cacheChannel.Name, Info: info}
+		}
+		return result, nil
+	}
+	type channelMetaRow struct {
+		Id   int     `gorm:"column:id"`
+		Name string  `gorm:"column:name"`
+		Info *string `gorm:"column:info"`
+	}
+	var rows []channelMetaRow
+	if err := DB.Table("channels").Select("id, name, info").Where("id IN ?", channelIds).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		info := ""
+		if row.Info != nil {
+			info = *row.Info
+		}
+		result[row.Id] = channelMeta{Name: row.Name, Info: info}
+	}
+	return result, nil
+}
+
+// attachLogChannelNames 批量回填日志的渠道名称与渠道信息（channels 字段不在 logs 表内）。
 // 内存缓存开启时走 CacheGetChannel，否则一次性批量查库，避免逐条 N+1。
 func attachLogChannelNames(logs []*Log) error {
 	channelIds := types.NewSet[int]()
@@ -811,30 +859,14 @@ func attachLogChannelNames(logs []*Log) error {
 		return nil
 	}
 
-	type channelNameRow struct {
-		Id   int    `gorm:"column:id"`
-		Name string `gorm:"column:name"`
-	}
-	var channels []channelNameRow
-	if common.MemoryCacheEnabled {
-		// Cache get channel
-		for _, channelId := range channelIds.Items() {
-			if cacheChannel, err := CacheGetChannel(channelId); err == nil {
-				channels = append(channels, channelNameRow{Id: channelId, Name: cacheChannel.Name})
-			}
-		}
-	} else {
-		// Bulk query channels from DB
-		if err := DB.Table("channels").Select("id, name").Where("id IN ?", channelIds.Items()).Find(&channels).Error; err != nil {
-			return err
-		}
-	}
-	channelMap := make(map[int]string, len(channels))
-	for _, channel := range channels {
-		channelMap[channel.Id] = channel.Name
+	metaMap, err := channelMetaByID(channelIds.Items())
+	if err != nil {
+		return err
 	}
 	for i := range logs {
-		logs[i].ChannelName = channelMap[logs[i].ChannelId]
+		meta := metaMap[logs[i].ChannelId]
+		logs[i].ChannelName = meta.Name
+		logs[i].ChannelInfo = meta.Info
 	}
 	return nil
 }

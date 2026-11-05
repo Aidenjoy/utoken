@@ -312,6 +312,8 @@ export interface TaskLog {
   task_id: string
   action: string // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
   channel_id: number
+  channel_name?: string // 管理列表回填的渠道名称（展示用）
+  channel_info?: string // 渠道信息描述（展示用）
   group?: string
   quota?: number
   submit_time: number // seconds

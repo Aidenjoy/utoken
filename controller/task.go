@@ -159,6 +159,8 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 	if fillUser {
 		fillTaskUsernames(tasks)
 	}
+	// 管理列表回填渠道名称/信息供前端渠道列展示
+	model.AttachTaskChannelMeta(tasks)
 	result := make([]*dto.TaskDto, len(tasks))
 	for i, task := range tasks {
 		result[i] = relay.TaskModel2Dto(task)

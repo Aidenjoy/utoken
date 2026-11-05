@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
 
 	"gorm.io/gorm"
 )
@@ -96,6 +97,9 @@ type Task struct {
 	Progress   string                `json:"progress" gorm:"type:varchar(20);index"`
 	Properties Properties            `json:"properties" gorm:"type:json"`
 	Username   string                `json:"username,omitempty" gorm:"-"`
+	// ChannelName/ChannelInfo 为列表展示回填的渠道元数据（tasks 表只存 channel_id）。
+	ChannelName string `json:"channel_name,omitempty" gorm:"-"`
+	ChannelInfo string `json:"channel_info,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
@@ -114,6 +118,28 @@ type Task struct {
 	// 结算写日志时随 other.admin_info 落库，供超管核对「原 tokens → 费率 → 计费 tokens」；
 	// 不进 tasks 表，也不进任务 JSON 响应。
 	TokenRateScale *TaskTokenRateScale `json:"-" gorm:"-"`
+}
+
+// AttachTaskChannelMeta 批量回填任务的渠道名称与渠道信息（展示用，tasks 表只存 channel_id）。
+func AttachTaskChannelMeta(tasks []*Task) {
+	channelIds := types.NewSet[int]()
+	for _, task := range tasks {
+		if task.ChannelId != 0 {
+			channelIds.Add(task.ChannelId)
+		}
+	}
+	if channelIds.Len() == 0 {
+		return
+	}
+	metaMap, err := channelMetaByID(channelIds.Items())
+	if err != nil {
+		return
+	}
+	for _, task := range tasks {
+		meta := metaMap[task.ChannelId]
+		task.ChannelName = meta.Name
+		task.ChannelInfo = meta.Info
+	}
 }
 
 // TaskTokenRateScale token 费率缩放前的原始 usage 与所用费率。

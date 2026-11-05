@@ -424,11 +424,18 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
           const channelChain = hasRetryChain
             ? useChannel.join(' → ')
             : undefined
+          // 渠道信息（Channel.Info 展示描述）以括号后缀附在渠道名称后，便于区分同名渠道
+          const channelInfoSuffix = log.channel_info
+            ? ` (${log.channel_info})`
+            : ''
           const channelDisplay = log.channel_name
-            ? `${log.channel_name} #${log.channel}`
+            ? `${log.channel_name}${channelInfoSuffix} #${log.channel}`
             : `#${log.channel}`
           const channelIdDisplay = `#${log.channel}`
           const channelName = sensitiveVisible ? log.channel_name : '••••'
+          const channelNameDisplay = sensitiveVisible
+            ? `${channelName}${channelInfoSuffix}`
+            : channelName
           const multiKeyIndex = other?.admin_info?.multi_key_index
           const showMultiKeyIndex =
             other?.admin_info?.is_multi_key === true &&
@@ -518,7 +525,7 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
                   </div>
                   {log.channel_name && (
                     <span className='text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'>
-                      {channelName}
+                      {channelNameDisplay}
                     </span>
                   )}
                 </TooltipTrigger>
