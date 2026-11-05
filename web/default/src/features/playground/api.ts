@@ -190,7 +190,21 @@ export async function cancelVideoTask(
     } as Record<string, unknown>)
     return (res.data?.data ?? { status: '' }) as { status: string }
   } catch (error) {
-    throw new Error(apiErrorMessage(error))
+    // Preserve the original axios error (with response.status) so callers can
+    // distinguish 404/400 "task not found" from transient network errors.
+    const axiosErr = error as {
+      response?: { status?: number; data?: { error?: { message?: string } } }
+    }
+    const msg =
+      axiosErr?.response?.data?.error?.message ||
+      (error instanceof Error ? error.message : String(error))
+    const wrapped = new Error(msg) as Error & {
+      response?: { status?: number }
+    }
+    if (axiosErr?.response?.status) {
+      wrapped.response = { status: axiosErr.response.status }
+    }
+    throw wrapped
   }
 }
 

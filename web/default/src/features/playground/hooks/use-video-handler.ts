@@ -13,7 +13,11 @@ import {
   VIDEO_MAX_DURATION,
   VIDEO_POLL_INTERVAL_MS,
 } from '../constants'
-import { loadVideoTasks, saveVideoTasks } from '../lib/storage/video-storage'
+import {
+  loadVideoTasks,
+  migrateLegacyVideoTasks,
+  saveVideoTasks,
+} from '../lib/storage/video-storage'
 import type {
   ArkContentItem,
   MediaItem,
@@ -176,12 +180,17 @@ export function useVideoHandler(config: VideoConfig) {
   )
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeTaskIdRef = useRef<string | null>(null)
+  const pollErrorCountRef = useRef(0)
   // A shared ID that groups all files uploaded for the same video task.
   // Used as the TOS folder name so all resources for one video are in one place.
   const batchIdRef = useRef<string>(generateUUID())
 
   // Load tasks from storage on mount and resume polling for active tasks
   useEffect(() => {
+    // Clean up the legacy non-user-scoped key so stale tasks from a previous
+    // account do not leak into the current session.
+    migrateLegacyVideoTasks()
+
     const tasks = loadVideoTasks()
     setVideoTasks(tasks)
     // Resume polling for any task that was still in progress
@@ -191,6 +200,7 @@ export function useVideoHandler(config: VideoConfig) {
     if (activeTask) {
       setIsGenerating(true)
       activeTaskIdRef.current = activeTask.taskId
+      pollErrorCountRef.current = 0
       pollTimerRef.current = setTimeout(() => {
         pollTask(activeTask.taskId)
       }, VIDEO_POLL_INTERVAL_MS)
@@ -214,6 +224,11 @@ export function useVideoHandler(config: VideoConfig) {
     [persistTasks]
   )
 
+  // Maximum consecutive poll errors before giving up. Prevents infinite retry
+  // loops when the task belongs to a different user (400 task_not_exist) or the
+  // session is invalid (401/403).
+  const MAX_POLL_ERRORS = 5
+
   const pollTask = useCallback(
     async (taskId: string) => {
       try {
@@ -224,6 +239,9 @@ export function useVideoHandler(config: VideoConfig) {
           console.log('[VideoTask] task was cancelled during poll, stopping')
           return
         }
+
+        // Reset error counter on successful response
+        pollErrorCountRef.current = 0
 
         // eslint-disable-next-line no-console
         console.log('[VideoTask] poll response for', taskId, ':', resp)
@@ -277,13 +295,39 @@ export function useVideoHandler(config: VideoConfig) {
           pollTask(taskId)
         }, VIDEO_POLL_INTERVAL_MS)
       } catch (error) {
-        // Network error - keep polling but log it
         // eslint-disable-next-line no-console
         console.warn('[VideoTask] poll error for', taskId, ':', error)
+
         // Don't schedule next poll if the task was cancelled
         if (activeTaskIdRef.current !== taskId) {
           return
         }
+
+        pollErrorCountRef.current += 1
+
+        // After too many consecutive errors (e.g. task belongs to another user,
+        // session invalid), stop polling and mark the task as failed locally.
+        if (pollErrorCountRef.current >= MAX_POLL_ERRORS) {
+          // eslint-disable-next-line no-console
+          console.error(
+            '[VideoTask] giving up after',
+            pollErrorCountRef.current,
+            'consecutive errors for task',
+            taskId
+          )
+          updateTask(taskId, (t) => ({
+            ...t,
+            status: 'failed',
+            progress: 100,
+            error: t.error || 'Poll failed repeatedly, task may belong to another session',
+            completedAt: Date.now(),
+          }))
+          setIsGenerating(false)
+          activeTaskIdRef.current = null
+          pollErrorCountRef.current = 0
+          return
+        }
+
         pollTimerRef.current = setTimeout(() => {
           pollTask(taskId)
         }, VIDEO_POLL_INTERVAL_MS)
@@ -396,6 +440,7 @@ export function useVideoHandler(config: VideoConfig) {
         })
 
         activeTaskIdRef.current = taskId
+        pollErrorCountRef.current = 0
 
         // Regenerate batch ID for the next video task
         batchIdRef.current = generateUUID()
@@ -432,6 +477,7 @@ export function useVideoHandler(config: VideoConfig) {
       pollTimerRef.current = null
     }
     setIsGenerating(false)
+    pollErrorCountRef.current = 0
     const taskId = activeTaskIdRef.current
     activeTaskIdRef.current = null
     if (!taskId) {
@@ -440,10 +486,19 @@ export function useVideoHandler(config: VideoConfig) {
 
     let status = ''
     let failure = ''
+    let isNotFound = false
     try {
       status = (await cancelVideoTask(taskId)).status
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error)
+      // Detect "task not found" errors — the task belongs to another user or
+      // has been purged. Do NOT restart polling for an unreachable task.
+      const axiosErr = error as { response?: { status?: number } }
+      isNotFound =
+        axiosErr?.response?.status === 404 ||
+        axiosErr?.response?.status === 400 ||
+        failure.includes('task_not_exist') ||
+        failure.includes('task not found')
     }
 
     if (status === 'CANCELLED') {
@@ -451,6 +506,19 @@ export function useVideoHandler(config: VideoConfig) {
         ...task,
         status: 'cancelled',
         progress: 100,
+        completedAt: Date.now(),
+      }))
+      return
+    }
+
+    // Task is unreachable (belongs to another user or was deleted): mark it
+    // failed locally and do NOT restart polling.
+    if (isNotFound) {
+      updateTask(taskId, (task) => ({
+        ...task,
+        status: 'failed',
+        progress: 100,
+        error: failure || 'Task not found',
         completedAt: Date.now(),
       }))
       return

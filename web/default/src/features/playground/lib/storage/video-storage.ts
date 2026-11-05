@@ -3,6 +3,23 @@ import type { VideoConfig, VideoTask } from '../../types'
 
 const MAX_STORED_VIDEO_TASKS = 50
 
+/**
+ * Return the current user's ID from localStorage (set by the auth layer).
+ * Used to scope video-task storage per user so switching accounts does not
+ * leave stale in-progress tasks that the new user cannot poll or cancel.
+ */
+function currentUserId(): string {
+  try {
+    return window.localStorage.getItem('uid') || '_anon'
+  } catch {
+    return '_anon'
+  }
+}
+
+function videoTasksKey(): string {
+  return `${VIDEO_STORAGE_KEYS.VIDEO_TASKS}:${currentUserId()}`
+}
+
 export function saveVideoConfig(config: VideoConfig): void {
   try {
     // Only persist media items that have been uploaded (have remoteUrl)
@@ -36,10 +53,7 @@ export function getInitialVideoConfig(): VideoConfig {
 export function saveVideoTasks(tasks: VideoTask[]): void {
   try {
     const trimmed = tasks.slice(0, MAX_STORED_VIDEO_TASKS)
-    localStorage.setItem(
-      VIDEO_STORAGE_KEYS.VIDEO_TASKS,
-      JSON.stringify(trimmed)
-    )
+    localStorage.setItem(videoTasksKey(), JSON.stringify(trimmed))
   } catch {
     // ignore storage errors
   }
@@ -47,7 +61,7 @@ export function saveVideoTasks(tasks: VideoTask[]): void {
 
 export function loadVideoTasks(): VideoTask[] {
   try {
-    const stored = localStorage.getItem(VIDEO_STORAGE_KEYS.VIDEO_TASKS)
+    const stored = localStorage.getItem(videoTasksKey())
     if (stored) {
       const parsed = JSON.parse(stored) as VideoTask[]
       if (Array.isArray(parsed)) {
@@ -60,4 +74,16 @@ export function loadVideoTasks(): VideoTask[] {
     // ignore parse errors
   }
   return []
+}
+
+/**
+ * Remove video tasks stored under the legacy (non-user-scoped) key.
+ * Called once on mount to clean up stale data from before the fix.
+ */
+export function migrateLegacyVideoTasks(): void {
+  try {
+    localStorage.removeItem(VIDEO_STORAGE_KEYS.VIDEO_TASKS)
+  } catch {
+    // ignore
+  }
 }
