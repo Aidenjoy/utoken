@@ -46,17 +46,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import {
-  ADMIN_PERMISSION_ACTIONS,
-  ADMIN_PERMISSION_RESOURCES,
-  hasPermission,
-} from '@/lib/admin-permissions'
-import { useAuthStore } from '@/stores/auth-store'
 
 import {
   handleDeleteAllDisabled,
@@ -83,12 +72,6 @@ export function ChannelsPrimaryButtons() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showConsistencyDialog, setShowConsistencyDialog] = useState(false)
   const [isRepairingConsistency, setIsRepairingConsistency] = useState(false)
-  const currentUser = useAuthStore((s) => s.auth.user)
-  const canEditSensitive = hasPermission(
-    currentUser,
-    ADMIN_PERMISSION_RESOURCES.CHANNEL,
-    ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
-  )
 
   const handleTagModeToggle = (checked: boolean) => {
     localStorage.setItem('enable-tag-mode', String(checked))
@@ -148,28 +131,17 @@ export function ChannelsPrimaryButtons() {
         </div>
 
         {/* Create Channel */}
-        <Tooltip>
-          <TooltipTrigger render={<span className='inline-flex' />}>
-            <Button
-              onClick={() => {
-                if (!canEditSensitive) return
-                setCurrentRow(null)
-                setOpen('create-channel')
-              }}
-              size='sm'
-              disabled={!canEditSensitive}
-            >
-              <Plus className='h-4 w-4' />
-              <span className='max-sm:hidden'>{t('Create Channel')}</span>
-              <span className='sm:hidden'>{t('Create')}</span>
-            </Button>
-          </TooltipTrigger>
-          {!canEditSensitive && (
-            <TooltipContent>
-              {t('No permission to perform this action')}
-            </TooltipContent>
-          )}
-        </Tooltip>
+        <Button
+          onClick={() => {
+            setCurrentRow(null)
+            setOpen('create-channel')
+          }}
+          size='sm'
+        >
+          <Plus className='h-4 w-4' />
+          <span className='max-sm:hidden'>{t('Create Channel')}</span>
+          <span className='sm:hidden'>{t('Create')}</span>
+        </Button>
 
         {/* More Actions */}
         <DropdownMenu>
@@ -270,10 +242,8 @@ export function ChannelsPrimaryButtons() {
             <DropdownMenuItem
               onSelect={(e) => {
                 e.preventDefault()
-                if (!canEditSensitive) return
                 setShowDeleteDialog(true)
               }}
-              disabled={!canEditSensitive}
               className='text-destructive focus:text-destructive'
             >
               {t('Delete All Disabled')}
@@ -294,7 +264,6 @@ export function ChannelsPrimaryButtons() {
         )}
         destructive
         handleConfirm={() => {
-          if (!canEditSensitive) return
           handleDeleteAllDisabled(queryClient, (_count) => {
             // eslint-disable-next-line no-console
             console.log(`Deleted ${_count} channels`)

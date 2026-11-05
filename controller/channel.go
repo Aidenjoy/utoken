@@ -18,7 +18,6 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -399,11 +398,6 @@ func GetChannel(c *gin.Context) {
 		return
 	}
 	if channel != nil {
-		// 密钥仅对具备敏感写权限的管理员回显，供编辑表单区分多密钥；
-		// 其余角色维持不下发密钥的旧行为。
-		if !authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
-			channel.Key = ""
-		}
 		clearChannelInfo(channel)
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -827,11 +821,6 @@ func EditTagChannels(c *gin.Context) {
 		})
 		return
 	}
-	if (channelTag.ParamOverride != nil || channelTag.HeaderOverride != nil) &&
-		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
-		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
-		return
-	}
 	if channelTag.ParamOverride != nil {
 		trimmed := strings.TrimSpace(*channelTag.ParamOverride)
 		if trimmed != "" && !json.Valid([]byte(trimmed)) {
@@ -959,12 +948,6 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
-
-	if channelHasSensitiveChanges(&channel, originChannel, requestData) &&
-		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
-		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
-		return
-	}
 
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
@@ -1462,12 +1445,6 @@ func ManageMultiKeys(c *gin.Context) {
 		})
 		return
 	}
-	if multiKeyActionRequiresSensitiveWrite(request.Action) &&
-		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
-		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
-		return
-	}
-
 	// get_key_status 为只读查询，不记录审计；其余为修改操作，记录审计并跳过中间件兜底。
 	if request.Action == "get_key_status" {
 		markAuditLogged(c)
@@ -1909,10 +1886,6 @@ func ManageMultiKeys(c *gin.Context) {
 		})
 		return
 	}
-}
-
-func multiKeyActionRequiresSensitiveWrite(action string) bool {
-	return action == "delete_key" || action == "delete_disabled_keys"
 }
 
 // OllamaPullModel 拉取 Ollama 模型

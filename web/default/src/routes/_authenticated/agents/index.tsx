@@ -19,15 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { Agents } from '@/features/agents'
+import {
+  ADMIN_MENU_ACTIONS,
+  hasAdminMenuPermission,
+} from '@/lib/admin-permissions'
 import { isSidebarModuleEnabled } from '@/lib/nav-modules'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/agents/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    if (!hasAdminMenuPermission(auth.user, ADMIN_MENU_ACTIONS.AGENTS)) {
       throw redirect({
         to: '/403',
       })

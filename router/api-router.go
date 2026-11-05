@@ -25,7 +25,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
-		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
+		apiRouter.GET("/status/test", middleware.AdminAuth(), middleware.RequirePermission(authz.MenuSystemInfo), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)
@@ -125,41 +125,57 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
 			}
 
-			// Admin-only routes (role >= RoleAdminUser)
+			// 用户菜单与费率管理、用户账单共用的接口按任一菜单授权放行；其余接口仅归属用户菜单。
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
 			{
-				adminRoute.PUT("/", controller.UpdateUser)
-				adminRoute.PUT("/:id/token_rate", controller.UpdateUserTokenRate)
+				adminRoute.PUT("/:id/token_rate",
+					middleware.RequireAnyPermission(authz.MenuUsers, authz.MenuTokenRates),
+					controller.UpdateUserTokenRate,
+				)
+				adminRoute.GET("/topup",
+					middleware.RequireAnyPermission(authz.MenuUsers, authz.MenuUserBilling),
+					controller.GetAllTopUps,
+				)
+				adminRoute.POST("/topup/complete",
+					middleware.RequireAnyPermission(authz.MenuUsers, authz.MenuUserBilling),
+					controller.AdminCompleteTopUp,
+				)
+
+				userAdminRoute := adminRoute.Group("/", middleware.RequirePermission(authz.MenuUsers))
+				userAdminRoute.PUT("/", controller.UpdateUser)
 				// 按模型折扣：影响实际扣费，仅限管理员（运营 role=5 不可配）。
-				adminRoute.GET("/:id/model_discounts", controller.GetUserModelDiscounts)
-				adminRoute.PUT("/:id/model_discounts", controller.UpdateUserModelDiscounts)
-				adminRoute.GET("/topup", controller.GetAllTopUps)
-				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
-				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
-				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
-				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
-				adminRoute.PUT("/:id/email", controller.AdminBindUserEmail)
+				userAdminRoute.GET("/:id/model_discounts", controller.GetUserModelDiscounts)
+				userAdminRoute.PUT("/:id/model_discounts", controller.UpdateUserModelDiscounts)
+				userAdminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
+				userAdminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
+				userAdminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
+				userAdminRoute.PUT("/:id/email", controller.AdminBindUserEmail)
 				// 绑定/解绑代理商：等价于用该代理商邀请码注册，受授权模型白名单约束。
-				adminRoute.PUT("/:id/agent", controller.AdminBindUserAgent)
-				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
+				userAdminRoute.PUT("/:id/agent", controller.AdminBindUserAgent)
+				userAdminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
 
 				// Admin 2FA routes
-				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
-				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
+				userAdminRoute.GET("/2fa/stats", controller.Admin2FAStats)
+				userAdminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
 
-			// User-manager routes (role >= RoleUserManager)：运营只读用户 + 添加/启用/禁用/删除，
-			// 调额、改角色/分组、令牌倍率、重置 Passkey/2FA/绑定等仍仅限 AdminAuth。
+			// 运营仍由 UserManagerAuth 约束；管理员的只读选择器同时服务用户、费率、账单与代理商页面。
 			userManagerRoute := userRoute.Group("/")
 			userManagerRoute.Use(middleware.UserManagerAuth())
 			{
-				userManagerRoute.GET("/", controller.GetAllUsers)
-				userManagerRoute.GET("/search", controller.SearchUsers)
-				userManagerRoute.GET("/:id", controller.GetUser)
-				userManagerRoute.POST("/", controller.CreateUser)
-				userManagerRoute.POST("/manage", controller.ManageUser)
-				userManagerRoute.DELETE("/:id", controller.DeleteUser)
+				userReadPermission := middleware.RequireAnyPermission(
+					authz.MenuUsers,
+					authz.MenuTokenRates,
+					authz.MenuUserBilling,
+					authz.MenuAgents,
+				)
+				userManagerRoute.GET("/", userReadPermission, controller.GetAllUsers)
+				userManagerRoute.GET("/search", userReadPermission, controller.SearchUsers)
+				userManagerRoute.GET("/:id", userReadPermission, controller.GetUser)
+				userManagerRoute.POST("/", middleware.RequirePermission(authz.MenuUsers), controller.CreateUser)
+				userManagerRoute.POST("/manage", middleware.RequirePermission(authz.MenuUsers), controller.ManageUser)
+				userManagerRoute.DELETE("/:id", middleware.RequirePermission(authz.MenuUsers), controller.DeleteUser)
 			}
 		}
 
@@ -167,7 +183,7 @@ func SetApiRouter(router *gin.Engine) {
 		// 代理商自建邀请码并在授权下限之上为自己的成员单独设置按模型折扣。
 		// /agent/admin/* 与 /agent/profile、/agent/codes 为不同静态段，路由树无冲突。
 		agentAdminRoute := apiRouter.Group("/agent/admin")
-		agentAdminRoute.Use(middleware.AdminAuth())
+		agentAdminRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuAgents))
 		{
 			agentAdminRoute.GET("/agents", controller.AdminListAgents)
 			agentAdminRoute.POST("/agents", controller.AdminCreateAgent)
@@ -237,7 +253,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWaffoPancakePay)
 		}
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
-		subscriptionAdminRoute.Use(middleware.AdminAuth())
+		subscriptionAdminRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuSubscriptions))
 		{
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
@@ -261,7 +277,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
 		// 素材同步管理（管理员）：跨用户将源素材同步到指定/全部渠道
 		assetAdminRoute := apiRouter.Group("/asset")
-		assetAdminRoute.Use(middleware.AdminAuth())
+		assetAdminRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuAssetSync))
 		{
 			assetAdminRoute.POST("/sync", controller.AdminSyncSourceAsset)
 			assetAdminRoute.GET("/sync/status", controller.GetSourceAssetSyncStatus)
@@ -275,31 +291,40 @@ func SetApiRouter(router *gin.Engine) {
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{
-			optionRoute.POST("/payment_compliance", controller.ConfirmPaymentCompliance)
-			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
-			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
-			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)
 			optionRoute.POST("/migrate_console_setting", controller.MigrateConsoleSetting) // 用于迁移检测的旧键，下个版本会删除
-			optionRoute.GET("/waffo-pancake/catalog", controller.ListWaffoPancakeCatalog)
-			optionRoute.POST("/waffo-pancake/pair", controller.CreateWaffoPancakePair)
-			optionRoute.POST("/waffo-pancake/save", controller.SaveWaffoPancake)
-			optionRoute.POST("/waffo-pancake/subscription-product", controller.CreateWaffoPancakeSubscriptionProduct)
-			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
 		}
 
-		// 模型定价读写：超管可读全部配置、可改任意键；被授予 billing/model_pricing 权限的
-		// 管理员同样走这两个接口，但 controller 会按定价键白名单收窄读到的配置与可改的键，
-		// 使其只能打开「系统管理-计费与支付-模型定价」并编辑价格、增删模型，而碰不到其它系统配置。
-		pricingOptionRoute := apiRouter.Group("/option")
-		pricingOptionRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.BillingModelPricing))
+		billingOptionRoute := apiRouter.Group("/option")
+		billingOptionRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsBilling))
 		{
-			pricingOptionRoute.GET("/", controller.GetOptions)
-			pricingOptionRoute.PUT("/", controller.UpdateOption)
+			billingOptionRoute.POST("/payment_compliance", controller.ConfirmPaymentCompliance)
+			billingOptionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)
+			billingOptionRoute.GET("/waffo-pancake/catalog", controller.ListWaffoPancakeCatalog)
+			billingOptionRoute.POST("/waffo-pancake/pair", controller.CreateWaffoPancakePair)
+			billingOptionRoute.POST("/waffo-pancake/save", controller.SaveWaffoPancake)
+			billingOptionRoute.POST("/waffo-pancake/subscription-product", controller.CreateWaffoPancakeSubscriptionProduct)
+			billingOptionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
 		}
 
-		// Custom OAuth provider management (root only)
+		modelsOptionRoute := apiRouter.Group("/option")
+		modelsOptionRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsModels))
+		{
+			modelsOptionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
+			modelsOptionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
+		}
+
+		// 通用配置读写要求至少一个系统设置子菜单授权，controller 再按键归属过滤，
+		// 确保未授权子菜单的配置既读不到也改不了；未归属键始终仅超管可读写。
+		settingsOptionRoute := apiRouter.Group("/option")
+		settingsOptionRoute.Use(middleware.AdminAuth(), middleware.RequireAnyPermission(authz.AllSettingsPermissions()...))
+		{
+			settingsOptionRoute.GET("/", controller.GetOptions)
+			settingsOptionRoute.PUT("/", controller.UpdateOption)
+		}
+
+		// 自定义 OAuth 提供商属于「系统设置-认证」子菜单。
 		customOAuthRoute := apiRouter.Group("/custom-oauth-provider")
-		customOAuthRoute.Use(middleware.RootAuth())
+		customOAuthRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsAuth))
 		{
 			customOAuthRoute.POST("/discovery", controller.FetchCustomOAuthDiscovery)
 			customOAuthRoute.GET("/", controller.GetCustomOAuthProviders)
@@ -309,7 +334,7 @@ func SetApiRouter(router *gin.Engine) {
 			customOAuthRoute.DELETE("/:id", controller.DeleteCustomOAuthProvider)
 		}
 		performanceRoute := apiRouter.Group("/performance")
-		performanceRoute.Use(middleware.RootAuth())
+		performanceRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsOperations))
 		{
 			performanceRoute.GET("/stats", controller.GetPerformanceStats)
 			performanceRoute.DELETE("/disk_cache", controller.ClearDiskCache)
@@ -319,7 +344,7 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
-		ratioSyncRoute.Use(middleware.RootAuth())
+		ratioSyncRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsBilling))
 		{
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
@@ -354,7 +379,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")
-		redemptionRoute.Use(middleware.AdminAuth())
+		redemptionRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuRedemption))
 		{
 			redemptionRoute.GET("/", controller.GetAllRedemptions)
 			redemptionRoute.GET("/search", controller.SearchRedemptions)
@@ -365,14 +390,14 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
 		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
+		logRoute.GET("/", middleware.AdminAuth(), middleware.RequirePermission(authz.MenuUserBilling), controller.GetAllLogs)
 		// Legacy synchronous direct-delete route used only by the classic frontend.
 		// TODO: remove once the classic frontend is removed; the default frontend uses /system-task/log-cleanup.
 		logRoute.DELETE("/", middleware.RootAuth(), controller.DeleteHistoryLogs)
-		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
+		logRoute.GET("/stat", middleware.AdminAuth(), middleware.RequirePermission(authz.MenuUserBilling), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
-		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
-		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
+		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsModels), controller.GetChannelAffinityUsageCacheStats)
+		logRoute.GET("/search", middleware.AdminAuth(), middleware.RequirePermission(authz.MenuUserBilling), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 		// 使用日志详情的请求/返回体快照（按需拉取，不进列表 payload），可见范围在 controller 内强制。
@@ -381,23 +406,26 @@ func SetApiRouter(router *gin.Engine) {
 		billingRoute := apiRouter.Group("/billing")
 		billingRoute.Use(middleware.AdminAuth())
 		{
-			billingRoute.GET("/recharge", controller.GetBillingRecharge)
-			billingRoute.GET("/recharge/export", controller.ExportBillingRecharge)
-			billingRoute.POST("/recharge/mark", controller.MarkBillingRecharge)
-			billingRoute.GET("/consumption", controller.GetBillingConsumption)
-			billingRoute.GET("/consumption/export", controller.ExportBillingConsumption)
-			// 渠道账单中心：上游对账（真实 tokens + 可选费率卡估算成本），仅管理员。
-			billingRoute.GET("/channel/models", controller.GetChannelBillingModels)
-			billingRoute.GET("/channel/records", controller.GetChannelBilling)
-			billingRoute.GET("/channel/records/export", controller.ExportChannelBilling)
-			billingRoute.GET("/channel/details", controller.GetChannelBillingDetail)
-			billingRoute.GET("/channel/details/export", controller.ExportChannelBillingDetail)
-			billingRoute.GET("/channel/prices", controller.GetChannelUpstreamPrices)
-			billingRoute.POST("/channel/prices", controller.SaveChannelUpstreamPrices)
+			userBillingRoute := billingRoute.Group("/", middleware.RequirePermission(authz.MenuUserBilling))
+			userBillingRoute.GET("/recharge", controller.GetBillingRecharge)
+			userBillingRoute.GET("/recharge/export", controller.ExportBillingRecharge)
+			userBillingRoute.POST("/recharge/mark", controller.MarkBillingRecharge)
+			userBillingRoute.GET("/consumption", controller.GetBillingConsumption)
+			userBillingRoute.GET("/consumption/export", controller.ExportBillingConsumption)
+
+			// 渠道账单中心：上游对账（真实 tokens + 可选费率卡估算成本）。
+			channelBillingRoute := billingRoute.Group("/channel", middleware.RequirePermission(authz.MenuChannelBilling))
+			channelBillingRoute.GET("/models", controller.GetChannelBillingModels)
+			channelBillingRoute.GET("/records", controller.GetChannelBilling)
+			channelBillingRoute.GET("/records/export", controller.ExportChannelBilling)
+			channelBillingRoute.GET("/details", controller.GetChannelBillingDetail)
+			channelBillingRoute.GET("/details/export", controller.ExportChannelBillingDetail)
+			channelBillingRoute.GET("/prices", controller.GetChannelUpstreamPrices)
+			channelBillingRoute.POST("/prices", controller.SaveChannelUpstreamPrices)
 		}
 
 		systemTaskRoute := apiRouter.Group("/system-task")
-		systemTaskRoute.Use(middleware.RootAuth())
+		systemTaskRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsOperations))
 		{
 			systemTaskRoute.POST("/log-cleanup", controller.CreateLogCleanupSystemTask)
 			systemTaskRoute.GET("/list", controller.ListSystemTasks)
@@ -405,7 +433,7 @@ func SetApiRouter(router *gin.Engine) {
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
 		}
 		systemInfoRoute := apiRouter.Group("/system-info")
-		systemInfoRoute.Use(middleware.RootAuth())
+		systemInfoRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuSystemInfo))
 		{
 			systemInfoRoute.GET("/instances", controller.ListSystemInstances)
 			systemInfoRoute.DELETE("/stale-instances", controller.DeleteStaleSystemInstances)
@@ -436,13 +464,20 @@ func SetApiRouter(router *gin.Engine) {
 			logRoute.GET("/token", middleware.TokenAuthReadOnly(), controller.GetLogByKey)
 		}
 		groupRoute := apiRouter.Group("/group")
-		groupRoute.Use(middleware.AdminAuth())
+		groupRoute.Use(middleware.AdminAuth(), middleware.RequireAnyPermission(
+			authz.MenuUsers,
+			authz.MenuSubscriptions,
+			authz.SettingsBilling,
+		))
 		{
 			groupRoute.GET("/", controller.GetGroups)
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
-		prefillGroupRoute.Use(middleware.AdminAuth())
+		prefillGroupRoute.Use(middleware.AdminAuth(), middleware.RequireAnyPermission(
+			authz.MenuChannels,
+			authz.MenuModels,
+		))
 		{
 			prefillGroupRoute.GET("/", controller.GetPrefillGroups)
 			prefillGroupRoute.POST("/", controller.CreatePrefillGroup)
@@ -452,18 +487,18 @@ func SetApiRouter(router *gin.Engine) {
 
 		mjRoute := apiRouter.Group("/mj")
 		mjRoute.GET("/self", middleware.UserAuth(), controller.GetUserMidjourney)
-		mjRoute.GET("/", middleware.AdminAuth(), controller.GetAllMidjourney)
+		mjRoute.GET("/", middleware.AdminAuth(), middleware.RequirePermission(authz.MenuUserBilling), controller.GetAllMidjourney)
 
 		taskRoute := apiRouter.Group("/task")
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
-			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
+			taskRoute.GET("/", middleware.AdminAuth(), middleware.RequirePermission(authz.MenuUserBilling), controller.GetAllTask)
 			// 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
-			taskRoute.POST("/:task_id/refetch", middleware.AdminAuth(), controller.AdminRefetchTask)
+			taskRoute.POST("/:task_id/refetch", middleware.AdminAuth(), middleware.RequirePermission(authz.MenuUserBilling), controller.AdminRefetchTask)
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")
-		vendorRoute.Use(middleware.AdminAuth())
+		vendorRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuModels))
 		{
 			vendorRoute.GET("/", controller.GetAllVendors)
 			vendorRoute.GET("/search", controller.SearchVendors)
@@ -474,7 +509,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		modelsRoute := apiRouter.Group("/models")
-		modelsRoute.Use(middleware.AdminAuth())
+		modelsRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuModels))
 		{
 			modelsRoute.GET("/sync_upstream/preview", controller.SyncUpstreamPreview)
 			modelsRoute.POST("/sync_upstream", controller.SyncUpstreamModels)
@@ -487,30 +522,33 @@ func SetApiRouter(router *gin.Engine) {
 			modelsRoute.DELETE("/:id", controller.DeleteModelMeta)
 		}
 
-		// Deployments (model deployment management)
+		// 部署设置同时供模型菜单与「系统设置-模型与路由」使用，其余部署接口归属模型菜单。
 		deploymentsRoute := apiRouter.Group("/deployments")
 		deploymentsRoute.Use(middleware.AdminAuth())
 		{
-			deploymentsRoute.GET("/settings", controller.GetModelDeploymentSettings)
-			deploymentsRoute.POST("/settings/test-connection", controller.TestIoNetConnection)
-			deploymentsRoute.GET("/", controller.GetAllDeployments)
-			deploymentsRoute.GET("/search", controller.SearchDeployments)
-			deploymentsRoute.POST("/test-connection", controller.TestIoNetConnection)
-			deploymentsRoute.GET("/hardware-types", controller.GetHardwareTypes)
-			deploymentsRoute.GET("/locations", controller.GetLocations)
-			deploymentsRoute.GET("/available-replicas", controller.GetAvailableReplicas)
-			deploymentsRoute.POST("/price-estimation", controller.GetPriceEstimation)
-			deploymentsRoute.GET("/check-name", controller.CheckClusterNameAvailability)
-			deploymentsRoute.POST("/", controller.CreateDeployment)
+			deploymentSettingsPermission := middleware.RequireAnyPermission(authz.MenuModels, authz.SettingsModels)
+			deploymentsRoute.GET("/settings", deploymentSettingsPermission, controller.GetModelDeploymentSettings)
+			deploymentsRoute.POST("/settings/test-connection", deploymentSettingsPermission, controller.TestIoNetConnection)
 
-			deploymentsRoute.GET("/:id", controller.GetDeployment)
-			deploymentsRoute.GET("/:id/logs", controller.GetDeploymentLogs)
-			deploymentsRoute.GET("/:id/containers", controller.ListDeploymentContainers)
-			deploymentsRoute.GET("/:id/containers/:container_id", controller.GetContainerDetails)
-			deploymentsRoute.PUT("/:id", controller.UpdateDeployment)
-			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
-			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
-			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+			modelDeploymentsRoute := deploymentsRoute.Group("/", middleware.RequirePermission(authz.MenuModels))
+			modelDeploymentsRoute.GET("/", controller.GetAllDeployments)
+			modelDeploymentsRoute.GET("/search", controller.SearchDeployments)
+			modelDeploymentsRoute.POST("/test-connection", controller.TestIoNetConnection)
+			modelDeploymentsRoute.GET("/hardware-types", controller.GetHardwareTypes)
+			modelDeploymentsRoute.GET("/locations", controller.GetLocations)
+			modelDeploymentsRoute.GET("/available-replicas", controller.GetAvailableReplicas)
+			modelDeploymentsRoute.POST("/price-estimation", controller.GetPriceEstimation)
+			modelDeploymentsRoute.GET("/check-name", controller.CheckClusterNameAvailability)
+			modelDeploymentsRoute.POST("/", controller.CreateDeployment)
+
+			modelDeploymentsRoute.GET("/:id", controller.GetDeployment)
+			modelDeploymentsRoute.GET("/:id/logs", controller.GetDeploymentLogs)
+			modelDeploymentsRoute.GET("/:id/containers", controller.ListDeploymentContainers)
+			modelDeploymentsRoute.GET("/:id/containers/:container_id", controller.GetContainerDetails)
+			modelDeploymentsRoute.PUT("/:id", controller.UpdateDeployment)
+			modelDeploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
+			modelDeploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
+			modelDeploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
 		}
 	}
 }

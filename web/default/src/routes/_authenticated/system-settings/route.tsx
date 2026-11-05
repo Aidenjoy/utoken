@@ -20,41 +20,55 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { SystemSettings } from '@/features/system-settings'
 import {
-  ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
+  SYSTEM_SETTINGS_SECTIONS,
+  getFirstGrantedSettingsSection,
   hasPermission,
 } from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-// 被授予「模型定价」权限的管理员（非超管）只能进入这一个页面，其余系统设置一律重定向到此。
-const MODEL_PRICING_PATH = '/system-settings/billing/model-pricing'
+const SETTINGS_INDEX_PATH = {
+  site: '/system-settings/site',
+  auth: '/system-settings/auth',
+  billing: '/system-settings/billing',
+  models: '/system-settings/models',
+  security: '/system-settings/security',
+  content: '/system-settings/content',
+  operations: '/system-settings/operations',
+} as const
 
 export const Route = createFileRoute('/_authenticated/system-settings')({
   beforeLoad: ({ location }) => {
     const { auth } = useAuthStore.getState()
     const user = auth.user
 
-    if (user?.role === ROLE.SUPER_ADMIN) {
+    if (!user || user.role < ROLE.ADMIN) {
+      throw redirect({ to: '/403' })
+    }
+    if (user.role === ROLE.SUPER_ADMIN) {
       return
     }
 
-    if (
-      !hasPermission(
-        user,
-        ADMIN_PERMISSION_RESOURCES.BILLING,
-        ADMIN_PERMISSION_ACTIONS.MODEL_PRICING
-      )
-    ) {
-      throw redirect({
-        to: '/403',
-      })
+    const firstGrantedSection = getFirstGrantedSettingsSection(user)
+    if (!firstGrantedSection) {
+      throw redirect({ to: '/403' })
     }
 
-    if (location.pathname.replace(/\/+$/, '') !== MODEL_PRICING_PATH) {
+    const requestedPath = location.pathname.split('/')[2]
+    const requestedSection = SYSTEM_SETTINGS_SECTIONS.find(
+      (section) => section.path === requestedPath
+    )
+    const canOpenRequestedSection =
+      requestedSection &&
+      hasPermission(
+        user,
+        ADMIN_PERMISSION_RESOURCES.SETTINGS,
+        requestedSection.action
+      )
+    if (!canOpenRequestedSection) {
       throw redirect({
-        to: '/system-settings/billing/$section',
-        params: { section: 'model-pricing' },
+        to: SETTINGS_INDEX_PATH[firstGrantedSection],
       })
     }
   },

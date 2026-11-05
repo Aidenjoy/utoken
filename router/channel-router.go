@@ -1,79 +1,68 @@
 package router
 
 import (
-	"net/http"
-
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/gin-gonic/gin"
 )
 
-type permissionRoute struct {
-	method     string
-	path       string
-	permission authz.Permission
-	handler    gin.HandlerFunc
-}
-
+// 渠道菜单页面级权限：拥有 menu/channels 的管理员可使用该页全部增删改查接口；
+// 渠道账单仅能共用列表与搜索接口，其它接口由 RequirePermission 在服务端强制拦截。
 func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	channelRoute := apiRouter.Group("/channel")
 	channelRoute.Use(middleware.AdminAuth())
+	{
+		// 渠道账单需要渠道筛选器，但不能因此获得渠道菜单的其它管理能力。
+		channelReadPermission := middleware.RequireAnyPermission(authz.MenuChannels, authz.MenuChannelBilling)
+		channelRoute.GET("/", channelReadPermission, controller.GetAllChannels)
+		channelRoute.GET("/search", channelReadPermission, controller.SearchChannels)
 
-	channelRoute.POST("/:id/key",
-		middleware.RootAuth(),
-		middleware.CriticalRateLimit(),
-		middleware.DisableCache(),
-		middleware.SecureVerificationRequired(),
-		controller.GetChannelKey,
-	)
-
-	for _, route := range channelPermissionRoutes {
-		channelRoute.Handle(route.method, route.path,
-			middleware.RequirePermission(route.permission),
-			route.handler,
+		channelManageRoute := channelRoute.Group("/", middleware.RequirePermission(authz.MenuChannels))
+		// 渠道菜单授权覆盖整页能力；查看完整密钥仍须通过安全验证并保留审计。
+		channelManageRoute.POST("/:id/key",
+			middleware.CriticalRateLimit(),
+			middleware.DisableCache(),
+			middleware.SecureVerificationRequired(),
+			controller.GetChannelKey,
 		)
-	}
-}
 
-var channelPermissionRoutes = []permissionRoute{
-	{method: http.MethodGet, path: "/", permission: authz.ChannelRead, handler: controller.GetAllChannels},
-	{method: http.MethodGet, path: "/search", permission: authz.ChannelRead, handler: controller.SearchChannels},
-	{method: http.MethodGet, path: "/models", permission: authz.ChannelRead, handler: controller.ChannelListModels},
-	{method: http.MethodGet, path: "/models_enabled", permission: authz.ChannelRead, handler: controller.EnabledListModels},
-	{method: http.MethodGet, path: "/ops", permission: authz.ChannelRead, handler: controller.GetChannelOps},
-	{method: http.MethodGet, path: "/:id", permission: authz.ChannelRead, handler: controller.GetChannel},
-	{method: http.MethodGet, path: "/test", permission: authz.ChannelOperate, handler: controller.TestAllChannels},
-	{method: http.MethodGet, path: "/test/:id", permission: authz.ChannelOperate, handler: controller.TestChannel},
-	{method: http.MethodGet, path: "/update_balance", permission: authz.ChannelOperate, handler: controller.UpdateAllChannelsBalance},
-	{method: http.MethodGet, path: "/update_balance/:id", permission: authz.ChannelOperate, handler: controller.UpdateChannelBalance},
-	{method: http.MethodPost, path: "/", permission: authz.ChannelSensitiveWrite, handler: controller.AddChannel},
-	{method: http.MethodPut, path: "/", permission: authz.ChannelWrite, handler: controller.UpdateChannel},
-	{method: http.MethodPost, path: "/status/batch", permission: authz.ChannelOperate, handler: controller.BatchUpdateChannelStatus},
-	{method: http.MethodPost, path: "/:id/status", permission: authz.ChannelOperate, handler: controller.UpdateChannelStatus},
-	{method: http.MethodDelete, path: "/disabled", permission: authz.ChannelSensitiveWrite, handler: controller.DeleteDisabledChannel},
-	{method: http.MethodPost, path: "/tag/disabled", permission: authz.ChannelOperate, handler: controller.DisableTagChannels},
-	{method: http.MethodPost, path: "/tag/enabled", permission: authz.ChannelOperate, handler: controller.EnableTagChannels},
-	{method: http.MethodPut, path: "/tag", permission: authz.ChannelWrite, handler: controller.EditTagChannels},
-	{method: http.MethodDelete, path: "/:id", permission: authz.ChannelSensitiveWrite, handler: controller.DeleteChannel},
-	{method: http.MethodPost, path: "/batch", permission: authz.ChannelSensitiveWrite, handler: controller.DeleteChannelBatch},
-	{method: http.MethodPost, path: "/fix", permission: authz.ChannelOperate, handler: controller.FixChannelsAbilities},
-	{method: http.MethodGet, path: "/fetch_models/:id", permission: authz.ChannelOperate, handler: controller.FetchUpstreamModels},
-	{method: http.MethodPost, path: "/fetch_models", permission: authz.ChannelSensitiveWrite, handler: controller.FetchModels},
-	{method: http.MethodPost, path: "/:id/codex/refresh", permission: authz.ChannelSensitiveWrite, handler: controller.RefreshCodexChannelCredential},
-	{method: http.MethodGet, path: "/:id/codex/usage", permission: authz.ChannelRead, handler: controller.GetCodexChannelUsage},
-	{method: http.MethodGet, path: "/:id/codex/usage/reset-credits", permission: authz.ChannelRead, handler: controller.GetCodexChannelRateLimitResetCredits},
-	{method: http.MethodPost, path: "/:id/codex/usage/reset", permission: authz.ChannelOperate, handler: controller.ResetCodexChannelUsage},
-	{method: http.MethodPost, path: "/ollama/pull", permission: authz.ChannelSensitiveWrite, handler: controller.OllamaPullModel},
-	{method: http.MethodPost, path: "/ollama/pull/stream", permission: authz.ChannelSensitiveWrite, handler: controller.OllamaPullModelStream},
-	{method: http.MethodDelete, path: "/ollama/delete", permission: authz.ChannelSensitiveWrite, handler: controller.OllamaDeleteModel},
-	{method: http.MethodGet, path: "/ollama/version/:id", permission: authz.ChannelSensitiveWrite, handler: controller.OllamaVersion},
-	{method: http.MethodPost, path: "/batch/tag", permission: authz.ChannelWrite, handler: controller.BatchSetChannelTag},
-	{method: http.MethodGet, path: "/tag/models", permission: authz.ChannelRead, handler: controller.GetTagModels},
-	{method: http.MethodPost, path: "/copy/:id", permission: authz.ChannelSensitiveWrite, handler: controller.CopyChannel},
-	{method: http.MethodPost, path: "/multi_key/manage", permission: authz.ChannelOperate, handler: controller.ManageMultiKeys},
-	{method: http.MethodPost, path: "/upstream_updates/apply", permission: authz.ChannelWrite, handler: controller.ApplyChannelUpstreamModelUpdates},
-	{method: http.MethodPost, path: "/upstream_updates/apply_all", permission: authz.ChannelWrite, handler: controller.ApplyAllChannelUpstreamModelUpdates},
-	{method: http.MethodPost, path: "/upstream_updates/detect", permission: authz.ChannelOperate, handler: controller.DetectChannelUpstreamModelUpdates},
-	{method: http.MethodPost, path: "/upstream_updates/detect_all", permission: authz.ChannelOperate, handler: controller.DetectAllChannelUpstreamModelUpdates},
+		channelManageRoute.GET("/models", controller.ChannelListModels)
+		channelManageRoute.GET("/models_enabled", controller.EnabledListModels)
+		channelManageRoute.GET("/ops", controller.GetChannelOps)
+		channelManageRoute.GET("/:id", controller.GetChannel)
+		channelManageRoute.GET("/test", controller.TestAllChannels)
+		channelManageRoute.GET("/test/:id", controller.TestChannel)
+		channelManageRoute.GET("/update_balance", controller.UpdateAllChannelsBalance)
+		channelManageRoute.GET("/update_balance/:id", controller.UpdateChannelBalance)
+		channelManageRoute.POST("/", controller.AddChannel)
+		channelManageRoute.PUT("/", controller.UpdateChannel)
+		channelManageRoute.POST("/status/batch", controller.BatchUpdateChannelStatus)
+		channelManageRoute.POST("/:id/status", controller.UpdateChannelStatus)
+		channelManageRoute.DELETE("/disabled", controller.DeleteDisabledChannel)
+		channelManageRoute.POST("/tag/disabled", controller.DisableTagChannels)
+		channelManageRoute.POST("/tag/enabled", controller.EnableTagChannels)
+		channelManageRoute.PUT("/tag", controller.EditTagChannels)
+		channelManageRoute.DELETE("/:id", controller.DeleteChannel)
+		channelManageRoute.POST("/batch", controller.DeleteChannelBatch)
+		channelManageRoute.POST("/fix", controller.FixChannelsAbilities)
+		channelManageRoute.GET("/fetch_models/:id", controller.FetchUpstreamModels)
+		channelManageRoute.POST("/fetch_models", controller.FetchModels)
+		channelManageRoute.POST("/:id/codex/refresh", controller.RefreshCodexChannelCredential)
+		channelManageRoute.GET("/:id/codex/usage", controller.GetCodexChannelUsage)
+		channelManageRoute.GET("/:id/codex/usage/reset-credits", controller.GetCodexChannelRateLimitResetCredits)
+		channelManageRoute.POST("/:id/codex/usage/reset", controller.ResetCodexChannelUsage)
+		channelManageRoute.POST("/ollama/pull", controller.OllamaPullModel)
+		channelManageRoute.POST("/ollama/pull/stream", controller.OllamaPullModelStream)
+		channelManageRoute.DELETE("/ollama/delete", controller.OllamaDeleteModel)
+		channelManageRoute.GET("/ollama/version/:id", controller.OllamaVersion)
+		channelManageRoute.POST("/batch/tag", controller.BatchSetChannelTag)
+		channelManageRoute.GET("/tag/models", controller.GetTagModels)
+		channelManageRoute.POST("/copy/:id", controller.CopyChannel)
+		channelManageRoute.POST("/multi_key/manage", controller.ManageMultiKeys)
+		channelManageRoute.POST("/upstream_updates/apply", controller.ApplyChannelUpstreamModelUpdates)
+		channelManageRoute.POST("/upstream_updates/apply_all", controller.ApplyAllChannelUpstreamModelUpdates)
+		channelManageRoute.POST("/upstream_updates/detect", controller.DetectChannelUpstreamModelUpdates)
+		channelManageRoute.POST("/upstream_updates/detect_all", controller.DetectAllChannelUpstreamModelUpdates)
+	}
 }

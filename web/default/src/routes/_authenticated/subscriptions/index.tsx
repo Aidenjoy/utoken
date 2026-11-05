@@ -19,13 +19,16 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { Subscriptions } from '@/features/subscriptions'
-import { ROLE } from '@/lib/roles'
+import {
+  ADMIN_MENU_ACTIONS,
+  hasAdminMenuPermission,
+} from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/subscriptions/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    if (!hasAdminMenuPermission(auth.user, ADMIN_MENU_ACTIONS.SUBSCRIPTIONS)) {
       throw redirect({ to: '/403' })
     }
   },

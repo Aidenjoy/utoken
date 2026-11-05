@@ -20,6 +20,11 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { Users } from '@/features/users'
+import {
+  ADMIN_MENU_ACTIONS,
+  hasPermission,
+  ADMIN_PERMISSION_RESOURCES,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -42,7 +47,16 @@ export const Route = createFileRoute('/_authenticated/users/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
-    if (!auth.user || auth.user.role < ROLE.USER_MANAGER) {
+    const user = auth.user
+    const adminDenied =
+      user &&
+      user.role >= ROLE.ADMIN &&
+      !hasPermission(
+        user,
+        ADMIN_PERMISSION_RESOURCES.MENU,
+        ADMIN_MENU_ACTIONS.USERS
+      )
+    if (!user || user.role < ROLE.USER_MANAGER || adminDenied) {
       throw redirect({
         to: '/403',
       })

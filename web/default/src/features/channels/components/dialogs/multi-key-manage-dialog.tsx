@@ -36,12 +36,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import {
-  ADMIN_PERMISSION_ACTIONS,
-  ADMIN_PERMISSION_RESOURCES,
-  hasPermission,
-} from '@/lib/admin-permissions'
-import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getMultiKeyStatus,
@@ -77,12 +71,6 @@ export function MultiKeyManageDialog({
   const { t } = useTranslation()
   const { currentRow } = useChannels()
   const queryClient = useQueryClient()
-  const currentUser = useAuthStore((s) => s.auth.user)
-  const canEditSensitive = hasPermission(
-    currentUser,
-    ADMIN_PERMISSION_RESOURCES.CHANNEL,
-    ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
-  )
 
   // Data state
   const [isLoading, setIsLoading] = useState(false)
@@ -149,7 +137,7 @@ export function MultiKeyManageDialog({
   }
 
   const handleStatusFilterChange = (value: string) => {
-    const newFilter = value === 'all' ? null : parseInt(value)
+    const newFilter = value === 'all' ? null : Number.parseInt(value)
     setStatusFilter(newFilter)
     setCurrentPage(1)
     loadKeyStatus(1, pageSize, newFilter)
@@ -162,14 +150,6 @@ export function MultiKeyManageDialog({
 
   const performAction = async () => {
     if (!confirmAction || !currentRow) return
-    if (
-      !canEditSensitive &&
-      (confirmAction.type === 'delete' ||
-        confirmAction.type === 'delete-disabled')
-    ) {
-      setConfirmAction(null)
-      return
-    }
 
     setIsPerformingAction(true)
     try {
@@ -294,12 +274,10 @@ export function MultiKeyManageDialog({
           {/* Toolbar */}
           <div className='flex shrink-0 items-center justify-between'>
             <Select
-              items={[
-                ...MULTI_KEY_FILTER_OPTIONS.map((option) => ({
-                  value: option.value,
-                  label: t(option.label),
-                })),
-              ]}
+              items={MULTI_KEY_FILTER_OPTIONS.map((option) => ({
+                value: option.value,
+                label: t(option.label),
+              }))}
               value={statusFilter === null ? 'all' : statusFilter.toString()}
               onValueChange={(v) => v !== null && handleStatusFilterChange(v)}
             >
@@ -353,16 +331,7 @@ export function MultiKeyManageDialog({
                 <Button
                   variant='destructive'
                   size='sm'
-                  onClick={() => {
-                    if (!canEditSensitive) return
-                    setConfirmAction({ type: 'delete-disabled' })
-                  }}
-                  disabled={!canEditSensitive}
-                  title={
-                    canEditSensitive
-                      ? undefined
-                      : t('No permission to perform this action')
-                  }
+                  onClick={() => setConfirmAction({ type: 'delete-disabled' })}
                 >
                   <Trash2 className='mr-2 h-4 w-4' />
                   {t('Delete Auto-Disabled')}
@@ -370,23 +339,19 @@ export function MultiKeyManageDialog({
               )}
             </div>
           </div>
-          {!canEditSensitive && (
-            <p className='text-muted-foreground text-xs'>
-              {t('No permission to perform this action')}
-            </p>
-          )}
-
           {/* Table */}
           <div className='min-h-0 flex-1 overflow-auto rounded-md border'>
-            {isLoading ? (
+            {isLoading && (
               <div className='flex items-center justify-center py-12'>
                 <Loader2 className='text-muted-foreground h-8 w-8 animate-spin' />
               </div>
-            ) : keys.length === 0 ? (
+            )}
+            {!isLoading && keys.length === 0 && (
               <div className='text-muted-foreground py-12 text-center'>
                 {t('No keys found')}
               </div>
-            ) : (
+            )}
+            {!isLoading && keys.length > 0 && (
               <StaticDataTable
                 className='rounded-none border-0'
                 tableClassName='min-w-[800px]'
@@ -428,7 +393,6 @@ export function MultiKeyManageDialog({
                       <MultiKeyTableRowActions
                         keyIndex={key.index}
                         status={key.status}
-                        canDelete={canEditSensitive}
                         onAction={setConfirmAction}
                       />
                     ),

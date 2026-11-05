@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { ChannelBillingCenter } from '@/features/billing/channel-billing-center'
-import { ROLE } from '@/lib/roles'
+import {
+  ADMIN_MENU_ACTIONS,
+  hasAdminMenuPermission,
+} from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/channel-billing/')({
@@ -29,9 +32,8 @@ export const Route = createFileRoute('/_authenticated/channel-billing/')({
     // Upstream reconciliation exposes platform-confidential cost data: admins
     // only, never agents (whose billing scope is their downstream members).
     if (
-      !auth.user ||
-      auth.user.role < ROLE.ADMIN ||
-      auth.user.is_agent === true
+      !hasAdminMenuPermission(auth.user, ADMIN_MENU_ACTIONS.CHANNEL_BILLING) ||
+      auth.user?.is_agent === true
     ) {
       throw redirect({
         to: '/403',

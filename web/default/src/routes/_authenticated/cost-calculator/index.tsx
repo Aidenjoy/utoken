@@ -19,12 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { CostCalculator } from '@/features/cost-calculator'
+import {
+  ADMIN_MENU_ACTIONS,
+  hasAdminMenuPermission,
+} from '@/lib/admin-permissions'
 import { isSidebarModuleEnabled } from '@/lib/nav-modules'
+import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/cost-calculator/')({
   beforeLoad: () => {
-    // Pure client-side estimator available to every signed-in user, gated by
-    // the sidebar module switch only — same policy as the Prompt Library.
+    const { auth } = useAuthStore.getState()
+    if (
+      !hasAdminMenuPermission(auth.user, ADMIN_MENU_ACTIONS.COST_CALCULATOR)
+    ) {
+      throw redirect({ to: '/403' })
+    }
     if (!isSidebarModuleEnabled('chat', 'calculator')) {
       throw redirect({ to: '/dashboard' })
     }

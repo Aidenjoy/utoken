@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -27,31 +28,6 @@ var completionRatioMetaOptionKeys = []string{
 	"ImageRatio",
 	"AudioRatio",
 	"AudioCompletionRatio",
-}
-
-// modelPricingOptionKeys 是「系统管理-计费与支付-模型定价」页面读写的全部配置键。
-// 被授予 billing/model_pricing 权限的管理员（非超管）只能读到、且只能修改这些键，
-// 从而可以编辑模型价格、增删模型，但碰不到站点/鉴权/支付/分组等其它系统配置。
-var modelPricingOptionKeys = map[string]struct{}{
-	"ModelPrice":                      {},
-	"ModelRatio":                      {},
-	"CompletionRatio":                 {},
-	"CacheRatio":                      {},
-	"CreateCacheRatio":                {},
-	"ImageRatio":                      {},
-	"AudioRatio":                      {},
-	"AudioCompletionRatio":            {},
-	"ExposeRatioEnabled":              {},
-	"billing_setting.billing_mode":    {},
-	"billing_setting.billing_expr":    {},
-	"billing_setting.seedance_config": {},
-	"billing_setting.seedream_config": {},
-	"tool_price_setting.prices":       {},
-}
-
-func isModelPricingOptionKey(key string) bool {
-	_, ok := modelPricingOptionKeys[key]
-	return ok
 }
 
 func isPaymentComplianceOptionKey(key string) bool {
@@ -101,7 +77,9 @@ func buildCompletionRatioMetaValue(optionValues map[string]string) string {
 }
 
 func GetOptions(c *gin.Context) {
-	isRoot := c.GetInt("role") >= common.RoleRootUser
+	// 非超管按「系统设置子菜单授权」过滤可读的键：未授权子菜单的键、未归属任何子菜单的键
+	// 一律不下发，避免通过接口读到其它系统配置（含支付、鉴权等敏感设置）。
+	granted := grantedSettingsActions(c.GetInt("id"), c.GetInt("role"))
 	var options []*model.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
@@ -115,8 +93,7 @@ func GetOptions(c *gin.Context) {
 		if isSensitiveKey {
 			continue
 		}
-		// 非超管（被授予模型定价权限的管理员）只返回定价相关键，避免泄露其它系统配置。
-		if !isRoot && !isModelPricingOptionKey(k) {
+		if c.GetInt("role") < common.RoleRootUser && !optionKeyAllowed(k, granted) {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -131,10 +108,13 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
-	options = append(options, &model.Option{
-		Key:   "CompletionRatioMeta",
-		Value: buildCompletionRatioMetaValue(optionValues),
-	})
+	// CompletionRatioMeta 由模型定价值派生，仅随计费与支付子菜单授权下发。
+	if granted[authz.ActionSettingsBilling] {
+		options = append(options, &model.Option{
+			Key:   "CompletionRatioMeta",
+			Value: buildCompletionRatioMetaValue(optionValues),
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -157,8 +137,10 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
-	// 非超管只能修改定价相关键；其余系统配置一律拒绝，防止越权改站点/鉴权/支付等设置。
-	if c.GetInt("role") < common.RoleRootUser && !isModelPricingOptionKey(option.Key) {
+	// 非超管只能修改「已授权系统设置子菜单」归属的键；其余系统配置一律拒绝，
+	// 防止越权改站点/鉴权/支付等设置（未归属任何子菜单的键仅超管可改）。
+	if c.GetInt("role") < common.RoleRootUser &&
+		!optionKeyAllowed(option.Key, grantedSettingsActions(c.GetInt("id"), c.GetInt("role"))) {
 		common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
 		return
 	}

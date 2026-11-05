@@ -224,13 +224,29 @@ func RootAuth() func(c *gin.Context) {
 	}
 }
 
+// RequirePermission 要求当前管理员拥有指定菜单权限。
+// 菜单授权只细分「管理员」（role >= RoleAdminUser）：普通用户、运营（UserManager）等
+// 其他角色由前置的 UserAuth/UserManagerAuth 等中间件各自约束，不参与菜单授权判定，
+// 因此这里直接放行，避免把运营角色误伤为无权限。
 func RequirePermission(permission authz.Permission) func(c *gin.Context) {
+	return RequireAnyPermission(permission)
+}
+
+// RequireAnyPermission 任一权限命中即放行；全部未命中返回 403。
+// 用于同一接口被多个菜单页面共用的场景（如用户列表同时服务「用户」与「费率管理」）。
+func RequireAnyPermission(permissions ...authz.Permission) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		role := c.GetInt("role")
-		userID := c.GetInt("id")
-		if authz.Can(userID, role, permission) {
+		if role < common.RoleAdminUser {
 			c.Next()
 			return
+		}
+		userID := c.GetInt("id")
+		for _, permission := range permissions {
+			if authz.Can(userID, role, permission) {
+				c.Next()
+				return
+			}
 		}
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,

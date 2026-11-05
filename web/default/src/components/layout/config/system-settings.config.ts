@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TFunction } from 'i18next'
+import type { TFunction } from 'i18next'
 import {
   Box,
   CreditCard,
@@ -34,13 +34,15 @@ import { getModelsSectionNavItems } from '@/features/system-settings/models/sect
 import { getOperationsSectionNavItems } from '@/features/system-settings/operations/section-registry.tsx'
 import { getSecuritySectionNavItems } from '@/features/system-settings/security/section-registry.tsx'
 import { getSiteSectionNavItems } from '@/features/system-settings/site/section-registry.tsx'
+import {
+  ADMIN_PERMISSION_RESOURCES,
+  SYSTEM_SETTINGS_SECTIONS,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import type { NavGroup, SidebarView } from '../types'
-
-// 被授予「模型定价」权限的管理员（非超管）侧栏里只保留这一项，与路由守卫保持一致。
-const MODEL_PRICING_URL = '/system-settings/billing/model-pricing'
 
 /**
  * Sidebar nav groups for the System Settings nested view.
@@ -51,65 +53,59 @@ const MODEL_PRICING_URL = '/system-settings/billing/model-pricing'
  */
 function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
   const user = useAuthStore.getState().auth.user
-  if (user?.role !== ROLE.SUPER_ADMIN) {
-    return [
-      {
-        id: 'system-administration',
-        title: t('System Administration'),
-        items: [
-          {
-            title: t('Billing & Payment'),
-            icon: CreditCard,
-            items: getBillingSectionNavItems(t).filter(
-              (item) => item.url === MODEL_PRICING_URL
-            ),
-          },
-        ],
-      },
-    ]
-  }
+  const sections = [
+    {
+      title: t('Site & Branding'),
+      icon: Settings,
+      items: getSiteSectionNavItems(t),
+    },
+    {
+      title: t('Authentication'),
+      icon: Shield,
+      items: getAuthSectionNavItems(t),
+    },
+    {
+      title: t('Billing & Payment'),
+      icon: CreditCard,
+      items: getBillingSectionNavItems(t),
+    },
+    {
+      title: t('Models & Routing'),
+      icon: Box,
+      items: getModelsSectionNavItems(t),
+    },
+    {
+      title: t('Security & Limits'),
+      icon: ShieldAlert,
+      items: getSecuritySectionNavItems(t),
+    },
+    {
+      title: t('Console Content'),
+      icon: Layout,
+      items: getContentSectionNavItems(t),
+    },
+    {
+      title: t('Operations'),
+      icon: Wrench,
+      items: getOperationsSectionNavItems(t),
+    },
+  ]
+  const visibleSections =
+    user?.role === ROLE.SUPER_ADMIN
+      ? sections
+      : sections.filter((_, index) =>
+          hasPermission(
+            user,
+            ADMIN_PERMISSION_RESOURCES.SETTINGS,
+            SYSTEM_SETTINGS_SECTIONS[index].action
+          )
+        )
 
   return [
     {
       id: 'system-administration',
       title: t('System Administration'),
-      items: [
-        {
-          title: t('Site & Branding'),
-          icon: Settings,
-          items: getSiteSectionNavItems(t),
-        },
-        {
-          title: t('Authentication'),
-          icon: Shield,
-          items: getAuthSectionNavItems(t),
-        },
-        {
-          title: t('Billing & Payment'),
-          icon: CreditCard,
-          items: getBillingSectionNavItems(t),
-        },
-        {
-          title: t('Models & Routing'),
-          icon: Box,
-          items: getModelsSectionNavItems(t),
-        },
-        {
-          title: t('Security & Limits'),
-          icon: ShieldAlert,
-          items: getSecuritySectionNavItems(t),
-        },
-        {
-          title: t('Console Content'),
-          icon: Layout,
-          items: getContentSectionNavItems(t),
-        },
-        {
-          title: t('Operations'),
-          icon: Wrench,
-          items: getOperationsSectionNavItems(t),
-        },
-      ],
+      items: visibleSections,
     },
   ]
 }

@@ -62,8 +62,15 @@ import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
 import { ORG_ROLE } from '@/features/organization/types'
+import {
+  ADMIN_MENU_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  getFirstGrantedSettingsSection,
+  hasAnySettingsPermission,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -99,6 +106,48 @@ const AGENT_ITEM_GATED_GROUP = new Set(['personal', 'agent'])
 // billed against the shared pool, so the personal wallet and the personal
 // overview (both about personal quota) carry no actionable information.
 const ORG_MEMBER_HIDDEN_URLS = new Set(['/wallet', '/dashboard/overview'])
+
+const ADMIN_MENU_PERMISSION_BY_URL: Record<string, string> = {
+  '/channels': ADMIN_MENU_ACTIONS.CHANNELS,
+  '/asset-sync': ADMIN_MENU_ACTIONS.ASSET_SYNC,
+  '/models/metadata': ADMIN_MENU_ACTIONS.MODELS,
+  '/users': ADMIN_MENU_ACTIONS.USERS,
+  '/organizations': ADMIN_MENU_ACTIONS.ORGANIZATIONS,
+  '/token-rates': ADMIN_MENU_ACTIONS.TOKEN_RATES,
+  '/agents': ADMIN_MENU_ACTIONS.AGENTS,
+  '/billing': ADMIN_MENU_ACTIONS.USER_BILLING,
+  '/channel-billing': ADMIN_MENU_ACTIONS.CHANNEL_BILLING,
+  '/cost-calculator': ADMIN_MENU_ACTIONS.COST_CALCULATOR,
+  '/redemption-codes': ADMIN_MENU_ACTIONS.REDEMPTION,
+  '/subscriptions': ADMIN_MENU_ACTIONS.SUBSCRIPTIONS,
+  '/system-info': ADMIN_MENU_ACTIONS.SYSTEM_INFO,
+}
+
+// Menu visibility is only a UX complement to the server-side API enforcement.
+// User managers keep their existing users entry; menu grants apply to admins.
+function gateAdminMenuPermissions(
+  navGroups: SidebarData['navGroups'],
+  user: AuthUser | null
+): SidebarData['navGroups'] {
+  if (!user || user.role < ROLE.ADMIN) return navGroups
+  return navGroups.map((group) => {
+    if (group.id !== 'admin') return group
+    return {
+      ...group,
+      items: group.items.filter((item) => {
+        const url = item.url ?? ''
+        const action = ADMIN_MENU_PERMISSION_BY_URL[url]
+        if (action) {
+          return hasPermission(user, ADMIN_PERMISSION_RESOURCES.MENU, action)
+        }
+        if (url.startsWith('/system-settings')) {
+          return hasAnySettingsPermission(user)
+        }
+        return true
+      }),
+    }
+  })
+}
 
 function gateOrgMemberMenus(
   navGroups: SidebarData['navGroups'],
@@ -152,6 +201,7 @@ export function useSidebarData(): SidebarData {
   const hasOrganization = (user?.org_id ?? 0) > 0
   const isOrgAdmin = hasOrganization && user?.org_role === ORG_ROLE.ADMIN
   const isOrgMember = hasOrganization && !isOrgAdmin
+  const firstSettingsSection = getFirstGrantedSettingsSection(user) ?? 'site'
 
   // Only agents get menus gated; everyone else sees the full sidebar.
   const agentVisibleKeys = user?.is_agent
@@ -507,11 +557,11 @@ export function useSidebarData(): SidebarData {
           title: t('System Info'),
           url: '/system-info',
           icon: ServerCog,
-          requiredRole: ROLE.SUPER_ADMIN,
+          requiredRole: ROLE.ADMIN,
         },
         {
           title: t('System Settings'),
-          url: '/system-settings/site',
+          url: `/system-settings/${firstSettingsSection}`,
           activeUrls: ['/system-settings'],
           icon: Settings,
           requiredRole: ROLE.ADMIN,
@@ -521,9 +571,12 @@ export function useSidebarData(): SidebarData {
   ]
 
   return {
-    navGroups: gateAgentMenus(
-      gateOrgMemberMenus(baseNavGroups, isOrgMember),
-      agentVisibleKeys
+    navGroups: gateAdminMenuPermissions(
+      gateAgentMenus(
+        gateOrgMemberMenus(baseNavGroups, isOrgMember),
+        agentVisibleKeys
+      ),
+      user
     ),
   }
 }

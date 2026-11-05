@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import type { AuthUser } from '@/stores/auth-store'
 
 import { ROLE } from './roles'
@@ -6,18 +24,49 @@ export type AdminPermissionMatrix = Record<string, Record<string, boolean>>
 export type AdminCapabilities = AdminPermissionMatrix
 
 export const ADMIN_PERMISSION_RESOURCES = {
-  CHANNEL: 'channel',
-  BILLING: 'billing',
+  MENU: 'menu',
+  SETTINGS: 'settings',
 } as const
 
-export const ADMIN_PERMISSION_ACTIONS = {
-  READ: 'read',
-  OPERATE: 'operate',
-  WRITE: 'write',
-  SENSITIVE_WRITE: 'sensitive_write',
-  SECRET_VIEW: 'secret_view',
-  MODEL_PRICING: 'model_pricing',
+// Declaration order mirrors the administrator sidebar and the backend catalog.
+export const ADMIN_MENU_ACTIONS = {
+  CHANNELS: 'channels',
+  ASSET_SYNC: 'asset_sync',
+  MODELS: 'models',
+  USERS: 'users',
+  ORGANIZATIONS: 'organizations',
+  TOKEN_RATES: 'token_rates',
+  AGENTS: 'agents',
+  USER_BILLING: 'user_billing',
+  CHANNEL_BILLING: 'channel_billing',
+  COST_CALCULATOR: 'cost_calculator',
+  REDEMPTION: 'redemption',
+  SUBSCRIPTIONS: 'subscriptions',
+  SYSTEM_INFO: 'system_info',
 } as const
+
+export const ADMIN_SETTINGS_ACTIONS = {
+  SITE: 'site',
+  AUTH: 'auth',
+  BILLING: 'billing',
+  MODELS: 'models',
+  SECURITY: 'security',
+  CONTENT: 'content',
+  OPERATIONS: 'operations',
+} as const
+
+export const SYSTEM_SETTINGS_SECTIONS = [
+  { path: 'site', action: ADMIN_SETTINGS_ACTIONS.SITE },
+  { path: 'auth', action: ADMIN_SETTINGS_ACTIONS.AUTH },
+  { path: 'billing', action: ADMIN_SETTINGS_ACTIONS.BILLING },
+  { path: 'models', action: ADMIN_SETTINGS_ACTIONS.MODELS },
+  { path: 'security', action: ADMIN_SETTINGS_ACTIONS.SECURITY },
+  { path: 'content', action: ADMIN_SETTINGS_ACTIONS.CONTENT },
+  { path: 'operations', action: ADMIN_SETTINGS_ACTIONS.OPERATIONS },
+] as const
+
+export type SystemSettingsSection =
+  (typeof SYSTEM_SETTINGS_SECTIONS)[number]['path']
 
 // The role whose baseline grants are used as defaults in the permission editor.
 export const ADMIN_ROLE_KEY = 'admin'
@@ -64,6 +113,29 @@ export function hasPermission(
   if (!user) return false
   if (user.role === ROLE.SUPER_ADMIN) return true
   return user.permissions?.admin_permissions?.[resource]?.[action] === true
+}
+
+export function hasAdminMenuPermission(
+  user: AuthUser | null | undefined,
+  action: string
+): boolean {
+  if (!user || user.role < ROLE.ADMIN) return false
+  return hasPermission(user, ADMIN_PERMISSION_RESOURCES.MENU, action)
+}
+
+export function getFirstGrantedSettingsSection(
+  user: AuthUser | null | undefined
+): SystemSettingsSection | null {
+  const section = SYSTEM_SETTINGS_SECTIONS.find((item) =>
+    hasPermission(user, ADMIN_PERMISSION_RESOURCES.SETTINGS, item.action)
+  )
+  return section?.path ?? null
+}
+
+export function hasAnySettingsPermission(
+  user: AuthUser | null | undefined
+): boolean {
+  return getFirstGrantedSettingsSection(user) !== null
 }
 
 // roleGrants returns the baseline grant matrix for the given role key.

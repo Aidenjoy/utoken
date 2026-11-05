@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/service/authz"
 
 	"github.com/gin-gonic/gin"
 )
@@ -40,20 +41,28 @@ func registerOrgRoutes(apiRouter *gin.RouterGroup) {
 			orgAdminRoute.POST("/wallet/transfer", middleware.CriticalRateLimit(), controller.TransferWalletToPool)
 		}
 
-		// 系统管理员：企业 CRUD、充值调额、禁用与成员查看
+		// 企业列表同时供企业管理、费率管理与用户账单的筛选器使用；其余接口归属企业管理菜单。
 		sysAdminRoute := orgRoute.Group("/admin")
 		sysAdminRoute.Use(middleware.AdminAuth())
 		{
-			sysAdminRoute.GET("/", controller.AdminGetAllOrganizations)
-			sysAdminRoute.POST("/", middleware.CriticalRateLimit(), controller.AdminCreateOrganization)
-			sysAdminRoute.GET("/:id", controller.AdminGetOrganization)
-			sysAdminRoute.PUT("/:id", controller.AdminUpdateOrganization)
-			sysAdminRoute.DELETE("/:id", controller.AdminDeleteOrganization)
-			sysAdminRoute.POST("/:id/quota", controller.AdminAdjustOrgQuota)
-			sysAdminRoute.PUT("/:id/token_rate", controller.AdminUpdateOrgTokenRate)
-			sysAdminRoute.PUT("/:id/model_discounts", controller.AdminUpdateOrgModelDiscounts)
-			sysAdminRoute.PATCH("/:id/status", controller.AdminUpdateOrgStatus)
-			sysAdminRoute.GET("/:id/members", middleware.SearchRateLimit(), controller.AdminGetOrgMembers)
+			sysAdminRoute.GET("/",
+				middleware.RequireAnyPermission(authz.MenuOrganizations, authz.MenuTokenRates, authz.MenuUserBilling),
+				controller.AdminGetAllOrganizations,
+			)
+			sysAdminRoute.PUT("/:id/token_rate",
+				middleware.RequireAnyPermission(authz.MenuOrganizations, authz.MenuTokenRates),
+				controller.AdminUpdateOrgTokenRate,
+			)
+
+			orgAdminRoute := sysAdminRoute.Group("/", middleware.RequirePermission(authz.MenuOrganizations))
+			orgAdminRoute.POST("/", middleware.CriticalRateLimit(), controller.AdminCreateOrganization)
+			orgAdminRoute.GET("/:id", controller.AdminGetOrganization)
+			orgAdminRoute.PUT("/:id", controller.AdminUpdateOrganization)
+			orgAdminRoute.DELETE("/:id", controller.AdminDeleteOrganization)
+			orgAdminRoute.POST("/:id/quota", controller.AdminAdjustOrgQuota)
+			orgAdminRoute.PUT("/:id/model_discounts", controller.AdminUpdateOrgModelDiscounts)
+			orgAdminRoute.PATCH("/:id/status", controller.AdminUpdateOrgStatus)
+			orgAdminRoute.GET("/:id/members", middleware.SearchRateLimit(), controller.AdminGetOrgMembers)
 		}
 	}
 }

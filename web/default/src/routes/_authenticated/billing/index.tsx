@@ -19,6 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { BillingCenter } from '@/features/billing'
+import {
+  ADMIN_MENU_ACTIONS,
+  hasAdminMenuPermission,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -28,9 +32,11 @@ export const Route = createFileRoute('/_authenticated/billing/')({
 
     // Admins see the full billing center; agents see a server-scoped view
     // limited to their own members. Everyone else is denied.
+    const isAgent =
+      auth.user && auth.user.role < ROLE.ADMIN && auth.user.is_agent === true
     if (
-      !auth.user ||
-      (auth.user.role < ROLE.ADMIN && auth.user.is_agent !== true)
+      !isAgent &&
+      !hasAdminMenuPermission(auth.user, ADMIN_MENU_ACTIONS.USER_BILLING)
     ) {
       throw redirect({
         to: '/403',
