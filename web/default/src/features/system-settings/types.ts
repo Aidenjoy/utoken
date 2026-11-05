@@ -127,6 +127,12 @@ export type AuthSettings = {
   PasswordLoginEnabled: boolean
   PasswordRegisterEnabled: boolean
   EmailVerificationEnabled: boolean
+  PhoneVerificationEnabled: boolean
+  SmsSdkAppId: string
+  SmsAppKey: string
+  SmsSignature: string
+  SmsNationCode: string
+  SmsTemplate: string
   RegisterEnabled: boolean
   EmailDomainRestrictionEnabled: boolean
   EmailAliasRestrictionEnabled: boolean

@@ -38,12 +38,14 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { register, wechatLoginByCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
+import { usePhoneVerification } from '@/features/auth/hooks/use-phone-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import {
   getAffiliateCode,
@@ -61,6 +63,11 @@ export function SignUpForm({
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
+  const [registerMethod, setRegisterMethod] = useState<'email' | 'phone'>(
+    'email'
+  )
+  const [phone, setPhone] = useState('')
+  const [phoneCode, setPhoneCode] = useState('')
   const [agreedToLegal, setAgreedToLegal] = useState(false)
   const [inviteCode, setInviteCode] = useState(() => getInviteCode())
   const [wechatCode, setWeChatCode] = useState('')
@@ -86,6 +93,15 @@ export function SignUpForm({
     turnstileToken,
     validateTurnstile,
   })
+  const {
+    isSending: isSendingPhoneCode,
+    secondsLeft: phoneSecondsLeft,
+    isActive: phoneCountdownActive,
+    sendCode: sendPhoneCode,
+  } = usePhoneVerification({
+    turnstileToken,
+    validateTurnstile,
+  })
 
   const form = useForm<z.infer<typeof registerFormSchema>>({
     resolver: zodResolver(registerFormSchema),
@@ -99,6 +115,8 @@ export function SignUpForm({
 
   const emailValue = form.watch('email')
   const emailVerificationRequired = !!status?.email_verification
+  const phoneVerificationEnabled = !!status?.phone_verification
+  const usePhoneMethod = phoneVerificationEnabled && registerMethod === 'phone'
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
   const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
@@ -157,7 +175,16 @@ export function SignUpForm({
     }
 
     // Validate email verification if required
-    if (emailVerificationRequired) {
+    if (usePhoneMethod) {
+      if (!phone) {
+        toast.error(t('Please enter your phone number'))
+        return
+      }
+      if (!phoneCode) {
+        toast.error(t('Please enter the verification code'))
+        return
+      }
+    } else if (emailVerificationRequired) {
       if (!data.email) {
         toast.error(t('Please enter your email'))
         return
@@ -177,8 +204,11 @@ export function SignUpForm({
       const res = await register({
         username: data.username,
         password: data.password,
-        email: data.email || undefined,
-        verification_code: verificationCode || undefined,
+        email: usePhoneMethod ? undefined : data.email || undefined,
+        phone: usePhoneMethod ? phone : undefined,
+        verification_code: usePhoneMethod
+          ? phoneCode
+          : verificationCode || undefined,
         aff_code: getAffiliateCode(),
         invite_code: typedInvite,
         turnstile: turnstileToken,
@@ -199,6 +229,10 @@ export function SignUpForm({
 
   async function handleSendVerificationCode() {
     await sendCode(emailValue || '')
+  }
+
+  async function handleSendPhoneCode() {
+    await sendPhoneCode(phone.trim())
   }
 
   const handleOpenWeChatDialog = () => {
@@ -296,8 +330,27 @@ export function SignUpForm({
           )}
         />
 
+        {/* Registration method switcher (only when the SMS channel is open) */}
+        {phoneVerificationEnabled && (
+          <Tabs
+            value={registerMethod}
+            onValueChange={(value) =>
+              setRegisterMethod(value === 'phone' ? 'phone' : 'email')
+            }
+          >
+            <TabsList className='w-full'>
+              <TabsTrigger value='email' className='flex-1'>
+                {t('Email sign-up')}
+              </TabsTrigger>
+              <TabsTrigger value='phone' className='flex-1'>
+                {t('Phone sign-up')}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
         {/* Email Verification Section */}
-        {emailVerificationRequired && (
+        {emailVerificationRequired && !usePhoneMethod && (
           <>
             {/* Email Field */}
             <FormField
@@ -344,6 +397,54 @@ export function SignUpForm({
                 {isActive ? (
                   t('Resend ({{seconds}}s)', { seconds: secondsLeft })
                 ) : isSendingCode ? (
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                ) : (
+                  t('Send code')
+                )}
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* Phone Verification Section */}
+        {usePhoneMethod && (
+          <>
+            {/* Phone Field */}
+            <div className='grid gap-2'>
+              <Label htmlFor='register-phone'>{t('Phone Number')}</Label>
+              <Input
+                id='register-phone'
+                placeholder={t('Enter your phone number')}
+                type='tel'
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+
+            {/* SMS Verification Code Field */}
+            <div className='flex items-end gap-2'>
+              <div className='flex-1'>
+                <Input
+                  placeholder={t('Verification code')}
+                  value={phoneCode}
+                  onChange={(e) => setPhoneCode(e.target.value)}
+                />
+              </div>
+              <Button
+                variant='outline'
+                type='button'
+                disabled={
+                  isLoading ||
+                  isSendingPhoneCode ||
+                  phoneCountdownActive ||
+                  !phone.trim() ||
+                  !turnstileReady
+                }
+                onClick={handleSendPhoneCode}
+              >
+                {phoneCountdownActive ? (
+                  t('Resend ({{seconds}}s)', { seconds: phoneSecondsLeft })
+                ) : isSendingPhoneCode ? (
                   <Loader2 className='h-4 w-4 animate-spin' />
                 ) : (
                   t('Send code')

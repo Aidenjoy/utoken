@@ -198,6 +198,7 @@ func Register(c *gin.Context) {
 	}
 	user.Username = strings.TrimSpace(user.Username)
 	user.Email = model.NormalizeEmail(user.Email)
+	user.Phone = model.NormalizePhone(user.Phone)
 	if user.Username == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -206,7 +207,10 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
-	if common.EmailVerificationEnabled {
+	// 注册方式二选一：手机号验证开启且提交了手机号时走手机方式，
+	// 否则回落到邮箱方式（邮件验证开启时邮箱+邮箱码必填）。
+	usePhoneMethod := common.PhoneVerificationEnabled && user.Phone != ""
+	if common.EmailVerificationEnabled && !usePhoneMethod {
 		if user.Email == "" || user.VerificationCode == "" {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return
@@ -218,6 +222,24 @@ func Register(c *gin.Context) {
 		if err := model.EnsureEmailAvailable(user.Email, 0); err != nil {
 			if errors.Is(err, model.ErrEmailAlreadyTaken) {
 				common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
+				return
+			}
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+			return
+		}
+	}
+	if usePhoneMethod {
+		if user.VerificationCode == "" {
+			common.ApiErrorI18n(c, i18n.MsgUserPhoneVerificationRequired)
+			return
+		}
+		if !common.VerifyCodeWithKey(user.Phone, user.VerificationCode, common.PhoneVerificationPurpose) {
+			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
+			return
+		}
+		if err := model.EnsurePhoneAvailable(user.Phone, 0); err != nil {
+			if errors.Is(err, model.ErrPhoneAlreadyTaken) {
+				common.ApiErrorI18n(c, i18n.MsgUserPhoneAlreadyTaken)
 				return
 			}
 			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -287,8 +309,11 @@ func Register(c *gin.Context) {
 			cleanUser.Group = inviterOrg.Group
 		}
 	}
-	if common.EmailVerificationEnabled {
+	if common.EmailVerificationEnabled && !usePhoneMethod {
 		cleanUser.Email = user.Email
+	}
+	if usePhoneMethod {
+		cleanUser.Phone = user.Phone
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
 		// 注册失败，补偿回滚已消费的邀请码次数，避免占用名额。
@@ -297,6 +322,10 @@ func Register(c *gin.Context) {
 		}
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
+			return
+		}
+		if errors.Is(err, model.ErrPhoneAlreadyTaken) {
+			common.ApiErrorI18n(c, i18n.MsgUserPhoneAlreadyTaken)
 			return
 		}
 		common.ApiError(c, err)

@@ -126,6 +126,20 @@ export async function sendEmailVerification(
   return res.data
 }
 
+// Send phone (SMS) verification code
+export async function sendPhoneVerification(
+  phone: string,
+  turnstile?: string
+): Promise<ApiResponse> {
+  const res = await api.get('/api/phone_verification', {
+    params: { phone, turnstile },
+    // Caller (usePhoneVerification) surfaces the message itself; avoid a
+    // duplicate toast from the global business-error interceptor.
+    skipBusinessError: true,
+  })
+  return res.data
+}
+
 // Bind email to OAuth account
 export async function bindEmail(
   email: string,

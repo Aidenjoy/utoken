@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service/sms"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -68,6 +70,7 @@ func GetStatus(c *gin.Context) {
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,
+		"phone_verification":          common.PhoneVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
 		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
@@ -317,6 +320,55 @@ func SendEmailVerification(c *gin.Context) {
 		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
+	return
+}
+
+var phoneRegex = regexp.MustCompile(`^\+?[0-9]{6,20}$`)
+
+// SendPhoneVerification 下发注册短信验证码（云大师通道，配置见 Sms* 选项）。
+func SendPhoneVerification(c *gin.Context) {
+	if !common.PhoneVerificationEnabled {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	phone := model.NormalizePhone(c.Query("phone"))
+	if !phoneRegex.MatchString(phone) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if err := model.EnsurePhoneAvailable(phone, 0); err != nil {
+		if errors.Is(err, model.ErrPhoneAlreadyTaken) {
+			common.ApiErrorI18n(c, i18n.MsgUserPhoneAlreadyTaken)
+			return
+		}
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	if common.CheckSendInterval(phone, common.PhoneVerificationPurpose) > 0 {
+		common.ApiErrorI18n(c, i18n.MsgUserVerifyCodeSendTooFrequent)
+		return
+	}
+	if !common.CheckDailySendLimit(phone, common.PhoneVerificationPurpose, common.SmsDailyLimitPerPhone) ||
+		!common.CheckDailySendLimit(c.ClientIP(), common.PhoneVerificationPurpose, common.SmsDailyLimitPerIP) {
+		common.ApiErrorI18n(c, i18n.MsgUserVerifyCodeSendDailyLimit)
+		return
+	}
+	code := common.GenerateNumericVerificationCode(6)
+	if code == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	common.RegisterVerificationCodeWithKey(phone, code, common.PhoneVerificationPurpose)
+	if err := sms.SendVerificationCode(phone, code); err != nil {
+		common.DeleteKey(phone, common.PhoneVerificationPurpose)
+		common.SysError("failed to send sms verification code: " + err.Error())
 		common.ApiError(c, err)
 		return
 	}

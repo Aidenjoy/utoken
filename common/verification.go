@@ -1,6 +1,8 @@
 package common
 
 import (
+	crand "crypto/rand"
+	"math/big"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,11 +19,18 @@ type verificationValue struct {
 const (
 	EmailVerificationPurpose = "v"
 	PasswordResetPurpose     = "r"
+	PhoneVerificationPurpose = "p"
 
 	verificationCodeKeyPrefix = "verification_code:"
 	verificationSendKeyPrefix = "verification_send:"
 	// 重发不立即作废旧码：邮箱投递慢于重发间隔时，用户手里上一封的码仍应可校验
 	verificationMaxCodes = 2
+
+	// 短信验证码日发送上限（成本保护）：单手机号与单 IP 分开计数
+	SmsDailyLimitPerPhone = 10
+	SmsDailyLimitPerIP    = 20
+
+	sendCountMapMaxSize = 10000
 )
 
 var verificationMutex sync.Mutex
@@ -33,6 +42,9 @@ var VerificationSendIntervalSeconds = 60
 var sendMutex sync.Mutex
 var sendTimeMap map[string]time.Time
 
+var sendCountMutex sync.Mutex
+var sendCountMap map[string]int
+
 func GenerateVerificationCode(length int) string {
 	code := uuid.New().String()
 	code = strings.Replace(code, "-", "", -1)
@@ -40,6 +52,48 @@ func GenerateVerificationCode(length int) string {
 		return code
 	}
 	return code[:length]
+}
+
+// GenerateNumericVerificationCode 生成纯数字验证码（短信等要求数字码的场景），
+// 熵源为 crypto/rand，避免可预测。
+func GenerateNumericVerificationCode(length int) string {
+	var sb strings.Builder
+	for i := 0; i < length; i++ {
+		n, err := crand.Int(crand.Reader, big.NewInt(10))
+		if err != nil {
+			SysError("failed to generate numeric verification code: " + err.Error())
+			return ""
+		}
+		sb.WriteString(strconv.Itoa(int(n.Int64())))
+	}
+	return sb.String()
+}
+
+// CheckDailySendLimit 按自然日累加发送计数并返回是否未超上限。
+// Redis 启用时跨节点 INCR 计数（TTL 24h），否则退化为进程内计数。
+func CheckDailySendLimit(key string, purpose string, limit int) bool {
+	day := time.Now().Format("20060102")
+	storeKey := "daily:" + day + ":" + purpose + key
+	if RedisEnabled {
+		count, err := RedisIncrWithExpire(verificationSendKeyPrefix+storeKey, 1, 24*time.Hour)
+		if err == nil {
+			return count <= int64(limit)
+		}
+	}
+	sendCountMutex.Lock()
+	defer sendCountMutex.Unlock()
+	if sendCountMap[storeKey] >= limit {
+		return false
+	}
+	sendCountMap[storeKey]++
+	if len(sendCountMap) > sendCountMapMaxSize {
+		for k := range sendCountMap {
+			if !strings.Contains(k, day) {
+				delete(sendCountMap, k)
+			}
+		}
+	}
+	return true
 }
 
 // 验证码同时写入内存与 Redis：多节点部署下校验请求可能落在非发送节点，
@@ -214,4 +268,5 @@ func init() {
 	defer verificationMutex.Unlock()
 	verificationMap = make(map[string][]verificationValue)
 	sendTimeMap = make(map[string]time.Time)
+	sendCountMap = make(map[string]int)
 }

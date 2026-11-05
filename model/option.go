@@ -39,6 +39,7 @@ func InitOptionMap() {
 	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
 	common.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(common.PasswordRegisterEnabled)
 	common.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(common.EmailVerificationEnabled)
+	common.OptionMap["PhoneVerificationEnabled"] = strconv.FormatBool(common.PhoneVerificationEnabled)
 	common.OptionMap["GitHubOAuthEnabled"] = strconv.FormatBool(common.GitHubOAuthEnabled)
 	common.OptionMap["LinuxDOOAuthEnabled"] = strconv.FormatBool(common.LinuxDOOAuthEnabled)
 	common.OptionMap["TelegramOAuthEnabled"] = strconv.FormatBool(common.TelegramOAuthEnabled)
@@ -63,6 +64,11 @@ func InitOptionMap() {
 	common.OptionMap["SMTPPort"] = strconv.Itoa(common.SMTPPort)
 	common.OptionMap["SMTPAccount"] = ""
 	common.OptionMap["SMTPToken"] = ""
+	common.OptionMap["SmsSdkAppId"] = ""
+	common.OptionMap["SmsAppKey"] = ""
+	common.OptionMap["SmsSignature"] = common.SmsSignature
+	common.OptionMap["SmsNationCode"] = common.SmsNationCode
+	common.OptionMap["SmsTemplate"] = common.SmsTemplate
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
 	common.OptionMap["SMTPStartTLSEnabled"] = strconv.FormatBool(common.SMTPStartTLSEnabled)
 	common.OptionMap["SMTPInsecureSkipVerify"] = strconv.FormatBool(common.SMTPInsecureSkipVerify)
@@ -300,6 +306,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.PasswordLoginEnabled = boolValue
 		case "EmailVerificationEnabled":
 			common.EmailVerificationEnabled = boolValue
+		case "PhoneVerificationEnabled":
+			common.PhoneVerificationEnabled = boolValue
 		case "GitHubOAuthEnabled":
 			common.GitHubOAuthEnabled = boolValue
 		case "LinuxDOOAuthEnabled":
@@ -400,6 +408,16 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SMTPFrom = value
 	case "SMTPToken":
 		common.SMTPToken = value
+	case "SmsSdkAppId":
+		common.SmsSdkAppId = value
+	case "SmsAppKey":
+		common.SmsAppKey = value
+	case "SmsSignature":
+		common.SmsSignature = value
+	case "SmsNationCode":
+		common.SmsNationCode = value
+	case "SmsTemplate":
+		common.SmsTemplate = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
 	case "WorkerUrl":

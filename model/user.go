@@ -29,6 +29,7 @@ type User struct {
 	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email            string         `json:"email" gorm:"index" validate:"max=50"`
+	Phone            string         `json:"phone" gorm:"index;column:phone;type:varchar(32)"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
 	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
@@ -299,6 +300,44 @@ func EnsureEmailAvailable(email string, excludeUserID int) error {
 	}
 	if !available {
 		return ErrEmailAlreadyTaken
+	}
+	return nil
+}
+
+// NormalizePhone 归一化手机号：去空格/横线/括号，仅保留可选 + 前缀与数字。
+func NormalizePhone(phone string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '-', '(', ')':
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(phone))
+}
+
+func IsPhoneAvailable(phone string, excludeUserID int) (bool, error) {
+	phone = NormalizePhone(phone)
+	if phone == "" {
+		return true, nil
+	}
+	query := DB.Unscoped().Model(&User{}).Where("phone = ?", phone)
+	if excludeUserID > 0 {
+		query = query.Where("id <> ?", excludeUserID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+func EnsurePhoneAvailable(phone string, excludeUserID int) error {
+	available, err := IsPhoneAvailable(phone, excludeUserID)
+	if err != nil {
+		return err
+	}
+	if !available {
+		return ErrPhoneAlreadyTaken
 	}
 	return nil
 }

@@ -31,6 +31,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -48,6 +49,12 @@ const basicAuthSchema = z.object({
   PasswordLoginEnabled: z.boolean(),
   PasswordRegisterEnabled: z.boolean(),
   EmailVerificationEnabled: z.boolean(),
+  PhoneVerificationEnabled: z.boolean(),
+  SmsSdkAppId: z.string(),
+  SmsAppKey: z.string(),
+  SmsSignature: z.string(),
+  SmsNationCode: z.string(),
+  SmsTemplate: z.string(),
   RegisterEnabled: z.boolean(),
   EmailDomainRestrictionEnabled: z.boolean(),
   EmailAliasRestrictionEnabled: z.boolean(),
@@ -81,6 +88,8 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
   })
 
   useResetForm(form, formDefaults)
+
+  const phoneVerificationEnabled = form.watch('PhoneVerificationEnabled')
 
   const onSubmit = async (data: BasicAuthFormValues) => {
     const updates: Array<{ key: string; value: string | boolean }> = []
@@ -176,6 +185,124 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
               </SettingsSwitchItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name='PhoneVerificationEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Phone Verification')}</FormLabel>
+                  <FormDescription>
+                    {t('Allow registration with phone number and SMS code')}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          {phoneVerificationEnabled && (
+            <>
+              <FormField
+                control={form.control}
+                name='SmsSdkAppId'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('SMS SDK App ID')}</FormLabel>
+                    <FormControl>
+                      <Input placeholder={t('Enter your sdkappid')} {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Yundashi customer number (sdkappid)')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SmsAppKey'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('SMS App Key')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='password'
+                        autoComplete='new-password'
+                        placeholder={t('Keep the appkey secret')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Used server-side to sign SMS requests only')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SmsSignature'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('SMS Signature')}</FormLabel>
+                    <FormControl>
+                      <Input placeholder='【YourBrand】' {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Carrier-filed signature prefix, e.g. 【YourBrand】')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SmsNationCode'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('SMS Nation Code')}</FormLabel>
+                    <FormControl>
+                      <Input placeholder='86' {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Default 86 (mainland China)')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SmsTemplate'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('SMS Template')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('Your code is {code}, valid for 5 minutes.')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('{code} is replaced with the verification code')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
 
           <FormField
             control={form.control}

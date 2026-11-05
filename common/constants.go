@@ -86,6 +86,7 @@ var MaxRecentItems = 1000
 var PasswordLoginEnabled = true
 var PasswordRegisterEnabled = true
 var EmailVerificationEnabled = false
+var PhoneVerificationEnabled = false
 var GitHubOAuthEnabled = false
 var LinuxDOOAuthEnabled = false
 var WeChatAuthEnabled = false
@@ -129,6 +130,13 @@ var SMTPForceAuthLogin = false
 var SMTPAccount = ""
 var SMTPFrom = ""
 var SMTPToken = ""
+
+// 短信通道（云大师）配置：注册手机号验证码下发使用
+var SmsSdkAppId = ""
+var SmsAppKey = ""
+var SmsSignature = ""
+var SmsNationCode = "86"
+var SmsTemplate = "你的验证码是{code}，请在5分钟内使用。"
 
 var GitHubClientId = ""
 var GitHubClientSecret = ""
