@@ -698,8 +698,8 @@ func relayGetSmartAsset(c *gin.Context, userId int, ref string) {
 }
 
 // RelayDeleteAsset 对外（Bearer token）素材删除接口：DELETE {base}/api/assets/{id}。
-// 仅删除本地登记记录（TOS 原件与上游素材保留，上游无删除 API）：
-// id 为 yun-<源素材ID> 时级联删除其各渠道副本记录后删除源素材登记；
+// 删除联动上游：先对每个匹配副本 best-effort 调上游 DeleteAsset（协议不支持/上游故障仅记日志、
+// 不阻断本地删除），再删除本地登记记录。id 为 yun-<源素材ID> 时级联删除其各渠道副本记录后删除源素材登记；
 // 否则按上游素材 ID 删除本人渠道素材记录。仅能删除本人素材。
 func RelayDeleteAsset(c *gin.Context) {
 	userId := c.GetInt("id")
@@ -707,6 +707,11 @@ func RelayDeleteAsset(c *gin.Context) {
 	if service.IsSmartAssetRef(assetID) {
 		relayDeleteSmartAsset(c, userId, assetID)
 		return
+	}
+	if existing, gerr := model.GetUserAssetsByAssetIDs(userId, []string{assetID}); gerr == nil {
+		for _, a := range existing {
+			bestEffortDeleteUpstreamAsset(a)
+		}
 	}
 	deleted, err := model.DeleteAssetsByUserAndAssetID(userId, assetID)
 	if err != nil {
@@ -720,13 +725,18 @@ func RelayDeleteAsset(c *gin.Context) {
 	relayAssetJSON(c, 0, "ok", gin.H{"Id": assetID, "Deleted": true})
 }
 
-// relayDeleteSmartAsset 删除智能素材：先级联删除其各渠道副本记录，再删除源素材登记。
-// 删除后该引用与 asset://<引用> 均失效；上游素材保留。
+// relayDeleteSmartAsset 删除智能素材：先对各渠道副本 best-effort 删上游（不阻断），再级联删除本地副本记录，
+// 最后删除源素材登记。删除后该引用与 asset://<引用> 均失效。
 func relayDeleteSmartAsset(c *gin.Context, userId int, ref string) {
 	source, err := service.ResolveSourceAssetRef(ref)
 	if err != nil || source == nil || source.UserID != userId {
 		relayAssetJSON(c, 1, "asset not found", nil)
 		return
+	}
+	if copies, cerr := model.GetAssetsBySourceAssetId(source.ID); cerr == nil {
+		for _, cp := range copies {
+			bestEffortDeleteUpstreamAsset(cp)
+		}
 	}
 	if err := model.DeleteAssetsBySourceAssetId(source.ID); err != nil {
 		relayAssetJSON(c, 1, err.Error(), nil)
@@ -841,7 +851,7 @@ func GetAsset(c *gin.Context) {
 	c.JSON(http.StatusOK, asset)
 }
 
-// DeleteAsset 删除本地素材记录（上游无删除 API，远端素材保留）。
+// DeleteAsset 删除素材：删除联动上游——先 best-effort 调上游 DeleteAsset（不阻断），再删本地登记记录。
 // 超管可删除任意用户的素材；其他角色仅限本人。
 func DeleteAsset(c *gin.Context) {
 	userId := c.GetInt("id")
@@ -850,7 +860,12 @@ func DeleteAsset(c *gin.Context) {
 		assetJSONError(c, http.StatusBadRequest, "invalid_request", "invalid asset id")
 		return
 	}
-	if c.GetInt("role") >= common.RoleRootUser {
+	isSuperAdmin := c.GetInt("role") >= common.RoleRootUser
+	// 仅在确有删除权限时联动上游：普通用户须素材归属本人，避免误删他人上游素材。
+	if existing, gerr := model.GetAssetById(id); gerr == nil && (isSuperAdmin || existing.UserID == userId) {
+		bestEffortDeleteUpstreamAsset(existing)
+	}
+	if isSuperAdmin {
 		if err := model.AdminDeleteAssetById(id); err != nil {
 			assetJSONError(c, http.StatusNotFound, "not_found", err.Error())
 			return
@@ -865,7 +880,8 @@ func DeleteAsset(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// AdminDeleteChannelAsset 按 ID 删除渠道下的素材副本（管理员；上游无删除 API，远端素材保留）。
+// AdminDeleteChannelAsset 按 ID 删除渠道下的素材副本（管理员）：删除联动上游——
+// 先 best-effort 调上游 DeleteAsset（不阻断），再删本地副本记录。
 func AdminDeleteChannelAsset(c *gin.Context) {
 	channelId, err := strconv.Atoi(c.Param("channelId"))
 	if err != nil {
@@ -876,6 +892,9 @@ func AdminDeleteChannelAsset(c *gin.Context) {
 	if err != nil {
 		assetJSONError(c, http.StatusBadRequest, "invalid_request", "invalid asset id")
 		return
+	}
+	if existing, gerr := model.GetAssetById(id); gerr == nil && existing.ChannelID == channelId {
+		bestEffortDeleteUpstreamAsset(existing)
 	}
 	if err := model.AdminDeleteChannelAssetById(channelId, id); err != nil {
 		assetJSONError(c, http.StatusNotFound, "not_found", err.Error())

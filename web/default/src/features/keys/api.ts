@@ -122,3 +122,25 @@ export async function fetchTokenKeysBatch(ids: number[]): Promise<{
   const res = await api.post('/api/token/batch/keys', { ids })
   return res.data
 }
+
+// Ark 官方兼容 API 凭证的明文形态（SK 明文仅此处返回）
+export interface ArkAccessKeyData {
+  access_key: string
+  secret_key: string
+}
+
+// Fetch (and lazily issue) the plaintext Ark AK/SK for a token by ID
+export async function fetchTokenAccessKey(
+  id: number
+): Promise<ApiResponse<ArkAccessKeyData>> {
+  const res = await api.post(`/api/token/${id}/access-key`)
+  return res.data
+}
+
+// Regenerate the Ark AK/SK for a token (old credentials are invalidated immediately)
+export async function resetTokenAccessKey(
+  id: number
+): Promise<ApiResponse<ArkAccessKeyData>> {
+  const res = await api.post(`/api/token/${id}/access-key/reset`)
+  return res.data
+}

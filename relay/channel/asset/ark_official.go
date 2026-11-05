@@ -39,8 +39,14 @@ const (
 	arkActionCreateAsset       = "CreateAsset"
 	arkActionCreateAssetGroup  = "CreateAssetGroup"
 	arkActionGetAsset          = "GetAsset"
+	arkActionUpdateAsset       = "UpdateAsset"
+	arkActionUpdateAssetGroup  = "UpdateAssetGroup"
+	arkActionDeleteAsset       = "DeleteAsset"
+	arkActionDeleteAssetGroup  = "DeleteAssetGroup"
 	// arkDefaultAssetGroupName 渠道未配置 asset_group_id 时自动创建的默认虚拟人像素材组名称。
 	arkDefaultAssetGroupName = "new-api-assets"
+	// arkDefaultGroupType 自动建默认组时使用的组类型（与官方缺省一致）。
+	arkDefaultGroupType = "AIGC"
 )
 
 // normalizeAssetEndpoint 归一化渠道配置的方舟兼容素材网关地址。
@@ -67,7 +73,7 @@ func (p *ArkOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 	// “default” 不是火山合法的素材组 ID（组 ID 形如 group-xxxx），视同未配置走自动建组
 	if groupID == "" || groupID == "default" {
 		var err error
-		groupID, err = p.createAssetGroup()
+		groupID, err = p.CreateAssetGroup(arkDefaultAssetGroupName, "", arkDefaultGroupType, strings.TrimSpace(p.cfg.Settings.AssetProjectName))
 		if err != nil {
 			return nil, fmt.Errorf("auto-create default asset group failed: %w", err)
 		}
@@ -101,11 +107,18 @@ func (p *ArkOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 	}, nil
 }
 
-// createAssetGroup 调用官方 CreateAssetGroup 创建默认虚拟人像素材组并返回其 ID；
-// 未配置 ProjectName 时上游默认落入 default 项目。
-func (p *ArkOfficialProtocol) createAssetGroup() (string, error) {
-	payload := map[string]any{"Name": arkDefaultAssetGroupName}
-	if projectName := strings.TrimSpace(p.cfg.Settings.AssetProjectName); projectName != "" {
+// CreateAssetGroup 调用官方 CreateAssetGroup 创建素材组并返回其 ID。
+// description/groupType/projectName 为空时不写入 body，交由上游取缺省（GroupType 默认 AIGC、
+// ProjectName 默认 default）。既服务于官方兼容 API 的显式建组，也复用于 Upload 的自动建默认组。
+func (p *ArkOfficialProtocol) CreateAssetGroup(name, description, groupType, projectName string) (string, error) {
+	payload := map[string]any{"Name": name}
+	if description != "" {
+		payload["Description"] = description
+	}
+	if groupType != "" {
+		payload["GroupType"] = groupType
+	}
+	if projectName != "" {
 		payload["ProjectName"] = projectName
 	}
 	body, err := common.Marshal(payload)
@@ -122,6 +135,98 @@ func (p *ArkOfficialProtocol) createAssetGroup() (string, error) {
 		return "", fmt.Errorf("ark official CreateAssetGroup returned empty group id")
 	}
 	return result.ID, nil
+}
+
+// CreateAssetInGroup 在指定组内创建素材（官方兼容 API 的 CreateAsset 用）：
+// 与 Upload 的区别是显式指定组——不读渠道 asset_group_id、不自动建组，
+// 由调用方保证 groupID 与建组时同一上游渠道。
+func (p *ArkOfficialProtocol) CreateAssetInGroup(groupID, url, assetType, name, projectName string) (*UploadResult, error) {
+	body, err := common.Marshal(map[string]any{
+		"GroupId":     groupID,
+		"URL":         url,
+		"AssetType":   assetType,
+		"Name":        name,
+		"ProjectName": projectName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		ID string `json:"Id"`
+	}
+	if err := p.call(arkActionCreateAsset, body, &result); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(result.ID) == "" {
+		return nil, fmt.Errorf("ark official CreateAsset returned empty asset id")
+	}
+	return &UploadResult{
+		AssetID:     result.ID,
+		GroupID:     groupID,
+		ProjectName: projectName,
+	}, nil
+}
+
+// UpdateAsset 更新素材（官方当前仅支持改名）：body {Id,Name,ProjectName}，空字段不写入。
+func (p *ArkOfficialProtocol) UpdateAsset(assetID, name, projectName string) error {
+	payload := map[string]any{"Id": assetID}
+	if name != "" {
+		payload["Name"] = name
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(arkActionUpdateAsset, body, nil)
+}
+
+// UpdateAssetGroup 更新素材组名称/描述：body {Id,Name,Description,ProjectName}，空字段不写入。
+func (p *ArkOfficialProtocol) UpdateAssetGroup(groupID, name, description, projectName string) error {
+	payload := map[string]any{"Id": groupID}
+	if name != "" {
+		payload["Name"] = name
+	}
+	if description != "" {
+		payload["Description"] = description
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(arkActionUpdateAssetGroup, body, nil)
+}
+
+// DeleteAsset 删除上游素材：body {Id,ProjectName}。上游「not found」等错误原样返回，
+// 由调用方（删除联动）按 best-effort 语义决定是否忽略。
+func (p *ArkOfficialProtocol) DeleteAsset(assetID, projectName string) error {
+	payload := map[string]any{"Id": assetID}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(arkActionDeleteAsset, body, nil)
+}
+
+// DeleteAssetGroup 删除上游素材组：body {Id,ProjectName}。错误处理同 DeleteAsset。
+func (p *ArkOfficialProtocol) DeleteAssetGroup(groupID, projectName string) error {
+	payload := map[string]any{"Id": groupID}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(arkActionDeleteAssetGroup, body, nil)
 }
 
 func (p *ArkOfficialProtocol) Query(assetID string) (*QueryResult, error) {

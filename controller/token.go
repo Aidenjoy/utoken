@@ -33,6 +33,8 @@ func buildMaskedTokenResponse(token *model.Token) *model.Token {
 	}
 	maskedToken := *token
 	maskedToken.Key = token.GetMaskedKey()
+	// SecretKey 掩码输出（明文仅经 /api/token/:id/access-key 返回）；AccessKey 是标识符，原样展示。
+	maskedToken.SecretKey = token.GetMaskedSecretKey()
 	return &maskedToken
 }
 
@@ -175,6 +177,54 @@ func GetTokenKey(c *gin.Context) {
 	})
 }
 
+// GetTokenAccessKey 返回令牌的 Ark AK/SK 明文（与 GetTokenKey 同安全级别，owner/admin 可读取）。
+// 存量令牌尚无 AK/SK 时先补发（EnsureAccessKey）再返回，作为补发入口。
+func GetTokenAccessKey(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token, err := readableToken(c, id)
+	if err != nil {
+		tokenApiError(c, err)
+		return
+	}
+	accessKey, secretKey, err := token.EnsureAccessKey()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"access_key": accessKey,
+		"secret_key": secretKey,
+	})
+}
+
+// ResetTokenAccessKey 重新生成令牌的 Ark AK/SK 并落库（旧值立即失效），返回新明文。
+// 重置属写操作，严格按归属校验（与 UpdateToken 一致，不放宽到管理员跨用户）。
+func ResetTokenAccessKey(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token, err := model.GetTokenByIds(id, c.GetInt("id"))
+	if err != nil {
+		tokenApiError(c, err)
+		return
+	}
+	accessKey, secretKey, err := token.ResetAccessKey()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"access_key": accessKey,
+		"secret_key": secretKey,
+	})
+}
+
 func GetTokenStatus(c *gin.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")
@@ -301,10 +351,19 @@ func AddToken(c *gin.Context) {
 		common.SysLog("failed to generate token key: " + err.Error())
 		return
 	}
+	// 每个令牌同时签发一对 Ark AK/SK，供官方兼容素材库 API 的 V4 签名鉴权使用。
+	accessKey, secretKey, err := model.GenerateArkCredentials()
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
+		common.SysLog("failed to generate ark credentials: " + err.Error())
+		return
+	}
 	cleanToken := model.Token{
 		UserId:             ownerId,
 		Name:               token.Name,
 		Key:                key,
+		AccessKey:          &accessKey,
+		SecretKey:          secretKey,
 		CreatedTime:        common.GetTimestamp(),
 		AccessedTime:       common.GetTimestamp(),
 		ExpiredTime:        token.ExpiredTime,

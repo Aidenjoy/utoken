@@ -15,6 +15,8 @@ type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
 	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	AccessKey          *string        `json:"access_key,omitempty" gorm:"type:varchar(64);uniqueIndex"` // Ark 官方兼容 API 的 AK；用指针以允许存量/未签发令牌为 NULL，避免空串互撞唯一索引（SQLite 存量表由 ensureTokenArkColumnsSQLite 预加普通列后再建唯一索引）
+	SecretKey          string         `json:"secret_key,omitempty" gorm:"type:varchar(128)"`            // Ark SK，明文入库供 HMAC V4 验签（与 Key 同安全模型）
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `
 	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
@@ -54,6 +56,94 @@ func (token *Token) GetFullKey() string {
 
 func (token *Token) GetMaskedKey() string {
 	return MaskTokenKey(token.Key)
+}
+
+// arkAccessKeyPrefix 本站签发的 Ark AccessKey 前缀，便于与火山官方 AK 区分。
+const arkAccessKeyPrefix = "AKUT"
+
+// GetAccessKey 返回令牌的 AccessKey；未签发时返回空串。
+func (token *Token) GetAccessKey() string {
+	if token.AccessKey == nil {
+		return ""
+	}
+	return *token.AccessKey
+}
+
+// GetMaskedSecretKey 返回掩码后的 SecretKey，用于列表/详情展示（明文仅经专用接口返回）。
+func (token *Token) GetMaskedSecretKey() string {
+	return MaskTokenKey(token.SecretKey)
+}
+
+// generateArkAccessKey 生成一个当前库中尚未占用的 AccessKey（AKUT + 20 位随机字符）。
+// 撞库则重试（≤16 次）；access_key 唯一索引是最终防线。
+func generateArkAccessKey() (string, error) {
+	for i := 0; i < 16; i++ {
+		suffix, err := common.GenerateRandomCharsKey(20)
+		if err != nil {
+			return "", err
+		}
+		candidate := arkAccessKeyPrefix + suffix
+		if _, err := GetTokenByAccessKey(candidate, true); errors.Is(err, gorm.ErrRecordNotFound) {
+			return candidate, nil
+		}
+	}
+	return "", errors.New("failed to generate unique access key")
+}
+
+// generateArkSecretKey 生成 40 位随机 SecretKey（明文入库，供 HMAC V4 验签）。
+func generateArkSecretKey() (string, error) {
+	return common.GenerateRandomCharsKey(40)
+}
+
+// GenerateArkCredentials 生成一对新的 AK/SK（AK 保证库内唯一）。供创建令牌时预填。
+func GenerateArkCredentials() (string, string, error) {
+	ak, err := generateArkAccessKey()
+	if err != nil {
+		return "", "", err
+	}
+	sk, err := generateArkSecretKey()
+	if err != nil {
+		return "", "", err
+	}
+	return ak, sk, nil
+}
+
+// EnsureAccessKey 为尚无 AK/SK 的令牌补发并落库，返回 (ak, sk)。
+// 已有则原样返回，供存量令牌按需补发。
+func (token *Token) EnsureAccessKey() (string, string, error) {
+	if token.GetAccessKey() != "" && token.SecretKey != "" {
+		return token.GetAccessKey(), token.SecretKey, nil
+	}
+	return token.resetAccessKey()
+}
+
+// ResetAccessKey 重新生成 AK/SK 并落库（旧值立即失效），返回新明文。
+func (token *Token) ResetAccessKey() (string, string, error) {
+	return token.resetAccessKey()
+}
+
+func (token *Token) resetAccessKey() (string, string, error) {
+	ak, sk, err := GenerateArkCredentials()
+	if err != nil {
+		return "", "", err
+	}
+	token.AccessKey = &ak
+	token.SecretKey = sk
+	if err := token.updateAccessKey(); err != nil {
+		return "", "", err
+	}
+	return ak, sk, nil
+}
+
+// updateAccessKey 持久化 AK/SK 两列。AK 查询走 DB、不引入独立缓存，故无需失效 Redis。
+func (token *Token) updateAccessKey() error {
+	if token.Id == 0 {
+		return errors.New("token id is required")
+	}
+	return DB.Model(&Token{}).Where("id = ?", token.Id).Updates(map[string]any{
+		"access_key": token.AccessKey,
+		"secret_key": token.SecretKey,
+	}).Error
 }
 
 func (token *Token) GetIpLimits() []string {
@@ -219,36 +309,44 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 	return tokens, total, nil
 }
 
+// checkTokenUsable 校验令牌可用性（状态/过期/额度）。返回 ErrTokenInvalid 表示不可用。
+// 非 Redis 模式下顺带把过期/耗尽状态落库，与既有 ValidateUserToken 行为一致。
+// ValidateUserToken（sk- 密钥）与 ValidateTokenByAccessKey（Ark AK）共用本校验，避免重复。
+func checkTokenUsable(token *Token) error {
+	if token.Status == common.TokenStatusExhausted ||
+		token.Status == common.TokenStatusExpired ||
+		token.Status != common.TokenStatusEnabled {
+		return ErrTokenInvalid
+	}
+	if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
+		if !common.RedisEnabled {
+			token.Status = common.TokenStatusExpired
+			if err := token.SelectUpdate(); err != nil {
+				common.SysLog("failed to update token status" + err.Error())
+			}
+		}
+		return ErrTokenInvalid
+	}
+	if !token.UnlimitedQuota && token.RemainQuota <= 0 {
+		if !common.RedisEnabled {
+			token.Status = common.TokenStatusExhausted
+			if err := token.SelectUpdate(); err != nil {
+				common.SysLog("failed to update token status" + err.Error())
+			}
+		}
+		return ErrTokenInvalid
+	}
+	return nil
+}
+
 func ValidateUserToken(key string) (token *Token, err error) {
 	if key == "" {
 		return nil, ErrTokenNotProvided
 	}
 	token, err = GetTokenByKey(key, false)
 	if err == nil {
-		if token.Status == common.TokenStatusExhausted ||
-			token.Status == common.TokenStatusExpired ||
-			token.Status != common.TokenStatusEnabled {
-			return token, ErrTokenInvalid
-		}
-		if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
-			if !common.RedisEnabled {
-				token.Status = common.TokenStatusExpired
-				err := token.SelectUpdate()
-				if err != nil {
-					common.SysLog("failed to update token status" + err.Error())
-				}
-			}
-			return token, ErrTokenInvalid
-		}
-		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
-			if !common.RedisEnabled {
-				token.Status = common.TokenStatusExhausted
-				err := token.SelectUpdate()
-				if err != nil {
-					common.SysLog("failed to update token status" + err.Error())
-				}
-			}
-			return token, ErrTokenInvalid
+		if uerr := checkTokenUsable(token); uerr != nil {
+			return token, uerr
 		}
 		return token, nil
 	}
@@ -257,6 +355,37 @@ func ValidateUserToken(key string) (token *Token, err error) {
 		return nil, ErrTokenInvalid
 	}
 	return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
+}
+
+// GetTokenByAccessKey 按 AccessKey（Ark 官方兼容 API 的 AK）查令牌。
+// AK 调用量小，本期直接查库；保留 fromDB 形参与 GetTokenByKey 同构，便于后续加缓存。
+func GetTokenByAccessKey(ak string, fromDB bool) (*Token, error) {
+	if ak == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	token := Token{}
+	err := DB.Where("access_key = ?", ak).First(&token).Error
+	return &token, err
+}
+
+// ValidateTokenByAccessKey 按 AccessKey 校验令牌可用性，复用 checkTokenUsable。
+// 供 Ark 官方兼容 API 的 V4 鉴权中间件在验签通过后做令牌状态/过期/额度校验。
+func ValidateTokenByAccessKey(ak string) (*Token, error) {
+	if ak == "" {
+		return nil, ErrTokenNotProvided
+	}
+	token, err := GetTokenByAccessKey(ak, true)
+	if err != nil {
+		common.SysLog("ValidateTokenByAccessKey: failed to get token: " + err.Error())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTokenInvalid
+		}
+		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
+	}
+	if uerr := checkTokenUsable(token); uerr != nil {
+		return token, uerr
+	}
+	return token, nil
 }
 
 func GetTokenByIds(id int, userId int) (*Token, error) {

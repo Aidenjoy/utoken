@@ -99,6 +99,11 @@ func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 func migrateTokenControllerTestDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
+	// Mirror production migrateDB(): pre-add Ark AK/SK plain columns on SQLite before
+	// AutoMigrate so GORM never emits ALTER TABLE ADD COLUMN ... UNIQUE (unsupported by SQLite).
+	if err := model.EnsureTokenArkColumnsSQLite(); err != nil {
+		t.Fatalf("failed to pre-add token ark columns: %v", err)
+	}
 	if err := db.AutoMigrate(&model.Token{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}

@@ -495,9 +495,16 @@ curl -X GET ${tasksUrl}/{task_id} \\
     },
     {
       id: 'video-asset-upload',
-      title: '素材库 API · 上传素材',
+      title: '素材库快速对接 · 上传素材',
       body: (
         <>
+          <Note>
+            「素材库快速对接」用 Bearer 令牌（<InlineCode>sk-...</InlineCode>）
+            鉴权、ctaigw 兼容的 <InlineCode>{'{code, message, data}'}</InlineCode>{' '}
+            信封，挂载在 <InlineCode>/v1/api/assets</InlineCode>
+            ，适合快速集成或作为下级网关的素材中转上游。若要用火山官方 SDK +
+            AK/SK V4 签名 1:1 调用，见下文「素材库官方兼容对接（火山方舟 1:1）」。
+          </Note>
           <P>
             上传真人虚拟素材后会得到一个素材 ID，在视频任务{' '}
             <InlineCode>content</InlineCode> 中以{' '}
@@ -559,7 +566,7 @@ curl -X GET ${tasksUrl}/{task_id} \\
     },
     {
       id: 'video-asset-query',
-      title: '素材库 API · 查询素材状态',
+      title: '素材库快速对接 · 查询素材状态',
       body: (
         <>
           <P>
@@ -627,13 +634,14 @@ curl -X GET ${baseUrl}/api/assets/{asset_id} \\
     },
     {
       id: 'video-asset-delete',
-      title: '素材库 API · 删除素材',
+      title: '素材库快速对接 · 删除素材',
       body: (
         <>
           <P>
             删除已上传的素材登记。<InlineCode>{'{asset_id}'}</InlineCode>{' '}
-            为上传返回的 <InlineCode>data.Id</InlineCode>。仅删除本地登记，TOS
-            原件与上游素材保留。
+            为上传返回的 <InlineCode>data.Id</InlineCode>
+            。删除会尽力联动上游一并删除（best-effort）：上游不支持删除接口或临时
+            不可用时仅删本地登记、不阻断操作。
           </P>
           <CodeBlock
             method='DELETE'
@@ -649,9 +657,195 @@ curl -X DELETE ${baseUrl}/api/assets/asset-20260907221226-sm042 \\
             code='{"code":0,"message":"ok","data":{"Id":"asset-20260907221226-sm042","Deleted":true}}'
           />
           <Note>
-            删除智能素材会级联删除其各渠道副本记录，删除后该素材的{' '}
+            删除智能素材会级联删除其各渠道副本记录，并尽力联动各上游渠道删除
+            （best-effort）；删除后该素材的{' '}
             <InlineCode>asset://&lt;素材ID&gt;</InlineCode>{' '}
             引用即失效；删除不可恢复，请谨慎操作。
+          </Note>
+        </>
+      ),
+    },
+    {
+      id: 'video-asset-official',
+      title: '素材库官方兼容对接（火山方舟 1:1）',
+      body: (
+        <>
+          <P>
+            与火山方舟官方素材库 1:1 兼容：下游直接用火山官方 SDK 或
+            curl，把 endpoint 指向本站、用在「Key 管理」页生成的 AK/SK 做 V4
+            签名，即可原样调用官方 10 个 Action；请求体、响应体、
+            <InlineCode>ResponseMetadata</InlineCode>/{' '}
+            <InlineCode>Result</InlineCode> 信封与鉴权全部与官方一致。
+          </P>
+          <Note>
+            鉴权与隔离：在「Key 管理」页为令牌生成 Ark AK/SK；签名{' '}
+            <InlineCode>service=ark</InlineCode>、<InlineCode>region</InlineCode>{' '}
+            任意（如 <InlineCode>cn-beijing</InlineCode>）。列表/查询以本站数据库为准，按
+            AK→令牌→用户归属过滤，只能查到自己创建的素材与素材组，天然多租户隔离。
+          </Note>
+          <Note>
+            调用形态：统一{' '}
+            <InlineCode>{`POST ${siteUrl}/?Action=<接口名>&Version=2024-01-01`}</InlineCode>，
+            <InlineCode>Content-Type: application/json</InlineCode>，AK/SK V4 签名（
+            <InlineCode>Authorization: HMAC-SHA256 Credential=...</InlineCode>）。状态词表{' '}
+            <InlineCode>Active</InlineCode> / <InlineCode>Processing</InlineCode> /{' '}
+            <InlineCode>Failed</InlineCode>；列表用 <InlineCode>NextToken</InlineCode>{' '}
+            游标分页（<InlineCode>MaxResults</InlineCode> 默认 20、上限 100）。
+          </Note>
+          <CodeBlock
+            title='成功响应信封'
+            lang='json'
+            code={`{
+  "ResponseMetadata": {
+    "RequestId": "20260716111338-vwmxj",
+    "Action": "CreateAssetGroup",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {"Id": "group-20260716105134-zkx8t"}
+}`}
+          />
+          <CodeBlock
+            title='错误响应信封（无 Result）'
+            lang='json'
+            code={`{
+  "ResponseMetadata": {
+    "RequestId": "20260716111339-abcde",
+    "Action": "GetAsset",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing",
+    "Error": {"CodeN": 404, "Code": "NotFound", "Message": "asset not found"}
+  }
+}`}
+          />
+          <CodeBlock
+            title='火山官方 Go SDK（service/ark）示意：仅把 endpoint 指向本站'
+            lang='bash'
+            code={`svc := ark.NewInstance()
+svc.SetRegion("cn-beijing")            // region 任意
+svc.SetService("ark")                  // 固定 ark
+svc.SetEndpoint("${siteUrl}")          // ← 指向本站（系统设置 → 服务器地址）
+svc.SetAK("AKUTxxxxxxxxxxxxxxxxxxxx")  // 「Key 管理」页生成的 AccessKey
+svc.SetSK("your-secret-key")           // 「Key 管理」页生成的 SecretKey
+
+out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
+    Name:        ark.String("我的素材组"),
+    Description: ark.String("可选描述"),
+})
+// out.Result.Id 即素材组 ID；SDK 自动完成 V4 签名`}
+          />
+          <CodeBlock
+            title='curl 签名请求示例（把 <你的域名> 换成本站域名，不含 https://）'
+            lang='bash'
+            code={`curl -X POST "${siteUrl}/?Action=ListAssets&Version=2024-01-01" \\
+  -H "Content-Type: application/json" \\
+  -H "Host: <你的域名>" \\
+  -H "X-Date: 20260716T031338Z" \\
+  -H "X-Content-Sha256: <请求体的 SHA256 十六进制>" \\
+  -H "Authorization: HMAC-SHA256 Credential=<AK>/20260716/cn-beijing/ark/request, SignedHeaders=host;x-content-sha256;x-date, Signature=<V4 签名>" \\
+  -d '{"Filter":{"Statuses":["Active"]},"MaxResults":20}'`}
+          />
+          <Note>
+            V4 签名步骤（用官方 SDK 可自动完成，无需手写）：① 构造规范请求（方法、
+            URI、query、参与签名的头、payload 哈希）；② 拼 StringToSign（算法、X-Date、
+            scope、规范请求哈希）；③ 用 SK 逐级派生签名密钥（date/region/service）；④
+            HMAC-SHA256 得到 Signature 并写入 Authorization 头。X-Date 需在 ±15 分钟内，
+            X-Content-Sha256 须等于请求体哈希，否则返回 SignatureDoesNotMatch / RequestExpired。
+          </Note>
+          <P>
+            10 个 Action：CreateAssetGroup（创建素材组）、CreateAsset（创建素材）、
+            ListAssetGroups（列出素材组）、ListAssets（列出素材）、GetAsset（查询素材）、
+            GetAssetGroup（查询素材组）、UpdateAsset（更新素材）、UpdateAssetGroup（更新素材组）、
+            DeleteAsset（删除素材）、DeleteAssetGroup（删除素材组）。以下逐个给出请求体（均以{' '}
+            <InlineCode>{`POST ${siteUrl}/?Action=<名>&Version=2024-01-01`}</InlineCode> 调用）：
+          </P>
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=CreateAssetGroup&Version=2024-01-01`}
+            lang='json'
+            code='{"Name":"我的素材组","Description":"可选描述","GroupType":"AIGC","ProjectName":"default"}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=CreateAsset&Version=2024-01-01`}
+            lang='json'
+            code='{"GroupId":"group-20260716105134-zkx8t","URL":"https://picsum.photos/id/1074/800/600","AssetType":"Image","Name":"lion01","ProjectName":"default"}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=ListAssetGroups&Version=2024-01-01`}
+            lang='json'
+            code='{"Filter":{"Name":"素材"},"MaxResults":20,"NextToken":""}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=ListAssets&Version=2024-01-01`}
+            lang='json'
+            code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"Statuses":["Active"]},"MaxResults":20}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=GetAsset&Version=2024-01-01`}
+            lang='json'
+            code='{"Id":"asset-20260716111338-vwmxj"}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=GetAssetGroup&Version=2024-01-01`}
+            lang='json'
+            code='{"Id":"group-20260716105134-zkx8t"}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=UpdateAsset&Version=2024-01-01`}
+            lang='json'
+            code='{"Id":"asset-20260716111338-vwmxj","Name":"新素材名"}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=UpdateAssetGroup&Version=2024-01-01`}
+            lang='json'
+            code='{"Id":"group-20260716105134-zkx8t","Name":"新组名","Description":"新描述"}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=DeleteAsset&Version=2024-01-01`}
+            lang='json'
+            code='{"Id":"asset-20260716111338-vwmxj"}'
+          />
+          <CodeBlock
+            method='POST'
+            url={`${siteUrl}/?Action=DeleteAssetGroup&Version=2024-01-01`}
+            lang='json'
+            code='{"Id":"group-20260716105134-zkx8t"}'
+          />
+          <CodeBlock
+            title='各 Action 的 Result 结构（外层均包在 ResponseMetadata + Result 信封内）'
+            lang='json'
+            code={`{
+  "CreateAssetGroup": {"Id": "group-20260716105134-zkx8t"},
+  "CreateAsset":      {"Id": "asset-20260716111338-vwmxj"},
+  "ListAssetGroups":  {"Items": [{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}], "NextToken": ""},
+  "ListAssets":       {"Items": [{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "ProjectName": "default", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "Status": "Active", "Moderation": {"Strategy": "Default"}}], "NextToken": ""},
+  "GetAsset":         {"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "Status": "Active", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "Moderation": {"Strategy": "Default"}},
+  "GetAssetGroup":    {"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"},
+  "UpdateAsset":      {},
+  "UpdateAssetGroup": {},
+  "DeleteAsset":      {},
+  "DeleteAssetGroup": {}
+}`}
+          />
+          <Note>
+            创建素材组会自动选用你分组下优先级最高的启用素材渠道；同一素材组内的
+            CreateAsset 锁定到建组时的渠道，保证同一上游账号。删除（DeleteAsset /
+            DeleteAssetGroup）会尽力联动上游一并删除（best-effort），上游故障不阻断本地删除。
+          </Note>
+          <Note>
+            限制：官方兼容 API 需上游为 ark_official（或透传了完整管理能力的兼容）渠道，
+            relay / ecloud / 360 等协议不支持完整管理接口；并发/QPS 以本站为准。上面 Go SDK
+            片段仅为示意，具体实例化方法、输入结构体与字段名以火山官方 volcengine-go-sdk（service/ark）为准。
           </Note>
         </>
       ),

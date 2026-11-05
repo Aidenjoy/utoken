@@ -49,6 +49,22 @@ type Protocol interface {
 	Query(assetID string) (*QueryResult, error)
 }
 
+// AssetManagement 官方素材库管理能力（组/素材的显式增改删）。仅 ArkOfficialProtocol 实现——
+// ark_official/bit_official/xswj_official 三者构造的都是 *ArkOfficialProtocol，故都满足该接口；
+// relay/ecloud/baidu_databuilder/qihoo360 不支持完整管理 API。控制器经 NewProtocol 拿到 Protocol
+// 后做 .(AssetManagement) 类型断言，断言失败即返回「该渠道协议不支持官方素材库管理接口」。
+type AssetManagement interface {
+	CreateAssetGroup(name, description, groupType, projectName string) (string, error)
+	CreateAssetInGroup(groupID, url, assetType, name, projectName string) (*UploadResult, error)
+	UpdateAsset(assetID, name, projectName string) error
+	UpdateAssetGroup(groupID, name, description, projectName string) error
+	DeleteAsset(assetID, projectName string) error
+	DeleteAssetGroup(groupID, projectName string) error
+}
+
+// 编译期断言：*ArkOfficialProtocol 必须实现 AssetManagement。
+var _ AssetManagement = (*ArkOfficialProtocol)(nil)
+
 // NewProtocol 按渠道配置的协议类型构造适配器；未开启协议返回错误。
 func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 	// 凭据去杂质：粘贴密钥常带首尾空白/换行，会直接破坏签名或 Authorization 头解析。

@@ -45,6 +45,10 @@ export const apiKeySchema = z.object({
   model_limits_enabled: z.boolean(),
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
+  // Ark 官方兼容 API 凭证：access_key 是标识符（列表原样展示），
+  // secret_key 列表为掩码值，明文仅经 /api/token/:id/access-key 拉取
+  access_key: z.string().nullish().default(''),
+  secret_key: z.string().nullish().default(''),
   // 归属用户：列表恒返回 user_id；username 仅管理员跨用户查看时附加
   user_id: z.number().optional(),
   username: z.string().optional(),
@@ -114,3 +118,4 @@ export type ApiKeysDialogType =
   | 'delete'
   | 'batch-delete'
   | 'cc-switch'
+  | 'access-key'

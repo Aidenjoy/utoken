@@ -271,6 +271,10 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	// SQLite 存量 tokens 表预加 Ark AK/SK 普通列，规避 ADD COLUMN ... UNIQUE 限制
+	if err := EnsureTokenArkColumnsSQLite(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -306,6 +310,7 @@ func migrateDB() error {
 		&AuthzRole{},
 		&Asset{},
 		&SourceAsset{},
+		&AssetGroup{},
 		&DirectorProject{},
 		&DirectorEpisode{},
 		&DirectorCharacter{},
@@ -528,6 +533,11 @@ func migrateDBFast() error {
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
+
+	// SQLite 存量 tokens 表预加 Ark AK/SK 普通列（须在并发 AutoMigrate 之前完成）
+	if err := EnsureTokenArkColumnsSQLite(); err != nil {
+		return err
+	}
 
 	for _, m := range migrations {
 		wg.Add(1)
@@ -854,6 +864,46 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
+	}
+	for _, col := range required {
+		if _, ok := existing[col.Name]; ok {
+			continue
+		}
+		if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// EnsureTokenArkColumnsSQLite 在 SQLite 上为存量 tokens 表预加 access_key / secret_key
+// 两个普通列（不带 UNIQUE）。SQLite 不支持 ALTER TABLE ADD COLUMN 时追加 UNIQUE 约束，
+// 而 GORM 对带唯一索引的新列会在 ADD COLUMN 内联 UNIQUE，导致存量库 AutoMigrate 直接失败
+// （"Cannot add a UNIQUE column"）。先以普通列补齐，AutoMigrate 随后单独 CREATE UNIQUE INDEX
+// （存量行 access_key 均为 NULL，SQLite 唯一索引允许多个 NULL，成立）。
+// MySQL/PG 原生支持 ADD COLUMN ... UNIQUE，故仅 SQLite 需要此补偿；新建库（表不存在）
+// 走 AutoMigrate 的 CREATE TABLE（内联 UNIQUE 合法），亦无需补偿。
+func EnsureTokenArkColumnsSQLite() error {
+	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		return nil
+	}
+	tableName := "tokens"
+	if !DB.Migrator().HasTable(tableName) {
+		return nil
+	}
+	var cols []struct {
+		Name string `gorm:"column:name"`
+	}
+	if err := DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
+		return err
+	}
+	existing := make(map[string]struct{}, len(cols))
+	for _, c := range cols {
+		existing[c.Name] = struct{}{}
+	}
+	required := []sqliteColumnDef{
+		{Name: "access_key", DDL: "`access_key` varchar(64)"},
+		{Name: "secret_key", DDL: "`secret_key` varchar(128)"},
 	}
 	for _, col := range required {
 		if _, ok := existing[col.Name]; ok {

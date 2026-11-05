@@ -31,7 +31,7 @@ type Asset struct {
 	UpdatedAt     int64  `json:"updated_at"`
 	UserID        int    `json:"user_id" gorm:"index:idx_asset_user_channel,priority:1"`
 	ChannelID     int    `json:"channel_id" gorm:"index:idx_asset_user_channel,priority:2;index:idx_asset_channel_asset,priority:1;uniqueIndex:idx_asset_source_channel,priority:2"`
-	AssetID       string `json:"asset_id" gorm:"type:varchar(191);index:idx_asset_channel_asset,priority:2"` // 上游素材 ID
+	AssetID       string `json:"asset_id" gorm:"type:varchar(191);index:idx_asset_channel_asset,priority:2"`             // 上游素材 ID
 	SourceAssetId *int64 `json:"source_asset_id,omitempty" gorm:"index;uniqueIndex:idx_asset_source_channel,priority:1"` // 源素材关联 ID（可为空，兼容旧数据）
 	Name          string `json:"name" gorm:"type:varchar(191)"`
 	AssetType     string `json:"asset_type" gorm:"type:varchar(20)"`
@@ -106,6 +106,55 @@ func GetUserAssets(userId int, channelId int, startIdx int, num int) ([]*Asset, 
 	return assets, err
 }
 
+// GetUserAssetsFiltered 官方兼容 API 的 ListAssets 数据源：按 user_id 归属过滤 +
+// 可选 group_id IN + 可选本地状态 IN + 可选 name 模糊 + id desc 游标分页。
+// statuses 传本地态（active/pending/failed），由控制器从官方词表映射而来。
+func GetUserAssetsFiltered(userId int, groupIDs []string, statuses []string, nameFuzzy string, maxResults int, nextToken string) ([]*Asset, string, error) {
+	limit := normalizeAssetLimit(maxResults)
+	cursor, err := decodeAssetCursor(nextToken)
+	if err != nil {
+		return nil, "", err
+	}
+	query := DB.Where("user_id = ?", userId)
+	if len(groupIDs) > 0 {
+		query = query.Where("group_id IN ?", groupIDs)
+	}
+	if len(statuses) > 0 {
+		query = query.Where("status IN ?", statuses)
+	}
+	if nameFuzzy != "" {
+		pattern, err := sanitizeLikePattern(nameFuzzy)
+		if err != nil {
+			return nil, "", err
+		}
+		query = query.Where("name LIKE ? ESCAPE '!'", "%"+pattern+"%")
+	}
+	if cursor > 0 {
+		query = query.Where("id < ?", cursor)
+	}
+	var assets []*Asset
+	if err := query.Order("id desc").Limit(limit + 1).Find(&assets).Error; err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(assets) > limit {
+		assets = assets[:limit]
+		next = encodeAssetCursor(assets[len(assets)-1].ID)
+	}
+	return assets, next, nil
+}
+
+// GetUserAssetsByGroupID 返回某用户某组下的全部素材（不分页），供官方 DeleteAssetGroup
+// 级联删除时对每个上游副本做 best-effort 删除。始终带 user_id 归属过滤。
+func GetUserAssetsByGroupID(userId int, groupID string) ([]*Asset, error) {
+	if groupID == "" {
+		return nil, nil
+	}
+	var assets []*Asset
+	err := DB.Where("user_id = ? AND group_id = ?", userId, groupID).Order("id desc").Find(&assets).Error
+	return assets, err
+}
+
 // GetAssetsByChannel 跨用户列出某渠道下的素材副本（管理员按渠道同步用）。
 func GetAssetsByChannel(channelId int, startIdx int, num int) ([]*Asset, error) {
 	if num == 0 {
@@ -136,6 +185,7 @@ func GetAssetsForAdmin(userIds []int, channelId int, num int) ([]*Asset, error) 
 	err := query.Order("id desc").Limit(num).Find(&assets).Error
 	return assets, err
 }
+
 // 供 SourceAssetId 为空（直接按 URL 注册）的素材在跨渠道同步时做幂等预检。
 func GetAssetByChannelAndSourceURL(channelId int, sourceURL string) (*Asset, error) {
 	var asset Asset
@@ -157,7 +207,7 @@ func DeleteAssetById(id int64, userId int) (string, error) {
 	return "", nil
 }
 
-// AdminDeleteAssetById 超管按记录 ID 删除素材本地登记（不限归属；上游无删除 API，远端素材保留）。
+// AdminDeleteAssetById 超管按记录 ID 删除素材本地登记（不限归属；上游删除由控制层 best-effort 联动）。
 func AdminDeleteAssetById(id int64) error {
 	if id == 0 {
 		return errors.New("asset id is required")
@@ -186,9 +236,22 @@ func DeleteAssetsByUserAndAssetID(userId int, assetID string) (int64, error) {
 }
 
 // DeleteAssetsBySourceAssetId 级联删除某源素材在各渠道的副本记录。
-// 供删除智能素材时清理 assets 表映射（上游素材保留，仅删本地登记）。
+// 供删除智能素材时清理 assets 表映射（上游删除由控制层 best-effort 联动）。
 func DeleteAssetsBySourceAssetId(sourceAssetId int64) error {
 	return DB.Where("source_asset_id = ?", sourceAssetId).Delete(&Asset{}).Error
+}
+
+// DeleteAssetsByUserAndGroupID 级联删除某用户某组下的本地素材记录，返回删除行数。
+// 供官方 DeleteAssetGroup 清理组内素材的本地登记（上游删除由控制器 best-effort 触发）。
+func DeleteAssetsByUserAndGroupID(userId int, groupID string) (int64, error) {
+	if groupID == "" {
+		return 0, errors.New("group id is required")
+	}
+	result := DB.Where("user_id = ? AND group_id = ?", userId, groupID).Delete(&Asset{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }
 
 // AdminDeleteChannelAssetById 按渠道与素材 ID 删除副本（管理员跨用户操作，不限归属）。
@@ -218,6 +281,16 @@ func UpdateAssetStatus(id int64, status string, previewURL string, errMsg string
 		updates["preview_url"] = previewURL
 	}
 	return DB.Model(&Asset{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// UpdateAssetName 更新素材名称（带 user_id 归属过滤），供官方兼容 API 的 UpdateAsset
+// 在上游改名成功后同步本地记录。空名称不写入，避免误清空。
+func UpdateAssetName(id int64, userId int, name string) error {
+	if name == "" {
+		return nil
+	}
+	return DB.Model(&Asset{}).Where("id = ? AND user_id = ?", id, userId).
+		Updates(map[string]any{"name": name, "updated_at": time.Now().Unix()}).Error
 }
 
 // UpsertChannelAssetBySourceURL 幂等写入无 SourceAssetId 的渠道副本，键为 (channel_id, source_url)。

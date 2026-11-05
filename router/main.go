@@ -20,6 +20,8 @@ func SetRouter(router *gin.Engine, assets ThemeAssets) {
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
 	SetVideoRouter(router)
+	// Ark 官方兼容素材库 API 必须在 SetWebRouter 之前注册，避免挂载 Web 静态/限流中间件（见 SetArkAssetRouter 注释）。
+	SetArkAssetRouter(router)
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""
