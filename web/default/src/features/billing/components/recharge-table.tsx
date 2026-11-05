@@ -229,17 +229,24 @@ export function RechargeTable({ filter, isAgent = false }: RechargeTableProps) {
         cell: ({ row }) => {
           const record = row.original
           const isOrg = ORG_TARGET_SOURCES.has(record.source)
-          // 转移记录在副行标出对手方，一眼看出钱从谁的钱包搬进了哪个企业池
-          let secondary: string
-          if (record.source === 'wallet_transfer_in') {
-            secondary = `← ${record.username}`
-          } else if (record.source === 'wallet_transfer_out') {
-            secondary = `→ ${record.org_name}`
-          } else if (isOrg) {
-            secondary = `${t('Organization')} #${record.org_id}`
-          } else {
-            secondary = `${t('User')} #${record.user_id}`
+          // 转移行直接标出「谁 → 谁」：名称缺失（如企业已删除）时回落到 ID，
+          // 避免只看到一个孤立箭头、看不出钱转给了谁。
+          if (
+            record.source === 'wallet_transfer_in' ||
+            record.source === 'wallet_transfer_out'
+          ) {
+            const sender = record.username || `${t('User')} #${record.user_id}`
+            const receiver =
+              record.org_name || `${t('Organization')} #${record.org_id}`
+            return (
+              <TruncatedCell cellClassName='font-medium'>
+                {`${sender} → ${receiver}`}
+              </TruncatedCell>
+            )
           }
+          const secondary = isOrg
+            ? `${t('Organization')} #${record.org_id}`
+            : `${t('User')} #${record.user_id}`
           return (
             <div className='flex min-w-[140px] flex-col gap-0.5'>
               <TruncatedCell cellClassName='font-medium'>
