@@ -4330,6 +4330,8 @@
     "Org Adjust": "Điều chỉnh tổ chức",
     "org-...": "org-...",
     "Organization": "Tổ chức",
+    "Organization ({{id}}:{{name}})": "Tổ chức ({{id}}:{{name}})",
+    "Organization (deleted {{id}})": "Tổ chức (đã xóa {{id}})",
     "Organization {{name}} daily usage exceeded {{threshold}}": "Mức sử dụng trong ngày của tổ chức {{name}} đã vượt {{threshold}}",
     "Organization {{name}} quota dropped below warning threshold {{threshold}}": "Hạn mức tổ chức {{name}} đã xuống dưới ngưỡng cảnh báo {{threshold}}",
     "Organization Admin": "Quản trị tổ chức",

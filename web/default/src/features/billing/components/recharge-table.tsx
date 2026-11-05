@@ -229,15 +229,20 @@ export function RechargeTable({ filter, isAgent = false }: RechargeTableProps) {
         cell: ({ row }) => {
           const record = row.original
           const isOrg = ORG_TARGET_SOURCES.has(record.source)
-          // 转移行直接标出「谁 → 谁」：名称缺失（如企业已删除）时回落到 ID，
-          // 避免只看到一个孤立箭头、看不出钱转给了谁。
+          // 转移行直接标出「谁 → 谁」，企业写成「企业（ID:名称）」，
+          // 好和企业列表里的 ID 对上号；企业被删后台账查不回名字，
+          // 此时明确标「已删除」，不再只留一个对不上的孤立 ID。
           if (
             record.source === 'wallet_transfer_in' ||
             record.source === 'wallet_transfer_out'
           ) {
             const sender = record.username || `${t('User')} #${record.user_id}`
-            const receiver =
-              record.org_name || `${t('Organization')} #${record.org_id}`
+            const receiver = record.org_name
+              ? t('Organization ({{id}}:{{name}})', {
+                  id: record.org_id,
+                  name: record.org_name,
+                })
+              : t('Organization (deleted {{id}})', { id: record.org_id })
             return (
               <TruncatedCell cellClassName='font-medium'>
                 {`${sender} → ${receiver}`}

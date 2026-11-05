@@ -4330,6 +4330,8 @@
     "Org Adjust": "組織調額",
     "org-...": "org-...",
     "Organization": "企業",
+    "Organization ({{id}}:{{name}})": "企業（{{id}}:{{name}}）",
+    "Organization (deleted {{id}})": "企業（已刪除 {{id}}）",
     "Organization {{name}} daily usage exceeded {{threshold}}": "企業 {{name}} 的當日用量已超過 {{threshold}}",
     "Organization {{name}} quota dropped below warning threshold {{threshold}}": "企業 {{name}} 的額度已低於預警閾值 {{threshold}}",
     "Organization Admin": "企業管理員",

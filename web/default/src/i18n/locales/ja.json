@@ -4330,6 +4330,8 @@
     "Org Adjust": "組織調整",
     "org-...": "org-...",
     "Organization": "組織",
+    "Organization ({{id}}:{{name}})": "組織（{{id}}:{{name}}）",
+    "Organization (deleted {{id}})": "組織（削除済み {{id}}）",
     "Organization {{name}} daily usage exceeded {{threshold}}": "組織 {{name}} の当日使用量が {{threshold}} を超えました",
     "Organization {{name}} quota dropped below warning threshold {{threshold}}": "組織 {{name}} のクォータが警告しきい値 {{threshold}} を下回りました",
     "Organization Admin": "組織管理者",

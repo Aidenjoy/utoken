@@ -4330,6 +4330,8 @@
     "Org Adjust": "Ajustement organisation",
     "org-...": "org-...",
     "Organization": "Organisation",
+    "Organization ({{id}}:{{name}})": "Organisation ({{id}} : {{name}})",
+    "Organization (deleted {{id}})": "Organisation (supprimée {{id}})",
     "Organization {{name}} daily usage exceeded {{threshold}}": "L’utilisation quotidienne de l’organisation {{name}} a dépassé {{threshold}}",
     "Organization {{name}} quota dropped below warning threshold {{threshold}}": "Le quota de l’organisation {{name}} est passé sous le seuil d’alerte {{threshold}}",
     "Organization Admin": "Administrateur de l'organisation",

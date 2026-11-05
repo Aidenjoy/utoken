@@ -4330,6 +4330,8 @@
     "Org Adjust": "Корректировка организации",
     "org-...": "орг-...",
     "Organization": "Организация",
+    "Organization ({{id}}:{{name}})": "Организация ({{id}}:{{name}})",
+    "Organization (deleted {{id}})": "Организация (удалена {{id}})",
     "Organization {{name}} daily usage exceeded {{threshold}}": "Суточное использование организации {{name}} превысило {{threshold}}",
     "Organization {{name}} quota dropped below warning threshold {{threshold}}": "Квота организации {{name}} опустилась ниже порога предупреждения {{threshold}}",
     "Organization Admin": "Администратор организации",
