@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
@@ -359,4 +360,28 @@ func TestRelayArkAssetAction_MutateNotFound(t *testing.T) {
 	remainGroups, _, err := model.GetUserAssetGroups(other, nil, "", 0, "")
 	require.NoError(t, err)
 	assert.Len(t, remainGroups, 1)
+}
+
+func TestBestEffortDeleteUpstreamAssetRelay(t *testing.T) {
+	db := setupArkAssetControllerDB(t)
+	var gotMethod, gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok"}`))
+	}))
+	defer srv.Close()
+
+	settings, err := common.Marshal(dto.ChannelOtherSettings{AssetUploadProtocol: dto.AssetUploadProtocolRelay})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: 41, Name: "relay", Key: "relay-secret", Status: common.ChannelStatusEnabled,
+		BaseURL: &srv.URL, OtherSettings: string(settings),
+	}).Error)
+
+	bestEffortDeleteUpstreamAsset(&model.Asset{ID: 9, ChannelID: 41, AssetID: "asset-relay"})
+	assert.Equal(t, http.MethodDelete, gotMethod)
+	assert.Equal(t, "/api/assets/asset-relay", gotPath)
+	assert.Equal(t, "Bearer relay-secret", gotAuth)
 }

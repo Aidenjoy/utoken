@@ -16,7 +16,7 @@ import (
 
 // BaiduDataBuilderProtocol 百度 DataBuilder 官方素材协议（手册 §3）：
 // POST {base}/db-ms/seedance/material/?Action={Action}&Version=2024-01-01，
-// Action=CreateAssetGroup/CreateAsset/GetAsset，鉴权为 BCE Auth V1 AK/SK 签名
+// Action 覆盖素材组的创建/更新/删除、素材的创建/查询/更新/删除，鉴权为 BCE Auth V1 AK/SK 签名
 // （与视频任务共用 relay/channel/bce，但凭据来源不同：优先渠道 asset_ak/asset_sk，
 // 未配置时回落解析渠道密钥 "AK|SK"）。
 type BaiduDataBuilderProtocol struct {
@@ -32,10 +32,14 @@ type BaiduDataBuilderProtocol struct {
 }
 
 const (
-	baiduDataBuilderVersion = "2024-01-01"
-	baiduActionCreateAsset  = "CreateAsset"
-	baiduActionCreateGroup  = "CreateAssetGroup"
-	baiduActionGetAsset     = "GetAsset"
+	baiduDataBuilderVersion     = "2024-01-01"
+	baiduActionCreateAsset      = "CreateAsset"
+	baiduActionCreateGroup      = "CreateAssetGroup"
+	baiduActionGetAsset         = "GetAsset"
+	baiduActionUpdateAsset      = "UpdateAsset"
+	baiduActionUpdateAssetGroup = "UpdateAssetGroup"
+	baiduActionDeleteAsset      = "DeleteAsset"
+	baiduActionDeleteAssetGroup = "DeleteAssetGroup"
 	// baiduDefaultAssetGroupName 渠道未配置 asset_group_id 时自动创建的默认素材组名称。
 	baiduDefaultAssetGroupName = "new-api-assets"
 	baiduDefaultProjectName    = "default"
@@ -74,53 +78,33 @@ func (p *BaiduDataBuilderProtocol) Upload(req UploadRequest) (*UploadResult, err
 	createdGroupID := ""
 	if groupID == "" {
 		var err error
-		groupID, err = p.createAssetGroup()
+		groupID, err = p.CreateAssetGroup(baiduDefaultAssetGroupName, "auto-created by new-api", "AIGC", p.projectName)
 		if err != nil {
 			return nil, fmt.Errorf("auto-create default asset group failed: %w", err)
 		}
 		createdGroupID = groupID
 	}
-	body, err := common.Marshal(map[string]any{
-		"GroupId":     groupID,
-		"URL":         req.URL,
-		"AssetType":   req.AssetType,
-		"Name":        req.Name,
-		"ProjectName": p.projectName,
-	})
+	result, err := p.CreateAssetInGroup(groupID, req.URL, req.AssetType, req.Name, p.projectName)
 	if err != nil {
 		return nil, err
 	}
-
-	var result struct {
-		ID      string `json:"Id"`
-		AssetID string `json:"AssetId"`
-	}
-	if err := p.call(baiduActionCreateAsset, body, &result); err != nil {
-		return nil, err
-	}
-	assetID := result.ID
-	if assetID == "" {
-		assetID = result.AssetID
-	}
-	if strings.TrimSpace(assetID) == "" {
-		return nil, fmt.Errorf("databuilder CreateAsset returned empty asset id")
-	}
-	return &UploadResult{
-		AssetID:        assetID,
-		GroupID:        groupID,
-		ProjectName:    p.projectName,
-		CreatedGroupID: createdGroupID,
-	}, nil
+	result.CreatedGroupID = createdGroupID
+	return result, nil
 }
 
-// createAssetGroup 调用 CreateAssetGroup 创建默认素材组并返回其 ID（手册 §3.1）。
-func (p *BaiduDataBuilderProtocol) createAssetGroup() (string, error) {
-	body, err := common.Marshal(map[string]any{
-		"Name":        baiduDefaultAssetGroupName,
-		"Description": "auto-created by new-api",
-		"GroupType":   "AIGC",
-		"ProjectName": p.projectName,
-	})
+// CreateAssetGroup 调用 CreateAssetGroup 创建素材组并返回其 ID。
+func (p *BaiduDataBuilderProtocol) CreateAssetGroup(name, description, groupType, projectName string) (string, error) {
+	payload := map[string]any{"Name": name}
+	if description != "" {
+		payload["Description"] = description
+	}
+	if groupType != "" {
+		payload["GroupType"] = groupType
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
@@ -139,6 +123,96 @@ func (p *BaiduDataBuilderProtocol) createAssetGroup() (string, error) {
 		return "", fmt.Errorf("databuilder CreateAssetGroup returned empty group id")
 	}
 	return groupID, nil
+}
+
+// CreateAssetInGroup 在指定素材组中创建素材，不读取渠道默认组，也不自动建组。
+func (p *BaiduDataBuilderProtocol) CreateAssetInGroup(groupID, url, assetType, name, projectName string) (*UploadResult, error) {
+	body, err := common.Marshal(map[string]any{
+		"GroupId":     groupID,
+		"URL":         url,
+		"AssetType":   assetType,
+		"Name":        name,
+		"ProjectName": projectName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		ID      string `json:"Id"`
+		AssetID string `json:"AssetId"`
+	}
+	if err := p.call(baiduActionCreateAsset, body, &result); err != nil {
+		return nil, err
+	}
+	assetID := result.ID
+	if assetID == "" {
+		assetID = result.AssetID
+	}
+	if strings.TrimSpace(assetID) == "" {
+		return nil, fmt.Errorf("databuilder CreateAsset returned empty asset id")
+	}
+	return &UploadResult{AssetID: assetID, GroupID: groupID, ProjectName: projectName}, nil
+}
+
+// UpdateAsset 更新素材名称。
+func (p *BaiduDataBuilderProtocol) UpdateAsset(assetID, name, projectName string) error {
+	payload := map[string]any{"Id": assetID}
+	if name != "" {
+		payload["Name"] = name
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(baiduActionUpdateAsset, body, nil)
+}
+
+// UpdateAssetGroup 更新素材组名称和描述。
+func (p *BaiduDataBuilderProtocol) UpdateAssetGroup(groupID, name, description, projectName string) error {
+	payload := map[string]any{"Id": groupID}
+	if name != "" {
+		payload["Name"] = name
+	}
+	if description != "" {
+		payload["Description"] = description
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(baiduActionUpdateAssetGroup, body, nil)
+}
+
+// DeleteAsset 删除上游素材。
+func (p *BaiduDataBuilderProtocol) DeleteAsset(assetID, projectName string) error {
+	payload := map[string]any{"Id": assetID}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(baiduActionDeleteAsset, body, nil)
+}
+
+// DeleteAssetGroup 删除上游素材组。
+func (p *BaiduDataBuilderProtocol) DeleteAssetGroup(groupID, projectName string) error {
+	payload := map[string]any{"Id": groupID}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(baiduActionDeleteAssetGroup, body, nil)
 }
 
 func (p *BaiduDataBuilderProtocol) Query(assetID string) (*QueryResult, error) {

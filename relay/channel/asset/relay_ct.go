@@ -72,6 +72,30 @@ func (p *RelayProtocol) Upload(req UploadRequest) (*UploadResult, error) {
 	}, nil
 }
 
+// DeleteAsset 按中转站契约删除上游素材；ProjectName 在该协议中不使用。
+func (p *RelayProtocol) DeleteAsset(assetID string, _ string) error {
+	path := strings.Replace(p.cfg.Settings.AssetQueryPathOrDefault(), "{id}", assetID, 1)
+	uri := strings.TrimSuffix(p.cfg.BaseURL, "/") + path
+	httpReq, cancel, err := p.newRequest(http.MethodDelete, uri, nil)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+
+	respBody, err := p.do(httpReq)
+	if err != nil {
+		return err
+	}
+	var resp relayEnvelope
+	if err := common.Unmarshal(respBody, &resp); err != nil {
+		return fmt.Errorf("parse delete response failed: %w, body: %s", err, truncate(respBody))
+	}
+	if resp.Code != 0 {
+		return fmt.Errorf("upstream asset delete failed (code=%d): %s", resp.Code, resp.Message)
+	}
+	return nil
+}
+
 func (p *RelayProtocol) Query(assetID string) (*QueryResult, error) {
 	path := strings.Replace(p.cfg.Settings.AssetQueryPathOrDefault(), "{id}", assetID, 1)
 	uri := strings.TrimSuffix(p.cfg.BaseURL, "/") + path

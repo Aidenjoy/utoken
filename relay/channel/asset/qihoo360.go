@@ -14,9 +14,9 @@ import (
 )
 
 // Qihoo360Protocol 360 智脑（api.360.cn）官方素材协议：
-// 创建素材库/创建素材/查询素材三个动作统一走 POST {host}/v1/images/generations，
-// 用 body 里的 model 字段区分（cmecloud/create-asset-group、cmecloud/create-asset、
-// cmecloud/get-asset），鉴权为 Authorization: Bearer <渠道密钥>（与视频任务同一把 key）。
+// 素材组与素材的创建、查询、更新、删除统一走 POST {host}/v1/images/generations，
+// 用 body 里的 model 字段区分 cmecloud/* 动作，鉴权为 Authorization: Bearer <渠道密钥>
+// （与视频任务同一把 key）。
 // 响应是 OpenAI images 信封：真正的方舟结果塞在 data[0].b64_json 里；该字段文档示例
 // 是明文 JSON（{"ResponseMetadata":..,"Result":..}），但字段名又暗示 base64，两种编码都兼容解析。
 type Qihoo360Protocol struct {
@@ -33,9 +33,13 @@ const (
 	qihoo360DefaultHost = "https://api.360.cn"
 	qihoo360AssetPath   = "/v1/images/generations"
 
-	qihoo360ModelCreateGroup = "cmecloud/create-asset-group"
-	qihoo360ModelCreateAsset = "cmecloud/create-asset"
-	qihoo360ModelGetAsset    = "cmecloud/get-asset"
+	qihoo360ModelCreateGroup      = "cmecloud/create-asset-group"
+	qihoo360ModelCreateAsset      = "cmecloud/create-asset"
+	qihoo360ModelGetAsset         = "cmecloud/get-asset"
+	qihoo360ModelUpdateAsset      = "cmecloud/update-asset"
+	qihoo360ModelUpdateAssetGroup = "cmecloud/update-asset-group"
+	qihoo360ModelDeleteAsset      = "cmecloud/delete-asset"
+	qihoo360ModelDeleteAssetGroup = "cmecloud/delete-asset-group"
 
 	// qihoo360DefaultAssetGroupName 渠道未配置 asset_group_id 时自动创建的默认素材库名称。
 	qihoo360DefaultAssetGroupName = "new-api-assets"
@@ -80,55 +84,37 @@ func (p *Qihoo360Protocol) Upload(req UploadRequest) (*UploadResult, error) {
 	createdGroupID := ""
 	if groupID == "" {
 		var err error
-		groupID, err = p.createAssetGroup()
+		groupID, err = p.CreateAssetGroup(qihoo360DefaultAssetGroupName, "auto-created by new-api", "AIGC", p.projectName)
 		if err != nil {
 			return nil, fmt.Errorf("auto-create default asset group failed: %w", err)
 		}
 		createdGroupID = groupID
 	}
-
-	var result struct {
-		ID      string `json:"Id"`
-		AssetID string `json:"AssetId"`
-	}
-	err := p.call(qihoo360ModelCreateAsset, map[string]any{
-		"GroupId":     groupID,
-		"AssetType":   req.AssetType,
-		"URL":         req.URL,
-		"Name":        req.Name,
-		"ProjectName": p.projectName,
-	}, &result)
+	result, err := p.CreateAssetInGroup(groupID, req.URL, req.AssetType, req.Name, p.projectName)
 	if err != nil {
 		return nil, err
 	}
-	assetID := result.ID
-	if assetID == "" {
-		assetID = result.AssetID
-	}
-	if strings.TrimSpace(assetID) == "" {
-		return nil, fmt.Errorf("qihoo360 create-asset returned empty asset id")
-	}
-	return &UploadResult{
-		AssetID:        assetID,
-		GroupID:        groupID,
-		ProjectName:    p.projectName,
-		CreatedGroupID: createdGroupID,
-	}, nil
+	result.CreatedGroupID = createdGroupID
+	return result, nil
 }
 
-// createAssetGroup 调用 cmecloud/create-asset-group 创建默认素材库并返回其 ID。
-func (p *Qihoo360Protocol) createAssetGroup() (string, error) {
+// CreateAssetGroup 调用 cmecloud/create-asset-group 创建素材组并返回其 ID。
+func (p *Qihoo360Protocol) CreateAssetGroup(name, description, groupType, projectName string) (string, error) {
+	payload := map[string]any{"Name": name}
+	if description != "" {
+		payload["Description"] = description
+	}
+	if groupType != "" {
+		payload["GroupType"] = groupType
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
 	var result struct {
 		ID      string `json:"Id"`
 		GroupID string `json:"GroupId"`
 	}
-	err := p.call(qihoo360ModelCreateGroup, map[string]any{
-		"Name":        qihoo360DefaultAssetGroupName,
-		"Description": "auto-created by new-api",
-		"GroupType":   "AIGC",
-		"ProjectName": p.projectName,
-	}, &result)
-	if err != nil {
+	if err := p.call(qihoo360ModelCreateGroup, payload, &result); err != nil {
 		return "", err
 	}
 	groupID := result.ID
@@ -139,6 +125,76 @@ func (p *Qihoo360Protocol) createAssetGroup() (string, error) {
 		return "", fmt.Errorf("qihoo360 create-asset-group returned empty group id")
 	}
 	return groupID, nil
+}
+
+// CreateAssetInGroup 在指定素材组中创建素材，不读取渠道默认组，也不自动建组。
+func (p *Qihoo360Protocol) CreateAssetInGroup(groupID, url, assetType, name, projectName string) (*UploadResult, error) {
+	var result struct {
+		ID      string `json:"Id"`
+		AssetID string `json:"AssetId"`
+	}
+	if err := p.call(qihoo360ModelCreateAsset, map[string]any{
+		"GroupId":     groupID,
+		"AssetType":   assetType,
+		"URL":         url,
+		"Name":        name,
+		"ProjectName": projectName,
+	}, &result); err != nil {
+		return nil, err
+	}
+	assetID := result.ID
+	if assetID == "" {
+		assetID = result.AssetID
+	}
+	if strings.TrimSpace(assetID) == "" {
+		return nil, fmt.Errorf("qihoo360 create-asset returned empty asset id")
+	}
+	return &UploadResult{AssetID: assetID, GroupID: groupID, ProjectName: projectName}, nil
+}
+
+// UpdateAsset 更新素材名称。
+func (p *Qihoo360Protocol) UpdateAsset(assetID, name, projectName string) error {
+	payload := map[string]any{"Id": assetID}
+	if name != "" {
+		payload["Name"] = name
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	return p.call(qihoo360ModelUpdateAsset, payload, nil)
+}
+
+// UpdateAssetGroup 更新素材组名称和描述。
+func (p *Qihoo360Protocol) UpdateAssetGroup(groupID, name, description, projectName string) error {
+	payload := map[string]any{"Id": groupID}
+	if name != "" {
+		payload["Name"] = name
+	}
+	if description != "" {
+		payload["Description"] = description
+	}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	return p.call(qihoo360ModelUpdateAssetGroup, payload, nil)
+}
+
+// DeleteAsset 删除上游素材。
+func (p *Qihoo360Protocol) DeleteAsset(assetID, projectName string) error {
+	payload := map[string]any{"Id": assetID}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	return p.call(qihoo360ModelDeleteAsset, payload, nil)
+}
+
+// DeleteAssetGroup 删除上游素材组。
+func (p *Qihoo360Protocol) DeleteAssetGroup(groupID, projectName string) error {
+	payload := map[string]any{"Id": groupID}
+	if projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	return p.call(qihoo360ModelDeleteAssetGroup, payload, nil)
 }
 
 func (p *Qihoo360Protocol) Query(assetID string) (*QueryResult, error) {

@@ -225,3 +225,48 @@ func TestBaiduDataBuilderQueryHTTPErrorPropagates(t *testing.T) {
 	assert.Equal(t, "signature does not match", upErr.Message)
 	assert.False(t, upErr.Terminal(), "403 属可重试错误，素材应保持 pending")
 }
+
+func TestBaiduDataBuilderAssetManagement(t *testing.T) {
+	var actions []string
+	bodies := make(map[string]string)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		action := r.URL.Query().Get("Action")
+		actions = append(actions, action)
+		body, _ := io.ReadAll(r.Body)
+		bodies[action] = string(body)
+		switch action {
+		case "CreateAssetGroup":
+			_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Id":"group-live"}}`))
+		case "CreateAsset":
+			_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Id":"asset-live"}}`))
+		default:
+			_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{}}`))
+		}
+	}))
+	defer srv.Close()
+
+	p := newDBProtocolForTest(t, srv.URL, dbTestConfig())
+	groupID, err := p.CreateAssetGroup("group-name", "group-description", "AIGC", "project-x")
+	require.NoError(t, err)
+	assert.Equal(t, "group-live", groupID)
+	created, err := p.CreateAssetInGroup(groupID, "https://example.com/a.jpg", model.AssetTypeImage, "asset-name", "project-x")
+	require.NoError(t, err)
+	assert.Equal(t, "asset-live", created.AssetID)
+	require.NoError(t, p.UpdateAsset(created.AssetID, "asset-renamed", "project-x"))
+	require.NoError(t, p.UpdateAssetGroup(groupID, "group-renamed", "description-renamed", "project-x"))
+	require.NoError(t, p.DeleteAsset(created.AssetID, "project-x"))
+	require.NoError(t, p.DeleteAssetGroup(groupID, "project-x"))
+
+	require.Equal(t, []string{
+		"CreateAssetGroup", "CreateAsset", "UpdateAsset", "UpdateAssetGroup", "DeleteAsset", "DeleteAssetGroup",
+	}, actions)
+	assert.Contains(t, bodies["CreateAssetGroup"], `"Description":"group-description"`)
+	assert.Contains(t, bodies["CreateAsset"], `"GroupId":"group-live"`)
+	assert.Contains(t, bodies["UpdateAsset"], `"Name":"asset-renamed"`)
+	assert.Contains(t, bodies["UpdateAssetGroup"], `"Description":"description-renamed"`)
+	assert.Contains(t, bodies["DeleteAsset"], `"Id":"asset-live"`)
+	assert.Contains(t, bodies["DeleteAssetGroup"], `"Id":"group-live"`)
+	for _, action := range actions {
+		assert.Contains(t, bodies[action], `"ProjectName":"project-x"`)
+	}
+}

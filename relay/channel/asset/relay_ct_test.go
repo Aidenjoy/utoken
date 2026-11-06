@@ -102,6 +102,26 @@ func TestRelayProtocolNon200(t *testing.T) {
 	assert.Contains(t, err.Error(), "401")
 }
 
+func TestRelayProtocolDelete(t *testing.T) {
+	var gotMethod, gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok"}`))
+	}))
+	defer srv.Close()
+
+	p, err := NewProtocol(relayConfig(srv.URL))
+	require.NoError(t, err)
+	deleter, ok := p.(AssetDeleter)
+	require.True(t, ok)
+	require.NoError(t, deleter.DeleteAsset("asset-1", ""))
+	assert.Equal(t, http.MethodDelete, gotMethod)
+	assert.Equal(t, "/api/assets/asset-1", gotPath)
+	assert.Equal(t, "Bearer test-channel-key", gotAuth)
+}
+
 func TestNewProtocol(t *testing.T) {
 	tests := []struct {
 		name     string

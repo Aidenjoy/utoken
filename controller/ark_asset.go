@@ -228,7 +228,7 @@ func arkDeriveAssetName(rawURL string) string {
 // ---- 上游渠道解析 ----
 
 // assetManagementForChannel 由渠道构造协议适配器并断言 AssetManagement 能力。
-// 仅 ark_official/bit_official/xswj_official 满足；其余协议返回明确错误。
+// 不支持完整官方管理的协议返回明确错误。
 func assetManagementForChannel(channel *model.Channel) (assetrelay.AssetManagement, error) {
 	proto, err := assetrelay.NewProtocol(buildAssetChannelConfig(channel))
 	if err != nil {
@@ -261,12 +261,26 @@ func assetManagementByChannelID(channelID int) (*model.Channel, assetrelay.Asset
 // bestEffortDeleteUpstreamAsset 删除联动上游：best-effort 调上游 DeleteAsset，
 // 渠道不支持/上游故障仅记日志，不阻断本地删除（避免上游故障导致用户无法清理）。
 func bestEffortDeleteUpstreamAsset(a *model.Asset) {
-	_, mgmt, err := assetManagementByChannelID(a.ChannelID)
+	channel, err := model.GetChannelById(a.ChannelID, true)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("[ArkAsset] skip upstream delete (asset=%d, channel=%d): %v", a.ID, a.ChannelID, err))
 		return
 	}
-	if derr := mgmt.DeleteAsset(a.AssetID, a.ProjectName); derr != nil {
+	if channel.Status != common.ChannelStatusEnabled {
+		common.SysLog(fmt.Sprintf("[ArkAsset] skip upstream delete on disabled channel (asset=%d, channel=%d)", a.ID, a.ChannelID))
+		return
+	}
+	proto, err := assetrelay.NewProtocol(buildAssetChannelConfig(channel))
+	if err != nil {
+		common.SysLog(fmt.Sprintf("[ArkAsset] skip upstream delete (asset=%d, channel=%d): %v", a.ID, a.ChannelID, err))
+		return
+	}
+	deleter, ok := proto.(assetrelay.AssetDeleter)
+	if !ok {
+		common.SysLog(fmt.Sprintf("[ArkAsset] protocol has no upstream delete (asset=%d, channel=%d)", a.ID, a.ChannelID))
+		return
+	}
+	if derr := deleter.DeleteAsset(a.AssetID, a.ProjectName); derr != nil {
 		common.SysError(fmt.Sprintf("[ArkAsset] upstream DeleteAsset failed (asset=%d, upstream_id=%s): %v", a.ID, a.AssetID, derr))
 	}
 }

@@ -256,3 +256,60 @@ func TestQihoo360UploadBusinessErrorEnvelope(t *testing.T) {
 	assert.Equal(t, "11137", upErr.Code)
 	assert.Contains(t, upErr.Message, "internal rpc error")
 }
+
+func TestQihoo360AssetManagement(t *testing.T) {
+	var models []string
+	bodies := make(map[string]string)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodyText := string(body)
+		modelName := ""
+		for _, candidate := range []string{
+			qihoo360ModelCreateGroup, qihoo360ModelCreateAsset, qihoo360ModelUpdateAsset,
+			qihoo360ModelUpdateAssetGroup, qihoo360ModelDeleteAsset, qihoo360ModelDeleteAssetGroup,
+		} {
+			if strings.Contains(bodyText, `"model":"`+candidate+`"`) {
+				modelName = candidate
+				break
+			}
+		}
+		require.NotEmpty(t, modelName)
+		models = append(models, modelName)
+		bodies[modelName] = bodyText
+		switch modelName {
+		case qihoo360ModelCreateGroup:
+			_, _ = w.Write([]byte(`{"data":[{"b64_json":"{\"ResponseMetadata\":{},\"Result\":{\"Id\":\"group-live\"}}"}]}`))
+		case qihoo360ModelCreateAsset:
+			_, _ = w.Write([]byte(`{"data":[{"b64_json":"{\"ResponseMetadata\":{},\"Result\":{\"Id\":\"asset-live\"}}"}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"data":[{"b64_json":"{\"ResponseMetadata\":{},\"Result\":{}}"}]}`))
+		}
+	}))
+	defer srv.Close()
+
+	p := newQihoo360ForTest(t, srv.URL, qihoo360TestConfig())
+	groupID, err := p.CreateAssetGroup("group-name", "group-description", "AIGC", "project-x")
+	require.NoError(t, err)
+	assert.Equal(t, "group-live", groupID)
+	created, err := p.CreateAssetInGroup(groupID, "https://example.com/a.jpg", model.AssetTypeImage, "asset-name", "project-x")
+	require.NoError(t, err)
+	assert.Equal(t, "asset-live", created.AssetID)
+	require.NoError(t, p.UpdateAsset(created.AssetID, "asset-renamed", "project-x"))
+	require.NoError(t, p.UpdateAssetGroup(groupID, "group-renamed", "description-renamed", "project-x"))
+	require.NoError(t, p.DeleteAsset(created.AssetID, "project-x"))
+	require.NoError(t, p.DeleteAssetGroup(groupID, "project-x"))
+
+	require.Equal(t, []string{
+		qihoo360ModelCreateGroup, qihoo360ModelCreateAsset, qihoo360ModelUpdateAsset,
+		qihoo360ModelUpdateAssetGroup, qihoo360ModelDeleteAsset, qihoo360ModelDeleteAssetGroup,
+	}, models)
+	assert.Contains(t, bodies[qihoo360ModelCreateGroup], `"Description":"group-description"`)
+	assert.Contains(t, bodies[qihoo360ModelCreateAsset], `"GroupId":"group-live"`)
+	assert.Contains(t, bodies[qihoo360ModelUpdateAsset], `"Name":"asset-renamed"`)
+	assert.Contains(t, bodies[qihoo360ModelUpdateAssetGroup], `"Description":"description-renamed"`)
+	assert.Contains(t, bodies[qihoo360ModelDeleteAsset], `"Id":"asset-live"`)
+	assert.Contains(t, bodies[qihoo360ModelDeleteAssetGroup], `"Id":"group-live"`)
+	for _, modelName := range models {
+		assert.Contains(t, bodies[modelName], `"ProjectName":"project-x"`)
+	}
+}

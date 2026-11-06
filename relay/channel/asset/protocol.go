@@ -49,21 +49,29 @@ type Protocol interface {
 	Query(assetID string) (*QueryResult, error)
 }
 
-// AssetManagement 官方素材库管理能力（组/素材的显式增改删）。仅 ArkOfficialProtocol 实现——
-// ark_official/bit_official/xswj_official 三者构造的都是 *ArkOfficialProtocol，故都满足该接口；
-// relay/ecloud/baidu_databuilder/qihoo360 不支持完整管理 API。控制器经 NewProtocol 拿到 Protocol
-// 后做 .(AssetManagement) 类型断言，断言失败即返回「该渠道协议不支持官方素材库管理接口」。
+// AssetDeleter 是上游素材删除能力。完整官方管理协议和中转站协议可分别实现。
+type AssetDeleter interface {
+	DeleteAsset(assetID, projectName string) error
+}
+
+// AssetManagement 官方素材库管理能力（组/素材的显式增改删）。
+// ark_official/bit_official/xswj_official、baidu_databuilder 和 qihoo360 实现；
+// 控制器经 NewProtocol 拿到 Protocol 后做类型断言，不支持时返回明确错误。
 type AssetManagement interface {
+	AssetDeleter
 	CreateAssetGroup(name, description, groupType, projectName string) (string, error)
 	CreateAssetInGroup(groupID, url, assetType, name, projectName string) (*UploadResult, error)
 	UpdateAsset(assetID, name, projectName string) error
 	UpdateAssetGroup(groupID, name, description, projectName string) error
-	DeleteAsset(assetID, projectName string) error
 	DeleteAssetGroup(groupID, projectName string) error
 }
 
-// 编译期断言：*ArkOfficialProtocol 必须实现 AssetManagement。
-var _ AssetManagement = (*ArkOfficialProtocol)(nil)
+var (
+	_ AssetManagement = (*ArkOfficialProtocol)(nil)
+	_ AssetManagement = (*BaiduDataBuilderProtocol)(nil)
+	_ AssetManagement = (*Qihoo360Protocol)(nil)
+	_ AssetDeleter    = (*RelayProtocol)(nil)
+)
 
 // NewProtocol 按渠道配置的协议类型构造适配器；未开启协议返回错误。
 func NewProtocol(cfg ChannelConfig) (Protocol, error) {
