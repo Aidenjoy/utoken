@@ -36,6 +36,7 @@ import {
 } from '@/components/drawer-layout'
 import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Collapsible,
   CollapsibleContent,
@@ -69,14 +70,17 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { getAssetProviders } from '@/features/playground/api'
-import { useIsAdmin } from '@/hooks/use-admin'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
-import { createApiKey, updateApiKey, getApiKey } from '../api'
+import {
+  createApiKey,
+  updateApiKey,
+  getApiKey,
+  getVideoKeyOptions,
+} from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   getApiKeyFormSchema,
@@ -85,7 +89,7 @@ import {
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from '../lib'
-import { type ApiKey } from '../types'
+import type { ApiKey } from '../types'
 import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
@@ -105,9 +109,8 @@ export function ApiKeysMutateDrawer({
 }: ApiKeyMutateDrawerProps) {
   const { t } = useTranslation()
   const isUpdate = !!currentRow
-  const { triggerRefresh } = useApiKeys()
+  const { triggerRefresh, owner, createKeyType } = useApiKeys()
   const { status } = useStatus()
-  const isAdmin = useIsAdmin()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const defaultUseAutoGroup = status?.default_use_auto_group === true
@@ -128,14 +131,6 @@ export function ApiKeysMutateDrawer({
     staleTime: 0,
   })
 
-  // Fetch asset channels (admin only): 绑定渠道下拉数据，供超管配置 B 端可控路由。
-  const { data: assetProviders } = useQuery({
-    queryKey: ['asset-providers'],
-    queryFn: getAssetProviders,
-    enabled: open && isAdmin,
-    staleTime: 0,
-  })
-
   const models = modelsData?.data || []
   const groupsRaw = groupsData?.data || {}
   const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
@@ -151,27 +146,76 @@ export function ApiKeysMutateDrawer({
 
   const form = useForm<ApiKeyFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
+    defaultValues: getApiKeyFormDefaultValues(
+      defaultUseAutoGroup,
+      createKeyType
+    ),
   })
+  const selectedGroup = form.watch('group')
+  const selectedKeyType = form.watch('key_type')
+  const selectedVideoModel = form.watch('video_model')
+  const isVideoKey = selectedKeyType === 'video'
+  const targetUserId = owner.kind === 'user' ? owner.id : undefined
+  const { data: videoOptionsResponse, isLoading: isLoadingVideoOptions } =
+    useQuery({
+      queryKey: ['video-key-options', selectedGroup, targetUserId],
+      queryFn: () =>
+        getVideoKeyOptions({ group: selectedGroup, userId: targetUserId }),
+      enabled: open && !isUpdate && createKeyType === 'video',
+      staleTime: 0,
+    })
+  const videoOptions = videoOptionsResponse?.success
+    ? (videoOptionsResponse.data ?? [])
+    : []
+  const selectedVideoOption = videoOptions.find(
+    (option) => option.model === selectedVideoModel
+  )
 
   // Load existing data when updating
   useEffect(() => {
     if (open && isUpdate && currentRow) {
-      getApiKey(currentRow.id).then((result) => {
-        if (result.success && result.data) {
-          form.reset(transformApiKeyToFormDefaults(result.data))
-        }
-      })
+      void getApiKey(currentRow.id)
+        .then((result) => {
+          if (result.success && result.data) {
+            form.reset(transformApiKeyToFormDefaults(result.data))
+          }
+        })
+        .catch(() => {
+          toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+        })
     } else if (open && !isUpdate) {
       form.reset(
-        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
+        getApiKeyFormDefaultValues(
+          defaultUseAutoGroup && backendHasAuto,
+          createKeyType
+        )
       )
     }
-  }, [open, isUpdate, currentRow, form, defaultUseAutoGroup, backendHasAuto])
+  }, [
+    open,
+    isUpdate,
+    currentRow,
+    form,
+    defaultUseAutoGroup,
+    backendHasAuto,
+    createKeyType,
+    t,
+  ])
+
+  useEffect(() => {
+    if (!open || isUpdate || createKeyType !== 'video') return
+    form.setValue('video_model', '')
+    form.setValue('video_4k', false)
+  }, [open, isUpdate, createKeyType, selectedGroup, targetUserId, form])
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
-    if (groups.length === 0) return
+    if (
+      groups.length === 0 ||
+      (isUpdate && currentRow?.key_type === 'video')
+    ) {
+      return
+    }
     const currentGroup = form.getValues('group')
     if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
       const fallback =
@@ -183,7 +227,7 @@ export function ApiKeysMutateDrawer({
         form.setValue('cross_group_retry', false)
       }
     }
-  }, [groups, form])
+  }, [groups, form, isUpdate, currentRow])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)
@@ -210,6 +254,7 @@ export function ApiKeysMutateDrawer({
         for (let i = 0; i < count; i++) {
           const result = await createApiKey({
             ...basePayload,
+            user_id: owner.kind === 'user' ? owner.id : undefined,
             name:
               i === 0 && data.name
                 ? data.name
@@ -233,7 +278,7 @@ export function ApiKeysMutateDrawer({
           triggerRefresh()
         }
       }
-    } catch (_error) {
+    } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
@@ -265,8 +310,28 @@ export function ApiKeysMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
-  const selectedGroup = form.watch('group')
   const unlimitedQuota = form.watch('unlimited_quota')
+
+  let drawerTitle = t('Create Language Model Key')
+  if (isUpdate) {
+    drawerTitle = t('Update API Key')
+  } else if (createKeyType === 'video') {
+    drawerTitle = t('Create Video Model Key')
+  } else if (createKeyType === 'image') {
+    drawerTitle = t('Create Image Model Key')
+  }
+
+  let videoModelDescription = t(
+    'Each video Key can use only the selected model'
+  )
+  if (isLoadingVideoOptions) {
+    videoModelDescription = t('Loading video models...')
+  } else if (videoOptionsResponse?.success === false) {
+    videoModelDescription =
+      videoOptionsResponse.message || t(ERROR_MESSAGES.UNEXPECTED)
+  } else if (videoOptions.length === 0) {
+    videoModelDescription = t('No video models are available for this group')
+  }
 
   return (
     <Sheet
@@ -282,9 +347,7 @@ export function ApiKeysMutateDrawer({
         className={sideDrawerContentClassName('max-w-none sm:!max-w-[620px]')}
       >
         <SheetHeader className={sideDrawerHeaderClassName()}>
-          <SheetTitle>
-            {isUpdate ? t('Update API Key') : t('Create API Key')}
-          </SheetTitle>
+          <SheetTitle>{drawerTitle}</SheetTitle>
           <SheetDescription>
             {isUpdate
               ? t('Update the API key by providing necessary info.')
@@ -327,8 +390,15 @@ export function ApiKeysMutateDrawer({
                       <ApiKeyGroupCombobox
                         options={groups}
                         value={field.value}
-                        onValueChange={field.onChange}
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          if (!isUpdate && createKeyType === 'video') {
+                            form.setValue('video_model', '')
+                            form.setValue('video_4k', false)
+                          }
+                        }}
                         placeholder={t('Select a group')}
+                        disabled={isUpdate && isVideoKey}
                       />
                     </FormControl>
                     <FormMessage />
@@ -336,7 +406,93 @@ export function ApiKeysMutateDrawer({
                 )}
               />
 
-              {selectedGroup === 'auto' && (
+              {isVideoKey && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name='video_model'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Video Model')}</FormLabel>
+                        {isUpdate ? (
+                          <FormControl>
+                            <Input {...field} readOnly />
+                          </FormControl>
+                        ) : (
+                          <Select
+                            value={field.value}
+                            onValueChange={(value) => {
+                              field.onChange(value)
+                              form.setValue('video_4k', false)
+                            }}
+                            disabled={
+                              isLoadingVideoOptions || videoOptions.length === 0
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue
+                                  placeholder={t('Select a video model')}
+                                />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {videoOptions.map((option) => (
+                                <SelectItem
+                                  key={option.model}
+                                  value={option.model}
+                                >
+                                  {option.model}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {!isUpdate && (
+                          <FormDescription>
+                            {videoModelDescription}
+                          </FormDescription>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='video_4k'
+                    render={({ field }) => (
+                      <FormItem className='flex items-start gap-3 rounded-lg border p-4'>
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={(checked) =>
+                              field.onChange(checked === true)
+                            }
+                            disabled={
+                              isUpdate || !selectedVideoOption?.supports_4k
+                            }
+                          />
+                        </FormControl>
+                        <div className='space-y-1'>
+                          <FormLabel>{t('Supports 4K')}</FormLabel>
+                          <FormDescription>
+                            {isUpdate
+                              ? t(
+                                  'The video model and 4K setting cannot be changed after creation'
+                                )
+                              : t(
+                                  'When enabled, this Key only accepts requests explicitly set to 4K'
+                                )}
+                          </FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+
+              {selectedGroup === 'auto' && !(isUpdate && isVideoKey) && (
                 <FormField
                   control={form.control}
                   name='cross_group_retry'
@@ -436,7 +592,7 @@ export function ApiKeysMutateDrawer({
                           min='1'
                           placeholder={t('Number of keys to create')}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 1)
+                            field.onChange(Number.parseInt(e.target.value, 10) || 1)
                           }
                         />
                       </FormControl>
@@ -472,7 +628,7 @@ export function ApiKeysMutateDrawer({
                           step={tokensOnly ? 1 : 0.01}
                           placeholder={quotaPlaceholder}
                           onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
+                            field.onChange(Number.parseFloat(e.target.value) || 0)
                           }
                         />
                       </FormControl>
@@ -538,63 +694,41 @@ export function ApiKeysMutateDrawer({
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className='flex flex-col gap-4 pt-2'>
-                    <FormField
-                      control={form.control}
-                      name='model_limits'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('Model Limits')}</FormLabel>
-                          <FormControl>
-                            <MultiSelect
-                              options={models.map((m) => ({
-                                label: m,
-                                value: m,
-                              }))}
-                              selected={field.value}
-                              onChange={field.onChange}
-                              placeholder={t(
-                                'Select models (empty for allow all)'
-                              )}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            {t('Limit which models can be used with this key')}
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {isAdmin && (
+                    {isVideoKey ? (
+                      <FormItem>
+                        <FormLabel>{t('Model Limits')}</FormLabel>
+                        <Input
+                          value={selectedVideoModel || ''}
+                          readOnly
+                          aria-readonly
+                        />
+                        <FormDescription>
+                          {t('Video Keys are always limited to one model')}
+                        </FormDescription>
+                      </FormItem>
+                    ) : (
                       <FormField
                         control={form.control}
-                        name='channel_id'
+                        name='model_limits'
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>{t('Bound Channel')}</FormLabel>
-                            <Select
-                              value={String(field.value ?? 0)}
-                              onValueChange={(v) => field.onChange(Number(v))}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder={t('Not bound')} />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value='0'>
-                                  {t('Not bound')}
-                                </SelectItem>
-                                {(assetProviders ?? []).map((p) => (
-                                  <SelectItem key={p.id} value={String(p.id)}>
-                                    {p.name} (#{p.id})
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <FormLabel>{t('Model Limits')}</FormLabel>
+                            <FormControl>
+                              <MultiSelect
+                                options={models.map((m) => ({
+                                  label: m,
+                                  value: m,
+                                }))}
+                                selected={field.value}
+                                onChange={field.onChange}
+                                placeholder={t(
+                                  'Select models (empty for allow all)'
+                                )}
+                              />
+                            </FormControl>
                             <FormDescription>
                               {t(
-                                'Bind this key to a single channel for video & asset upload; unbound keys are rejected on these paths. Admin only.'
+                                'Limit which models can be used with this key'
                               )}
                             </FormDescription>
                             <FormMessage />

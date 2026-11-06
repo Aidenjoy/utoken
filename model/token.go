@@ -11,6 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	TokenKeyTypeLanguage = "language"
+	TokenKeyTypeImage    = "image"
+	TokenKeyTypeVideo    = "video"
+)
+
 type Token struct {
 	Id                 int     `json:"id"`
 	UserId             int     `json:"user_id" gorm:"index"`
@@ -30,8 +36,12 @@ type Token struct {
 	UsedQuota          int     `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string  `json:"group" gorm:"default:''"`
 	// ChannelId 绑定渠道：>0 时该密钥的视频生成与素材上传强制走此渠道（B端可控路由），0=未绑定。
-	// 仅超管可配置，普通用户不可见不可改（路由/进价对下游保密）。
-	ChannelId       int            `json:"channel_id" gorm:"default:0"`
+	// 视频 Key 在创建时自动写入最低折扣渠道，之后仅超管可改派；普通用户响应中隐藏该字段。
+	ChannelId int `json:"channel_id" gorm:"default:0"`
+	// KeyType 为空表示存量密钥，保持原有行为；新密钥分为语言、图片、视频三类。
+	KeyType         string         `json:"key_type" gorm:"type:varchar(16);default:''"`
+	VideoModel      string         `json:"video_model" gorm:"type:varchar(255);default:''"`
+	Video4K         bool           `json:"video_4k" gorm:"column:video_4k"`
 	CrossGroupRetry bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
 	DeletedAt       gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
@@ -644,21 +654,31 @@ func CountUserTokens(userId int, includeDeleted bool) (int64, error) {
 	return total, err
 }
 
-// BatchDeleteTokens 删除指定用户的一组令牌，返回成功删除数量
+// BatchDeleteTokens 删除一组令牌并返回数量。userId>0 限定本人；userId=0 不限归属，
+// 仅供已完成管理员鉴权的代管入口使用，负值直接拒绝，避免误放大删除范围。
 func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if len(ids) == 0 {
 		return 0, errors.New("ids 不能为空！")
 	}
+	if userId < 0 {
+		return 0, errors.New("userId 不能为负数！")
+	}
 
 	tx := DB.Begin()
+	where := "id IN (?)"
+	args := []any{ids}
+	if userId > 0 {
+		where = "user_id = ? AND id IN (?)"
+		args = []any{userId, ids}
+	}
 
 	var tokens []Token
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Find(&tokens).Error; err != nil {
+	if err := tx.Where(where, args...).Find(&tokens).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	if err := tx.Where(where, args...).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}

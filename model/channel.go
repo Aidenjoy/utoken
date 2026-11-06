@@ -175,6 +175,20 @@ var channelImageModelKeywords = []string{
 	"step-1x", "ideogram", "recraft", "t2i", "image",
 }
 
+// IsVideoModelName 与渠道列表及前端模型分类共用视频模型关键词口径。
+func IsVideoModelName(modelName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelName))
+	if normalized == "" {
+		return false
+	}
+	for _, keyword := range channelVideoModelKeywords {
+		if strings.Contains(normalized, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
 // 跨数据库安全的模型类别 CASE 表达式（LOWER + LIKE），
 // 作为渠道列表默认排序的第一排序键：语言(0) → 图片(1) → 视频(2)。
 var channelCategoryOrder = func() string {
@@ -1091,6 +1105,11 @@ func (channel *Channel) ValidateSettings() error {
 	if channel.Setting != nil && *channel.Setting != "" {
 		err := common.Unmarshal([]byte(*channel.Setting), channelParams)
 		if err != nil {
+			return err
+		}
+	}
+	for modelName, config := range channelParams.ModelRouteConfigs {
+		if err := config.Validate(modelName); err != nil {
 			return err
 		}
 	}

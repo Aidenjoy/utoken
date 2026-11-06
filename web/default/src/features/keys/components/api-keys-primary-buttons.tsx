@@ -26,15 +26,28 @@ import { useApiKeys } from './api-keys-provider'
 
 export function ApiKeysPrimaryButtons() {
   const { t } = useTranslation()
-  const { setOpen, owner, setOwner, isAdmin, viewingSelf } = useApiKeys()
+  const { openCreate, owner, setOwner, ownerLocked, isAdmin, canManage } =
+    useApiKeys()
   return (
-    <div className='flex gap-2'>
-      {isAdmin && <OwnerFilter value={owner} onChange={setOwner} />}
-      {viewingSelf && (
-        <Button size='sm' onClick={() => setOpen('create')}>
-          <Plus className='h-4 w-4' />
-          {t('Create API Key')}
-        </Button>
+    <div className='flex flex-wrap justify-end gap-2'>
+      {isAdmin && !ownerLocked && (
+        <OwnerFilter value={owner} onChange={setOwner} />
+      )}
+      {canManage && (
+        <>
+          <Button size='sm' onClick={() => openCreate('language')}>
+            <Plus className='h-4 w-4' />
+            {t('Create Language Model Key')}
+          </Button>
+          <Button size='sm' onClick={() => openCreate('image')}>
+            <Plus className='h-4 w-4' />
+            {t('Create Image Model Key')}
+          </Button>
+          <Button size='sm' onClick={() => openCreate('video')}>
+            <Plus className='h-4 w-4' />
+            {t('Create Video Model Key')}
+          </Button>
+        </>
       )}
     </div>
   )

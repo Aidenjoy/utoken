@@ -25,6 +25,7 @@ import type {
   GetApiKeysResponse,
   SearchApiKeysParams,
   ApiKeyFormData,
+  VideoKeyOption,
 } from './types'
 
 // ============================================================================
@@ -66,6 +67,20 @@ export async function getApiKey(id: number): Promise<ApiResponse<ApiKey>> {
   return res.data
 }
 
+export async function getVideoKeyOptions(params: {
+  group?: string
+  userId?: number
+}): Promise<ApiResponse<VideoKeyOption[]>> {
+  const queryParams = new URLSearchParams()
+  if (params.group) queryParams.set('group', params.group)
+  if (params.userId != null) queryParams.set('user_id', String(params.userId))
+  const query = queryParams.toString()
+  const res = await api.get(
+    `/api/token/video-options${query ? `?${query}` : ''}`
+  )
+  return res.data
+}
+
 // Create a new API key
 export async function createApiKey(
   data: ApiKeyFormData
@@ -102,6 +117,18 @@ export async function updateApiKeyStatus(
   status: number
 ): Promise<ApiResponse<ApiKey>> {
   const res = await api.put('/api/token/?status_only=true', { id, status })
+  return res.data
+}
+
+// Update API key bound channel (admin only; inline select in the keys table)
+export async function updateApiKeyChannel(
+  id: number,
+  channelId: number
+): Promise<ApiResponse<ApiKey>> {
+  const res = await api.put('/api/token/?channel_only=true', {
+    id,
+    channel_id: channelId,
+  })
   return res.data
 }
 

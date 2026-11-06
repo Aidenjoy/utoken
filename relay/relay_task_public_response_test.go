@@ -236,4 +236,19 @@ func TestVideoFetchByIDResponseDoesNotExposeInternalTaskFields(t *testing.T) {
 		assert.Equal(t, "suno-task", response.Data[0]["task_id"])
 		assert.Equal(t, "https://music.example.com/suno.mp3", response.Data[0]["result_url"])
 	})
+
+	t.Run("deleted Ark task cannot reappear from local snapshot", func(t *testing.T) {
+		arkTask.PrivateData.DeletedAt = 1
+		require.NoError(t, db.Model(arkTask).Update("private_data", arkTask.PrivateData).Error)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v3/contents/generations/tasks/ark-task", nil)
+		c.Params = gin.Params{{Key: "task_id", Value: "ark-task"}}
+		c.Set("id", 119)
+
+		body, taskErr := videoFetchByIDRespBodyBuilder(c)
+		assert.Nil(t, body)
+		require.NotNil(t, taskErr)
+		assert.Equal(t, http.StatusNotFound, taskErr.StatusCode)
+		assert.Equal(t, "task_not_exist", taskErr.Code)
+	})
 }

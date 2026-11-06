@@ -38,6 +38,8 @@ import {
   type DocSection,
   type DocsTabId,
 } from './content'
+import { videoKeySection } from './video-key-section'
+import { buildVideoTaskSections } from './video-task-sections'
 
 const TABS: { id: DocsTabId; label: string; icon: LucideIcon }[] = [
   { id: 'language', label: '语言模型', icon: MessageSquareText },
@@ -169,10 +171,23 @@ export function DeveloperDocs() {
   const [activeTab, setActiveTab] = useState<DocsTabId>('video')
   const [activeSection, setActiveSection] = useState('')
   const siteUrl = useMemo(() => resolveDocsSiteUrl(status), [status])
-  const sections = useMemo(
-    () => getDocSections(activeTab, siteUrl),
-    [activeTab, siteUrl]
-  )
+  const sections = useMemo(() => {
+    const docSections = getDocSections(activeTab, siteUrl)
+    if (activeTab !== 'video') return docSections
+    const queryIndex = docSections.findIndex(
+      (section) => section.id === 'video-query'
+    )
+    const taskSections = buildVideoTaskSections(siteUrl)
+    if (queryIndex < 0) {
+      return [videoKeySection, ...docSections, ...taskSections]
+    }
+    return [
+      videoKeySection,
+      ...docSections.slice(0, queryIndex + 1),
+      ...taskSections,
+      ...docSections.slice(queryIndex + 1),
+    ]
+  }, [activeTab, siteUrl])
 
   const flatSections = useMemo(() => flattenDocSections(sections), [sections])
 

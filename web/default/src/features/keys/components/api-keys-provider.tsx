@@ -26,18 +26,21 @@ import { type OwnerSelection, ownerUserIdParam } from '@/lib/owner'
 
 import { fetchTokenKey, fetchTokenKeysBatch } from '../api'
 import { ERROR_MESSAGES } from '../constants'
-import { type ApiKey, type ApiKeysDialogType } from '../types'
+import type { ApiKey, ApiKeysDialogType, ApiKeyType } from '../types'
 
 type ApiKeysContextType = {
   open: ApiKeysDialogType | null
   setOpen: (str: ApiKeysDialogType | null) => void
+  createKeyType: ApiKeyType
+  openCreate: (keyType: Exclude<ApiKeyType, ''>) => void
   currentRow: ApiKey | null
   setCurrentRow: React.Dispatch<React.SetStateAction<ApiKey | null>>
-  // 管理员归属筛选：非管理员恒为 self；viewingSelf=false 时列表只读
+  // 指定用户视图可代管；“全部用户”仍为只读，避免批量误操作跨租户密钥。
   owner: OwnerSelection
   setOwner: React.Dispatch<React.SetStateAction<OwnerSelection>>
+  ownerLocked: boolean
   isAdmin: boolean
-  viewingSelf: boolean
+  canManage: boolean
   showOwner: boolean
   ownerUserId: number | undefined
   refreshTrigger: number
@@ -54,13 +57,32 @@ type ApiKeysContextType = {
 
 const ApiKeysContext = React.createContext<ApiKeysContextType | null>(null)
 
-export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
+export function ApiKeysProvider({
+  children,
+  initialOwner,
+  ownerLocked = false,
+}: {
+  children: React.ReactNode
+  initialOwner?: OwnerSelection
+  ownerLocked?: boolean
+}) {
   const { t } = useTranslation()
   const [open, setOpen] = useDialogState<ApiKeysDialogType>(null)
+  const [createKeyType, setCreateKeyType] =
+    useState<ApiKeyType>('language')
+  const openCreate = useCallback(
+    (keyType: Exclude<ApiKeyType, ''>) => {
+      setCreateKeyType(keyType)
+      setOpen('create')
+    },
+    [setOpen]
+  )
   const [currentRow, setCurrentRow] = useState<ApiKey | null>(null)
-  const [owner, setOwner] = useState<OwnerSelection>({ kind: 'self' })
+  const [owner, setOwner] = useState<OwnerSelection>(
+    initialOwner ?? { kind: 'self' }
+  )
   const isAdmin = useIsAdmin()
-  const viewingSelf = !isAdmin || owner.kind === 'self'
+  const canManage = !isAdmin || owner.kind !== 'all'
   const showOwner = isAdmin && owner.kind !== 'self'
   const ownerUserId = ownerUserIdParam(owner, isAdmin)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
@@ -173,12 +195,15 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
       value={{
         open,
         setOpen,
+        createKeyType,
+        openCreate,
         currentRow,
         setCurrentRow,
         owner,
         setOwner,
+        ownerLocked,
         isAdmin,
-        viewingSelf,
+        canManage,
         showOwner,
         ownerUserId,
         refreshTrigger,

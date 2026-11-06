@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { Check, Copy, Loader2 } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -30,13 +31,23 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { getAssetProviders } from '@/features/playground/api'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
-import { type ApiKey } from '../types'
+import { updateApiKeyChannel } from '../api'
+import { ERROR_MESSAGES } from '../constants'
+import type { ApiKey } from '../types'
 import { useApiKeys } from './api-keys-provider'
 
 export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
@@ -77,6 +88,16 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
       if (ok) markKeyCopied(apiKey.id)
     }
   }, [resolvedFullKey, resolveRealKey, apiKey.id, markKeyCopied, t])
+
+  let copyIcon = <Copy className='size-3.5' />
+  let copyTooltip = t('Copy API key')
+  if (isLoading) {
+    copyIcon = <Loader2 className='size-3.5 animate-spin' />
+    copyTooltip = t('Loading...')
+  } else if (isCopied) {
+    copyIcon = <Check className='size-3.5 text-green-600' />
+    copyTooltip = t('Copied!')
+  }
 
   return (
     <div className='flex max-w-full min-w-0 items-center'>
@@ -135,22 +156,50 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
             />
           }
         >
-          {isLoading ? (
-            <Loader2 className='size-3.5 animate-spin' />
-          ) : isCopied ? (
-            <Check className='size-3.5 text-green-600' />
-          ) : (
-            <Copy className='size-3.5' />
-          )}
+          {copyIcon}
         </TooltipTrigger>
-        <TooltipContent>
-          {isLoading
-            ? t('Loading...')
-            : isCopied
-              ? t('Copied!')
-              : t('Copy API key')}
-        </TooltipContent>
+        <TooltipContent>{copyTooltip}</TooltipContent>
       </Tooltip>
+    </div>
+  )
+}
+
+export function ApiKeyTypeCell({ apiKey }: { apiKey: ApiKey }) {
+  const { t } = useTranslation()
+  const labels = {
+    '': t('Legacy Key'),
+    language: t('Language Model'),
+    image: t('Image Model'),
+    video: t('Video Model'),
+  }
+
+  return (
+    <StatusBadge
+      label={labels[apiKey.key_type || '']}
+      variant='neutral'
+      copyable={false}
+      className='-ml-1.5'
+    />
+  )
+}
+
+export function VideoKeyConfigCell({ apiKey }: { apiKey: ApiKey }) {
+  const { t } = useTranslation()
+
+  if (apiKey.key_type !== 'video') {
+    return <span className='text-muted-foreground text-xs'>-</span>
+  }
+
+  return (
+    <div className='flex min-w-0 items-center gap-2'>
+      <span className='max-w-40 truncate font-mono text-xs'>
+        {apiKey.video_model || '-'}
+      </span>
+      <StatusBadge
+        label={apiKey.video_4k ? '4K' : t('Standard')}
+        variant={apiKey.video_4k ? 'info' : 'neutral'}
+        copyable={false}
+      />
     </div>
   )
 }
@@ -232,5 +281,56 @@ export function IpRestrictionsCell({ apiKey }: { apiKey: ApiKey }) {
         </div>
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+export function ChannelBindingCell({ apiKey }: { apiKey: ApiKey }) {
+  const { t } = useTranslation()
+  const { triggerRefresh, canManage } = useApiKeys()
+  const [saving, setSaving] = useState(false)
+  const { data: assetProviders } = useQuery({
+    queryKey: ['asset-providers'],
+    queryFn: getAssetProviders,
+    staleTime: 0,
+  })
+
+  const handleChange = useCallback(
+    async (channelId: number) => {
+      if (!canManage || channelId === (apiKey.channel_id ?? 0)) return
+      setSaving(true)
+      try {
+        const res = await updateApiKeyChannel(apiKey.id, channelId)
+        if (res.success) {
+          triggerRefresh()
+        } else {
+          toast.error(res.message || t(ERROR_MESSAGES.UNEXPECTED))
+        }
+      } catch {
+        toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+      } finally {
+        setSaving(false)
+      }
+    },
+    [apiKey.id, apiKey.channel_id, canManage, triggerRefresh, t]
+  )
+
+  return (
+    <Select
+      value={String(apiKey.channel_id ?? 0)}
+      onValueChange={(v) => void handleChange(Number(v))}
+      disabled={saving || !canManage}
+    >
+      <SelectTrigger className='h-8 w-[150px] text-xs'>
+        <SelectValue placeholder={t('Not bound')} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value='0'>{t('Not bound')}</SelectItem>
+        {(assetProviders ?? []).map((p) => (
+          <SelectItem key={p.id} value={String(p.id)}>
+            {p.name} (#{p.id})
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

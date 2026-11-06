@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { type Table as TanstackTable } from '@tanstack/react-table'
+import type { Table as TanstackTable } from '@tanstack/react-table'
 import { Database } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -40,7 +41,7 @@ import {
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { type NavigateFn, useTableUrlState } from '@/hooks/use-table-url-state'
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -51,8 +52,13 @@ import {
   API_KEY_STATUSES,
   ERROR_MESSAGES,
 } from '../constants'
-import { type ApiKey } from '../types'
-import { ApiKeyCell } from './api-keys-cells'
+import type { ApiKey } from '../types'
+import {
+  ApiKeyCell,
+  ApiKeyTypeCell,
+  ChannelBindingCell,
+  VideoKeyConfigCell,
+} from './api-keys-cells'
 import { useApiKeysColumns } from './api-keys-columns'
 import { useApiKeys } from './api-keys-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
@@ -68,9 +74,9 @@ function isDisabledApiKeyRow(apiKey: ApiKey) {
 function ApiKeysMobileSkeleton() {
   return (
     <div className='divide-border overflow-hidden rounded-lg border'>
-      {Array.from({ length: 5 }).map((_, index) => (
+      {['first', 'second', 'third', 'fourth', 'fifth'].map((key) => (
         <div
-          key={index}
+          key={key}
           className='space-y-2 border-b px-3 py-2.5 last:border-b-0'
         >
           <div className='flex items-center justify-between'>
@@ -92,12 +98,14 @@ function ApiKeysMobileList({
   table,
   isLoading,
   showOwner,
-  viewingSelf,
+  canManage,
+  isAdmin,
 }: {
   table: TanstackTable<ApiKey>
   isLoading: boolean
   showOwner: boolean
-  viewingSelf: boolean
+  canManage: boolean
+  isAdmin: boolean
 }) {
   const { t } = useTranslation()
   const rows = table.getRowModel().rows
@@ -168,8 +176,31 @@ function ApiKeysMobileList({
               <div className='min-w-0 flex-1 [&_button:first-child]:max-w-full [&_button:first-child]:truncate [&_button:first-child]:px-0'>
                 <ApiKeyCell apiKey={apiKey} />
               </div>
-              {viewingSelf && <DataTableRowActions row={row} />}
+              {canManage && <DataTableRowActions row={row} />}
             </div>
+
+            <div className='flex items-center justify-between gap-2 text-xs'>
+              <span className='text-muted-foreground'>{t('Key Type')}</span>
+              <ApiKeyTypeCell apiKey={apiKey} />
+            </div>
+
+            {apiKey.key_type === 'video' && (
+              <div className='flex items-center justify-between gap-2 text-xs'>
+                <span className='text-muted-foreground'>
+                  {t('Video Model / 4K')}
+                </span>
+                <VideoKeyConfigCell apiKey={apiKey} />
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className='flex items-center justify-between gap-2 text-xs'>
+                <span className='text-muted-foreground'>
+                  {t('Bound Channel')}
+                </span>
+                <ChannelBindingCell apiKey={apiKey} />
+              </div>
+            )}
 
             <div className='flex items-center justify-between gap-2 text-xs'>
               <span className='text-muted-foreground'>{t('Quota')}</span>
@@ -192,9 +223,16 @@ function ApiKeysMobileList({
   )
 }
 
-export function ApiKeysTable() {
+function ApiKeysTableView({
+  search,
+  navigate,
+}: {
+  search: Record<string, unknown>
+  navigate: NavigateFn
+}) {
   const { t } = useTranslation()
-  const { refreshTrigger, ownerUserId, viewingSelf, showOwner } = useApiKeys()
+  const { refreshTrigger, ownerUserId, canManage, showOwner, isAdmin } =
+    useApiKeys()
   const columns = useApiKeysColumns()
 
   const {
@@ -206,8 +244,8 @@ export function ApiKeysTable() {
     onPaginationChange,
     ensurePageInRange,
   } = useTableUrlState({
-    search: route.useSearch(),
-    navigate: route.useNavigate(),
+    search,
+    navigate,
     pagination: { defaultPage: 1, defaultPageSize: 20 },
     globalFilter: { enabled: true, key: 'filter' },
     columnFilters: [
@@ -279,7 +317,7 @@ export function ApiKeysTable() {
   const { table } = useDataTable({
     data: apiKeys,
     columns,
-    enableRowSelection: viewingSelf,
+    enableRowSelection: canManage,
     columnFilters,
     columnVisibilityStorageKey: API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY,
     globalFilter,
@@ -330,15 +368,40 @@ export function ApiKeysTable() {
           table={table}
           isLoading={isLoading}
           showOwner={showOwner}
-          viewingSelf={viewingSelf}
+          canManage={canManage}
+          isAdmin={isAdmin}
         />
       }
       getRowClassName={(row) =>
         isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
       }
       bulkActions={
-        viewingSelf ? <DataTableBulkActions table={table} /> : undefined
+        canManage ? <DataTableBulkActions table={table} /> : undefined
       }
     />
   )
+}
+
+function ApiKeysRoutedTable() {
+  const search = route.useSearch()
+  const navigate = route.useNavigate()
+  return <ApiKeysTableView search={search} navigate={navigate} />
+}
+
+function ApiKeysEmbeddedTable() {
+  const [search, setSearch] = useState<Record<string, unknown>>({})
+  const navigate = useCallback<NavigateFn>((opts) => {
+    setSearch((previous) => {
+      if (opts.search === true) return previous
+      const patch =
+        typeof opts.search === 'function' ? opts.search(previous) : opts.search
+      return { ...previous, ...patch }
+    })
+  }, [])
+
+  return <ApiKeysTableView search={search} navigate={navigate} />
+}
+
+export function ApiKeysTable({ embedded = false }: { embedded?: boolean }) {
+  return embedded ? <ApiKeysEmbeddedTable /> : <ApiKeysRoutedTable />
 }

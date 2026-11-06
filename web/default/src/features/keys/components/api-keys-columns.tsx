@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
 import { BadgeCell, TruncatedCell } from '@/components/data-table'
@@ -35,11 +35,14 @@ import { formatQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { API_KEY_STATUSES } from '../constants'
-import { type ApiKey } from '../types'
+import type { ApiKey } from '../types'
 import {
   ApiKeyCell,
+  ApiKeyTypeCell,
+  ChannelBindingCell,
   ModelLimitsCell,
   IpRestrictionsCell,
+  VideoKeyConfigCell,
 } from './api-keys-cells'
 import { useApiKeys } from './api-keys-provider'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -73,7 +76,7 @@ function useGroupRatios(): Record<string, number> {
 export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
   const { t } = useTranslation()
   const groupRatios = useGroupRatios()
-  const { showOwner } = useApiKeys()
+  const { showOwner, isAdmin } = useApiKeys()
   return [
     {
       id: 'select',
@@ -129,6 +132,24 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
           },
         ]
       : []),
+    {
+      id: 'key_type',
+      accessorKey: 'key_type',
+      header: t('Key Type'),
+      cell: ({ row }) => <ApiKeyTypeCell apiKey={row.original} />,
+      enableSorting: false,
+      size: 140,
+      meta: { mobileHidden: true },
+    },
+    {
+      id: 'video_config',
+      accessorKey: 'video_model',
+      header: t('Video Model / 4K'),
+      cell: ({ row }) => <VideoKeyConfigCell apiKey={row.original} />,
+      enableSorting: false,
+      size: 220,
+      meta: { mobileHidden: true },
+    },
     {
       accessorKey: 'status',
       header: t('Status'),
@@ -259,6 +280,20 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       size: 160,
       meta: { mobileHidden: true },
     },
+    ...(isAdmin
+      ? [
+          {
+            id: 'channel_id',
+            header: t('Bound Channel'),
+            cell: ({ row }: { row: { original: ApiKey } }) => (
+              <ChannelBindingCell apiKey={row.original} />
+            ),
+            enableSorting: false,
+            size: 170,
+            meta: { mobileHidden: true },
+          },
+        ]
+      : []),
     {
       id: 'model_limits',
       accessorKey: 'model_limits',

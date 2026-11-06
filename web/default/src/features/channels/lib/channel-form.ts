@@ -196,6 +196,20 @@ export const channelFormSchema = z
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
     resolution_blacklist: z.record(z.string(), z.array(z.string())).optional(),
+    model_route_configs: z
+      .record(
+        z.string(),
+        z.object({
+          discount: z
+            .number()
+            .finite()
+            .gt(0, "Discount must be greater than 0")
+            .lte(10, "Discount must be no more than 10")
+            .optional(),
+          supports_4k: z.boolean(),
+        }),
+      )
+      .optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(["json", "api_key"]).optional(), // Vertex AI specific
@@ -360,6 +374,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt: "",
   system_prompt_override: false,
   resolution_blacklist: {},
+  model_route_configs: {},
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: "json",
@@ -410,6 +425,7 @@ export function transformChannelToFormDefaults(
     system_prompt: "",
     system_prompt_override: false,
     resolution_blacklist: {} as Record<string, string[]>,
+    model_route_configs: {} as ChannelFormValues["model_route_configs"],
   };
 
   if (channel.setting) {
@@ -423,6 +439,7 @@ export function transformChannelToFormDefaults(
         system_prompt: parsed.system_prompt || "",
         system_prompt_override: parsed.system_prompt_override || false,
         resolution_blacklist: parsed.resolution_blacklist || {},
+        model_route_configs: parsed.model_route_configs || {},
       };
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -521,6 +538,38 @@ export function transformChannelToFormDefaults(
     }
   }
 
+  // 旧渠道没有路由元数据时，从 mapped model 的现有 4K 黑名单回填，
+  // 避免首次保存把历史上支持 4K 的映射行改成不支持。
+  const modelRouteConfigs: NonNullable<
+    ChannelFormValues["model_route_configs"]
+  > = {};
+  try {
+    const mapping = channel.model_mapping
+      ? JSON.parse(channel.model_mapping)
+      : {};
+    if (isJsonObjectValue(mapping)) {
+      for (const [source, target] of Object.entries(mapping)) {
+        if (typeof target !== "string") continue;
+        const existing = extraSettings.model_route_configs?.[source];
+        const blocked4k = (
+          extraSettings.resolution_blacklist[target] || []
+        ).some((resolution) => resolution.trim().toLowerCase() === "4k");
+        modelRouteConfigs[source] = {
+          discount:
+            typeof existing?.discount === "number"
+              ? existing.discount
+              : undefined,
+          supports_4k:
+            typeof existing?.supports_4k === "boolean"
+              ? existing.supports_4k
+              : !blocked4k,
+        };
+      }
+    }
+  } catch {
+    // model_mapping 的格式错误由表单校验提示，这里保留原始值供用户修正。
+  }
+
   return {
     name: channel.name || "",
     type: channel.type,
@@ -550,6 +599,7 @@ export function transformChannelToFormDefaults(
     key_mode: "replace", // 回显完整密钥列表后默认覆盖，所见即所得；仍可手动切追加
     // Channel extra settings
     ...extraSettings,
+    model_route_configs: modelRouteConfigs,
     // Type-specific settings
     is_enterprise_account: isEnterpriseAccount,
     vertex_key_type: vertexKeyType,
@@ -593,8 +643,6 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     system_prompt: formData.system_prompt || "",
     system_prompt_override: formData.system_prompt_override || false,
   };
-  // 分辨率黑名单仅收录显式配置了不支持分辨率的模型；归一化大小写/去重后
-  // 为空的模型条目丢弃，整表为空时不写入，保持 setting JSON 简洁。
   const blacklist: Record<string, string[]> = {};
   for (const [model, resolutions] of Object.entries(
     formData.resolution_blacklist || {},
@@ -606,8 +654,46 @@ function buildSettingJSON(formData: ChannelFormValues): string {
     ];
     if (cleaned.length > 0) blacklist[model] = cleaned;
   }
+
+  // 路由配置只跟随当前 model_mapping 的原始模型保存。mapped model 的 4K
+  // 黑名单继续同步给 C 端选路，未出现在映射里的旧黑名单条目原样保留。
+  const routeConfigs: Record<string, unknown> = {};
+  try {
+    const mapping = formData.model_mapping?.trim()
+      ? JSON.parse(formData.model_mapping)
+      : {};
+    if (isJsonObjectValue(mapping)) {
+      for (const [source, targetValue] of Object.entries(mapping)) {
+        const config = formData.model_route_configs?.[source];
+        if (!config || typeof targetValue !== "string") continue;
+        routeConfigs[source] = {
+          discount: config.discount,
+          supports_4k: config.supports_4k,
+        };
+
+        const target = targetValue.trim();
+        if (!target) continue;
+        const resolutions = new Set(blacklist[target] || []);
+        if (config.supports_4k) {
+          resolutions.delete("4k");
+        } else {
+          resolutions.add("4k");
+        }
+        if (resolutions.size > 0) {
+          blacklist[target] = [...resolutions];
+        } else {
+          delete blacklist[target];
+        }
+      }
+    }
+  } catch {
+    // model_mapping 的格式错误会阻止提交，这里不覆盖已有黑名单。
+  }
   if (Object.keys(blacklist).length > 0) {
     settingObj.resolution_blacklist = blacklist;
+  }
+  if (Object.keys(routeConfigs).length > 0) {
+    settingObj.model_route_configs = routeConfigs;
   }
   return JSON.stringify(settingObj);
 }
@@ -674,12 +760,15 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.allow_inference_geo = formData.allow_inference_geo === true;
   } else {
     if ("disable_store" in settingsObj) delete settingsObj.disable_store;
-    if ("allow_safety_identifier" in settingsObj)
+    if ("allow_safety_identifier" in settingsObj) {
       delete settingsObj.allow_safety_identifier;
-    if ("allow_include_obfuscation" in settingsObj)
+    }
+    if ("allow_include_obfuscation" in settingsObj) {
       delete settingsObj.allow_include_obfuscation;
-    if (formData.type !== 14 && "allow_inference_geo" in settingsObj)
+    }
+    if (formData.type !== 14 && "allow_inference_geo" in settingsObj) {
       delete settingsObj.allow_inference_geo;
+    }
   }
 
   // Anthropic (type 14): claude_beta_query, allow_inference_geo, allow_speed
@@ -689,8 +778,9 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.claude_beta_query = formData.claude_beta_query === true;
   } else {
     if ("allow_speed" in settingsObj) delete settingsObj.allow_speed;
-    if ("claude_beta_query" in settingsObj)
+    if ("claude_beta_query" in settingsObj) {
       delete settingsObj.claude_beta_query;
+    }
   }
 
   settingsObj.disable_task_polling_sleep =
@@ -703,14 +793,14 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.upstream_model_update_auto_sync_enabled =
       settingsObj.upstream_model_update_check_enabled === true &&
       formData.upstream_model_update_auto_sync_enabled === true;
-    settingsObj.upstream_model_update_ignored_models = Array.from(
-      new Set(
+    settingsObj.upstream_model_update_ignored_models = [
+      ...new Set(
         String(formData.upstream_model_update_ignored_models || "")
           .split(",")
           .map((model) => model.trim())
           .filter(Boolean),
       ),
-    );
+    ];
     if (
       !Array.isArray(settingsObj.upstream_model_update_last_detected_models) ||
       settingsObj.upstream_model_update_check_enabled !== true

@@ -322,7 +322,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string, usage
 }
 
 // CancelVideoTask 用户在任务进入终态前主动取消：CAS 迁到 CANCELLED 并全额退还预扣。
-// 上游视频平台（方舟等）没有取消接口，任务在上游仍会跑完；本地的口径是停止轮询、
+// 支持取消的上游必须先由调用方取消成功，再进入这里；本地的口径是停止轮询、
 // 不再结算、预扣退回——用户放弃结果时不应为它付费。
 // 返回任务当前状态：CANCELLED 表示本次取消生效；SUCCESS/FAILURE 等表示取消到达前
 // 任务已被轮询/实时查询推进到终态（计费已按该终态处理），调用方应据此如实展示。

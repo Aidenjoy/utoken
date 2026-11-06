@@ -22,6 +22,10 @@ import { z } from 'zod'
 // API Key Schema & Types
 // ============================================================================
 
+export const apiKeyTypeSchema = z.enum(['', 'language', 'image', 'video'])
+
+export type ApiKeyType = z.infer<typeof apiKeyTypeSchema>
+
 export const apiKeySchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -37,6 +41,9 @@ export const apiKeySchema = z.object({
   // 绑定渠道：>0 时该密钥的视频生成与素材上传强制走此渠道（B端可控路由），0=未绑定。
   // 仅超管可配置，路由/进价对下游保密。
   channel_id: z.number().nullish().default(0),
+  key_type: apiKeyTypeSchema.nullish().default(''),
+  video_model: z.string().nullish().default(''),
+  video_4k: z.boolean().nullish().default(false),
   cross_group_retry: z
     .preprocess((v) => {
       if (v === 1) return true
@@ -99,7 +106,13 @@ export interface SearchApiKeysParams {
   userId?: number
 }
 
+export interface VideoKeyOption {
+  model: string
+  supports_4k: boolean
+}
+
 export interface ApiKeyFormData {
+  user_id?: number
   name: string
   remain_quota: number
   expired_time: number
@@ -109,6 +122,9 @@ export interface ApiKeyFormData {
   allow_ips: string
   group: string
   channel_id?: number
+  key_type?: ApiKeyType
+  video_model?: string
+  video_4k?: boolean
   cross_group_retry: boolean
 }
 

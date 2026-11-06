@@ -78,6 +78,12 @@ type TaskAdaptor interface {
 	ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error)
 }
 
+// TaskDeleteAdaptor 由支持官方取消/删除任务协议的适配器实现。
+// 不并入 TaskAdaptor，避免不支持删除语义的平台被迫提供空实现。
+type TaskDeleteAdaptor interface {
+	DeleteTask(baseURL, key, taskID, proxy string) (*http.Response, error)
+}
+
 type OpenAIVideoConverter interface {
 	ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
 }

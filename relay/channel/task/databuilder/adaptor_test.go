@@ -2,10 +2,12 @@ package databuilder
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,6 +112,35 @@ func TestBuildRequestHeaderRejectsPlainKey(t *testing.T) {
 func TestFetchTaskRejectsInvalidKey(t *testing.T) {
 	a := &TaskAdaptor{}
 	_, err := a.FetchTask("", "no-separator", map[string]any{"task_id": "t-1"}, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected 'ak|sk'")
+}
+
+func TestDeleteTaskUsesBCESignature(t *testing.T) {
+	service.InitHttpClient()
+	var gotMethod, gotPath, gotAuthorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuthorization = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	a := &TaskAdaptor{}
+	resp, err := a.DeleteTask(server.URL+"/api/v3", "test-ak|test-sk", "cgt-upstream", "")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.MethodDelete, gotMethod)
+	assert.Equal(t, "/api/v3/contents/generations/tasks/cgt-upstream", gotPath)
+	assert.True(t, strings.HasPrefix(gotAuthorization, "bce-auth-v1/test-ak/"), gotAuthorization)
+}
+
+func TestDeleteTaskRejectsInvalidKey(t *testing.T) {
+	a := &TaskAdaptor{}
+	_, err := a.DeleteTask("", "plain-bearer-key", "t-1", "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "expected 'ak|sk'")
 }

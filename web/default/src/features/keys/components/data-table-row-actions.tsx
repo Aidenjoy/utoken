@@ -82,7 +82,7 @@ export function DataTableRowActions<TData>({
     resolveRealKey,
     resolvedKeys,
     loadingKeys,
-    viewingSelf,
+    canManage,
   } = useApiKeys()
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
   const [isTogglingStatus, setIsTogglingStatus] = useState(false)
@@ -141,8 +141,8 @@ export function DataTableRowActions<TData>({
     statusIcon = <PowerOff className='size-4' />
   }
 
-  // 管理员查看他人密钥时列表只读：不展示任何改状态/复制/删除操作
-  if (!viewingSelf) return null
+  // “全部用户”视图只读；指定用户视图允许管理员代管。
+  if (!canManage) return null
 
   return (
     <div className='-ml-1.5 flex items-center gap-1'>

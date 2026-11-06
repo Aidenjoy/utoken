@@ -871,12 +871,12 @@ func GetOrgTokens(c *gin.Context) {
 		return
 	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(buildOrgTokenResponses(tokens))
+	pageInfo.SetItems(buildOrgTokenResponses(c, tokens))
 	common.ApiSuccess(c, pageInfo)
 }
 
 // buildOrgTokenResponses 脱敏并按归属用户名标注企业成员的密钥
-func buildOrgTokenResponses(tokens []*model.Token) []*tokenOwnerResponse {
+func buildOrgTokenResponses(c *gin.Context, tokens []*model.Token) []*tokenOwnerResponse {
 	ids := make([]int, 0, len(tokens))
 	seen := make(map[int]bool, len(tokens))
 	for _, token := range tokens {
@@ -894,7 +894,7 @@ func buildOrgTokenResponses(tokens []*model.Token) []*tokenOwnerResponse {
 	items := make([]*tokenOwnerResponse, 0, len(tokens))
 	for _, token := range tokens {
 		items = append(items, &tokenOwnerResponse{
-			Token:    buildMaskedTokenResponse(token),
+			Token:    buildMaskedTokenResponse(c, token),
 			Username: names[token.UserId],
 		})
 	}

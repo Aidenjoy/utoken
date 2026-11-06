@@ -66,6 +66,11 @@ func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
 		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
+		if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") && c.Request.Method != http.MethodPost {
+			// 查询、列表和删除都使用 tasks 表保存的原渠道，不能因视频 Key 当前
+			// 改绑到其他渠道而误选渠道或阻断读取；删除处理器会自行加载原渠道。
+			ok = false
+		}
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
@@ -95,7 +100,9 @@ func Distribute() func(c *gin.Context) {
 			// Select a channel for the user
 			// check token model mapping
 			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-			if modelLimitEnable {
+			// 集合查询可以不指定模型，由公开 API 层逐任务应用同一套 Key 权限；
+			// 空模型不能在进入列表处理器之前被误拒绝。
+			if modelLimitEnable && (modelRequest.Model != "" || shouldSelectChannel) {
 				s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
 				if !ok {
 					// token model limit is empty, all models are not allowed
@@ -164,7 +171,11 @@ func Distribute() func(c *gin.Context) {
 				// 智能素材（yun- 引用）在此处解析、同步并改写为真实上游 ID。
 				if isVideoSubmitPath(c.Request.URL.Path) && c.Request.Method == http.MethodPost {
 					if c.GetInt("token_id") > 0 {
-						// B端 Key：强制走绑定渠道（可控路由）。未绑定直接报错，不回落平台默认路由。
+						// B端视频 Key 使用创建时保存的渠道快照，并严格校验模型和 4K 档位。
+						if validationErr := validateVideoTokenRequest(c, modelRequest.Model, requiredResolution); validationErr != nil {
+							abortWithOpenAiMessage(c, http.StatusBadRequest, validationErr.Error())
+							return
+						}
 						boundChannelId := c.GetInt("token_channel_id")
 						if boundChannelId <= 0 {
 							abortWithOpenAiMessage(c, http.StatusBadRequest, service.ErrTokenChannelBindingRequired.Error())
@@ -468,7 +479,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	} else if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") {
-		// 火山方舟官方协议透传路径：与 /v1/video/generations 相同的模型提取与 relay_mode 语义
+		// 火山方舟官方协议透传路径：创建从请求体提取模型；列表从 filter.model
+		// 提取可选过滤；单任务查询和 DELETE 从当前用户任务回填模型，均不重新选路。
 		relayMode := relayconstant.RelayModeUnknown
 		if c.Request.Method == http.MethodPost {
 			req, err := getModelFromRequest(c)
@@ -478,6 +490,14 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = req.Model
 			relayMode = relayconstant.RelayModeVideoSubmit
 		} else if c.Request.Method == http.MethodGet {
+			relayMode = relayconstant.RelayModeVideoFetchByID
+			shouldSelectChannel = false
+			if c.Param("task_id") == "" {
+				modelRequest.Model = strings.TrimSpace(c.Query("filter.model"))
+			} else {
+				modelRequest.Model = getTaskOriginModelName(c)
+			}
+		} else if c.Request.Method == http.MethodDelete {
 			relayMode = relayconstant.RelayModeVideoFetchByID
 			shouldSelectChannel = false
 			modelRequest.Model = getTaskOriginModelName(c)
@@ -590,10 +610,6 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 // modelRequest.Model 为空而误报 "This token has no access to model"。
 // 从已存储的任务记录中回填 OriginModelName 即可让校验走在正确的模型上。
 func getTaskOriginModelName(c *gin.Context) string {
-	if !common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
-		return ""
-	}
-
 	taskId := c.Param("task_id")
 	if taskId == "" {
 		// jimeng adapter

@@ -28,7 +28,6 @@ import {
   ShieldAlert,
   Link2,
   CreditCard,
-  CirclePlus,
   KeySquare,
   Percent,
   Mail,
@@ -51,8 +50,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useAuthStore } from '@/stores/auth-store'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { manageUser, resetUserPasskey, resetUserTwoFA } from '../api'
 import {
@@ -63,9 +62,8 @@ import {
 } from '../constants'
 import { getUserActionMessage } from '../lib'
 import type { User, ManageUserAction } from '../types'
-import { UserApiKeyCreateDialog } from './dialogs/user-api-key-create-dialog'
-import { UserApiKeysDialog } from './dialogs/user-api-keys-dialog'
 import { UserAgentBindDialog } from './dialogs/user-agent-bind-dialog'
+import { UserApiKeysDialog } from './dialogs/user-api-keys-dialog'
 import { UserBindingDialog } from './dialogs/user-binding-dialog'
 import { UserEmailBindDialog } from './dialogs/user-email-bind-dialog'
 import { UserModelDiscountDialog } from './dialogs/user-model-discount-dialog'
@@ -83,7 +81,6 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
-  const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false)
   const [apiKeysDialogOpen, setApiKeysDialogOpen] = useState(false)
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false)
   const [emailBindOpen, setEmailBindOpen] = useState(false)
@@ -163,8 +160,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   // 当前登录者权限：用户管理员（运营）仅能启用/禁用/删除比自己角色低的用户
   const currentRole = useAuthStore((s) => s.auth.user?.role) ?? 0
   const canManageAll = currentRole >= USER_ROLE.ADMIN
-  const canManageRow =
-    currentRole === USER_ROLE.ROOT || currentRole > user.role
+  const canManageRow = currentRole === USER_ROLE.ROOT || currentRole > user.role
 
   if (isUserDeleted(user)) {
     return null
@@ -270,18 +266,6 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
               {t('Model Discounts')}
               <DropdownMenuShortcut>
                 <Percent size={16} />
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              onSelect={(event) => {
-                event.preventDefault()
-                setCreateApiKeyOpen(true)
-              }}
-            >
-              {t('Create API Key')}
-              <DropdownMenuShortcut>
-                <CirclePlus size={16} />
               </DropdownMenuShortcut>
             </DropdownMenuItem>
 
@@ -405,12 +389,6 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         onOpenChange={setSubscriptionsDialogOpen}
         user={{ id: user.id, username: user.username }}
         onSuccess={triggerRefresh}
-      />
-
-      <UserApiKeyCreateDialog
-        open={createApiKeyOpen}
-        onOpenChange={setCreateApiKeyOpen}
-        user={{ id: user.id, username: user.username }}
       />
 
       <UserApiKeysDialog

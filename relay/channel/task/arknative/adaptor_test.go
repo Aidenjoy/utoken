@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -351,4 +352,28 @@ func TestDoResponseUpstreamError(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
 	require.NotNil(t, taskErr.Error)
 	assert.Contains(t, taskErr.Error.Error(), "duration out of range")
+}
+
+func TestDeleteTaskUsesOfficialMethodPathAndBearerKey(t *testing.T) {
+	service.InitHttpClient()
+	var gotMethod, gotPath, gotAuthorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.EscapedPath()
+		gotAuthorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	a := &TaskAdaptor{}
+	resp, err := a.DeleteTask(server.URL+"/api/v3", "secret", "cgt-upstream/part", "")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.MethodDelete, gotMethod)
+	assert.Equal(t, "/api/v3/contents/generations/tasks/cgt-upstream%2Fpart", gotPath)
+	assert.Equal(t, "Bearer secret", gotAuthorization)
 }

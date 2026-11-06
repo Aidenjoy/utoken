@@ -280,6 +280,10 @@ func RelayArkAssetAction(c *gin.Context) {
 	if region == "" {
 		region = middleware.ArkDefaultRegion
 	}
+	if keyErr := videoAssetKeyError(c); keyErr != "" {
+		arkErr(c, action, region, http.StatusForbidden, "AccessDenied", keyErr)
+		return
+	}
 	userId := c.GetInt("id")
 	raw, _ := c.Get(middleware.ArkRawBodyKey)
 	body, _ := raw.([]byte)

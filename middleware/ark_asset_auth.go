@@ -124,6 +124,9 @@ func ArkAssetV4Auth() func(c *gin.Context) {
 		c.Set("token_id", token.Id)
 		c.Set("token_name", token.Name)
 		c.Set("token_channel_id", token.ChannelId)
+		c.Set("token_key_type", token.KeyType)
+		c.Set("token_video_model", token.VideoModel)
+		c.Set("token_video_4k", token.Video4K)
 		c.Next()
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -400,7 +401,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, err
 	}
 
-	uri := TaskBaseURL(baseUrl) + fmt.Sprintf("/contents/generations/tasks/%s", taskID)
+	uri := TaskBaseURL(baseUrl) + "/contents/generations/tasks/" + url.PathEscape(taskID)
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -410,6 +411,29 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Accept", "application/json")
 	bce.SignRequest(req, cred, "", nil, timeNow())
 
+	client, err := service.GetHttpClientWithProxy(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	return client.Do(req)
+}
+
+// DeleteTask 按 DataBuilder 的方舟同族协议删除任务，并重新执行 BCE AK/SK 签名。
+func (a *TaskAdaptor) DeleteTask(baseUrl, key, taskID, proxy string) (*http.Response, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("invalid task_id")
+	}
+	cred, err := bce.ParseAKSK(key)
+	if err != nil {
+		return nil, err
+	}
+	uri := TaskBaseURL(baseUrl) + "/contents/generations/tasks/" + url.PathEscape(taskID)
+	req, err := http.NewRequest(http.MethodDelete, uri, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	bce.SignRequest(req, cred, "", nil, timeNow())
 	client, err := service.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)

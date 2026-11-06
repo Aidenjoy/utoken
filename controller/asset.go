@@ -28,6 +28,14 @@ var (
 	assetLastRefreshAt = map[int64]int64{}
 )
 
+func videoAssetKeyError(c *gin.Context) string {
+	keyType := c.GetString("token_key_type")
+	if keyType != "" && keyType != model.TokenKeyTypeVideo {
+		return "当前密钥不能用于视频素材库，请使用视频模型 Key"
+	}
+	return ""
+}
+
 func assetJSONError(c *gin.Context, status int, typ string, msg string) {
 	c.JSON(status, gin.H{
 		"error": gin.H{
@@ -594,6 +602,10 @@ func RelayUploadAsset(c *gin.Context) {
 	}
 	// B端 Key：强制走绑定渠道（可控路由）。未绑定直接报错，不再支持"不指定渠道→智能素材"。
 	if c.GetInt("token_id") > 0 {
+		if keyErr := videoAssetKeyError(c); keyErr != "" {
+			relayAssetJSON(c, 1, keyErr, nil)
+			return
+		}
 		boundChannelId := c.GetInt("token_channel_id")
 		if boundChannelId <= 0 {
 			relayAssetJSON(c, 1, service.ErrTokenChannelBindingRequired.Error(), nil)
@@ -629,6 +641,12 @@ func RelayUploadAsset(c *gin.Context) {
 // GET {base}/api/assets/{id}；pending 时顺带向上游刷新。仅能查询本人素材。
 // id 为 yun-<源素材ID> 时按智能素材查询（返回源素材 + 各渠道副本状态）。
 func RelayGetAsset(c *gin.Context) {
+	if c.GetInt("token_id") > 0 {
+		if keyErr := videoAssetKeyError(c); keyErr != "" {
+			relayAssetJSON(c, 1, keyErr, nil)
+			return
+		}
+	}
 	userId := c.GetInt("id")
 	assetID := c.Param("id")
 	if service.IsSmartAssetRef(assetID) {

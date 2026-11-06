@@ -27,7 +27,7 @@ import (
 
 // TaskAdaptor 火山方舟官方协议透传适配器。
 // 对外暴露与官方 Ark API 完全一致的路径与请求/响应格式
-// （POST/GET {base}/contents/generations/tasks[/:id]），
+// （POST/GET/DELETE {base}/contents/generations/tasks[/:id]），
 // 客户端只需替换 base_url 与 key 即可接入：
 // 请求体除 model 字段按渠道模型映射替换外原样透传上游，
 // 上游提交/查询响应也原样返回客户端。
@@ -378,7 +378,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := arkTaskBaseURL(baseUrl) + fmt.Sprintf("/contents/generations/tasks/%s", taskID)
+	uri := arkTaskBaseURL(baseUrl) + "/contents/generations/tasks/" + url.PathEscape(taskID)
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
@@ -389,6 +389,26 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
 
+	client, err := service.GetHttpClientWithProxy(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	return client.Do(req)
+}
+
+// DeleteTask 取消排队任务或删除终态任务记录，使用与查询相同的渠道凭据和上游 ID。
+func (a *TaskAdaptor) DeleteTask(baseUrl, key, taskID, proxy string) (*http.Response, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("invalid task_id")
+	}
+	uri := arkTaskBaseURL(baseUrl) + "/contents/generations/tasks/" + url.PathEscape(taskID)
+	req, err := http.NewRequest(http.MethodDelete, uri, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
 	client, err := service.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)

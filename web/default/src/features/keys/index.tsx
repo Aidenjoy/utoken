@@ -19,23 +19,32 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import type { OwnerSelection } from '@/lib/owner'
 
 import { ApiKeysDialogs } from './components/api-keys-dialogs'
 import { ApiKeysPrimaryButtons } from './components/api-keys-primary-buttons'
 import { ApiKeysProvider } from './components/api-keys-provider'
 import { ApiKeysTable } from './components/api-keys-table'
 
-export function ApiKeys() {
+export function ApiKeys({
+  owner,
+  embedded = false,
+}: {
+  owner?: OwnerSelection
+  embedded?: boolean
+}) {
   const { t } = useTranslation()
   return (
-    <ApiKeysProvider>
+    <ApiKeysProvider initialOwner={owner} ownerLocked={owner !== undefined}>
       <SectionPageLayout fixedContent>
-        <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
+        {!embedded && (
+          <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
+        )}
         <SectionPageLayout.Actions>
           <ApiKeysPrimaryButtons />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <ApiKeysTable />
+          <ApiKeysTable embedded={embedded} />
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

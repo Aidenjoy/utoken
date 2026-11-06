@@ -16,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -542,4 +544,76 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
 	}
+}
+
+func TestAdminTokenWriteScope(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.User{}))
+	users := []model.User{
+		{Id: 1, Username: "owner", Role: common.RoleCommonUser, AffCode: "owner-aff"},
+		{Id: 2, Username: "other", Role: common.RoleCommonUser, AffCode: "other-aff"},
+		{Id: 10, Username: "admin", Role: common.RoleAdminUser, AffCode: "admin-aff"},
+	}
+	for i := range users {
+		require.NoError(t, db.Create(&users[i]).Error)
+	}
+
+	updateBody := func(tokenID int, name string) map[string]any {
+		return map[string]any{
+			"id": tokenID, "name": name, "expired_time": -1,
+			"remain_quota": 100, "unlimited_quota": true,
+			"model_limits_enabled": false, "model_limits": "",
+			"group": "default", "cross_group_retry": false,
+		}
+	}
+
+	t.Run("admin updates another users token", func(t *testing.T) {
+		token := seedToken(t, db, 1, "before-admin-update", "adminupdate123456")
+		ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", updateBody(token.Id, "after-admin-update"), 10)
+		UpdateToken(ctx)
+
+		response := decodeAPIResponse(t, recorder)
+		require.True(t, response.Success, response.Message)
+		var stored model.Token
+		require.NoError(t, db.First(&stored, token.Id).Error)
+		assert.Equal(t, "after-admin-update", stored.Name)
+	})
+
+	t.Run("ordinary user cannot update another users token", func(t *testing.T) {
+		token := seedToken(t, db, 1, "before-denied-update", "deniedupdate12345")
+		ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", updateBody(token.Id, "must-not-change"), 2)
+		UpdateToken(ctx)
+
+		response := decodeAPIResponse(t, recorder)
+		assert.False(t, response.Success)
+		var stored model.Token
+		require.NoError(t, db.First(&stored, token.Id).Error)
+		assert.Equal(t, "before-denied-update", stored.Name)
+	})
+
+	t.Run("admin batch deletes another users token", func(t *testing.T) {
+		token := seedToken(t, db, 1, "admin-batch-delete", "adminbatch123456")
+		ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/batch", map[string]any{"ids": []int{token.Id}}, 10)
+		DeleteTokenBatch(ctx)
+
+		response := decodeAPIResponse(t, recorder)
+		require.True(t, response.Success, response.Message)
+		var count int
+		require.NoError(t, common.Unmarshal(response.Data, &count))
+		assert.Equal(t, 1, count)
+		assert.ErrorIs(t, db.First(&model.Token{}, token.Id).Error, gorm.ErrRecordNotFound)
+	})
+
+	t.Run("ordinary batch delete remains owner scoped", func(t *testing.T) {
+		token := seedToken(t, db, 1, "denied-batch-delete", "deniedbatch123456")
+		ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/batch", map[string]any{"ids": []int{token.Id}}, 2)
+		DeleteTokenBatch(ctx)
+
+		response := decodeAPIResponse(t, recorder)
+		require.True(t, response.Success, response.Message)
+		var count int
+		require.NoError(t, common.Unmarshal(response.Data, &count))
+		assert.Zero(t, count)
+		assert.NoError(t, db.First(&model.Token{}, token.Id).Error)
+	})
 }

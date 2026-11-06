@@ -22,10 +22,13 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+
+import type { ChannelModelRouteConfig } from '../types'
 
 type ModelMappingEditorProps = {
   value: string
@@ -33,12 +36,18 @@ type ModelMappingEditorProps = {
   disabled?: boolean
   sourceModelOptions?: string[]
   targetModelOptions?: string[]
+  routeConfigs?: Record<string, ChannelModelRouteConfig>
+  onRouteConfigsChange?: (
+    configs: Record<string, ChannelModelRouteConfig>
+  ) => void
 }
 
 type MappingRow = {
   id: string
   from: string
   to: string
+  discount: string
+  supports4K: boolean
 }
 
 const DUPLICATE_MAPPING_SENTINEL = '{ "duplicate_source_models": '
@@ -57,7 +66,7 @@ function getDuplicateSources(rows: MappingRow[]): string[] {
     }
   }
 
-  return Array.from(duplicates)
+  return [...duplicates]
 }
 
 export function ModelMappingEditor(props: ModelMappingEditorProps) {
@@ -70,16 +79,49 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
   const [jsonError, setJsonError] = useState<string | null>(null)
   const nextRowIdRef = useRef(0)
   const duplicateSources = useMemo(() => getDuplicateSources(rows), [rows])
+  const showRouteConfigs = Boolean(
+    props.routeConfigs && props.onRouteConfigsChange
+  )
 
   const createRowId = () => {
     nextRowIdRef.current += 1
     return `mapping-${nextRowIdRef.current}`
   }
 
+  const routeConfigsFromRows = (
+    updatedRows: MappingRow[]
+  ): Record<string, ChannelModelRouteConfig> => {
+    const configs: Record<string, ChannelModelRouteConfig> = {}
+    for (const row of updatedRows) {
+      const source = row.from.trim()
+      if (!source) continue
+      const config: ChannelModelRouteConfig = {
+        supports_4k: row.supports4K,
+      }
+      if (row.discount.trim()) {
+        config.discount = Number(row.discount)
+      }
+      configs[source] = config
+    }
+    return configs
+  }
+
+  const newMappingRow = (from: string, to: string): MappingRow => {
+    const config = props.routeConfigs?.[from]
+    return {
+      id: createRowId(),
+      from,
+      to,
+      discount: config?.discount == null ? '' : String(config.discount),
+      supports4K: config?.supports_4k ?? false,
+    }
+  }
+
   const parseJsonToRows = (json: string): boolean => {
     try {
       if (!json.trim()) {
         setRows([])
+        props.onRouteConfigsChange?.({})
         setJsonError(null)
         return true
       }
@@ -94,34 +136,30 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
         setJsonError(t('Model mapping values must be strings'))
         return false
       }
-      setRows((previousRows) => {
-        const remainingRows = [...previousRows]
-        return entries.map(([from, to], index) => {
-          const toString = String(to)
-          const existingIndex = remainingRows.findIndex(
-            (row) =>
-              row.from === from ||
-              (row.from === from && row.to === toString) ||
-              previousRows[index]?.id === row.id
-          )
-          if (existingIndex >= 0) {
-            const [existing] = remainingRows.splice(existingIndex, 1)
-            return {
-              id: existing.id,
-              from,
-              to: toString,
-            }
-          }
+      const remainingRows = [...rows]
+      const nextRows = entries.map(([from, to], index) => {
+        const toString = String(to)
+        const existingIndex = remainingRows.findIndex(
+          (row) => row.from === from || rows[index]?.id === row.id
+        )
+        if (existingIndex >= 0) {
+          const [existing] = remainingRows.splice(existingIndex, 1)
+          const config = props.routeConfigs?.[from]
           return {
-            id: createRowId(),
+            ...existing,
             from,
             to: toString,
+            discount: config?.discount == null ? '' : String(config.discount),
+            supports4K: config?.supports_4k ?? false,
           }
-        })
+        }
+        return newMappingRow(from, toString)
       })
+      setRows(nextRows)
+      props.onRouteConfigsChange?.(routeConfigsFromRows(nextRows))
       setJsonError(null)
       return true
-    } catch (_error) {
+    } catch {
       setJsonError(t('Model mapping must be valid JSON format'))
       return false
     }
@@ -132,6 +170,8 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setJsonValue(props.value)
     parseJsonToRows(props.value)
+    // 仅响应外部 JSON 值变化；解析函数依赖当前行，加入依赖会形成重复同步。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.value])
 
   const convertRowsToJson = (updatedRows: MappingRow[]): string => {
@@ -161,6 +201,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
     setJsonError(null)
     setJsonValue(json)
     props.onChange(json)
+    props.onRouteConfigsChange?.(routeConfigsFromRows(updatedRows))
   }
 
   const handleAddRow = () => {
@@ -168,6 +209,8 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       id: createRowId(),
       from: '',
       to: '',
+      discount: '',
+      supports4K: false,
     }
     syncRows([...rows, newRow])
   }
@@ -184,6 +227,20 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
     const updatedRows = rows.map((row) =>
       row.id === id ? { ...row, [field]: newValue } : row
     )
+    syncRows(updatedRows)
+  }
+
+  const handleRouteRowChange = (
+    id: string,
+    field: 'discount' | 'supports4K',
+    newValue: string | boolean
+  ) => {
+    const updatedRows = rows.map((row) => {
+      if (row.id !== id) return row
+      return field === 'discount'
+        ? { ...row, discount: String(newValue) }
+        : { ...row, supports4K: Boolean(newValue) }
+    })
     syncRows(updatedRows)
   }
 
@@ -265,15 +322,31 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
         <TabsContent value='visual' className='space-y-2'>
           {rows.length > 0 ? (
             <div className='space-y-2'>
-              <div className='grid grid-cols-[1fr_1fr_auto] gap-2 text-sm font-medium'>
+              <div
+                className={cn(
+                  'grid grid-cols-[1fr_1fr_auto] gap-2 text-sm font-medium',
+                  showRouteConfigs &&
+                    'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_6rem_7rem_2.5rem]'
+                )}
+              >
                 <div>{t('Original Model')}</div>
                 <div>{t('Replacement Model')}</div>
-                <div className='w-10'></div>
+                {showRouteConfigs && (
+                  <>
+                    <div>{t('Discount (0-10)')}</div>
+                    <div>{t('Supports 4K')}</div>
+                  </>
+                )}
+                <div className='w-10' />
               </div>
               {rows.map((row) => (
                 <div
                   key={row.id}
-                  className='grid grid-cols-[1fr_1fr_auto] gap-2'
+                  className={cn(
+                    'grid grid-cols-[1fr_1fr_auto] items-center gap-2',
+                    showRouteConfigs &&
+                      'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_6rem_7rem_2.5rem]'
+                  )}
                 >
                   <Input
                     value={row.from}
@@ -293,6 +366,41 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
                     disabled={props.disabled}
                     list={targetListId}
                   />
+                  {showRouteConfigs && (
+                    <>
+                      <Input
+                        type='number'
+                        min={0}
+                        max={10}
+                        step={0.1}
+                        value={row.discount}
+                        onChange={(event) =>
+                          handleRouteRowChange(
+                            row.id,
+                            'discount',
+                            event.target.value
+                          )
+                        }
+                        placeholder={t('e.g. 8')}
+                        disabled={props.disabled}
+                        aria-label={t('Discount (0-10)')}
+                      />
+                      <div className='flex justify-center'>
+                        <Checkbox
+                          checked={row.supports4K}
+                          onCheckedChange={(checked) =>
+                            handleRouteRowChange(
+                              row.id,
+                              'supports4K',
+                              checked === true
+                            )
+                          }
+                          disabled={props.disabled}
+                          aria-label={t('Supports 4K resolution')}
+                        />
+                      </div>
+                    </>
+                  )}
                   <Button
                     type='button'
                     variant='ghost'
@@ -325,6 +433,13 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
             <Plus className='mr-2 h-4 w-4' />
             {t('Add Mapping')}
           </Button>
+          {showRouteConfigs && (
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Discount uses a 0-10 scale. Leave it blank to exclude the mapping from automatic video Key matching.'
+              )}
+            </p>
+          )}
         </TabsContent>
         <TabsContent value='json'>
           <Textarea

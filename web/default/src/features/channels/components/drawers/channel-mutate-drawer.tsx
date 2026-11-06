@@ -111,8 +111,6 @@ import {
   SecureVerificationDialog,
   useSecureVerification,
 } from '@/features/auth/secure-verification'
-import { getPricing } from '@/features/pricing/api'
-import { getSeedanceTiers } from '@/features/pricing/lib/seed-price'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import {
   parseChannelConnectionInfo,
@@ -298,7 +296,6 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.thinking_to_content ||
     values.pass_through_body_enabled ||
     values.system_prompt_override ||
-    Object.keys(values.resolution_blacklist ?? {}).length > 0 ||
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
@@ -618,14 +615,6 @@ export function ChannelMutateDrawer({
     queryFn: () => getPrefillGroups('model'),
   })
 
-  // 模型广场定价缓存：用于判断哪些模型配置了 4k 分辨率单价，只有这些模型
-  // 才需要在渠道级展示「支持 4K」开关（能力矩阵是 渠道 × 模型 × 分辨率）。
-  const { data: pricingData } = useQuery({
-    queryKey: ['pricing'],
-    queryFn: getPricing,
-    staleTime: 5 * 60 * 1000,
-  })
-
   const { copyToClipboard } = useCopyToClipboard()
 
   const {
@@ -671,6 +660,7 @@ export function ChannelMutateDrawer({
   const currentModels = form.watch('models')
   const currentName = form.watch('name')
   const currentModelMapping = form.watch('model_mapping')
+  const currentModelRouteConfigs = form.watch('model_route_configs')
   const awsKeyType = form.watch('aws_key_type')
   const vertexKeyType = form.watch('vertex_key_type')
   const upstreamModelUpdateCheckEnabled = form.watch(
@@ -735,51 +725,6 @@ export function ChannelMutateDrawer({
   )
   const currentUpstreamModelUpdateIgnoredModels = form.watch(
     'upstream_model_update_ignored_models'
-  )
-  const currentResolutionBlacklist = form.watch('resolution_blacklist')
-  // 渠道已配置模型中，属于「配了 4k 单价的 seedance 计费模型」的子集：只有这些
-  // 模型才展示 4K 支持开关。顺序与 models 字段一致，避免开关跳动。
-  const resolution4kModels = useMemo(() => {
-    const models4k = new Set(
-      (pricingData?.data ?? [])
-        .filter((model) =>
-          (getSeedanceTiers(model) ?? []).some(
-            (tier) => tier.resolution === '4k'
-          )
-        )
-        .map((model) => model.model_name)
-    )
-    return parseModelsString(currentModels ?? '').filter((model) =>
-      models4k.has(model)
-    )
-  }, [pricingData, currentModels])
-
-  // 切换某模型是否支持 4k：支持=从黑名单移除 4k，不支持=加入黑名单。不可变
-  // 更新；模型无其余分辨率时删除该键，避免落库空数组。
-  const toggleResolution4kSupport = useCallback(
-    (model: string, supported: boolean) => {
-      const next: Record<string, string[]> = {
-        ...currentResolutionBlacklist,
-      }
-      const resolutions = new Set(
-        (next[model] ?? []).map((r) => r.trim().toLowerCase()).filter(Boolean)
-      )
-      if (supported) {
-        resolutions.delete('4k')
-      } else {
-        resolutions.add('4k')
-      }
-      if (resolutions.size > 0) {
-        next[model] = [...resolutions]
-      } else {
-        delete next[model]
-      }
-      form.setValue('resolution_blacklist', next, {
-        shouldDirty: true,
-        shouldValidate: true,
-      })
-    },
-    [currentResolutionBlacklist, form]
   )
   const applyConnectionInfo = useCallback(
     (connectionInfo: ChannelConnectionInfo) => {
@@ -955,7 +900,10 @@ export function ChannelMutateDrawer({
     formErrors.azure_responses_version
   )
   const modelsHaveErrors = Boolean(
-    formErrors.models || formErrors.group || formErrors.model_mapping
+    formErrors.models ||
+    formErrors.group ||
+    formErrors.model_mapping ||
+    formErrors.model_route_configs
   )
   const advancedHaveErrors =
     hasAdvancedSettingsErrors(formErrors) || Boolean(formErrors.advanced_custom)
@@ -1021,8 +969,7 @@ export function ChannelMutateDrawer({
     currentDisableTaskPollingSleep ||
     currentProxy?.trim() ||
     currentSystemPrompt?.trim() ||
-    currentSystemPromptOverride ||
-    Object.keys(currentResolutionBlacklist ?? {}).length > 0
+    currentSystemPromptOverride
   )
   let fieldPassthroughConfigured = false
   if (currentType === 1 || currentType === 57) {
@@ -3897,6 +3844,7 @@ export function ChannelMutateDrawer({
                                   </div>
                                   <FormControl>
                                     <ModelMappingEditor
+                                      key={channelId ?? 'new-channel'}
                                       value={field.value || ''}
                                       onChange={field.onChange}
                                       disabled={isSubmitting}
@@ -3904,8 +3852,28 @@ export function ChannelMutateDrawer({
                                       targetModelOptions={modelOptions.map(
                                         (option) => option.value
                                       )}
+                                      routeConfigs={
+                                        currentModelRouteConfigs ?? {}
+                                      }
+                                      onRouteConfigsChange={(configs) =>
+                                        form.setValue(
+                                          'model_route_configs',
+                                          configs,
+                                          {
+                                            shouldDirty: true,
+                                            shouldValidate: true,
+                                          }
+                                        )
+                                      }
                                     />
                                   </FormControl>
+                                  {formErrors.model_route_configs && (
+                                    <p className='text-destructive text-sm'>
+                                      {t(
+                                        'Discount must be greater than 0 and no more than 10'
+                                      )}
+                                    </p>
+                                  )}
                                   {modelMappingGuardrail.invalidJson && (
                                     <Alert variant='destructive'>
                                       <AlertDescription>
@@ -4591,49 +4559,6 @@ export function ChannelMutateDrawer({
                               )}
                             />
 
-                            {resolution4kModels.length > 0 && (
-                              <div className='space-y-2'>
-                                <FormLabel>{t('Resolution Support')}</FormLabel>
-                                <div className='divide-border divide-y rounded-md border'>
-                                  {resolution4kModels.map((model) => {
-                                    const blocked4k = (
-                                      currentResolutionBlacklist?.[model] ?? []
-                                    )
-                                      .map((r) => r.trim().toLowerCase())
-                                      .includes('4k')
-                                    return (
-                                      <div
-                                        key={model}
-                                        className='flex items-center justify-between px-4 py-3'
-                                      >
-                                        <div className='space-y-0.5'>
-                                          <div className='text-sm font-medium'>
-                                            {model}
-                                          </div>
-                                          <FormDescription>
-                                            {t('Supports 4K resolution')}
-                                          </FormDescription>
-                                        </div>
-                                        <Switch
-                                          checked={!blocked4k}
-                                          onCheckedChange={(checked) =>
-                                            toggleResolution4kSupport(
-                                              model,
-                                              checked
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                                <FormDescription>
-                                  {t(
-                                    'Turn off to skip this channel for 4K requests and route them to other channels'
-                                  )}
-                                </FormDescription>
-                              </div>
-                            )}
                           </fieldset>
                         </div>
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,26 @@ func (t TaskStatus) ToVideoStatus() string {
 	return status
 }
 
+// ToArkStatus 转换为火山方舟视频任务协议的状态枚举。
+func (t TaskStatus) ToArkStatus() string {
+	switch t {
+	case TaskStatusNotStart, TaskStatusSubmitted, TaskStatusQueued:
+		return "queued"
+	case TaskStatusInProgress, TaskStatusUnknown:
+		return "running"
+	case TaskStatusSuccess:
+		return "succeeded"
+	case TaskStatusFailure:
+		return "failed"
+	case TaskStatusCancelled:
+		return "cancelled"
+	case TaskStatusTimeoutUnresolved:
+		return "expired"
+	default:
+		return "running"
+	}
+}
+
 const (
 	TaskStatusNotStart   TaskStatus = "NOT_START"
 	TaskStatusSubmitted             = "SUBMITTED"
@@ -57,8 +78,8 @@ const (
 	// 失败即退款）。
 	TaskStatusTimeoutUnresolved = "TIMEOUT_UNRESOLVED"
 	// TaskStatusCancelled 用户在任务进入终态前主动取消。它是计费终态：预扣已全额退还，
-	// 与 FAILURE/SUCCESS 一样被排除出自动轮询与超时回源；上游（方舟等）没有取消接口，
-	// 任务在上游仍会跑完，但本地不再结算，ApplyUpstreamTaskResult 对 CANCELLED 直接拦截。
+	// 与 FAILURE/SUCCESS 一样被排除出自动轮询与超时回源；支持取消的上游由对应 API
+	// 先取消成功再迁入此状态，本地不再结算，ApplyUpstreamTaskResult 对 CANCELLED 直接拦截。
 	TaskStatusCancelled = "CANCELLED"
 )
 
@@ -187,6 +208,8 @@ type TaskPrivateData struct {
 	Key            string `json:"key,omitempty"`
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
+	// DeletedAt 是公开协议删除标记；保留本地任务行用于计费与审计，但不再对外返回。
+	DeletedAt int64 `json:"deleted_at,omitempty"`
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
 	BillingSource  string              `json:"billing_source,omitempty"`  // "wallet"、"subscription" 或 "organization"
 	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
@@ -214,6 +237,16 @@ func (t *Task) GetUpstreamTaskID() string {
 		return t.PrivateData.UpstreamTaskID
 	}
 	return t.TaskID
+}
+
+func (t *Task) IsDeleted() bool {
+	return t.PrivateData.DeletedAt > 0
+}
+
+// MarkDeleted 仅更新删除标记，避免覆盖轮询或结算并发写入的其他任务字段。
+func (t *Task) MarkDeleted() error {
+	t.PrivateData.DeletedAt = time.Now().Unix()
+	return DB.Model(t).Update("private_data", t.PrivateData).Error
 }
 
 // GetResultURL 获取任务结果 URL（视频地址等）。
@@ -492,6 +525,27 @@ func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 	return task, nil
 }
 
+// ListArkTasks 查询当前用户的方舟同族视频任务。模型、服务等级、删除标记和 Key
+// 权限需要读取 JSON 或请求上下文，由公开 API 层继续过滤后再分页，保证 total 准确。
+func ListArkTasks(userId int, taskIds []string, statuses []TaskStatus) ([]*Task, error) {
+	platforms := []string{
+		strconv.Itoa(constant.ChannelTypeArkNative),
+		strconv.Itoa(constant.ChannelTypeBaiduDataBuilder),
+	}
+	query := DB.Where("user_id = ? AND platform IN ?", userId, platforms)
+	if len(taskIds) > 0 {
+		query = query.Where("task_id IN ?", taskIds)
+	}
+	if len(statuses) > 0 {
+		query = query.Where("status IN ?", statuses)
+	}
+	var tasks []*Task
+	if err := query.Order("id DESC").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
 func (Task *Task) Insert() error {
 	var err error
 	err = DB.Create(Task).Error
@@ -687,6 +741,53 @@ func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	_ = query.Count(&total).Error
 	return total
 }
+
+var arkTaskResponseFields = []string{
+	"id", "model", "status", "content", "created_at", "draft", "duration",
+	"error", "execution_expires_after", "frames", "framespersecond", "generate_audio",
+	"output_format", "priority", "ratio", "resolution", "safety_identifier", "seed",
+	"service_tier", "tools", "updated_at", "usage",
+}
+
+// ToArkTask 将本地上游快照转换为方舟公开任务结构。只保留官方字段，并以本地
+// 公开 ID、模型和生命周期状态覆盖快照，避免映射 ID 或取消前的旧状态泄露出去。
+func (t *Task) ToArkTask() map[string]any {
+	var snapshot map[string]any
+	if len(t.Data) > 0 {
+		_ = common.Unmarshal(t.Data, &snapshot)
+	}
+	item := make(map[string]any, len(arkTaskResponseFields))
+	for _, field := range arkTaskResponseFields {
+		if value, ok := snapshot[field]; ok {
+			item[field] = value
+		}
+	}
+	item["id"] = t.TaskID
+	item["status"] = t.Status.ToArkStatus()
+	if t.Properties.OriginModelName != "" {
+		item["model"] = t.Properties.OriginModelName
+	} else if t.Properties.UpstreamModelName != "" {
+		item["model"] = t.Properties.UpstreamModelName
+	}
+	createdAt := t.SubmitTime
+	if createdAt == 0 {
+		createdAt = t.CreatedAt
+	}
+	updatedAt := t.UpdatedAt
+	if updatedAt == 0 {
+		updatedAt = t.FinishTime
+	}
+	if updatedAt == 0 {
+		updatedAt = createdAt
+	}
+	item["created_at"] = createdAt
+	item["updated_at"] = updatedAt
+	if _, ok := item["service_tier"]; !ok {
+		item["service_tier"] = "default"
+	}
+	return item
+}
+
 func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	openAIVideo := dto.NewOpenAIVideo()
 	openAIVideo.ID = t.TaskID

@@ -80,6 +80,11 @@ export type Channel = z.infer<typeof channelSchema>
 // Channel Settings Types
 // ============================================================================
 
+export interface ChannelModelRouteConfig {
+  discount?: number
+  supports_4k: boolean
+}
+
 export interface ChannelSettings {
   force_format?: boolean
   thinking_to_content?: boolean
@@ -92,6 +97,7 @@ export interface ChannelSettings {
    * 未列出的模型视为支持全部分辨率；选路阶段据此剔除做不了该分辨率的渠道。
    */
   resolution_blacklist?: Record<string, string[]>
+  model_route_configs?: Record<string, ChannelModelRouteConfig>
 }
 
 export interface ChannelOtherSettings {

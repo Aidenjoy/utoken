@@ -309,7 +309,6 @@ function buildImageSections(siteUrl: string): DocSection[] {
 const videoSubmitResponse = `{"id": "cgt-20260826120000-abc12"}`
 
 function buildVideoSections(siteUrl: string): DocSection[] {
-  const baseUrl = `${siteUrl}/v1`
   const tasksUrl = `${siteUrl}/api/v3/contents/generations/tasks`
   return [
     {
@@ -322,7 +321,7 @@ function buildVideoSections(siteUrl: string): DocSection[] {
             参考音频（0-3
             个）自由组合，示例中的各项按需删减即可；音频不可单独参考，至少搭配一张图片或一个视频。参考图片支持两种写法：直接
             URL，或素材库引用 <InlineCode>asset://&lt;素材ID&gt;</InlineCode>
-            （真人虚拟素材上传见「智能素材库」一节）
+            （真人虚拟素材上传见「素材库」一节）
           </P>
           <CodeBlock
             method='POST'
@@ -511,54 +510,41 @@ curl -X GET ${tasksUrl}/{task_id} \\
       ),
     },
     {
-      id: 'video-assets',
-      title: '素材',
+      id: 'video-asset-official',
+      title: '素材库',
       body: (
-        <P>
-          素材提供两种对接形态：<InlineCode>素材库</InlineCode>
-          与火山方舟官方接口 1:1 兼容，官方 SDK / AK/SK 签名可直接调用；
-          <InlineCode>智能素材库</InlineCode>
-          为本站简化协议，Bearer 鉴权、开箱即用。两种形态上传成功后都会得到素材
-          ID，在视频任务 <InlineCode>content</InlineCode> 中以{' '}
-          <InlineCode>asset://&lt;素材ID&gt;</InlineCode> 引用。
-        </P>
-      ),
-      children: [
-        {
-          id: 'video-asset-official',
-          title: '素材库',
-          body: (
-            <>
-              <P>
-                与火山方舟官方素材库接口 1:1 兼容：下游直接用火山官方 SDK 或
-                curl，把 endpoint 指向本站、用在「Key 管理」页生成的 AK/SK 做 V4
-                签名，即可原样调用官方 10 个 Action；请求体、响应体、
-                <InlineCode>ResponseMetadata</InlineCode>/{' '}
-                <InlineCode>Result</InlineCode> 信封与鉴权全部与官方一致。
-              </P>
-              <Note>
-                鉴权与隔离：在「Key 管理」页为令牌生成 Ark AK/SK；签名{' '}
-                <InlineCode>service=ark</InlineCode>、
-                <InlineCode>region</InlineCode> 任意（如{' '}
-                <InlineCode>cn-beijing</InlineCode>
-                ）。列表/查询以本站数据库为准，按 AK→令牌→用户归属过滤，只能查到自己创建的素材与素材组，天然多租户隔离。
-              </Note>
-              <Note>
-                调用形态：统一{' '}
-                <InlineCode>{`POST ${siteUrl}/?Action=<接口名>&Version=2024-01-01`}</InlineCode>
-                ，<InlineCode>Content-Type: application/json</InlineCode>
-                ，AK/SK V4 签名（
-                <InlineCode>Authorization: HMAC-SHA256 Credential=...</InlineCode>
-                ）。状态词表 <InlineCode>Active</InlineCode> /{' '}
-                <InlineCode>Processing</InlineCode> /{' '}
-                <InlineCode>Failed</InlineCode>；列表用{' '}
-                <InlineCode>NextToken</InlineCode> 游标分页（
-                <InlineCode>MaxResults</InlineCode> 默认 20、上限 100）。
-              </Note>
-              <CodeBlock
-                title='成功响应信封'
-                lang='json'
-                code={`{
+        <>
+          <P>
+            与火山方舟官方素材库接口 1:1 兼容：下游直接用火山官方 SDK 或
+            curl，把 endpoint 指向本站、用在「Key 管理」页生成的 AK/SK 做 V4
+            签名，即可原样调用官方 10 个 Action；请求体、响应体、
+            <InlineCode>ResponseMetadata</InlineCode>/{' '}
+            <InlineCode>Result</InlineCode> 信封与鉴权全部与官方一致。
+          </P>
+          <Note>
+            鉴权与隔离：在「Key 管理」页为令牌生成 Ark AK/SK；签名{' '}
+            <InlineCode>service=ark</InlineCode>、
+            <InlineCode>region</InlineCode> 任意（如{' '}
+            <InlineCode>cn-beijing</InlineCode>
+            ）。列表/查询以本站数据库为准，按
+            AK→令牌→用户归属过滤，只能查到自己创建的素材与素材组，天然多租户隔离。
+          </Note>
+          <Note>
+            调用形态：统一{' '}
+            <InlineCode>{`POST ${siteUrl}/?Action=<接口名>&Version=2024-01-01`}</InlineCode>
+            ，<InlineCode>Content-Type: application/json</InlineCode>
+            ，AK/SK V4 签名（
+            <InlineCode>Authorization: HMAC-SHA256 Credential=...</InlineCode>
+            ）。状态词表 <InlineCode>Active</InlineCode> /{' '}
+            <InlineCode>Processing</InlineCode> /{' '}
+            <InlineCode>Failed</InlineCode>；列表用{' '}
+            <InlineCode>NextToken</InlineCode> 游标分页（
+            <InlineCode>MaxResults</InlineCode> 默认 20、上限 100）。
+          </Note>
+          <CodeBlock
+            title='成功响应信封'
+            lang='json'
+            code={`{
   "ResponseMetadata": {
     "RequestId": "20260716111338-vwmxj",
     "Action": "CreateAssetGroup",
@@ -568,11 +554,11 @@ curl -X GET ${tasksUrl}/{task_id} \\
   },
   "Result": {"Id": "group-20260716105134-zkx8t"}
 }`}
-              />
-              <CodeBlock
-                title='错误响应信封（无 Result）'
-                lang='json'
-                code={`{
+          />
+          <CodeBlock
+            title='错误响应信封（无 Result）'
+            lang='json'
+            code={`{
   "ResponseMetadata": {
     "RequestId": "20260716111339-abcde",
     "Action": "GetAsset",
@@ -582,11 +568,11 @@ curl -X GET ${tasksUrl}/{task_id} \\
     "Error": {"CodeN": 404, "Code": "NotFound", "Message": "asset not found"}
   }
 }`}
-              />
-              <CodeBlock
-                title='火山官方 Go SDK（service/ark）示意：仅把 endpoint 指向本站'
-                lang='bash'
-                code={`svc := ark.NewInstance()
+          />
+          <CodeBlock
+            title='火山官方 Go SDK（service/ark）示意：仅把 endpoint 指向本站'
+            lang='bash'
+            code={`svc := ark.NewInstance()
 svc.SetRegion("cn-beijing")            // region 任意
 svc.SetService("ark")                  // 固定 ark
 svc.SetEndpoint("${siteUrl}")          // ← 指向本站（系统设置 → 服务器地址）
@@ -598,445 +584,262 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
     Description: ark.String("可选描述"),
 })
 // out.Result.Id 即素材组 ID；SDK 自动完成 V4 签名`}
-              />
-              <CodeBlock
-                title='curl 签名请求示例（把 <你的域名> 换成本站域名，不含 https://）'
-                lang='bash'
-                code={`curl -X POST "${siteUrl}/?Action=ListAssets&Version=2024-01-01" \\
+          />
+          <CodeBlock
+            title='curl 签名请求示例（把 <你的域名> 换成本站域名，不含 https://）'
+            lang='bash'
+            code={`curl -X POST "${siteUrl}/?Action=ListAssets&Version=2024-01-01" \\
   -H "Content-Type: application/json" \\
   -H "Host: <你的域名>" \\
   -H "X-Date: 20260716T031338Z" \\
   -H "X-Content-Sha256: <请求体的 SHA256 十六进制>" \\
   -H "Authorization: HMAC-SHA256 Credential=<AK>/20260716/cn-beijing/ark/request, SignedHeaders=host;x-content-sha256;x-date, Signature=<V4 签名>" \\
   -d '{"Filter":{"Statuses":["Active"]},"MaxResults":20}'`}
-              />
-              <Note>
-                V4 签名步骤（用官方 SDK 可自动完成，无需手写）：① 构造规范请求（方法、
-                URI、query、参与签名的头、payload 哈希）；② 拼 StringToSign（算法、X-Date、
-                scope、规范请求哈希）；③ 用 SK 逐级派生签名密钥（date/region/service）；④
-                HMAC-SHA256 得到 Signature 并写入 Authorization 头。X-Date 需在 ±15 分钟内，
-                X-Content-Sha256 须等于请求体哈希，否则返回 SignatureDoesNotMatch / RequestExpired。
-              </Note>
-              <Note>
-                限制：官方兼容 API 需上游为 ark_official（或透传了完整管理能力的兼容）渠道，
-                relay / ecloud / 360 等协议不支持完整管理接口；并发/QPS 以本站为准。上面 Go SDK
-                片段仅为示意，具体实例化方法、输入结构体与字段名以火山官方 volcengine-go-sdk（service/ark）为准。
-              </Note>
-            </>
-          ),
-          children: [
-            {
-              id: 'video-asset-official-create-group',
-              title: 'CreateAssetGroup · 创建素材组',
-              short: 'CreateAssetGroup',
-              body: (
-                <>
-                  <P>
-                    创建素材组。<InlineCode>GroupType</InlineCode> 默认{' '}
-                    <InlineCode>AIGC</InlineCode>、<InlineCode>ProjectName</InlineCode>{' '}
-                    默认 <InlineCode>default</InlineCode>，均可省略。
-                  </P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=CreateAssetGroup&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Name":"我的素材组","Description":"可选描述","GroupType":"AIGC","ProjectName":"default"}'
-                  />
-                  <CodeBlock
-                    title='Result'
-                    lang='json'
-                    code='{"Id": "group-20260716105134-zkx8t"}'
-                  />
-                  <Note>
-                    创建素材组会自动选用你分组下优先级最高的启用素材渠道；同一素材组内的
-                    CreateAsset 锁定到建组时的渠道，保证同一上游账号。
-                  </Note>
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-create',
-              title: 'CreateAsset · 创建素材',
-              short: 'CreateAsset',
-              body: (
-                <>
-                  <P>
-                    在指定素材组内创建素材。<InlineCode>URL</InlineCode>{' '}
-                    必须是公网可访问的 http(s) 地址（由上游拉取，非文件流）；
-                    <InlineCode>AssetType</InlineCode> 取值{' '}
-                    <InlineCode>Image</InlineCode> / <InlineCode>Video</InlineCode>{' '}
-                    / <InlineCode>Audio</InlineCode>；<InlineCode>Name</InlineCode>{' '}
-                    可省略，省略时取 URL 末段。
-                  </P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=CreateAsset&Version=2024-01-01`}
-                    lang='json'
-                    code='{"GroupId":"group-20260716105134-zkx8t","URL":"https://picsum.photos/id/1074/800/600","AssetType":"Image","Name":"lion01","ProjectName":"default"}'
-                  />
-                  <CodeBlock
-                    title='Result'
-                    lang='json'
-                    code='{"Id": "asset-20260716111338-vwmxj"}'
-                  />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-list-groups',
-              title: 'ListAssetGroups · 列出素材组',
-              short: 'ListAssetGroups',
-              body: (
-                <>
-                  <P>
-                    列出素材组，支持 <InlineCode>GroupIds</InlineCode> /{' '}
-                    <InlineCode>Name</InlineCode> 模糊过滤与{' '}
-                    <InlineCode>NextToken</InlineCode> 游标分页。
-                  </P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=ListAssetGroups&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Filter":{"Name":"素材"},"MaxResults":20,"NextToken":""}'
-                  />
-                  <CodeBlock
-                    title='Result'
-                    lang='json'
-                    code='{"Items": [{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}], "NextToken": ""}'
-                  />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-list',
-              title: 'ListAssets · 列出素材',
-              short: 'ListAssets',
-              body: (
-                <>
-                  <P>
-                    列出素材，支持 <InlineCode>GroupIds</InlineCode> /{' '}
-                    <InlineCode>Statuses</InlineCode> /{' '}
-                    <InlineCode>Name</InlineCode> 过滤与游标分页；
-                    <InlineCode>Statuses</InlineCode> 用官方词表{' '}
-                    <InlineCode>Active</InlineCode> /{' '}
-                    <InlineCode>Processing</InlineCode> /{' '}
-                    <InlineCode>Failed</InlineCode>。
-                  </P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=ListAssets&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"Statuses":["Active"]},"MaxResults":20}'
-                  />
-                  <CodeBlock
-                    title='Result'
-                    lang='json'
-                    code='{"Items": [{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "ProjectName": "default", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "Status": "Active", "Moderation": {"Strategy": "Default"}}], "NextToken": ""}'
-                  />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-get',
-              title: 'GetAsset · 查询素材',
-              short: 'GetAsset',
-              body: (
-                <>
-                  <P>按 Id 查询单个素材的详情与状态。</P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=GetAsset&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Id":"asset-20260716111338-vwmxj"}'
-                  />
-                  <CodeBlock
-                    title='Result'
-                    lang='json'
-                    code='{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "Status": "Active", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "Moderation": {"Strategy": "Default"}}'
-                  />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-get-group',
-              title: 'GetAssetGroup · 查询素材组',
-              short: 'GetAssetGroup',
-              body: (
-                <>
-                  <P>按 Id 查询单个素材组的详情。</P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=GetAssetGroup&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Id":"group-20260716105134-zkx8t"}'
-                  />
-                  <CodeBlock
-                    title='Result'
-                    lang='json'
-                    code='{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}'
-                  />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-update',
-              title: 'UpdateAsset · 更新素材',
-              short: 'UpdateAsset',
-              body: (
-                <>
-                  <P>更新素材（官方当前仅支持改名）。</P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=UpdateAsset&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Id":"asset-20260716111338-vwmxj","Name":"新素材名"}'
-                  />
-                  <CodeBlock title='Result' lang='json' code='{}' />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-update-group',
-              title: 'UpdateAssetGroup · 更新素材组',
-              short: 'UpdateAssetGroup',
-              body: (
-                <>
-                  <P>更新素材组名称 / 描述，空字段保持原值。</P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=UpdateAssetGroup&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Id":"group-20260716105134-zkx8t","Name":"新组名","Description":"新描述"}'
-                  />
-                  <CodeBlock title='Result' lang='json' code='{}' />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-delete',
-              title: 'DeleteAsset · 删除素材',
-              short: 'DeleteAsset',
-              body: (
-                <>
-                  <P>
-                    删除素材，尽力联动上游一并删除（best-effort）：上游故障不阻断本地删除。
-                  </P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=DeleteAsset&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Id":"asset-20260716111338-vwmxj"}'
-                  />
-                  <CodeBlock title='Result' lang='json' code='{}' />
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-official-delete-group',
-              title: 'DeleteAssetGroup · 删除素材组',
-              short: 'DeleteAssetGroup',
-              body: (
-                <>
-                  <P>
-                    删除素材组：组内素材先尽力联动上游删除（best-effort），再清理本地登记。
-                  </P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${siteUrl}/?Action=DeleteAssetGroup&Version=2024-01-01`}
-                    lang='json'
-                    code='{"Id":"group-20260716105134-zkx8t"}'
-                  />
-                  <CodeBlock title='Result' lang='json' code='{}' />
-                </>
-              ),
-            },
-          ],
-        },
+          />
+          <Note>
+            V4 签名步骤（用官方 SDK 可自动完成，无需手写）：①
+            构造规范请求（方法、 URI、query、参与签名的头、payload 哈希）；② 拼
+            StringToSign（算法、X-Date、 scope、规范请求哈希）；③ 用 SK
+            逐级派生签名密钥（date/region/service）；④ HMAC-SHA256 得到
+            Signature 并写入 Authorization 头。X-Date 需在 ±15 分钟内，
+            X-Content-Sha256 须等于请求体哈希，否则返回 SignatureDoesNotMatch /
+            RequestExpired。
+          </Note>
+          <Note>
+            限制：官方兼容 API 需上游为
+            ark_official（或透传了完整管理能力的兼容）渠道， relay / ecloud /
+            360 等协议不支持完整管理接口；并发/QPS 以本站为准。上面 Go SDK
+            片段仅为示意，具体实例化方法、输入结构体与字段名以火山官方
+            volcengine-go-sdk（service/ark）为准。
+          </Note>
+        </>
+      ),
+      children: [
         {
-          id: 'video-asset-smart',
-          title: '智能素材库',
+          id: 'video-asset-official-create-group',
+          title: 'CreateAssetGroup · 创建素材组',
+          short: 'CreateAssetGroup',
           body: (
             <>
               <P>
-                智能素材库是本站自有的简化素材协议，与火山方舟官方接口形态不一致：
-                Bearer 令牌（<InlineCode>sk-...</InlineCode>）鉴权、ctaigw 兼容的{' '}
-                <InlineCode>{'{code, message, data}'}</InlineCode> 信封，挂载在{' '}
-                <InlineCode>/v1/api/assets</InlineCode>
-                ，适合快速开发集成或作为下级网关的素材中转上游；需要与火山官方 SDK
-                对齐的场景请改用上面的「素材库」。
+                创建素材组。<InlineCode>GroupType</InlineCode> 默认{' '}
+                <InlineCode>AIGC</InlineCode>、
+                <InlineCode>ProjectName</InlineCode> 默认{' '}
+                <InlineCode>default</InlineCode>，均可省略。
               </P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=CreateAssetGroup&Version=2024-01-01`}
+                lang='json'
+                code='{"Name":"我的素材组","Description":"可选描述","GroupType":"AIGC","ProjectName":"default"}'
+              />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Id": "group-20260716105134-zkx8t"}'
+              />
               <Note>
-                默认上传即智能素材：渠道无关，提交视频时系统自动把它同步到服务该模型的渠道，你无需关心素材具体落在哪个渠道。
+                创建素材组会自动选用你分组下优先级最高的启用素材渠道；同一素材组内的
+                CreateAsset 锁定到建组时的渠道，保证同一上游账号。
               </Note>
             </>
           ),
-          children: [
-            {
-              id: 'video-asset-upload',
-              title: '上传素材',
-              body: (
-                <>
-                  <P>
-                    上传真人虚拟素材后会得到一个素材 ID，在视频任务{' '}
-                    <InlineCode>content</InlineCode> 中以{' '}
-                    <InlineCode>asset://&lt;素材ID&gt;</InlineCode> 引用即可。
-                  </P>
-                  <CodeBlock
-                    method='POST'
-                    url={`${baseUrl}/api/assets/upload`}
-                    lang='json'
-                    code={`{
-  "url": "https://picsum.photos/id/1074/800/600",
-  "asset_type": "Image",
-  "name": "test"
-}`}
-                  />
-                  <CodeBlock
-                    title='响应内容（data.Id 即素材 ID，视频任务中以 asset://<data.Id> 引用）'
-                    lang='json'
-                    code='{"code":0,"message":"ok","data":{"Id":"asset-20260907221226-sm042","Name":"test","Smart":true}}'
-                  />
-                  <CodeBlock
-                    title='curl 示例'
-                    lang='bash'
-                    code={`curl -X POST ${baseUrl}/api/assets/upload \\
-  -H "Authorization: Bearer sk-你的token" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "url": "https://picsum.photos/id/1074/800/600",
-    "asset_type": "Image",
-    "name": "test"
-  }'`}
-                  />
-                  <Note>
-                    <InlineCode>asset_type</InlineCode> 取值{' '}
-                    <InlineCode>Image</InlineCode> / <InlineCode>Video</InlineCode>{' '}
-                    / <InlineCode>Audio</InlineCode>；<InlineCode>url</InlineCode>{' '}
-                    必须是公网可访问的 http(s) 地址；<InlineCode>name</InlineCode>{' '}
-                    可省略，省略时取 url 末段；同一 url 重复上传会复用已有素材。
-                  </Note>
-                  <Note>
-                    智能素材与渠道素材：<InlineCode>channel</InlineCode>{' '}
-                    选填。不传即智能素材（推荐），渠道无关，提交视频时自动路由并同步到
-                    服务该模型的任意渠道；传入 <InlineCode>channel</InlineCode>
-                    （资源分组名，格式为 <InlineCode>qd</InlineCode> 前缀加数字，例如{' '}
-                    <InlineCode>qd1</InlineCode>
-                    ）则注册为渠道素材，只在指定渠道上游可用、需自行管理，不会自动同步
-                    到其他渠道。
-                  </Note>
-                  <Note>
-                    智能素材首次用于某个模型时会现场同步到服务该模型的渠道并送审，审核通常需
-                    1-2 分钟，此期间提交视频会返回「素材审核中（通常需 1-2
-                    分钟），请耐心等待审核通过后重试」；待状态转为{' '}
-                    <InlineCode>Active</InlineCode> 后重试即可成功。
-                  </Note>
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-query',
-              title: '查询素材状态',
-              body: (
-                <>
-                  <P>
-                    查询素材上传任务状态，<InlineCode>Active</InlineCode>{' '}
-                    后才可在视频任务中引用。<InlineCode>{'{asset_id}'}</InlineCode>{' '}
-                    为上传返回的 <InlineCode>data.Id</InlineCode>。
-                  </P>
-                  <CodeBlock
-                    method='GET'
-                    url={`${baseUrl}/api/assets/{asset_id}`}
-                    lang='bash'
-                    code={`# 将 {asset_id} 替换为上传素材返回的 data.Id
-curl -X GET ${baseUrl}/api/assets/{asset_id} \\
-  -H "Authorization: Bearer sk-你的token"`}
-                  />
-                  <CodeBlock
-                    title='响应内容'
-                    lang='json'
-                    code={`{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "GroupId": "group-20260716105134-zkx8t",
-    "Status": "Active",
-    "CreateTime": "2026-07-16T03:13:38Z",
-    "AssetType": "Image",
-    "UpdateTime": "2026-07-16T03:13:40Z",
-    "ProjectName": "public-upload",
-    "Id": "asset-20260716111338-vwmxj",
-    "Name": "lion01",
-    "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx"
-  }
-}`}
-                  />
-                  <CodeBlock
-                    title='响应内容（智能素材：额外返回 Smart 与各渠道同步状态）'
-                    lang='json'
-                    code={`{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "Id": "asset-20260907221226-sm042",
-    "Name": "test",
-    "AssetType": "Image",
-    "Status": "Pending",
-    "Smart": true,
-    "URL": "https://picsum.photos/id/1074/800/600",
-    "Channels": [
-      {"ChannelId": 13, "AssetId": "asset-20260916162454-hfkl5", "Status": "Pending"}
-    ]
-  }
-}`}
-                  />
-                  <Note>
-                    <InlineCode>Status</InlineCode> 取值{' '}
-                    <InlineCode>Pending</InlineCode> /{' '}
-                    <InlineCode>Active</InlineCode> /{' '}
-                    <InlineCode>Failed</InlineCode>。智能素材额外返回{' '}
-                    <InlineCode>Smart</InlineCode> 与{' '}
-                    <InlineCode>Channels</InlineCode>
-                    （各渠道副本状态）；顶层 <InlineCode>Status</InlineCode>{' '}
-                    为汇总：任一渠道 Active 即 Active，尚有 Pending 或还没同步任何渠道为
-                    Pending，全 Failed 为 Failed。
-                  </Note>
-                </>
-              ),
-            },
-            {
-              id: 'video-asset-delete',
-              title: '删除素材',
-              body: (
-                <>
-                  <P>
-                    删除已上传的素材登记。<InlineCode>{'{asset_id}'}</InlineCode>{' '}
-                    为上传返回的 <InlineCode>data.Id</InlineCode>
-                    。删除会尽力联动上游一并删除（best-effort）：上游不支持删除接口或临时
-                    不可用时仅删本地登记、不阻断操作。
-                  </P>
-                  <CodeBlock
-                    method='DELETE'
-                    url={`${baseUrl}/api/assets/{asset_id}`}
-                    lang='bash'
-                    code={`# 将 {asset_id} 替换为上传素材返回的 data.Id
-curl -X DELETE ${baseUrl}/api/assets/asset-20260907221226-sm042 \\
-  -H "Authorization: Bearer sk-你的token"`}
-                  />
-                  <CodeBlock
-                    title='响应内容'
-                    lang='json'
-                    code='{"code":0,"message":"ok","data":{"Id":"asset-20260907221226-sm042","Deleted":true}}'
-                  />
-                  <Note>
-                    删除智能素材会级联删除其各渠道副本记录，并尽力联动各上游渠道删除
-                    （best-effort）；删除后该素材的{' '}
-                    <InlineCode>asset://&lt;素材ID&gt;</InlineCode>{' '}
-                    引用即失效；删除不可恢复，请谨慎操作。
-                  </Note>
-                </>
-              ),
-            },
-          ],
+        },
+        {
+          id: 'video-asset-official-create',
+          title: 'CreateAsset · 创建素材',
+          short: 'CreateAsset',
+          body: (
+            <>
+              <P>
+                在指定素材组内创建素材。<InlineCode>URL</InlineCode>{' '}
+                必须是公网可访问的 http(s) 地址（由上游拉取，非文件流）；
+                <InlineCode>AssetType</InlineCode> 取值{' '}
+                <InlineCode>Image</InlineCode> / <InlineCode>Video</InlineCode>{' '}
+                / <InlineCode>Audio</InlineCode>；<InlineCode>Name</InlineCode>{' '}
+                可省略，省略时取 URL 末段。
+              </P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=CreateAsset&Version=2024-01-01`}
+                lang='json'
+                code='{"GroupId":"group-20260716105134-zkx8t","URL":"https://picsum.photos/id/1074/800/600","AssetType":"Image","Name":"lion01","ProjectName":"default"}'
+              />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Id": "asset-20260716111338-vwmxj"}'
+              />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-list-groups',
+          title: 'ListAssetGroups · 列出素材组',
+          short: 'ListAssetGroups',
+          body: (
+            <>
+              <P>
+                列出素材组，支持 <InlineCode>GroupIds</InlineCode> /{' '}
+                <InlineCode>Name</InlineCode> 模糊过滤与{' '}
+                <InlineCode>NextToken</InlineCode> 游标分页。
+              </P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=ListAssetGroups&Version=2024-01-01`}
+                lang='json'
+                code='{"Filter":{"Name":"素材"},"MaxResults":20,"NextToken":""}'
+              />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Items": [{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}], "NextToken": ""}'
+              />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-list',
+          title: 'ListAssets · 列出素材',
+          short: 'ListAssets',
+          body: (
+            <>
+              <P>
+                列出素材，支持 <InlineCode>GroupIds</InlineCode> /{' '}
+                <InlineCode>Statuses</InlineCode> /{' '}
+                <InlineCode>Name</InlineCode> 过滤与游标分页；
+                <InlineCode>Statuses</InlineCode> 用官方词表{' '}
+                <InlineCode>Active</InlineCode> /{' '}
+                <InlineCode>Processing</InlineCode> /{' '}
+                <InlineCode>Failed</InlineCode>。
+              </P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=ListAssets&Version=2024-01-01`}
+                lang='json'
+                code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"Statuses":["Active"]},"MaxResults":20}'
+              />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Items": [{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "ProjectName": "default", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "Status": "Active", "Moderation": {"Strategy": "Default"}}], "NextToken": ""}'
+              />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-get',
+          title: 'GetAsset · 查询素材',
+          short: 'GetAsset',
+          body: (
+            <>
+              <P>按 Id 查询单个素材的详情与状态。</P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=GetAsset&Version=2024-01-01`}
+                lang='json'
+                code='{"Id":"asset-20260716111338-vwmxj"}'
+              />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "Status": "Active", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "Moderation": {"Strategy": "Default"}}'
+              />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-get-group',
+          title: 'GetAssetGroup · 查询素材组',
+          short: 'GetAssetGroup',
+          body: (
+            <>
+              <P>按 Id 查询单个素材组的详情。</P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=GetAssetGroup&Version=2024-01-01`}
+                lang='json'
+                code='{"Id":"group-20260716105134-zkx8t"}'
+              />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}'
+              />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-update',
+          title: 'UpdateAsset · 更新素材',
+          short: 'UpdateAsset',
+          body: (
+            <>
+              <P>更新素材（官方当前仅支持改名）。</P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=UpdateAsset&Version=2024-01-01`}
+                lang='json'
+                code='{"Id":"asset-20260716111338-vwmxj","Name":"新素材名"}'
+              />
+              <CodeBlock title='Result' lang='json' code='{}' />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-update-group',
+          title: 'UpdateAssetGroup · 更新素材组',
+          short: 'UpdateAssetGroup',
+          body: (
+            <>
+              <P>更新素材组名称 / 描述，空字段保持原值。</P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=UpdateAssetGroup&Version=2024-01-01`}
+                lang='json'
+                code='{"Id":"group-20260716105134-zkx8t","Name":"新组名","Description":"新描述"}'
+              />
+              <CodeBlock title='Result' lang='json' code='{}' />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-delete',
+          title: 'DeleteAsset · 删除素材',
+          short: 'DeleteAsset',
+          body: (
+            <>
+              <P>
+                删除素材，尽力联动上游一并删除（best-effort）：上游故障不阻断本地删除。
+              </P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=DeleteAsset&Version=2024-01-01`}
+                lang='json'
+                code='{"Id":"asset-20260716111338-vwmxj"}'
+              />
+              <CodeBlock title='Result' lang='json' code='{}' />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-delete-group',
+          title: 'DeleteAssetGroup · 删除素材组',
+          short: 'DeleteAssetGroup',
+          body: (
+            <>
+              <P>
+                删除素材组：组内素材先尽力联动上游删除（best-effort），再清理本地登记。
+              </P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=DeleteAssetGroup&Version=2024-01-01`}
+                lang='json'
+                code='{"Id":"group-20260716105134-zkx8t"}'
+              />
+              <CodeBlock title='Result' lang='json' code='{}' />
+            </>
+          ),
         },
       ],
     },
@@ -1087,9 +890,7 @@ function buildFaqSections(siteUrl: string): DocSection[] {
                     浏览器打开 <InlineCode>{siteUrl}</InlineCode>
                   </li>
                   <li>输入用户名和密码</li>
-                  <li>
-                    点击左侧「API 密钥」菜单，点击右上角「创建 API 密钥」
-                  </li>
+                  <li>点击左侧「API 密钥」菜单，点击右上角「创建 API 密钥」</li>
                   <li>
                     使用密钥替换示例中的 <InlineCode>sk-你的token</InlineCode>
                   </li>
@@ -1122,14 +923,13 @@ function buildFaqSections(siteUrl: string): DocSection[] {
               <>
                 参考{' '}
                 <a
-                  href={`${siteUrl}/docs#video-asset-upload`}
+                  href={`${siteUrl}/docs#video-asset-official`}
                   className='text-primary hover:underline'
                 >
                   素材库 API
                 </a>
-                。默认直接上传即为智能素材，切换渠道时会自动同步到下一个渠道，无需手动管理；若上传时指定
-                channel
-                参数，则为特定渠道素材，只在该渠道可用、切换渠道时需自行管理。
+                。通过素材库创建素材组并上传素材，审核通过后得到素材
+                ID，在视频任务中以 asset://&lt;素材ID&gt; 引用。
               </>
             }
           />
@@ -1156,7 +956,8 @@ function buildFaqSections(siteUrl: string): DocSection[] {
             q='Q8：计费按 token 还是按秒？'
             a={
               <>
-                按 token，和官方计价方式一致。同一模型按分辨率和是否带视频输入费用不同，不同模型费用也不同，费用请参考{' '}
+                按
+                token，和官方计价方式一致。同一模型按分辨率和是否带视频输入费用不同，不同模型费用也不同，费用请参考{' '}
                 <a
                   href={`${siteUrl}/pricing`}
                   className='text-primary hover:underline'

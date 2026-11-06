@@ -411,6 +411,12 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		originTask.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeBaiduDataBuilder))
 	isKlingOfficialAPI := strings.HasPrefix(c.Request.URL.Path, "/kling/v1/videos/") &&
 		originTask.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeKling))
+	isArkProtocolRequest := strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") ||
+		(isUnifiedVideoAPI && isArkNativeTask)
+	if isArkProtocolRequest && originTask.IsDeleted() {
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusNotFound)
+		return
+	}
 
 	// Kling 官方查询协议直接返回上游响应快照，不能回退成内部任务模型。
 	if isKlingOfficialAPI && len(originTask.Data) > 0 {
@@ -420,14 +426,22 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 
 	// 火山方舟官方协议路径：查询响应透传上游（格式与实时性与官方一致）。统一视频
 	// 查询路径上的方舟系任务也走同一分支，绝不能回退成包含内部字段的 TaskDto。
-	if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") || (isUnifiedVideoAPI && isArkNativeTask) {
+	if isArkProtocolRequest {
 		if realtime := arkNativePassthroughFetch(originTask); len(realtime) > 0 {
 			respBody = realtime
 			return
 		}
-		// 上游不可用时回退本地轮询快照（task.Data 为官方格式查询响应）
+		// 上游不可用时回退本地轮询快照；本地取消后快照可能仍是 queued，
+		// 仅在这种状态不一致时重建公开结构，避免把已取消任务误报为排队中。
 		if len(originTask.Data) > 0 {
-			respBody = originTask.Data
+			if originTask.Status == model.TaskStatusCancelled {
+				respBody, err = common.Marshal(originTask.ToArkTask())
+				if err != nil {
+					taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+				}
+			} else {
+				respBody = originTask.Data
+			}
 			return
 		}
 	}

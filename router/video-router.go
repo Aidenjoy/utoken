@@ -57,7 +57,9 @@ func SetVideoRouter(router *gin.Engine) {
 	arkNativeRouter.Use(middleware.TokenAuth(), middleware.Distribute())
 	{
 		arkNativeRouter.POST("/contents/generations/tasks", controller.RelayTask)
+		arkNativeRouter.GET("/contents/generations/tasks", controller.ArkVideoTaskList)
 		arkNativeRouter.GET("/contents/generations/tasks/:task_id", controller.RelayTaskFetch)
+		arkNativeRouter.DELETE("/contents/generations/tasks/:task_id", controller.ArkVideoTaskDelete)
 	}
 
 	// 中转站风格素材库对外 API（兼容 ctaigw 契约）：下游客户端/下级网关

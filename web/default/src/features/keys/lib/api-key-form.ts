@@ -22,7 +22,7 @@ import { z } from 'zod'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type ApiKeyFormData, type ApiKey } from '../types'
+import type { ApiKeyFormData, ApiKey, ApiKeyType } from '../types'
 
 // ============================================================================
 // Form Schema
@@ -39,10 +39,20 @@ export function getApiKeyFormSchema(t: TFunction) {
       allow_ips: z.string().optional(),
       group: z.string().optional(),
       channel_id: z.number().optional(),
+      key_type: z.enum(['', 'language', 'image', 'video']),
+      video_model: z.string().optional(),
+      video_4k: z.boolean(),
       cross_group_retry: z.boolean().optional(),
       tokenCount: z.number().min(1).optional(),
     })
     .superRefine((data, ctx) => {
+      if (data.key_type === 'video' && !data.video_model?.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['video_model'],
+          message: t('Please select a video model'),
+        })
+      }
       if (data.unlimited_quota) {
         return
       }
@@ -75,15 +85,20 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   allow_ips: '',
   group: DEFAULT_GROUP,
   channel_id: 0,
+  key_type: 'language',
+  video_model: '',
+  video_4k: false,
   cross_group_retry: true,
   tokenCount: 1,
 }
 
 export function getApiKeyFormDefaultValues(
-  defaultUseAutoGroup: boolean
+  defaultUseAutoGroup: boolean,
+  keyType: ApiKeyType = 'language'
 ): ApiKeyFormValues {
   return {
     ...API_KEY_FORM_DEFAULT_VALUES,
+    key_type: keyType,
     group: defaultUseAutoGroup ? 'auto' : DEFAULT_GROUP,
     cross_group_retry: defaultUseAutoGroup,
   }
@@ -108,11 +123,18 @@ export function transformFormDataToPayload(
       ? Math.floor(data.expired_time.getTime() / 1000)
       : -1,
     unlimited_quota: data.unlimited_quota,
-    model_limits_enabled: data.model_limits.length > 0,
-    model_limits: data.model_limits.join(','),
+    model_limits_enabled:
+      data.key_type === 'video' || data.model_limits.length > 0,
+    model_limits:
+      data.key_type === 'video'
+        ? data.video_model || ''
+        : data.model_limits.join(','),
     allow_ips: data.allow_ips || '',
     group: data.group || '',
     channel_id: data.channel_id ?? 0,
+    key_type: data.key_type,
+    video_model: data.key_type === 'video' ? data.video_model || '' : '',
+    video_4k: data.key_type === 'video' && data.video_4k,
     cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
   }
 }
@@ -139,6 +161,9 @@ export function transformApiKeyToFormDefaults(
     allow_ips: apiKey.allow_ips || '',
     group: apiKey.group || DEFAULT_GROUP,
     channel_id: apiKey.channel_id ?? 0,
+    key_type: apiKey.key_type || '',
+    video_model: apiKey.video_model || '',
+    video_4k: apiKey.video_4k === true,
     cross_group_retry: !!apiKey.cross_group_retry,
     tokenCount: 1,
   }
