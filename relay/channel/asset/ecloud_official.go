@@ -51,43 +51,32 @@ func (p *EcloudOfficialProtocol) Upload(req UploadRequest) (*UploadResult, error
 	createdGroupID := ""
 	if groupID == "" {
 		var err error
-		groupID, err = p.createAssetGroup()
+		groupID, err = p.CreateAssetGroup(ecloudDefaultAssetGroupName, "", "AIGC", "")
 		if err != nil {
 			return nil, fmt.Errorf("auto-create default asset group failed: %w", err)
 		}
 		createdGroupID = groupID
 	}
-	body, err := common.Marshal(map[string]any{
-		"groupId":   groupID,
-		"assetName": ecloudTruncateName(req.Name),
-		"assetUrl":  req.URL,
-		"assetType": req.AssetType,
-	})
+	result, err := p.CreateAssetInGroup(groupID, req.URL, req.AssetType, req.Name, p.cfg.Settings.AssetProjectName)
 	if err != nil {
 		return nil, err
 	}
-
-	var assetID string
-	if err := p.call(http.MethodPost, ecloudAssetPath, body, &assetID); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(assetID) == "" {
-		return nil, fmt.Errorf("ecloud asset upload returned empty asset id")
-	}
-	return &UploadResult{
-		AssetID:        assetID,
-		GroupID:        groupID,
-		CreatedGroupID: createdGroupID,
-	}, nil
+	result.CreatedGroupID = createdGroupID
+	return result, nil
 }
 
-// createAssetGroup 调用官方创建素材组接口建默认 AIGC 素材组并返回其 ID；
-// 上游仅支持 API 创建 AIGC（虚拟人像）类型素材组。
-func (p *EcloudOfficialProtocol) createAssetGroup() (string, error) {
-	body, err := common.Marshal(map[string]any{
-		"groupType": "AIGC",
-		"groupName": ecloudDefaultAssetGroupName,
-	})
+func (p *EcloudOfficialProtocol) CreateAssetGroup(name, description, groupType, projectName string) (string, error) {
+	if groupType == "" {
+		groupType = "AIGC"
+	}
+	payload := map[string]any{
+		"groupType": groupType,
+		"groupName": name,
+	}
+	if description != "" {
+		payload["description"] = description
+	}
+	body, err := common.Marshal(payload)
 	if err != nil {
 		return "", err
 	}
@@ -101,6 +90,61 @@ func (p *EcloudOfficialProtocol) createAssetGroup() (string, error) {
 		return "", fmt.Errorf("ecloud asset group creation returned empty group id")
 	}
 	return result.GroupID, nil
+}
+
+func (p *EcloudOfficialProtocol) CreateAssetInGroup(groupID, assetURL, assetType, name, projectName string) (*UploadResult, error) {
+	body, err := common.Marshal(map[string]any{
+		"groupId":   groupID,
+		"assetName": ecloudTruncateName(name),
+		"assetUrl":  assetURL,
+		"assetType": assetType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var assetID string
+	if err := p.call(http.MethodPost, ecloudAssetPath, body, &assetID); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(assetID) == "" {
+		return nil, fmt.Errorf("ecloud asset upload returned empty asset id")
+	}
+	return &UploadResult{AssetID: assetID, GroupID: groupID, ProjectName: projectName}, nil
+}
+
+func (p *EcloudOfficialProtocol) UpdateAsset(assetID, name, projectName string) error {
+	payload := map[string]any{}
+	if name != "" {
+		payload["assetName"] = ecloudTruncateName(name)
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(http.MethodPut, ecloudAssetPath+"/"+url.PathEscape(assetID), body, nil)
+}
+
+func (p *EcloudOfficialProtocol) UpdateAssetGroup(groupID, name, description, projectName string) error {
+	payload := map[string]any{}
+	if name != "" {
+		payload["groupName"] = name
+	}
+	if description != "" {
+		payload["description"] = description
+	}
+	body, err := common.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return p.call(http.MethodPut, ecloudAssetGroupPath+"/"+url.PathEscape(groupID), body, nil)
+}
+
+func (p *EcloudOfficialProtocol) DeleteAsset(assetID, projectName string) error {
+	return p.call(http.MethodDelete, ecloudAssetPath+"/"+url.PathEscape(assetID), nil, nil)
+}
+
+func (p *EcloudOfficialProtocol) DeleteAssetGroup(groupID, projectName string) error {
+	return p.call(http.MethodDelete, ecloudAssetGroupPath+"/"+url.PathEscape(groupID), nil, nil)
 }
 
 func (p *EcloudOfficialProtocol) Query(assetID string) (*QueryResult, error) {

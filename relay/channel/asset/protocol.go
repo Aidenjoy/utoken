@@ -55,7 +55,6 @@ type AssetDeleter interface {
 }
 
 // AssetManagement 官方素材库管理能力（组/素材的显式增改删）。
-// ark_official/bit_official/xswj_official、baidu_databuilder 和 qihoo360 实现；
 // 控制器经 NewProtocol 拿到 Protocol 后做类型断言，不支持时返回明确错误。
 type AssetManagement interface {
 	AssetDeleter
@@ -69,6 +68,7 @@ type AssetManagement interface {
 var (
 	_ AssetManagement = (*ArkOfficialProtocol)(nil)
 	_ AssetManagement = (*BaiduDataBuilderProtocol)(nil)
+	_ AssetManagement = (*EcloudOfficialProtocol)(nil)
 	_ AssetManagement = (*Qihoo360Protocol)(nil)
 	_ AssetDeleter    = (*RelayProtocol)(nil)
 )

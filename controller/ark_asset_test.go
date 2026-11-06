@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -20,10 +23,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 官方兼容素材库 API 的契约回归：聚焦不依赖真实上游的确定性路径——
-// 官方信封字段、状态词表映射、多租户隔离（跨用户 Get→NotFound）、入参校验、
-// 归属前置的 NotFound。Create/Update/Delete 的「成功」路径需真实 ark_official
-// 上游，按计划验证第 3 步走端到端手测，此处不做网络依赖测试。
+// 官方兼容素材库 API 的确定性契约回归，上游均用 httptest 模拟。
 
 // setupArkAssetControllerDB 开一个独立内存库并迁移官方 API 用到的表。
 func setupArkAssetControllerDB(t *testing.T) *gorm.DB {
@@ -135,6 +135,170 @@ func insertArkAsset(t *testing.T, userID, channelID int, assetID, groupID, name,
 		SourceURL: "https://cdn.example.com/" + assetID + ".png", ProjectName: model.AssetProjectNameDefault,
 	}
 	require.NoError(t, a.Insert())
+}
+
+type arkAssetRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f arkAssetRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestRelayArkAssetActionEcloudProtocolCompatibility(t *testing.T) {
+	db := setupArkAssetControllerDB(t)
+	t.Setenv("TOS_ACCESS_KEY", "")
+	t.Setenv("TOS_SECRET_KEY", "")
+	t.Setenv("TOS_BUCKET", "")
+
+	type requestRecord struct {
+		method string
+		path   string
+		body   string
+	}
+	var requests []requestRecord
+	const (
+		assetPath   = "/api/openapi-maas/exp/aicc/v2/asset"
+		groupPath   = "/api/openapi-maas/exp/aicc/v2/asset-group"
+		channelID   = 42
+		projectName = "project-x"
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, requestRecord{method: r.Method, path: r.URL.Path, body: string(body)})
+		switch r.Method + " " + r.URL.Path {
+		case "POST " + groupPath:
+			_, _ = w.Write([]byte(`{"state":"OK","body":{"groupId":"group-mobile"}}`))
+		case "POST " + assetPath:
+			_, _ = w.Write([]byte(`{"state":"OK","body":"asset-mobile"}`))
+		case "GET " + assetPath + "/asset-mobile":
+			_, _ = w.Write([]byte(`{"state":"OK","body":{"assetId":"asset-mobile","assetUrl":"https://cdn.example.com/mobile.png","status":"ACTIVE"}}`))
+		default:
+			_, _ = w.Write([]byte(`{"state":"OK","body":null}`))
+		}
+	}))
+	defer srv.Close()
+
+	target, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+	client := service.GetHttpClient()
+	if client == nil {
+		client = http.DefaultClient
+	}
+	originalTransport := client.Transport
+	baseTransport := originalTransport
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	client.Transport = arkAssetRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "ecloud.10086.cn" {
+			return baseTransport.RoundTrip(req)
+		}
+		clone := req.Clone(req.Context())
+		clone.URL.Scheme = target.Scheme
+		clone.URL.Host = target.Host
+		clone.Host = target.Host
+		return baseTransport.RoundTrip(clone)
+	})
+	t.Cleanup(func() { client.Transport = originalTransport })
+
+	settings, err := common.Marshal(dto.ChannelOtherSettings{
+		AssetUploadProtocol: dto.AssetUploadProtocolEcloud,
+		AssetAK:             "mobile-ak",
+		AssetSK:             "mobile-sk",
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.Channel{
+		Id: channelID, Name: "mobile", Status: common.ChannelStatusEnabled, OtherSettings: string(settings),
+	}).Error)
+
+	invoke := func(action string, body any) arkEnvelope {
+		ctx, rec := newArkAssetContext(t, action, 10, body)
+		ctx.Set("token_channel_id", channelID)
+		RelayArkAssetAction(ctx)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		env := decodeArkEnvelope(t, rec)
+		require.Nil(t, env.ResponseMetadata.Error)
+		assert.Equal(t, action, env.ResponseMetadata.Action)
+		assert.Equal(t, "ark", env.ResponseMetadata.Service)
+		assert.Equal(t, "2024-01-01", env.ResponseMetadata.Version)
+		return env
+	}
+
+	env := invoke(arkActionCreateAssetGroup, map[string]any{
+		"Name": "group-name", "Description": "group-description", "GroupType": "AIGC", "ProjectName": projectName,
+	})
+	var createdGroup struct {
+		Id string `json:"Id"`
+	}
+	require.NoError(t, common.Unmarshal(env.Result, &createdGroup))
+	assert.Equal(t, "group-mobile", createdGroup.Id)
+
+	env = invoke(arkActionCreateAsset, map[string]any{
+		"GroupId": createdGroup.Id, "URL": "https://example.com/a.jpg", "AssetType": "Image",
+		"Name": "asset-name", "ProjectName": projectName,
+	})
+	var createdAsset struct {
+		Id string `json:"Id"`
+	}
+	require.NoError(t, common.Unmarshal(env.Result, &createdAsset))
+	assert.Equal(t, "asset-mobile", createdAsset.Id)
+
+	invoke(arkActionUpdateAsset, map[string]any{"Id": createdAsset.Id, "Name": "asset-renamed", "ProjectName": projectName})
+	invoke(arkActionUpdateAssetGroup, map[string]any{
+		"Id": createdGroup.Id, "Name": "group-renamed", "Description": "description-renamed", "ProjectName": projectName,
+	})
+
+	env = invoke(arkActionListAssetGroups, map[string]any{})
+	var groups arkListGroupResult
+	require.NoError(t, common.Unmarshal(env.Result, &groups))
+	require.Len(t, groups.Items, 1)
+	assert.Equal(t, "group-renamed", groups.Items[0].Name)
+	assert.Equal(t, "description-renamed", groups.Items[0].Description)
+	assert.Equal(t, projectName, groups.Items[0].ProjectName)
+
+	env = invoke(arkActionListAssets, map[string]any{})
+	var assets arkListAssetsResult
+	require.NoError(t, common.Unmarshal(env.Result, &assets))
+	require.Len(t, assets.Items, 1)
+	assert.Equal(t, "asset-renamed", assets.Items[0].Name)
+	assert.Equal(t, "Active", assets.Items[0].Status)
+	assert.Equal(t, "https://cdn.example.com/mobile.png", assets.Items[0].URL)
+	assert.Equal(t, projectName, assets.Items[0].ProjectName)
+
+	env = invoke(arkActionGetAssetGroup, map[string]any{"Id": createdGroup.Id})
+	var group arkGroupResult
+	require.NoError(t, common.Unmarshal(env.Result, &group))
+	assert.Equal(t, createdGroup.Id, group.Id)
+	assert.Equal(t, "group-renamed", group.Name)
+
+	env = invoke(arkActionGetAsset, map[string]any{"Id": createdAsset.Id})
+	var asset arkAssetResult
+	require.NoError(t, common.Unmarshal(env.Result, &asset))
+	assert.Equal(t, createdAsset.Id, asset.Id)
+	assert.Equal(t, "Active", asset.Status)
+	assert.Equal(t, "Default", asset.Moderation.Strategy)
+
+	invoke(arkActionDeleteAsset, map[string]any{"Id": createdAsset.Id, "ProjectName": projectName})
+	invoke(arkActionDeleteAssetGroup, map[string]any{"Id": createdGroup.Id, "ProjectName": projectName})
+
+	require.Len(t, requests, 7)
+	gotRequests := make([]string, 0, len(requests))
+	for _, req := range requests {
+		gotRequests = append(gotRequests, req.method+" "+req.path)
+		assert.NotContains(t, req.body, "ProjectName")
+	}
+	assert.Equal(t, []string{
+		"POST " + groupPath,
+		"POST " + assetPath,
+		"PUT " + assetPath + "/asset-mobile",
+		"PUT " + groupPath + "/group-mobile",
+		"GET " + assetPath + "/asset-mobile",
+		"DELETE " + assetPath + "/asset-mobile",
+		"DELETE " + groupPath + "/group-mobile",
+	}, gotRequests)
+	assert.JSONEq(t, `{"groupType":"AIGC","groupName":"group-name","description":"group-description"}`, requests[0].body)
+	assert.JSONEq(t, `{"groupId":"group-mobile","assetName":"asset-name","assetUrl":"https://example.com/a.jpg","assetType":"Image"}`, requests[1].body)
+	assert.JSONEq(t, `{"assetName":"asset-renamed"}`, requests[2].body)
+	assert.JSONEq(t, `{"groupName":"group-renamed","description":"description-renamed"}`, requests[3].body)
 }
 
 func TestRelayArkAssetAction_InvalidAction(t *testing.T) {

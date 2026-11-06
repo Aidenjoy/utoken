@@ -204,6 +204,68 @@ func TestEcloudUploadAutoCreatesGroup(t *testing.T) {
 	assert.Contains(t, assetBody.body, `"groupId":"group-auto-1"`)
 }
 
+func TestEcloudAssetManagement(t *testing.T) {
+	type requestRecord struct {
+		method string
+		path   string
+		body   string
+	}
+	var requests []requestRecord
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requests = append(requests, requestRecord{method: r.Method, path: r.URL.Path, body: string(body)})
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == ecloudAssetGroupPath:
+			_, _ = w.Write([]byte(`{"state":"OK","body":{"groupId":"group-live"}}`))
+		case r.Method == http.MethodPost && r.URL.Path == ecloudAssetPath:
+			_, _ = w.Write([]byte(`{"state":"OK","body":"asset-live"}`))
+		default:
+			_, _ = w.Write([]byte(`{"state":"OK","body":null}`))
+		}
+	}))
+	defer srv.Close()
+
+	p := newEcloudProtocolForTest(srv.URL)
+	groupID, err := p.CreateAssetGroup("group-name", "group-description", "AIGC", "project-x")
+	require.NoError(t, err)
+	assert.Equal(t, "group-live", groupID)
+	created, err := p.CreateAssetInGroup(groupID, "https://example.com/a.jpg", model.AssetTypeImage, "asset-name", "project-x")
+	require.NoError(t, err)
+	assert.Equal(t, "asset-live", created.AssetID)
+	assert.Equal(t, "group-live", created.GroupID)
+	assert.Equal(t, "project-x", created.ProjectName)
+	require.NoError(t, p.UpdateAsset(created.AssetID, "asset-renamed", "project-x"))
+	require.NoError(t, p.UpdateAssetGroup(groupID, "group-renamed", "description-renamed", "project-x"))
+	require.NoError(t, p.DeleteAsset(created.AssetID, "project-x"))
+	require.NoError(t, p.DeleteAssetGroup(groupID, "project-x"))
+
+	require.Len(t, requests, 6)
+	gotRequests := make([]string, 0, len(requests))
+	for _, req := range requests {
+		gotRequests = append(gotRequests, req.method+" "+req.path)
+	}
+	assert.Equal(t, []string{
+		"POST " + ecloudAssetGroupPath,
+		"POST " + ecloudAssetPath,
+		"PUT " + ecloudAssetPath + "/asset-live",
+		"PUT " + ecloudAssetGroupPath + "/group-live",
+		"DELETE " + ecloudAssetPath + "/asset-live",
+		"DELETE " + ecloudAssetGroupPath + "/group-live",
+	}, gotRequests)
+	assert.Empty(t, requests[4].body)
+	assert.Empty(t, requests[5].body)
+	assert.JSONEq(t, `{"groupType":"AIGC","groupName":"group-name","description":"group-description"}`, requests[0].body)
+	assert.JSONEq(t, `{"groupId":"group-live","assetName":"asset-name","assetUrl":"https://example.com/a.jpg","assetType":"Image"}`, requests[1].body)
+	assert.JSONEq(t, `{"assetName":"asset-renamed"}`, requests[2].body)
+	assert.JSONEq(t, `{"groupName":"group-renamed","description":"description-renamed"}`, requests[3].body)
+}
+
+func TestNewEcloudProtocolSupportsAssetManagement(t *testing.T) {
+	proto, err := NewProtocol(ecloudConfig())
+	require.NoError(t, err)
+	require.Implements(t, (*AssetManagement)(nil), proto)
+}
+
 func TestEcloudRetriesOnTimestampError(t *testing.T) {
 	t.Cleanup(resetEcloudClock)
 	resetEcloudClock()
