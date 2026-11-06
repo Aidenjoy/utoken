@@ -12,25 +12,28 @@ import (
 )
 
 type Token struct {
-	Id                 int            `json:"id"`
-	UserId             int            `json:"user_id" gorm:"index"`
-	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
-	AccessKey          *string        `json:"access_key,omitempty" gorm:"type:varchar(64);uniqueIndex"` // Ark 官方兼容 API 的 AK；用指针以允许存量/未签发令牌为 NULL，避免空串互撞唯一索引（SQLite 存量表由 ensureTokenArkColumnsSQLite 预加普通列后再建唯一索引）
-	SecretKey          string         `json:"secret_key,omitempty" gorm:"type:varchar(128)"`            // Ark SK，明文入库供 HMAC V4 验签（与 Key 同安全模型）
-	Status             int            `json:"status" gorm:"default:1"`
-	Name               string         `json:"name" gorm:"index" `
-	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
-	AccessedTime       int64          `json:"accessed_time" gorm:"bigint"`
-	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
-	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
-	UnlimitedQuota     bool           `json:"unlimited_quota"`
-	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
-	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
-	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
-	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
-	Group              string         `json:"group" gorm:"default:''"`
-	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
-	DeletedAt          gorm.DeletedAt `gorm:"index" json:"deleted_at"`
+	Id                 int     `json:"id"`
+	UserId             int     `json:"user_id" gorm:"index"`
+	Key                string  `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	AccessKey          *string `json:"access_key,omitempty" gorm:"type:varchar(64);uniqueIndex"` // Ark 官方兼容 API 的 AK；用指针以允许存量/未签发令牌为 NULL，避免空串互撞唯一索引（SQLite 存量表由 ensureTokenArkColumnsSQLite 预加普通列后再建唯一索引）
+	SecretKey          string  `json:"secret_key,omitempty" gorm:"type:varchar(128)"`            // Ark SK，明文入库供 HMAC V4 验签（与 Key 同安全模型）
+	Status             int     `json:"status" gorm:"default:1"`
+	Name               string  `json:"name" gorm:"index" `
+	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
+	AccessedTime       int64   `json:"accessed_time" gorm:"bigint"`
+	ExpiredTime        int64   `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
+	RemainQuota        int     `json:"remain_quota" gorm:"default:0"`
+	UnlimitedQuota     bool    `json:"unlimited_quota"`
+	ModelLimitsEnabled bool    `json:"model_limits_enabled"`
+	ModelLimits        string  `json:"model_limits" gorm:"type:text"`
+	AllowIps           *string `json:"allow_ips" gorm:"default:''"`
+	UsedQuota          int     `json:"used_quota" gorm:"default:0"` // used quota
+	Group              string  `json:"group" gorm:"default:''"`
+	// ChannelId 绑定渠道：>0 时该密钥的视频生成与素材上传强制走此渠道（B端可控路由），0=未绑定。
+	// 仅超管可配置，普通用户不可见不可改（路由/进价对下游保密）。
+	ChannelId       int            `json:"channel_id" gorm:"default:0"`
+	CrossGroupRetry bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"deleted_at"`
 }
 
 func (token *Token) Clean() {
@@ -470,7 +473,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "channel_id", "cross_group_retry").Updates(token).Error
 	return err
 }
 

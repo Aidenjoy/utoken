@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -358,6 +359,15 @@ func AddToken(c *gin.Context) {
 		common.SysLog("failed to generate ark credentials: " + err.Error())
 		return
 	}
+	// 绑定渠道仅超管可配置（路由/进价对下游保密），普通用户传入一律忽略。
+	bindChannelId := 0
+	if token.ChannelId > 0 && model.IsAdmin(c.GetInt("id")) {
+		if verr := service.ValidateTokenBindChannel(token.ChannelId); verr != nil {
+			common.ApiError(c, verr)
+			return
+		}
+		bindChannelId = token.ChannelId
+	}
 	cleanToken := model.Token{
 		UserId:             ownerId,
 		Name:               token.Name,
@@ -373,6 +383,7 @@ func AddToken(c *gin.Context) {
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
+		ChannelId:          bindChannelId,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
 	err = cleanToken.Insert()
@@ -450,6 +461,14 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		// 绑定渠道仅超管可改；普通用户保持原值（路由/进价对下游保密）。置 0 即解绑。
+		if model.IsAdmin(userId) && token.ChannelId != cleanToken.ChannelId {
+			if verr := service.ValidateTokenBindChannel(token.ChannelId); verr != nil {
+				common.ApiError(c, verr)
+				return
+			}
+			cleanToken.ChannelId = token.ChannelId
+		}
 	}
 	err = cleanToken.Update()
 	if err != nil {

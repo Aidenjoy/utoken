@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	assetrelay "github.com/QuantumNous/new-api/relay/channel/asset"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -241,39 +241,6 @@ func assetManagementForChannel(channel *model.Channel) (assetrelay.AssetManageme
 	return mgmt, nil
 }
 
-// resolveAssetManagementChannel 选取支持官方管理接口的启用素材渠道（优先级高者优先）。
-// 官方 API 无模型字段，故不按 group+model 过滤（素材渠道是管理员配置的全局上游池，
-// 与快速接口 resolveAssetProtocolChannel 的选取口径一致）；供 CreateAssetGroup 自动建组用。
-func resolveAssetManagementChannel() (*model.Channel, assetrelay.AssetManagement, error) {
-	channels, err := model.GetEnabledChannels()
-	if err != nil {
-		return nil, nil, err
-	}
-	candidates := make([]*model.Channel, 0, len(channels))
-	for _, channel := range channels {
-		if channel.GetOtherSettings().AssetUploadProtocol == "" {
-			continue
-		}
-		candidates = append(candidates, channel)
-	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].GetPriority() > candidates[j].GetPriority()
-	})
-	var lastErr error
-	for _, channel := range candidates {
-		mgmt, aerr := assetManagementForChannel(channel)
-		if aerr != nil {
-			lastErr = aerr
-			continue
-		}
-		return channel, mgmt, nil
-	}
-	if lastErr == nil {
-		lastErr = errors.New("no available channel enables an asset upload protocol")
-	}
-	return nil, nil, lastErr
-}
-
 // assetManagementByChannelID 按已记录的 ChannelID 取渠道并断言管理能力，
 // 保证 CreateAsset/Update/Delete 与建组时命中同一上游账号。
 func assetManagementByChannelID(channelID int) (*model.Channel, assetrelay.AssetManagement, error) {
@@ -375,9 +342,15 @@ func arkCreateAssetGroup(c *gin.Context, action, region string, userId int, body
 	}
 	description := arkDeref(req.Description)
 
-	channel, mgmt, err := resolveAssetManagementChannel()
+	// B端 Key：按绑定渠道建组（可控路由），未绑定直接报错。
+	channel, err := service.ResolveTokenBoundChannel(c.GetInt("token_channel_id"))
 	if err != nil {
-		arkErr(c, action, region, http.StatusInternalServerError, "NoAvailableChannel", err.Error())
+		arkErr(c, action, region, http.StatusBadRequest, "ChannelBindingRequired", err.Error())
+		return
+	}
+	mgmt, err := assetManagementForChannel(channel)
+	if err != nil {
+		arkErr(c, action, region, http.StatusBadRequest, "ChannelUnavailable", err.Error())
 		return
 	}
 	groupID, err := mgmt.CreateAssetGroup(name, description, groupType, projectName)

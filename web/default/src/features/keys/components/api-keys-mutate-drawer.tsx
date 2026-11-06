@@ -52,6 +52,13 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -62,6 +69,8 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { getAssetProviders } from '@/features/playground/api'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
@@ -98,6 +107,7 @@ export function ApiKeysMutateDrawer({
   const isUpdate = !!currentRow
   const { triggerRefresh } = useApiKeys()
   const { status } = useStatus()
+  const isAdmin = useIsAdmin()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const defaultUseAutoGroup = status?.default_use_auto_group === true
@@ -115,6 +125,14 @@ export function ApiKeysMutateDrawer({
     queryKey: ['user-groups'],
     queryFn: getUserGroups,
     enabled: open,
+    staleTime: 0,
+  })
+
+  // Fetch asset channels (admin only): 绑定渠道下拉数据，供超管配置 B 端可控路由。
+  const { data: assetProviders } = useQuery({
+    queryKey: ['asset-providers'],
+    queryFn: getAssetProviders,
+    enabled: open && isAdmin,
     staleTime: 0,
   })
 
@@ -546,6 +564,44 @@ export function ApiKeysMutateDrawer({
                         </FormItem>
                       )}
                     />
+
+                    {isAdmin && (
+                      <FormField
+                        control={form.control}
+                        name='channel_id'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Bound Channel')}</FormLabel>
+                            <Select
+                              value={String(field.value ?? 0)}
+                              onValueChange={(v) => field.onChange(Number(v))}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder={t('Not bound')} />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value='0'>
+                                  {t('Not bound')}
+                                </SelectItem>
+                                {(assetProviders ?? []).map((p) => (
+                                  <SelectItem key={p.id} value={String(p.id)}>
+                                    {p.name} (#{p.id})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              {t(
+                                'Bind this key to a single channel for video & asset upload; unbound keys are rejected on these paths. Admin only.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
 
                     <FormField
                       control={form.control}

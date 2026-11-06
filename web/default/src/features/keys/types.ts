@@ -34,6 +34,9 @@ export const apiKeySchema = z.object({
   created_time: z.number(),
   accessed_time: z.number(),
   group: z.string().nullish().default(''),
+  // 绑定渠道：>0 时该密钥的视频生成与素材上传强制走此渠道（B端可控路由），0=未绑定。
+  // 仅超管可配置，路由/进价对下游保密。
+  channel_id: z.number().nullish().default(0),
   cross_group_retry: z
     .preprocess((v) => {
       if (v === 1) return true
@@ -105,6 +108,7 @@ export interface ApiKeyFormData {
   model_limits: string
   allow_ips: string
   group: string
+  channel_id?: number
   cross_group_retry: boolean
 }
 

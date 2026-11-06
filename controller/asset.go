@@ -592,6 +592,16 @@ func RelayUploadAsset(c *gin.Context) {
 		relayAssetJSON(c, 1, "invalid request body: "+err.Error(), nil)
 		return
 	}
+	// B端 Key：强制走绑定渠道（可控路由）。未绑定直接报错，不再支持"不指定渠道→智能素材"。
+	if c.GetInt("token_id") > 0 {
+		boundChannelId := c.GetInt("token_channel_id")
+		if boundChannelId <= 0 {
+			relayAssetJSON(c, 1, service.ErrTokenChannelBindingRequired.Error(), nil)
+			return
+		}
+		req.ChannelId = boundChannelId
+		req.Channel = ""
+	}
 	result, regErr := registerAssetForUser(userId, req)
 	if regErr != nil {
 		relayAssetJSON(c, 1, regErr.msg, nil)

@@ -163,19 +163,42 @@ func Distribute() func(c *gin.Context) {
 				// 命中时强制锁定到素材所属渠道，跳过亲和性与随机选择。
 				// 智能素材（yun- 引用）在此处解析、同步并改写为真实上游 ID。
 				if isVideoSubmitPath(c.Request.URL.Path) && c.Request.Method == http.MethodPost {
-					lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"), modelRequest.Model, usingGroup, requiredResolution)
-					if lockErr != nil {
-						abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
-						return
-					}
-					if lockedChannelId > 0 {
-						channel, selectGroup, lockErr = selectAssetLockedChannel(c, lockedChannelId, modelRequest.Model, usingGroup)
+					if c.GetInt("token_id") > 0 {
+						// B端 Key：强制走绑定渠道（可控路由）。未绑定直接报错，不回落平台默认路由。
+						boundChannelId := c.GetInt("token_channel_id")
+						if boundChannelId <= 0 {
+							abortWithOpenAiMessage(c, http.StatusBadRequest, service.ErrTokenChannelBindingRequired.Error())
+							return
+						}
+						boundChannel, boundGroup, lockErr := selectAssetLockedChannel(c, boundChannelId, modelRequest.Model, usingGroup)
 						if lockErr != nil {
 							abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
 							return
 						}
-						common.SysLog(fmt.Sprintf("[Asset] request locked to channel %d (group=%s, model=%s, user=%d)",
-							channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
+						// 锁定渠道不支持本次分辨率时明确报错让 B 端换 Key，不静默降级到别的渠道。
+						if requiredResolution != "" && !model.ChannelSupportsResolution(boundChannelId, modelRequest.Model, requiredResolution) {
+							abortWithOpenAiMessage(c, http.StatusBadRequest, fmt.Sprintf("密钥绑定的渠道 %d 不支持模型 %s 的 %s 分辨率，请改用支持该分辨率的密钥", boundChannelId, modelRequest.Model, requiredResolution))
+							return
+						}
+						channel, selectGroup = boundChannel, boundGroup
+						common.SysLog(fmt.Sprintf("[TokenChannel] request bound to channel %d (group=%s, model=%s, user=%d, token=%d)",
+							channel.Id, selectGroup, modelRequest.Model, c.GetInt("id"), c.GetInt("token_id")))
+					} else {
+						// C端 playground（会话，无 Key）：沿用素材锁定 / 智能素材路由。
+						lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"), modelRequest.Model, usingGroup, requiredResolution)
+						if lockErr != nil {
+							abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
+							return
+						}
+						if lockedChannelId > 0 {
+							channel, selectGroup, lockErr = selectAssetLockedChannel(c, lockedChannelId, modelRequest.Model, usingGroup)
+							if lockErr != nil {
+								abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
+								return
+							}
+							common.SysLog(fmt.Sprintf("[Asset] request locked to channel %d (group=%s, model=%s, user=%d)",
+								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
+						}
 					}
 				}
 
