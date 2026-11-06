@@ -249,6 +249,21 @@ func TestVideoFetchByIDResponseDoesNotExposeInternalTaskFields(t *testing.T) {
 		assert.Nil(t, body)
 		require.NotNil(t, taskErr)
 		assert.Equal(t, http.StatusNotFound, taskErr.StatusCode)
-		assert.Equal(t, "task_not_exist", taskErr.Code)
+		assert.Equal(t, "ResourceNotFound", taskErr.Code)
+		assert.Equal(t, "The specified resource `ark-task` is not found.", taskErr.Message)
+	})
+
+	t.Run("missing Ark task uses official not found error", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v3/contents/generations/tasks/missing-task", nil)
+		c.Params = gin.Params{{Key: "task_id", Value: "missing-task"}}
+		c.Set("id", 119)
+
+		body, taskErr := videoFetchByIDRespBodyBuilder(c)
+		assert.Nil(t, body)
+		require.NotNil(t, taskErr)
+		assert.Equal(t, http.StatusNotFound, taskErr.StatusCode)
+		assert.Equal(t, "ResourceNotFound", taskErr.Code)
+		assert.Equal(t, "The specified resource `missing-task` is not found.", taskErr.Message)
 	})
 }

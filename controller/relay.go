@@ -816,12 +816,19 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	}
 	// 火山方舟官方协议路径：错误响应也对齐官方结构，客户端无需适配两种错误格式
 	if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") {
-		c.JSON(taskErr.StatusCode, gin.H{
-			"error": gin.H{
-				"code":    taskErr.Code,
-				"message": taskErr.Message,
-			},
-		})
+		errorBody := gin.H{
+			"code":    taskErr.Code,
+			"message": taskErr.Message,
+		}
+		switch taskErr.Code {
+		case "ResourceNotFound":
+			errorBody["param"] = ""
+			errorBody["type"] = "NotFound"
+		case "InvalidAction.RunningTaskDeletion":
+			errorBody["param"] = ""
+			errorBody["type"] = "Conflict"
+		}
+		c.JSON(taskErr.StatusCode, gin.H{"error": errorBody})
 		return
 	}
 	c.JSON(taskErr.StatusCode, taskErr)

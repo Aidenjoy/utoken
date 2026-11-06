@@ -167,7 +167,8 @@ func ArkVideoTaskDelete(c *gin.Context) {
 		return
 	}
 	if !exist || task.IsDeleted() {
-		respondTaskError(c, service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusNotFound))
+		message := fmt.Sprintf("The specified resource `%s` is not found.", taskID)
+		respondTaskError(c, service.TaskErrorWrapperLocal(errors.New(message), "ResourceNotFound", http.StatusNotFound))
 		return
 	}
 	if !arkTaskModelAllowed(c, task.Properties.OriginModelName) {
@@ -181,7 +182,8 @@ func ArkVideoTaskDelete(c *gin.Context) {
 		cancelQueued = true
 	case model.TaskStatusSuccess, model.TaskStatusFailure, model.TaskStatusCancelled, model.TaskStatusTimeoutUnresolved:
 	default:
-		respondTaskError(c, service.TaskErrorWrapperLocal(errors.New("only queued tasks can be cancelled; running tasks cannot be deleted"), "invalid_task_status", http.StatusConflict))
+		message := fmt.Sprintf("Cannot delete task `%s` because it is currently running.", taskID)
+		respondTaskError(c, service.TaskErrorWrapperLocal(errors.New(message), "InvalidAction.RunningTaskDeletion", http.StatusConflict))
 		return
 	}
 

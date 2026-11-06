@@ -160,6 +160,7 @@ func TestArkVideoTaskDeleteLifecycleAndForwarding(t *testing.T) {
 
 		second := fixture.invoke(10, false)
 		assert.Equal(t, http.StatusNotFound, second.Code)
+		assert.JSONEq(t, "{\"error\":{\"code\":\"ResourceNotFound\",\"message\":\"The specified resource `public-task` is not found.\",\"param\":\"\",\"type\":\"NotFound\"}}", second.Body.String())
 		assert.Equal(t, int32(1), fixture.calls.Load())
 	})
 
@@ -167,6 +168,7 @@ func TestArkVideoTaskDeleteLifecycleAndForwarding(t *testing.T) {
 		fixture := setupArkDeleteControllerTest(t, model.TaskStatusInProgress, http.StatusOK)
 		recorder := fixture.invoke(10, false)
 		assert.Equal(t, http.StatusConflict, recorder.Code)
+		assert.JSONEq(t, "{\"error\":{\"code\":\"InvalidAction.RunningTaskDeletion\",\"message\":\"Cannot delete task `public-task` because it is currently running.\",\"param\":\"\",\"type\":\"Conflict\"}}", recorder.Body.String())
 		assert.Equal(t, int32(0), fixture.calls.Load())
 	})
 

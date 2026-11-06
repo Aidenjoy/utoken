@@ -401,7 +401,12 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 	if !exist {
-		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
+		if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") {
+			message := fmt.Sprintf("The specified resource `%s` is not found.", taskId)
+			taskResp = service.TaskErrorWrapperLocal(errors.New(message), "ResourceNotFound", http.StatusNotFound)
+		} else {
+			taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -414,7 +419,8 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	isArkProtocolRequest := strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") ||
 		(isUnifiedVideoAPI && isArkNativeTask)
 	if isArkProtocolRequest && originTask.IsDeleted() {
-		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusNotFound)
+		message := fmt.Sprintf("The specified resource `%s` is not found.", taskId)
+		taskResp = service.TaskErrorWrapperLocal(errors.New(message), "ResourceNotFound", http.StatusNotFound)
 		return
 	}
 
