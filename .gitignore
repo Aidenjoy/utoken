@@ -51,8 +51,7 @@ service/openaicompat/chat_responses_live_local_test.go
 web/default/src/i18n/locales/_reports/*.untranslated.json
 
 # 内部私有文档（Partner 对接方案等），不入库
-docs/yun/
-docs/test/
+docs/
 
 # Python 字节码缓存（tests/ 运维脚本产物）
 __pycache__/
