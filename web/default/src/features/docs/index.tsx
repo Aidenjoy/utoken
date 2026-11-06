@@ -19,15 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   CircleHelp,
   Clapperboard,
-  Globe,
   Image as ImageIcon,
-  KeyRound,
   MessageSquareText,
-  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { PublicLayout } from '@/components/layout'
 import { PageTopGlow } from '@/components/page-top-glow'
@@ -36,9 +32,10 @@ import { useStatus } from '@/hooks/use-status'
 import { cn } from '@/lib/utils'
 
 import {
+  flattenDocSections,
   getDocSections,
-  getGettingStarted,
   resolveDocsSiteUrl,
+  type DocSection,
   type DocsTabId,
 } from './content'
 
@@ -58,106 +55,165 @@ const TAB_ACTIVE_STYLES: Record<DocsTabId, string> = {
   faq: 'border-rose-500/60 bg-rose-500/10 text-rose-700 dark:text-rose-300',
 }
 
-function GettingStartedCard(props: {
-  icon: LucideIcon
-  title: string
-  steps: React.ReactNode[]
+// 侧边栏递归渲染：一级编号章节 → 二级条目 → 三级接口，子级用左侧树线缩进。
+function DocNavList(props: {
+  sections: DocSection[]
+  depth: number
+  activeSection: string
+  activePath: Set<string>
 }) {
+  const { sections, depth, activeSection, activePath } = props
   return (
-    <div className='border-border/60 bg-card/60 rounded-2xl border p-5 backdrop-blur-sm'>
-      <div className='mb-4 flex items-center gap-2.5'>
-        <span className='bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg'>
-          <props.icon className='size-4' />
-        </span>
-        <h3 className='font-semibold'>{props.title}</h3>
-      </div>
-      <ol className='space-y-2.5'>
-        {props.steps.map((step, i) => (
-          <li
-            // 静态步骤列表，顺序不可变
-            // eslint-disable-next-line react/no-array-index-key
-            key={i}
-            className='text-muted-foreground flex items-start gap-2.5 text-sm'
-          >
-            <span className='border-border text-muted-foreground mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border font-mono text-[11px]'>
-              {i + 1}
-            </span>
-            <span className='leading-relaxed'>{step}</span>
-          </li>
-        ))}
-      </ol>
+    <div className={depth === 0 ? 'space-y-1' : 'space-y-0.5'}>
+      {sections.map((s, i) => {
+        const isActive = activeSection === s.id
+        const onPath = activePath.has(s.id)
+        let stateClass = 'text-muted-foreground hover:text-foreground'
+        if (onPath) stateClass = 'text-foreground/80 font-medium'
+        if (isActive) stateClass = 'bg-primary/10 text-foreground font-medium'
+        return (
+          <div key={s.id}>
+            <a
+              href={`#${s.id}`}
+              className={cn(
+                'group flex items-baseline gap-2.5 rounded-lg px-2.5 transition-colors',
+                depth === 0 && 'py-1.5 text-[13px]',
+                depth === 1 && 'py-1 pl-5 text-[13px]',
+                depth >= 2 && 'py-1 pl-8 text-xs',
+                stateClass
+              )}
+            >
+              {depth === 0 && (
+                <span className='text-muted-foreground/60 font-mono text-[10px]'>
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+              )}
+              <span
+                className={cn(
+                  'leading-snug',
+                  depth >= 2 && s.short && 'font-mono text-[11px]'
+                )}
+              >
+                {s.short ?? s.title}
+              </span>
+            </a>
+            {s.children && (
+              <div className='border-border/50 ml-4 border-l pl-1.5'>
+                <DocNavList
+                  sections={s.children}
+                  depth={depth + 1}
+                  activeSection={activeSection}
+                  activePath={activePath}
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
 
+// 正文递归渲染：一级 h2（带编号）→ 二级 h3 → 三级接口卡片。
+function DocSectionBlock(props: {
+  section: DocSection
+  depth: number
+  number?: string
+}) {
+  const { section, depth, number } = props
+  let heading: ReactNode
+  if (depth === 0) {
+    heading = (
+      <h2 className='mb-4 flex items-baseline gap-3 text-lg font-semibold tracking-tight'>
+        <span className='text-muted-foreground/50 font-mono text-sm font-normal'>
+          {number}
+        </span>
+        {section.title}
+      </h2>
+    )
+  } else if (depth === 1) {
+    heading = (
+      <h3 className='mb-3 text-base font-semibold tracking-tight'>
+        {section.title}
+      </h3>
+    )
+  } else {
+    heading = <h4 className='mb-2 text-sm font-semibold'>{section.title}</h4>
+  }
+  return (
+    <section id={section.id} className='scroll-mt-24'>
+      {heading}
+      <div className='space-y-4'>{section.body}</div>
+      {section.children && (
+        <div className={depth === 0 ? 'mt-8 space-y-8' : 'mt-6 space-y-6'}>
+          {section.children.map((child) => (
+            <div
+              key={child.id}
+              className={
+                depth >= 1
+                  ? 'border-border/60 bg-card/40 rounded-xl border p-4'
+                  : undefined
+              }
+            >
+              <DocSectionBlock section={child} depth={depth + 1} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function DeveloperDocs() {
-  const { t } = useTranslation()
   const { status } = useStatus()
-  const [activeTab, setActiveTab] = useState<DocsTabId>('language')
+  const [activeTab, setActiveTab] = useState<DocsTabId>('video')
   const [activeSection, setActiveSection] = useState('')
   const siteUrl = useMemo(() => resolveDocsSiteUrl(status), [status])
-  const gettingStarted = useMemo(() => getGettingStarted(siteUrl), [siteUrl])
   const sections = useMemo(
     () => getDocSections(activeTab, siteUrl),
     [activeTab, siteUrl]
   )
 
-  // 滚动定位当前章节，高亮左侧目录
+  const flatSections = useMemo(() => flattenDocSections(sections), [sections])
+
+  // 滚动定位当前章节（含子章节）：取顶边已越过视口 30% 分位线的最后一个章节
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) setActiveSection(entry.target.id)
-        }
-      },
-      { rootMargin: '-25% 0px -65% 0px' }
-    )
-    for (const s of sections) {
-      const el = document.querySelector(`#${s.id}`)
-      if (el) observer.observe(el)
+    const locate = () => {
+      const threshold = window.innerHeight * 0.3
+      let current = flatSections[0]?.id ?? ''
+      for (const s of flatSections) {
+        const el = document.querySelector(`#${s.id}`)
+        if (el && el.getBoundingClientRect().top <= threshold) current = s.id
+      }
+      setActiveSection(current)
     }
-    return () => observer.disconnect()
-  }, [sections])
+    locate()
+    window.addEventListener('scroll', locate, { passive: true })
+    return () => window.removeEventListener('scroll', locate)
+  }, [flatSections])
+
+  // 当前章节的祖先路径：用于二级菜单的连贯通称高亮
+  const activePath = useMemo(() => {
+    const path = new Set<string>()
+    const walk = (list: DocSection[], trail: string[]): boolean => {
+      for (const s of list) {
+        if (s.id === activeSection) {
+          for (const id of trail) path.add(id)
+          return true
+        }
+        if (s.children && walk(s.children, [...trail, s.id])) return true
+      }
+      return false
+    }
+    walk(sections, [])
+    return path
+  }, [sections, activeSection])
 
   return (
     <PublicLayout showMainContainer={false}>
       <div className='relative'>
         <PageTopGlow />
         <PageTransition className='relative mx-auto w-full max-w-6xl px-4 pt-20 pb-16 sm:px-6 sm:pt-24'>
-          {/* 页头 */}
-          <header className='mx-auto mb-10 max-w-3xl text-center sm:mb-14'>
-            <h1 className='text-[clamp(1.9rem,5vw,3rem)] leading-[1.15] font-bold tracking-tight'>
-              {t('Docs')}
-            </h1>
-            <div className='mt-5 flex flex-wrap items-center justify-center gap-2.5'>
-              <span className='border-border/70 bg-card/70 inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 font-mono text-xs backdrop-blur-sm'>
-                <Globe className='text-muted-foreground size-3.5' />
-                <span className='text-muted-foreground font-sans'>
-                  Base URL
-                </span>
-                {siteUrl}
-              </span>
-              <span className='border-border/70 bg-card/70 inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 font-mono text-xs backdrop-blur-sm'>
-                <ShieldCheck className='text-muted-foreground size-3.5' />
-                Authorization: Bearer sk-你的token
-              </span>
-            </div>
-          </header>
-
-          {/* 准备工作 */}
-          <div className='mb-12 grid gap-4 sm:mb-16 md:grid-cols-2'>
-            <GettingStartedCard
-              icon={Globe}
-              title={gettingStarted.webTest.title}
-              steps={gettingStarted.webTest.steps}
-            />
-            <GettingStartedCard
-              icon={KeyRound}
-              title={gettingStarted.apiKey.title}
-              steps={gettingStarted.apiKey.steps}
-            />
-          </div>
-
           {/* 模型类型页签 */}
           <div className='mb-8 flex flex-wrap items-center gap-2'>
             {TABS.map((tab) => (
@@ -179,40 +235,26 @@ export function DeveloperDocs() {
           </div>
 
           {/* 目录 + 正文 */}
-          <div className='grid gap-10 lg:grid-cols-[190px_minmax(0,1fr)]'>
+          <div className='grid gap-10 lg:grid-cols-[212px_minmax(0,1fr)]'>
             <nav className='hidden lg:block'>
-              <div className='sticky top-24 space-y-1'>
-                {sections.map((s, i) => (
-                  <a
-                    key={s.id}
-                    href={`#${s.id}`}
-                    className={cn(
-                      'group flex items-baseline gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
-                      activeSection === s.id
-                        ? 'bg-primary/10 text-foreground font-medium'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    <span className='text-muted-foreground/60 font-mono text-[10px]'>
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    <span className='leading-snug'>{s.title}</span>
-                  </a>
-                ))}
+              <div className='sticky top-24 max-h-[calc(100vh-7rem)] space-y-1 overflow-y-auto pr-1 pb-2'>
+                <DocNavList
+                  sections={sections}
+                  depth={0}
+                  activeSection={activeSection}
+                  activePath={activePath}
+                />
               </div>
             </nav>
 
             <div className='min-w-0 space-y-12'>
               {sections.map((s, i) => (
-                <section key={s.id} id={s.id} className='scroll-mt-24'>
-                  <h2 className='mb-4 flex items-baseline gap-3 text-lg font-semibold tracking-tight'>
-                    <span className='text-muted-foreground/50 font-mono text-sm font-normal'>
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    {s.title}
-                  </h2>
-                  <div className='space-y-4'>{s.body}</div>
-                </section>
+                <DocSectionBlock
+                  key={s.id}
+                  section={s}
+                  depth={0}
+                  number={String(i + 1).padStart(2, '0')}
+                />
               ))}
 
               <p className='text-muted-foreground/70 border-border/60 border-t pt-6 text-xs leading-relaxed'>
