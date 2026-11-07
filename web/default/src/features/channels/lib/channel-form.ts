@@ -200,11 +200,11 @@ export const channelFormSchema = z
       .record(
         z.string(),
         z.object({
-          discount: z
+          priority: z
             .number()
-            .finite()
-            .gt(0, "Discount must be greater than 0")
-            .lte(10, "Discount must be no more than 10")
+            .int("Priority must be an integer")
+            .min(1, "Priority must be at least 1")
+            .max(100, "Priority must be no more than 100")
             .optional(),
           supports_4k: z.boolean(),
         }),
@@ -555,9 +555,9 @@ export function transformChannelToFormDefaults(
           extraSettings.resolution_blacklist[target] || []
         ).some((resolution) => resolution.trim().toLowerCase() === "4k");
         modelRouteConfigs[source] = {
-          discount:
-            typeof existing?.discount === "number"
-              ? existing.discount
+          priority:
+            typeof existing?.priority === "number"
+              ? existing.priority
               : undefined,
           supports_4k:
             typeof existing?.supports_4k === "boolean"
@@ -667,7 +667,7 @@ function buildSettingJSON(formData: ChannelFormValues): string {
         const config = formData.model_route_configs?.[source];
         if (!config || typeof targetValue !== "string") continue;
         routeConfigs[source] = {
-          discount: config.discount,
+          priority: config.priority,
           supports_4k: config.supports_4k,
         };
 

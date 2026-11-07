@@ -3870,7 +3870,7 @@ export function ChannelMutateDrawer({
                                   {formErrors.model_route_configs && (
                                     <p className='text-destructive text-sm'>
                                       {t(
-                                        'Discount must be greater than 0 and no more than 10'
+                                        'Priority must be an integer between 1 and 100'
                                       )}
                                     </p>
                                   )}

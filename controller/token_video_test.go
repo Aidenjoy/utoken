@@ -59,30 +59,30 @@ func seedVideoTokenUser(t *testing.T, db *gorm.DB, id, role, agentID int) {
 	}).Error)
 }
 
-func videoTokenChannelSetting(t *testing.T, modelName string, discount *float64, supports4K bool) string {
+func videoTokenChannelSetting(t *testing.T, modelName string, priority *int, supports4K bool) string {
 	t.Helper()
 	payload, err := common.Marshal(dto.ChannelSettings{
 		ModelRouteConfigs: map[string]dto.ChannelModelRouteConfig{
-			modelName: {Discount: discount, Supports4K: supports4K},
+			modelName: {Priority: priority, Supports4K: supports4K},
 		},
 	})
 	require.NoError(t, err)
 	return string(payload)
 }
 
-func seedVideoTokenChannel(t *testing.T, db *gorm.DB, id int, discount *float64, supports4K bool) {
+func seedVideoTokenChannel(t *testing.T, db *gorm.DB, id int, priority *int, supports4K bool) {
 	t.Helper()
-	seedVideoTokenModelChannel(t, db, id, controllerVideoModel, discount, supports4K)
+	seedVideoTokenModelChannel(t, db, id, controllerVideoModel, priority, supports4K)
 }
 
-func seedVideoTokenModelChannel(t *testing.T, db *gorm.DB, id int, modelName string, discount *float64, supports4K bool) {
+func seedVideoTokenModelChannel(t *testing.T, db *gorm.DB, id int, modelName string, priority *int, supports4K bool) {
 	t.Helper()
 	mappingPayload, err := common.Marshal(map[string]string{modelName: modelName + "-upstream"})
 	require.NoError(t, err)
 	mapping := string(mappingPayload)
 	otherSettings, err := common.Marshal(dto.ChannelOtherSettings{AssetUploadProtocol: dto.AssetUploadProtocolRelay})
 	require.NoError(t, err)
-	setting := videoTokenChannelSetting(t, modelName, discount, supports4K)
+	setting := videoTokenChannelSetting(t, modelName, priority, supports4K)
 	require.NoError(t, db.Create(&model.Channel{
 		Id:            id,
 		Name:          fmt.Sprintf("video-token-channel-%d", id),
@@ -102,7 +102,7 @@ func seedVideoTokenModelChannel(t *testing.T, db *gorm.DB, id int, modelName str
 	}).Error)
 }
 
-func videoTokenDiscount(value float64) *float64 {
+func videoTokenPriority(value int) *int {
 	return &value
 }
 
@@ -127,8 +127,8 @@ func loadVideoToken(t *testing.T, db *gorm.DB, id int) model.Token {
 func TestAddVideoTokenCreatesSnapshotAndIgnoresInjectedRouting(t *testing.T) {
 	db := setupVideoTokenControllerTest(t)
 	seedVideoTokenUser(t, db, 1, common.RoleCommonUser, 0)
-	seedVideoTokenChannel(t, db, 1, videoTokenDiscount(8), false)
-	seedVideoTokenChannel(t, db, 2, videoTokenDiscount(9), true)
+	seedVideoTokenChannel(t, db, 1, videoTokenPriority(80), false)
+	seedVideoTokenChannel(t, db, 2, videoTokenPriority(20), true)
 
 	created := createVideoToken(t, 1, map[string]any{
 		"name":                 "standard-video",
@@ -151,11 +151,11 @@ func TestAddVideoTokenCreatesSnapshotAndIgnoresInjectedRouting(t *testing.T) {
 	assert.True(t, stored.ModelLimitsEnabled)
 	assert.Equal(t, controllerVideoModel, stored.ModelLimits)
 
-	// 创建后折扣变化只影响新 Key，不回写已有 Key 的渠道快照。
-	newSetting := videoTokenChannelSetting(t, controllerVideoModel, videoTokenDiscount(9.5), false)
+	// 创建后优先级变化只影响新 Key，不回写已有 Key 的渠道快照。
+	newSetting := videoTokenChannelSetting(t, controllerVideoModel, videoTokenPriority(10), false)
 	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 1).Update("setting", newSetting).Error)
 	second := createVideoToken(t, 1, map[string]any{
-		"name":            "after-discount-change",
+		"name":            "after-priority-change",
 		"key_type":        model.TokenKeyTypeVideo,
 		"video_model":     controllerVideoModel,
 		"group":           "default",
@@ -176,8 +176,8 @@ func TestAddVideoTokenAsAdminUsesTargetUserPermissions(t *testing.T) {
 		ModelDiscounts: `{"doubao-seedance-2-0":0.8}`,
 		Status:         model.AgentStatusEnabled,
 	}).Error)
-	seedVideoTokenChannel(t, db, 1, videoTokenDiscount(8), true)
-	seedVideoTokenModelChannel(t, db, 2, "doubao-seedance-2-5", videoTokenDiscount(1), true)
+	seedVideoTokenChannel(t, db, 1, videoTokenPriority(8), true)
+	seedVideoTokenModelChannel(t, db, 2, "doubao-seedance-2-5", videoTokenPriority(1), true)
 
 	deniedCtx, deniedRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", map[string]any{
 		"user_id":         2,

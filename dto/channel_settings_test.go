@@ -50,6 +50,34 @@ func TestChannelSettingsSupportsResolution(t *testing.T) {
 	assert.True(t, settings.SupportsResolution("seedance-2-5", "4k"))
 }
 
+func TestChannelModelRouteConfigValidatePriority(t *testing.T) {
+	priority := func(value int) *int { return &value }
+	tests := []struct {
+		name     string
+		priority *int
+		wantErr  bool
+	}{
+		{name: "empty excludes automatic matching"},
+		{name: "minimum", priority: priority(1)},
+		{name: "maximum", priority: priority(100)},
+		{name: "zero", priority: priority(0), wantErr: true},
+		{name: "negative", priority: priority(-1), wantErr: true},
+		{name: "above maximum", priority: priority(101), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := ChannelModelRouteConfig{Priority: tt.priority}
+			err := config.Validate("seedance-2-0")
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "优先级必须在 1 到 100 之间")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestAdvancedCustomValidateResponsesToChatConverterPath(t *testing.T) {
 	valid := &AdvancedCustomConfig{
 		Routes: []AdvancedCustomRoute{

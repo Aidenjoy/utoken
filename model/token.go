@@ -36,7 +36,7 @@ type Token struct {
 	UsedQuota          int     `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string  `json:"group" gorm:"default:''"`
 	// ChannelId 绑定渠道：>0 时该密钥的视频生成与素材上传强制走此渠道（B端可控路由），0=未绑定。
-	// 视频 Key 在创建时自动写入最低折扣渠道，之后仅超管可改派；普通用户响应中隐藏该字段。
+	// 视频 Key 在创建时自动写入最高优先级渠道，之后仅超管可改派；普通用户响应中隐藏该字段。
 	ChannelId int `json:"channel_id" gorm:"default:0"`
 	// KeyType 为空表示存量密钥，保持原有行为；新密钥分为语言、图片、视频三类。
 	KeyType         string         `json:"key_type" gorm:"type:varchar(16);default:''"`

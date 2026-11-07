@@ -2,28 +2,23 @@ package dto
 
 import (
 	"fmt"
-	"math"
 	"net/url"
 	"strings"
 )
 
 // ChannelModelRouteConfig 描述渠道模型映射行参与 B 端视频 Key 创建时选路的配置。
-// Discount 使用“折”为单位，例如 8 表示八折；空值表示不参与自动匹配。
+// Priority 取值 1~100，数值越大越优先；空值表示不参与自动匹配。
 type ChannelModelRouteConfig struct {
-	Discount   *float64 `json:"discount,omitempty"`
-	Supports4K bool     `json:"supports_4k,omitempty"`
+	Priority   *int `json:"priority,omitempty"`
+	Supports4K bool `json:"supports_4k,omitempty"`
 }
 
 func (c ChannelModelRouteConfig) Validate(modelName string) error {
 	if strings.TrimSpace(modelName) == "" {
 		return fmt.Errorf("模型路由配置包含空模型名")
 	}
-	if c.Discount == nil {
-		return nil
-	}
-	discount := *c.Discount
-	if math.IsNaN(discount) || math.IsInf(discount, 0) || discount <= 0 || discount > 10 {
-		return fmt.Errorf("模型 %s 的折扣必须在 0 到 10 之间", modelName)
+	if c.Priority != nil && (*c.Priority < 1 || *c.Priority > 100) {
+		return fmt.Errorf("模型 %s 的优先级必须在 1 到 100 之间", modelName)
 	}
 	return nil
 }
@@ -40,7 +35,7 @@ type ChannelSettings struct {
 	// （向后兼容）。选路阶段据此把不支持请求分辨率的渠道从候选集剔除，避免
 	// 4K 请求打到做不了 4K 的渠道后才失败。分辨率比较大小写/空格不敏感。
 	ResolutionBlacklist map[string][]string `json:"resolution_blacklist,omitempty"`
-	// ModelRouteConfigs 按 model_mapping 的原始模型保存折扣和 4K 能力。
+	// ModelRouteConfigs 按 model_mapping 的原始模型保存优先级和 4K 能力。
 	// ResolutionBlacklist 仍供 C 端现有选路使用，表单保存时从 Supports4K 同步。
 	ModelRouteConfigs map[string]ChannelModelRouteConfig `json:"model_route_configs,omitempty"`
 }

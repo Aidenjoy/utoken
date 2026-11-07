@@ -81,7 +81,7 @@ export type Channel = z.infer<typeof channelSchema>
 // ============================================================================
 
 export interface ChannelModelRouteConfig {
-  discount?: number
+  priority?: number
   supports_4k: boolean
 }
 

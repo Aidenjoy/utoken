@@ -12,7 +12,7 @@ import (
 
 var ErrNoVideoKeyChannel = errors.New("当前模型和分辨率暂无可用渠道，请联系管理员")
 
-// VideoKeyOption 只暴露用户创建视频 Key 所需的模型能力，不包含渠道或折扣。
+// VideoKeyOption 只暴露用户创建视频 Key 所需的模型能力，不包含渠道路由配置。
 type VideoKeyOption struct {
 	Model      string `json:"model"`
 	Supports4K bool   `json:"supports_4k"`
@@ -77,7 +77,7 @@ func (ctx *videoRouteContext) matchChannel(modelName string, video4K bool) *mode
 	}
 	type candidate struct {
 		channel  *model.Channel
-		discount float64
+		priority int
 	}
 	seen := make(map[int]bool)
 	candidates := make([]candidate, 0)
@@ -92,18 +92,18 @@ func (ctx *videoRouteContext) matchChannel(modelName string, video4K bool) *mode
 				continue
 			}
 			config, ok := videoRouteConfig(channel, modelName)
-			if !ok || config.Discount == nil || (video4K && !config.Supports4K) {
+			if !ok || config.Priority == nil || (video4K && !config.Supports4K) {
 				continue
 			}
-			candidates = append(candidates, candidate{channel: channel, discount: *config.Discount})
+			candidates = append(candidates, candidate{channel: channel, priority: *config.Priority})
 		}
 	}
 	if len(candidates) == 0 {
 		return nil
 	}
 	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].discount != candidates[j].discount {
-			return candidates[i].discount < candidates[j].discount
+		if candidates[i].priority != candidates[j].priority {
+			return candidates[i].priority > candidates[j].priority
 		}
 		return candidates[i].channel.Id < candidates[j].channel.Id
 	})
@@ -155,7 +155,7 @@ func ListVideoKeyOptions(userId int, tokenGroup string) ([]VideoKeyOption, error
 	return options, nil
 }
 
-// ValidateVideoTokenChannel 校验超管手动改派，折扣不参与手动改派判断。
+// ValidateVideoTokenChannel 校验超管手动改派，优先级不参与手动改派判断。
 func ValidateVideoTokenChannel(token *model.Token, channelID int) error {
 	if token == nil || token.KeyType != model.TokenKeyTypeVideo || channelID <= 0 {
 		return ValidateTokenBindChannel(channelID)

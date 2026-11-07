@@ -46,7 +46,7 @@ type MappingRow = {
   id: string
   from: string
   to: string
-  discount: string
+  priority: string
   supports4K: boolean
 }
 
@@ -98,8 +98,8 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       const config: ChannelModelRouteConfig = {
         supports_4k: row.supports4K,
       }
-      if (row.discount.trim()) {
-        config.discount = Number(row.discount)
+      if (row.priority.trim()) {
+        config.priority = Number(row.priority)
       }
       configs[source] = config
     }
@@ -112,7 +112,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       id: createRowId(),
       from,
       to,
-      discount: config?.discount == null ? '' : String(config.discount),
+      priority: config?.priority == null ? '' : String(config.priority),
       supports4K: config?.supports_4k ?? false,
     }
   }
@@ -149,7 +149,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
             ...existing,
             from,
             to: toString,
-            discount: config?.discount == null ? '' : String(config.discount),
+            priority: config?.priority == null ? '' : String(config.priority),
             supports4K: config?.supports_4k ?? false,
           }
         }
@@ -209,7 +209,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
       id: createRowId(),
       from: '',
       to: '',
-      discount: '',
+      priority: '',
       supports4K: false,
     }
     syncRows([...rows, newRow])
@@ -232,13 +232,13 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
 
   const handleRouteRowChange = (
     id: string,
-    field: 'discount' | 'supports4K',
+    field: 'priority' | 'supports4K',
     newValue: string | boolean
   ) => {
     const updatedRows = rows.map((row) => {
       if (row.id !== id) return row
-      return field === 'discount'
-        ? { ...row, discount: String(newValue) }
+      return field === 'priority'
+        ? { ...row, priority: String(newValue) }
         : { ...row, supports4K: Boolean(newValue) }
     })
     syncRows(updatedRows)
@@ -333,7 +333,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
                 <div>{t('Replacement Model')}</div>
                 {showRouteConfigs && (
                   <>
-                    <div>{t('Discount (0-10)')}</div>
+                    <div>{t('Priority (1-100)')}</div>
                     <div>{t('Supports 4K')}</div>
                   </>
                 )}
@@ -370,20 +370,20 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
                     <>
                       <Input
                         type='number'
-                        min={0}
-                        max={10}
-                        step={0.1}
-                        value={row.discount}
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={row.priority}
                         onChange={(event) =>
                           handleRouteRowChange(
                             row.id,
-                            'discount',
+                            'priority',
                             event.target.value
                           )
                         }
-                        placeholder={t('e.g. 8')}
+                        placeholder='80'
                         disabled={props.disabled}
-                        aria-label={t('Discount (0-10)')}
+                        aria-label={t('Priority (1-100)')}
                       />
                       <div className='flex justify-center'>
                         <Checkbox
@@ -436,7 +436,7 @@ export function ModelMappingEditor(props: ModelMappingEditorProps) {
           {showRouteConfigs && (
             <p className='text-muted-foreground text-xs'>
               {t(
-                'Discount uses a 0-10 scale. Leave it blank to exclude the mapping from automatic video Key matching.'
+                'Priority ranges from 1 to 100. Higher values are matched first. Leave it blank to exclude the mapping from automatic video Key matching.'
               )}
             </p>
           )}

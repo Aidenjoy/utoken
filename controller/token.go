@@ -410,7 +410,7 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
-	// 视频 Key 仅在创建时匹配一次最低折扣渠道；存量类型保留管理员手动绑定能力。
+	// 视频 Key 仅在创建时匹配一次最高优先级渠道；存量类型保留管理员手动绑定能力。
 	bindChannelId := 0
 	if token.KeyType == model.TokenKeyTypeVideo {
 		channel, matchErr := service.MatchVideoKeyChannel(ownerId, token.Group, token.VideoModel, token.Video4K)

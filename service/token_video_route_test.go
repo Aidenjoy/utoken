@@ -21,7 +21,7 @@ type videoRouteChannelFixture struct {
 	id         int
 	modelName  string
 	group      string
-	discount   *float64
+	priority   *int
 	supports4K bool
 	status     int
 	noProtocol bool
@@ -29,7 +29,7 @@ type videoRouteChannelFixture struct {
 	noMapping  bool
 }
 
-func videoRouteDiscount(value float64) *float64 {
+func videoRoutePriority(value int) *int {
 	return &value
 }
 
@@ -89,7 +89,7 @@ func seedVideoRouteChannel(t *testing.T, fixture videoRouteChannelFixture) {
 	settingJSON, err := common.Marshal(dto.ChannelSettings{
 		ModelRouteConfigs: map[string]dto.ChannelModelRouteConfig{
 			fixture.modelName: {
-				Discount:   fixture.discount,
+				Priority:   fixture.priority,
 				Supports4K: fixture.supports4K,
 			},
 		},
@@ -124,21 +124,21 @@ func seedVideoRouteChannel(t *testing.T, fixture videoRouteChannelFixture) {
 	}
 }
 
-func TestMatchVideoKeyChannelSelectsLowestDiscountAndFiltersCandidates(t *testing.T) {
+func TestMatchVideoKeyChannelSelectsHighestPriorityAndFiltersCandidates(t *testing.T) {
 	setupVideoRouteTest(t)
 	seedVideoRouteUser(t, 1, "default", 0)
 
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 1, modelName: videoRouteModel20, discount: videoRouteDiscount(8)})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 2, modelName: videoRouteModel20, discount: videoRouteDiscount(9), supports4K: true})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 3, modelName: videoRouteModel25, discount: videoRouteDiscount(9), supports4K: true})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 4, modelName: videoRouteModel25, discount: videoRouteDiscount(8)})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 1, modelName: videoRouteModel20, priority: videoRoutePriority(80)})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 2, modelName: videoRouteModel20, priority: videoRoutePriority(60), supports4K: true})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 3, modelName: videoRouteModel25, priority: videoRoutePriority(60), supports4K: true})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 4, modelName: videoRouteModel25, priority: videoRoutePriority(80)})
 
-	// 以下渠道若未被排除，都会以更低折扣改变匹配结果。
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 5, modelName: videoRouteModel20, discount: videoRouteDiscount(1), status: common.ChannelStatusManuallyDisabled})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 6, modelName: videoRouteModel20, discount: videoRouteDiscount(1), noProtocol: true})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 7, modelName: videoRouteModel20, discount: videoRouteDiscount(1), noAbility: true})
+	// 以下渠道若未被排除，都会以更高优先级改变匹配结果。
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 5, modelName: videoRouteModel20, priority: videoRoutePriority(100), status: common.ChannelStatusManuallyDisabled})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 6, modelName: videoRouteModel20, priority: videoRoutePriority(100), noProtocol: true})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 7, modelName: videoRouteModel20, priority: videoRoutePriority(100), noAbility: true})
 	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 8, modelName: videoRouteModel20})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 9, modelName: videoRouteModel20, discount: videoRouteDiscount(1), noMapping: true})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 9, modelName: videoRouteModel20, priority: videoRoutePriority(100), noMapping: true})
 
 	tests := []struct {
 		name      string
@@ -146,9 +146,9 @@ func TestMatchVideoKeyChannelSelectsLowestDiscountAndFiltersCandidates(t *testin
 		video4K   bool
 		wantID    int
 	}{
-		{name: "2.0 standard selects eight discount", modelName: videoRouteModel20, wantID: 1},
+		{name: "2.0 standard selects highest priority", modelName: videoRouteModel20, wantID: 1},
 		{name: "2.0 4k selects capable channel", modelName: videoRouteModel20, video4K: true, wantID: 2},
-		{name: "2.5 standard uses its own discount", modelName: videoRouteModel25, wantID: 4},
+		{name: "2.5 standard uses its own priority", modelName: videoRouteModel25, wantID: 4},
 		{name: "2.5 4k uses its own capable channel", modelName: videoRouteModel25, video4K: true, wantID: 3},
 	}
 	for _, tt := range tests {
@@ -170,12 +170,12 @@ func TestMatchVideoKeyChannelSelectsLowestDiscountAndFiltersCandidates(t *testin
 	assert.ErrorIs(t, err, ErrNoVideoKeyChannel)
 }
 
-func TestMatchVideoKeyChannelBreaksDiscountTieByChannelID(t *testing.T) {
+func TestMatchVideoKeyChannelBreaksPriorityTieByChannelID(t *testing.T) {
 	setupVideoRouteTest(t)
 	seedVideoRouteUser(t, 1, "default", 0)
 	modelName := "doubao-seedance-tie"
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 22, modelName: modelName, discount: videoRouteDiscount(7)})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 11, modelName: modelName, discount: videoRouteDiscount(7)})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 22, modelName: modelName, priority: videoRoutePriority(7)})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 11, modelName: modelName, priority: videoRoutePriority(7)})
 
 	channel, err := MatchVideoKeyChannel(1, "default", modelName, false)
 	require.NoError(t, err)
@@ -197,9 +197,9 @@ func TestMatchVideoKeyChannelUsesTargetUserAgentAndAutoGroups(t *testing.T) {
 		Status:         model.AgentStatusEnabled,
 	}).Error)
 	seedVideoRouteUser(t, 1, "vip", 1)
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 1, modelName: videoRouteModel20, discount: videoRouteDiscount(9)})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 2, modelName: videoRouteModel20, group: "vip", discount: videoRouteDiscount(8)})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 3, modelName: videoRouteModel25, group: "vip", discount: videoRouteDiscount(1)})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 1, modelName: videoRouteModel20, priority: videoRoutePriority(60)})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 2, modelName: videoRouteModel20, group: "vip", priority: videoRoutePriority(80)})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 3, modelName: videoRouteModel25, group: "vip", priority: videoRoutePriority(100)})
 
 	channel, err := MatchVideoKeyChannel(1, "auto", videoRouteModel20, false)
 	require.NoError(t, err)
@@ -209,7 +209,7 @@ func TestMatchVideoKeyChannelUsesTargetUserAgentAndAutoGroups(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoVideoKeyChannel)
 }
 
-func TestValidateVideoTokenChannelIgnoresDiscountButChecksCapability(t *testing.T) {
+func TestValidateVideoTokenChannelIgnoresPriorityButChecksCapability(t *testing.T) {
 	setupVideoRouteTest(t)
 	seedVideoRouteUser(t, 1, "default", 0)
 	seedVideoRouteChannel(t, videoRouteChannelFixture{id: 1, modelName: videoRouteModel20, supports4K: true})
@@ -224,7 +224,7 @@ func TestValidateVideoTokenChannelIgnoresDiscountButChecksCapability(t *testing.
 		Video4K:    true,
 	}
 
-	// 空折扣不参与自动匹配，但能力与协议合法时允许管理员手动改派。
+	// 空优先级不参与自动匹配，但能力与协议合法时允许管理员手动改派。
 	_, err := MatchVideoKeyChannel(1, "default", videoRouteModel20, true)
 	assert.ErrorIs(t, err, ErrNoVideoKeyChannel)
 	assert.NoError(t, ValidateVideoTokenChannel(token, 1))
