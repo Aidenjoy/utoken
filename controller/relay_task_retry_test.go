@@ -4,13 +4,20 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -69,6 +76,130 @@ func TestShouldRetryTaskRelaySkipsLocalBillingErrors(t *testing.T) {
 	}
 
 	assert.False(t, shouldRetryTaskRelay(c, 14, nil, 1))
+}
+
+func TestRelayTaskBoundVideoKeyRetriesSameChannel(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.LogBody{}))
+
+	var boundCalls atomic.Int32
+	boundUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		boundCalls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"bound upstream failed"}`))
+	}))
+	t.Cleanup(boundUpstream.Close)
+
+	var otherCalls atomic.Int32
+	otherUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		otherCalls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"other upstream failed"}`))
+	}))
+	t.Cleanup(otherUpstream.Close)
+
+	const modelName = "retry-video-model"
+	for _, channel := range []*model.Channel{
+		{Id: 14, Name: "bound", Type: constant.ChannelTypeArkNative, Key: "sk-bound", BaseURL: &boundUpstream.URL},
+		{Id: 5, Name: "other", Type: constant.ChannelTypeArkNative, Key: "sk-other", BaseURL: &otherUpstream.URL},
+	} {
+		channel.Status = common.ChannelStatusEnabled
+		channel.Group = "default"
+		channel.Models = modelName
+		require.NoError(t, db.Create(channel).Error)
+		require.NoError(t, db.Create(&model.Ability{
+			Group: "default", Model: modelName, ChannelId: channel.Id, Enabled: true, Priority: common.GetPointer(int64(1)), Weight: 100,
+		}).Error)
+	}
+
+	oldMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = oldMemoryCache })
+	oldRetryTimes := common.RetryTimes
+	common.RetryTimes = 1
+	t.Cleanup(func() { common.RetryTimes = oldRetryTimes })
+	oldModelPrices := ratio_setting.ModelPrice2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"retry-video-model":0}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(oldModelPrices)) })
+	oldFreeModelPreConsume := operation_setting.GetQuotaSetting().EnableFreeModelPreConsume
+	operation_setting.GetQuotaSetting().EnableFreeModelPreConsume = false
+	t.Cleanup(func() { operation_setting.GetQuotaSetting().EnableFreeModelPreConsume = oldFreeModelPreConsume })
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", strings.NewReader(`{"model":"retry-video-model","prompt":"retry isolation"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(common.RequestIdKey, "req-bound-video-retry")
+	c.Set("id", 208)
+	c.Set("token_id", 208)
+	c.Set("token_channel_id", 14)
+	c.Set("relay_mode", relayconstant.RelayModeVideoSubmit)
+	common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
+
+	boundChannel, err := model.GetChannelById(14, true)
+	require.NoError(t, err)
+	require.Nil(t, middleware.SetupContextForSelectedChannel(c, boundChannel, modelName))
+	service.InitHttpClient()
+
+	RelayTask(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, int32(2), boundCalls.Load(), "首次请求和唯一一次重试都必须到达绑定渠道")
+	assert.Zero(t, otherCalls.Load(), "绑定视频 Key 不得因重试调用其他渠道")
+	assert.Equal(t, []string{"14", "14"}, c.GetStringSlice("use_channel"))
+}
+
+func TestLockTokenBoundVideoChannelScope(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Channel{}))
+
+	newInfo := func() *relaycommon.RelayInfo {
+		return &relaycommon.RelayInfo{
+			RelayMode:     relayconstant.RelayModeVideoSubmit,
+			TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+		}
+	}
+	newContext := func() *gin.Context {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("token_id", 208)
+		c.Set("token_channel_id", 14)
+		return c
+	}
+
+	t.Run("origin task lock takes precedence", func(t *testing.T) {
+		info := newInfo()
+		originChannel := &model.Channel{Id: 5}
+		info.LockedChannel = originChannel
+		require.Nil(t, lockTokenBoundVideoChannel(newContext(), info))
+		assert.Same(t, originChannel, info.LockedChannel)
+	})
+
+	t.Run("playground keeps dynamic channel selection", func(t *testing.T) {
+		c := newContext()
+		c.Set("token_id", 0)
+		info := newInfo()
+		require.Nil(t, lockTokenBoundVideoChannel(c, info))
+		assert.Nil(t, info.LockedChannel)
+	})
+
+	t.Run("non-video token request keeps dynamic channel selection", func(t *testing.T) {
+		info := newInfo()
+		info.RelayMode = relayconstant.RelayModeUnknown
+		require.Nil(t, lockTokenBoundVideoChannel(newContext(), info))
+		assert.Nil(t, info.LockedChannel)
+	})
+
+	t.Run("missing bound channel fails closed", func(t *testing.T) {
+		c := newContext()
+		c.Set("token_channel_id", 999)
+		info := newInfo()
+		taskErr := lockTokenBoundVideoChannel(c, info)
+		require.NotNil(t, taskErr)
+		assert.Equal(t, http.StatusInternalServerError, taskErr.StatusCode)
+		assert.Nil(t, info.LockedChannel)
+	})
 }
 
 // TestTaskErrorAsChannelErrorKeepsLocalErrorSemantics 锁定「任务错误 → 渠道错误」的换算：

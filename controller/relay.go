@@ -535,6 +535,22 @@ func RelayTaskFetch(c *gin.Context) {
 	}
 }
 
+func lockTokenBoundVideoChannel(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	if info.LockedChannel != nil || info.RelayMode != relayconstant.RelayModeVideoSubmit || c.GetInt("token_id") <= 0 {
+		return nil
+	}
+	boundChannelId := c.GetInt("token_channel_id")
+	if boundChannelId <= 0 {
+		return nil
+	}
+	channel, err := model.GetChannelById(boundChannelId, true)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "get_channel_failed", http.StatusInternalServerError)
+	}
+	info.LockedChannel = channel
+	return nil
+}
+
 func RelayTask(c *gin.Context) {
 	requestId := c.GetString(common.RequestIdKey)
 	defer func() {
@@ -556,6 +572,10 @@ func RelayTask(c *gin.Context) {
 	}
 
 	if taskErr := relay.ResolveOriginTask(c, relayInfo); taskErr != nil {
+		respondTaskError(c, taskErr)
+		return
+	}
+	if taskErr := lockTokenBoundVideoChannel(c, relayInfo); taskErr != nil {
 		respondTaskError(c, taskErr)
 		return
 	}
