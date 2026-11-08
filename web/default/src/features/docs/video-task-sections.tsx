@@ -70,10 +70,19 @@ export function buildVideoTaskSections(siteUrl: string): DocSection[] {
       "content": {
         "video_url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/xxx/demo.mp4"
       },
-      "service_tier": "default",
+      "usage": {"completion_tokens": 40594, "total_tokens": 40594},
       "created_at": 1787736000,
       "updated_at": 1787736060,
-      "usage": {"completion_tokens": 40594, "total_tokens": 40594}
+      "seed": 70172,
+      "resolution": "480p",
+      "ratio": "16:9",
+      "duration": 4,
+      "framespersecond": 24,
+      "service_tier": "default",
+      "execution_expires_after": 172800,
+      "generate_audio": true,
+      "draft": false,
+      "priority": 0
     }
   ],
   "total": 1
@@ -82,6 +91,11 @@ export function buildVideoTaskSections(siteUrl: string): DocSection[] {
           <Note>
             列表仅包含当前账号创建且当前 Key
             有权访问的任务；其他用户及共享上游账号中的任务不会出现在结果中。
+          </Note>
+          <Note>
+            列表项与单任务查询使用相同的任务字段，失败任务包含{' '}
+            <InlineCode>error</InlineCode>，开启尾帧返回时包含{' '}
+            <InlineCode>content.last_frame_url</InlineCode>。
           </Note>
         </>
       ),

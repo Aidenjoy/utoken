@@ -417,6 +417,34 @@ function buildVideoSections(siteUrl: string): DocSection[] {
     "generate_audio": true
   }'`}
           />
+          <Note>
+            创建任务还可按模型能力使用{' '}
+            <InlineCode>omni_reference_task_type</InlineCode> /{' '}
+            <InlineCode>frames</InlineCode> / <InlineCode>watermark</InlineCode>{' '}
+            / <InlineCode>output_format</InlineCode> /{' '}
+            <InlineCode>seed</InlineCode> /{' '}
+            <InlineCode>camera_fixed</InlineCode> /{' '}
+            <InlineCode>return_last_frame</InlineCode> /{' '}
+            <InlineCode>draft</InlineCode> /{' '}
+            <InlineCode>service_tier</InlineCode> /{' '}
+            <InlineCode>callback_url</InlineCode> /{' '}
+            <InlineCode>execution_expires_after</InlineCode> /{' '}
+            <InlineCode>priority</InlineCode> /{' '}
+            <InlineCode>safety_identifier</InlineCode> /{' '}
+            <InlineCode>tools</InlineCode>。
+          </Note>
+          <Note>
+            官方默认值：<InlineCode>omni_reference_task_type=auto</InlineCode>、
+            <InlineCode>watermark=false</InlineCode>、
+            <InlineCode>output_format=mp4</InlineCode>、
+            <InlineCode>seed=-1</InlineCode>、
+            <InlineCode>camera_fixed=false</InlineCode>、
+            <InlineCode>return_last_frame=false</InlineCode>、
+            <InlineCode>draft=false</InlineCode>、
+            <InlineCode>service_tier=default</InlineCode>、
+            <InlineCode>execution_expires_after=172800</InlineCode>、
+            <InlineCode>priority=0</InlineCode>；具体可用取值以模型能力为准。
+          </Note>
         </>
       ),
     },
@@ -495,16 +523,37 @@ curl -X GET ${tasksUrl}/{task_id} \\
   "content": {
     "video_url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/xxx/demo.mp4"
   },
-  "usage": {"completion_tokens": 40594, "total_tokens": 40594}
+  "usage": {"completion_tokens": 40594, "total_tokens": 40594},
+  "created_at": 1787736000,
+  "updated_at": 1787736060,
+  "seed": 70172,
+  "resolution": "480p",
+  "ratio": "16:9",
+  "duration": 4,
+  "framespersecond": 24,
+  "service_tier": "default",
+  "execution_expires_after": 172800,
+  "generate_audio": true,
+  "draft": false,
+  "priority": 0
 }`}
           />
           <Note>
             <InlineCode>status</InlineCode> 取值 <InlineCode>queued</InlineCode>{' '}
             / <InlineCode>running</InlineCode> /{' '}
-            <InlineCode>succeeded</InlineCode> / <InlineCode>failed</InlineCode>
-            ；<InlineCode>succeeded</InlineCode> 时{' '}
-            <InlineCode>content.video_url</InlineCode>{' '}
-            为视频地址（临时地址，请及时下载保存）。
+            <InlineCode>cancelled</InlineCode> /{' '}
+            <InlineCode>succeeded</InlineCode> / <InlineCode>failed</InlineCode>{' '}
+            / <InlineCode>expired</InlineCode>；
+            <InlineCode>succeeded</InlineCode> 时{' '}
+            <InlineCode>content.video_url</InlineCode> 为视频地址，有效期 24
+            小时，请及时下载或转存。
+          </Note>
+          <Note>
+            <InlineCode>failed</InlineCode> 时通过{' '}
+            <InlineCode>error.code</InlineCode> /{' '}
+            <InlineCode>error.message</InlineCode> 返回失败原因；创建时设置{' '}
+            <InlineCode>return_last_frame=true</InlineCode> 后，成功响应还会包含{' '}
+            <InlineCode>content.last_frame_url</InlineCode>。
           </Note>
         </>
       ),
@@ -539,7 +588,7 @@ curl -X GET ${tasksUrl}/{task_id} \\
             <InlineCode>Processing</InlineCode> /{' '}
             <InlineCode>Failed</InlineCode>；列表用{' '}
             <InlineCode>NextToken</InlineCode> 游标分页（
-            <InlineCode>MaxResults</InlineCode> 默认 20、上限 100）。
+            <InlineCode>MaxResults</InlineCode> 默认 10、范围 1～100）。
           </Note>
           <CodeBlock
             title='成功响应信封'
@@ -594,7 +643,7 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
   -H "X-Date: 20260716T031338Z" \\
   -H "X-Content-Sha256: <请求体的 SHA256 十六进制>" \\
   -H "Authorization: HMAC-SHA256 Credential=<AK>/20260716/cn-beijing/ark/request, SignedHeaders=host;x-content-sha256;x-date, Signature=<V4 签名>" \\
-  -d '{"Filter":{"Statuses":["Active"]},"MaxResults":20}'`}
+  -d '{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"GroupType":"AIGC"},"MaxResults":10}'`}
           />
           <Note>
             V4 签名步骤（用官方 SDK 可自动完成，无需手写）：①
@@ -622,10 +671,10 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
           body: (
             <>
               <P>
-                创建素材组。<InlineCode>GroupType</InlineCode> 默认{' '}
-                <InlineCode>AIGC</InlineCode>、
+                创建素材组。<InlineCode>GroupType</InlineCode>{' '}
+                可省略，当前仅支持 <InlineCode>AIGC</InlineCode>；
                 <InlineCode>ProjectName</InlineCode> 默认{' '}
-                <InlineCode>default</InlineCode>，均可省略。
+                <InlineCode>default</InlineCode>。
               </P>
               <CodeBlock
                 method='POST'
@@ -657,7 +706,7 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 <InlineCode>AssetType</InlineCode> 取值{' '}
                 <InlineCode>Image</InlineCode> / <InlineCode>Video</InlineCode>{' '}
                 / <InlineCode>Audio</InlineCode>；<InlineCode>Name</InlineCode>{' '}
-                可省略，省略时取 URL 末段。
+                可省略。
               </P>
               <CodeBlock
                 method='POST'
@@ -680,21 +729,36 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
           body: (
             <>
               <P>
-                列出素材组，支持 <InlineCode>GroupIds</InlineCode> /{' '}
-                <InlineCode>Name</InlineCode> 模糊过滤与{' '}
-                <InlineCode>NextToken</InlineCode> 游标分页。
+                列出素材组，<InlineCode>Filter</InlineCode> 与{' '}
+                <InlineCode>Filter.GroupType</InlineCode> 必选，支持{' '}
+                <InlineCode>GroupIds</InlineCode> /{' '}
+                <InlineCode>Name</InlineCode> 过滤。
               </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=ListAssetGroups&Version=2024-01-01`}
                 lang='json'
-                code='{"Filter":{"Name":"素材"},"MaxResults":20,"NextToken":""}'
+                code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"GroupType":"AIGC"},"MaxResults":10}'
               />
               <CodeBlock
                 title='Result'
                 lang='json'
-                code='{"Items": [{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}], "NextToken": ""}'
+                code='{"Items": [{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}]}'
               />
+              <Note>
+                <InlineCode>NextToken</InlineCode> +{' '}
+                <InlineCode>MaxResults</InlineCode> 游标分页与{' '}
+                <InlineCode>PageNumber</InlineCode> +{' '}
+                <InlineCode>PageSize</InlineCode>{' '}
+                页码分页二选一；页码分页响应返回{' '}
+                <InlineCode>PageNumber</InlineCode> /{' '}
+                <InlineCode>PageSize</InlineCode> /{' '}
+                <InlineCode>TotalCount</InlineCode>。支持{' '}
+                <InlineCode>SortBy=CreateTime|UpdateTime</InlineCode> 与{' '}
+                <InlineCode>SortOrder=Desc|Asc</InlineCode>，
+                <InlineCode>ProjectName</InlineCode> 默认{' '}
+                <InlineCode>default</InlineCode>。
+              </Note>
             </>
           ),
         },
@@ -705,9 +769,11 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
           body: (
             <>
               <P>
-                列出素材，支持 <InlineCode>GroupIds</InlineCode> /{' '}
+                列出素材，<InlineCode>Filter</InlineCode> 与{' '}
+                <InlineCode>Filter.GroupType</InlineCode> 必选，支持{' '}
+                <InlineCode>GroupIds</InlineCode> /{' '}
                 <InlineCode>Statuses</InlineCode> /{' '}
-                <InlineCode>Name</InlineCode> 过滤与游标分页；
+                <InlineCode>Name</InlineCode> 过滤。
                 <InlineCode>Statuses</InlineCode> 用官方词表{' '}
                 <InlineCode>Active</InlineCode> /{' '}
                 <InlineCode>Processing</InlineCode> /{' '}
@@ -717,13 +783,27 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 method='POST'
                 url={`${siteUrl}/?Action=ListAssets&Version=2024-01-01`}
                 lang='json'
-                code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"Statuses":["Active"]},"MaxResults":20}'
+                code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"GroupType":"AIGC"},"MaxResults":10}'
               />
               <CodeBlock
                 title='Result'
                 lang='json'
-                code='{"Items": [{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "ProjectName": "default", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "Status": "Active", "Moderation": {"Strategy": "Default"}}], "NextToken": ""}'
+                code='{"Items": [{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "ProjectName": "default", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "Status": "Active", "Moderation": {"Strategy": "Default"}}]}'
               />
+              <Note>
+                <InlineCode>NextToken</InlineCode> +{' '}
+                <InlineCode>MaxResults</InlineCode> 游标分页与{' '}
+                <InlineCode>PageNumber</InlineCode> +{' '}
+                <InlineCode>PageSize</InlineCode>{' '}
+                页码分页二选一；页码分页响应返回{' '}
+                <InlineCode>PageNumber</InlineCode> /{' '}
+                <InlineCode>PageSize</InlineCode> /{' '}
+                <InlineCode>TotalCount</InlineCode>。支持{' '}
+                <InlineCode>SortBy=CreateTime|UpdateTime|GroupId</InlineCode> 与{' '}
+                <InlineCode>SortOrder=Desc|Asc</InlineCode>，
+                <InlineCode>ProjectName</InlineCode> 默认{' '}
+                <InlineCode>default</InlineCode>。
+              </Note>
             </>
           ),
         },
@@ -738,13 +818,20 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 method='POST'
                 url={`${siteUrl}/?Action=GetAsset&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"asset-20260716111338-vwmxj"}'
+                code='{"Id":"asset-20260716111338-vwmxj","ProjectName":"default"}'
               />
               <CodeBlock
                 title='Result'
                 lang='json'
                 code='{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "Status": "Active", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "Moderation": {"Strategy": "Default"}}'
               />
+              <Note>
+                <InlineCode>Status=Failed</InlineCode> 时查看{' '}
+                <InlineCode>Error.Code</InlineCode> /{' '}
+                <InlineCode>Error.Message</InlineCode>；
+                <InlineCode>LastInferenceTime</InlineCode>{' '}
+                表示最近提交至视频生成任务的时间，素材未被任务调用时不返回。
+              </Note>
             </>
           ),
         },
@@ -759,7 +846,7 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 method='POST'
                 url={`${siteUrl}/?Action=GetAssetGroup&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"group-20260716105134-zkx8t"}'
+                code='{"Id":"group-20260716105134-zkx8t","ProjectName":"default"}'
               />
               <CodeBlock
                 title='Result'
@@ -780,9 +867,13 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 method='POST'
                 url={`${siteUrl}/?Action=UpdateAsset&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"asset-20260716111338-vwmxj","Name":"新素材名"}'
+                code='{"Id":"asset-20260716111338-vwmxj","Name":"新素材名","ProjectName":"default"}'
               />
-              <CodeBlock title='Result' lang='json' code='{}' />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Id":"asset-20260716111338-vwmxj"}'
+              />
             </>
           ),
         },
@@ -792,14 +883,18 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
           short: 'UpdateAssetGroup',
           body: (
             <>
-              <P>更新素材组名称 / 描述，空字段保持原值。</P>
+              <P>更新素材组名称 / 描述，官方当前仅支持这两个更新字段。</P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=UpdateAssetGroup&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"group-20260716105134-zkx8t","Name":"新组名","Description":"新描述"}'
+                code='{"Id":"group-20260716105134-zkx8t","Name":"新组名","Description":"新描述","ProjectName":"default"}'
               />
-              <CodeBlock title='Result' lang='json' code='{}' />
+              <CodeBlock
+                title='Result'
+                lang='json'
+                code='{"Id":"group-20260716105134-zkx8t"}'
+              />
             </>
           ),
         },
@@ -816,7 +911,7 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 method='POST'
                 url={`${siteUrl}/?Action=DeleteAsset&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"asset-20260716111338-vwmxj"}'
+                code='{"Id":"asset-20260716111338-vwmxj","ProjectName":"default"}'
               />
               <CodeBlock title='Result' lang='json' code='{}' />
             </>
@@ -835,9 +930,13 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 method='POST'
                 url={`${siteUrl}/?Action=DeleteAssetGroup&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"group-20260716105134-zkx8t"}'
+                code='{"Id":"group-20260716105134-zkx8t","ProjectName":"default"}'
               />
               <CodeBlock title='Result' lang='json' code='{}' />
+              <Note>
+                官方定义成功响应为空对象；部分上游可能额外返回{' '}
+                <InlineCode>Id</InlineCode>，调用方不应依赖该字段。
+              </Note>
             </>
           ),
         },
