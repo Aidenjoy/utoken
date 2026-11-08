@@ -5,22 +5,49 @@ import (
 	"errors"
 	"strconv"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // 素材组默认值（对齐火山方舟官方 CreateAssetGroup 的缺省语义）。
 const (
-	AssetGroupTypeDefault   = "AIGC"
-	AssetProjectNameDefault = "default"
+	AssetGroupTypeDefault      = "AIGC"
+	AssetGroupTypeLivenessFace = "LivenessFace"
+	AssetProjectNameDefault    = "default"
 )
 
 // 游标分页参数（官方兼容 API 的 NextToken / MaxResults）。
 const (
-	assetCursorDefaultLimit = 20
+	assetCursorDefaultLimit = 10
 	assetCursorMaxLimit     = 100
 )
 
 // ErrInvalidCursor 对外游标（NextToken）非法，控制器据此返回 400。
 var ErrInvalidCursor = errors.New("invalid next token")
+
+// AssetListQuery 是素材与素材组共用的官方列表查询条件。
+// PageNumber/PageSize 同时为正表示页码分页，否则使用 NextToken/MaxResults 游标分页。
+type AssetListQuery struct {
+	GroupIDs    []string
+	Statuses    []string
+	NameFuzzy   string
+	GroupType   string
+	ProjectName string
+	SortBy      string
+	SortOrder   string
+	MaxResults  int
+	NextToken   string
+	PageNumber  int
+	PageSize    int
+}
+
+// AssetListMeta 携带两种分页各自允许暴露的响应字段。
+type AssetListMeta struct {
+	NextToken  string
+	PageNumber int
+	PageSize   int
+	TotalCount int64
+}
 
 // AssetGroup 本地素材组登记。组与「用户 × 上游渠道」绑定：
 // CreateAsset 必须落到建组时的同一 ChannelID，保证与上游同一账号。
@@ -42,12 +69,11 @@ func (AssetGroup) TableName() string {
 	return "asset_groups"
 }
 
-// encodeAssetCursor 把自增 ID 编码为对外游标（base64），供官方兼容 API 的 NextToken 使用。
-func encodeAssetCursor(id int64) string {
-	return base64.URLEncoding.EncodeToString([]byte(strconv.FormatInt(id, 10)))
+// encodeAssetCursor 把下一页偏移编码为不透明的对外游标。
+func encodeAssetCursor(offset int64) string {
+	return base64.URLEncoding.EncodeToString([]byte(strconv.FormatInt(offset, 10)))
 }
 
-// decodeAssetCursor 解析游标为「id < cursor」的上界；空游标返回 0（表示从头开始）。
 func decodeAssetCursor(token string) (int64, error) {
 	if token == "" {
 		return 0, nil
@@ -56,14 +82,13 @@ func decodeAssetCursor(token string) (int64, error) {
 	if err != nil {
 		return 0, ErrInvalidCursor
 	}
-	id, err := strconv.ParseInt(string(raw), 10, 64)
-	if err != nil || id < 0 {
+	offset, err := strconv.ParseInt(string(raw), 10, 64)
+	if err != nil || offset < 0 || offset > int64(^uint(0)>>1) {
 		return 0, ErrInvalidCursor
 	}
-	return id, nil
+	return offset, nil
 }
 
-// normalizeAssetLimit 归一化分页大小：默认 20，上限 100。
 func normalizeAssetLimit(maxResults int) int {
 	if maxResults <= 0 {
 		return assetCursorDefaultLimit
@@ -87,38 +112,65 @@ func (g *AssetGroup) Insert() error {
 	return DB.Create(g).Error
 }
 
-// GetUserAssetGroups 按归属列出用户的素材组：user_id 过滤 + 可选 group_id IN +
-// 可选 name 模糊 + id desc 游标分页。返回结果与下一页游标（无更多则空串）。
-func GetUserAssetGroups(userId int, groupIDs []string, nameFuzzy string, maxResults int, nextToken string) ([]*AssetGroup, string, error) {
-	limit := normalizeAssetLimit(maxResults)
-	cursor, err := decodeAssetCursor(nextToken)
-	if err != nil {
-		return nil, "", err
+// GetUserAssetGroups 在用户归属范围内执行官方过滤、排序和两种互斥分页。
+func GetUserAssetGroups(userId int, list AssetListQuery) ([]*AssetGroup, AssetListMeta, error) {
+	query := DB.Model(&AssetGroup{}).Where("user_id = ?", userId)
+	if list.GroupType != "" {
+		query = query.Where("group_type = ?", list.GroupType)
 	}
-	query := DB.Where("user_id = ?", userId)
-	if len(groupIDs) > 0 {
-		query = query.Where("group_id IN ?", groupIDs)
+	if list.ProjectName == AssetProjectNameDefault {
+		query = query.Where("(project_name = ? OR project_name = '' OR project_name IS NULL)", AssetProjectNameDefault)
+	} else if list.ProjectName != "" {
+		query = query.Where("project_name = ?", list.ProjectName)
 	}
-	if nameFuzzy != "" {
-		pattern, err := sanitizeLikePattern(nameFuzzy)
+	if len(list.GroupIDs) > 0 {
+		query = query.Where("group_id IN ?", list.GroupIDs)
+	}
+	if list.NameFuzzy != "" {
+		pattern, err := sanitizeLikePattern(list.NameFuzzy)
 		if err != nil {
-			return nil, "", err
+			return nil, AssetListMeta{}, err
 		}
 		query = query.Where("name LIKE ? ESCAPE '!'", "%"+pattern+"%")
 	}
-	if cursor > 0 {
-		query = query.Where("id < ?", cursor)
+	direction := "desc"
+	if list.SortOrder == "Asc" {
+		direction = "asc"
 	}
-	var groups []*AssetGroup
-	if err := query.Order("id desc").Limit(limit + 1).Find(&groups).Error; err != nil {
-		return nil, "", err
+	query = query.Order("created_at " + direction + ", id " + direction)
+	return findAssetListPage[AssetGroup](query, list)
+}
+
+// findAssetListPage 执行官方列表分页；页码模式返回总数，游标模式只返回下一页令牌。
+func findAssetListPage[T any](query *gorm.DB, list AssetListQuery) ([]*T, AssetListMeta, error) {
+	if list.PageNumber > 0 || list.PageSize > 0 {
+		var total int64
+		if err := query.Count(&total).Error; err != nil {
+			return nil, AssetListMeta{}, err
+		}
+		var items []*T
+		offset := (list.PageNumber - 1) * list.PageSize
+		if err := query.Offset(offset).Limit(list.PageSize).Find(&items).Error; err != nil {
+			return nil, AssetListMeta{}, err
+		}
+		return items, AssetListMeta{PageNumber: list.PageNumber, PageSize: list.PageSize, TotalCount: total}, nil
 	}
-	next := ""
-	if len(groups) > limit {
-		groups = groups[:limit]
-		next = encodeAssetCursor(groups[len(groups)-1].ID)
+
+	offset, err := decodeAssetCursor(list.NextToken)
+	if err != nil {
+		return nil, AssetListMeta{}, err
 	}
-	return groups, next, nil
+	limit := normalizeAssetLimit(list.MaxResults)
+	var items []*T
+	if err := query.Offset(int(offset)).Limit(limit + 1).Find(&items).Error; err != nil {
+		return nil, AssetListMeta{}, err
+	}
+	meta := AssetListMeta{}
+	if len(items) > limit {
+		items = items[:limit]
+		meta.NextToken = encodeAssetCursor(offset + int64(limit))
+	}
+	return items, meta, nil
 }
 
 // GetAssetGroupByUserAndGroupID 按「用户 + 上游组 ID」精确查询；未命中返回 gorm.ErrRecordNotFound。

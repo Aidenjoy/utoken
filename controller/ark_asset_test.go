@@ -104,6 +104,8 @@ type arkAssetResult struct {
 	Moderation  struct {
 		Strategy string `json:"Strategy"`
 	} `json:"Moderation"`
+	Error             *arkAssetError `json:"Error"`
+	LastInferenceTime string         `json:"LastInferenceTime"`
 }
 
 type arkGroupResult struct {
@@ -117,13 +119,19 @@ type arkGroupResult struct {
 }
 
 type arkListAssetsResult struct {
-	Items     []arkAssetResult `json:"Items"`
-	NextToken string           `json:"NextToken"`
+	Items      []arkAssetResult `json:"Items"`
+	NextToken  string           `json:"NextToken"`
+	PageNumber int              `json:"PageNumber"`
+	PageSize   int              `json:"PageSize"`
+	TotalCount int64            `json:"TotalCount"`
 }
 
 type arkListGroupResult struct {
-	Items     []arkGroupResult `json:"Items"`
-	NextToken string           `json:"NextToken"`
+	Items      []arkGroupResult `json:"Items"`
+	NextToken  string           `json:"NextToken"`
+	PageNumber int              `json:"PageNumber"`
+	PageSize   int              `json:"PageSize"`
+	TotalCount int64            `json:"TotalCount"`
 }
 
 // insertArkAsset 直接落一条本地素材记录（绕过上游），用于隔离/映射断言。
@@ -242,12 +250,16 @@ func TestRelayArkAssetActionEcloudProtocolCompatibility(t *testing.T) {
 	require.NoError(t, common.Unmarshal(env.Result, &createdAsset))
 	assert.Equal(t, "asset-mobile", createdAsset.Id)
 
-	invoke(arkActionUpdateAsset, map[string]any{"Id": createdAsset.Id, "Name": "asset-renamed", "ProjectName": projectName})
-	invoke(arkActionUpdateAssetGroup, map[string]any{
+	env = invoke(arkActionUpdateAsset, map[string]any{"Id": createdAsset.Id, "Name": "asset-renamed", "ProjectName": projectName})
+	assert.JSONEq(t, `{"Id":"asset-mobile"}`, string(env.Result))
+	env = invoke(arkActionUpdateAssetGroup, map[string]any{
 		"Id": createdGroup.Id, "Name": "group-renamed", "Description": "description-renamed", "ProjectName": projectName,
 	})
+	assert.JSONEq(t, `{"Id":"group-mobile"}`, string(env.Result))
 
-	env = invoke(arkActionListAssetGroups, map[string]any{})
+	env = invoke(arkActionListAssetGroups, map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"}, "ProjectName": projectName,
+	})
 	var groups arkListGroupResult
 	require.NoError(t, common.Unmarshal(env.Result, &groups))
 	require.Len(t, groups.Items, 1)
@@ -255,7 +267,9 @@ func TestRelayArkAssetActionEcloudProtocolCompatibility(t *testing.T) {
 	assert.Equal(t, "description-renamed", groups.Items[0].Description)
 	assert.Equal(t, projectName, groups.Items[0].ProjectName)
 
-	env = invoke(arkActionListAssets, map[string]any{})
+	env = invoke(arkActionListAssets, map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"}, "ProjectName": projectName,
+	})
 	var assets arkListAssetsResult
 	require.NoError(t, common.Unmarshal(env.Result, &assets))
 	require.Len(t, assets.Items, 1)
@@ -343,6 +357,191 @@ func TestRelayArkAssetAction_ValidationError(t *testing.T) {
 	}
 }
 
+func TestRelayArkAssetActionListOfficialValidation(t *testing.T) {
+	setupArkAssetControllerDB(t)
+	filter := map[string]any{"GroupType": "AIGC"}
+	cases := []struct {
+		name   string
+		action string
+		body   any
+	}{
+		{"groups missing Filter", arkActionListAssetGroups, map[string]any{}},
+		{"assets missing Filter", arkActionListAssets, nil},
+		{"missing GroupType", arkActionListAssets, map[string]any{"Filter": map[string]any{}}},
+		{"invalid GroupType", arkActionListAssetGroups, map[string]any{"Filter": map[string]any{"GroupType": "Other"}}},
+		{"zero MaxResults", arkActionListAssets, map[string]any{"Filter": filter, "MaxResults": 0}},
+		{"large MaxResults", arkActionListAssetGroups, map[string]any{"Filter": filter, "MaxResults": 101}},
+		{"PageNumber without PageSize", arkActionListAssets, map[string]any{"Filter": filter, "PageNumber": 1}},
+		{"PageSize without PageNumber", arkActionListAssetGroups, map[string]any{"Filter": filter, "PageSize": 10}},
+		{"invalid PageNumber", arkActionListAssets, map[string]any{"Filter": filter, "PageNumber": 0, "PageSize": 10}},
+		{"invalid PageSize", arkActionListAssetGroups, map[string]any{"Filter": filter, "PageNumber": 1, "PageSize": 101}},
+		{"mixed pagination", arkActionListAssets, map[string]any{"Filter": filter, "PageNumber": 1, "PageSize": 10, "MaxResults": 10}},
+		{"mixed token and page", arkActionListAssetGroups, map[string]any{"Filter": filter, "PageNumber": 1, "PageSize": 10, "NextToken": "MA=="}},
+		{"groups sort by GroupId", arkActionListAssetGroups, map[string]any{"Filter": filter, "SortBy": "GroupId"}},
+		{"assets sort by UpdateTime", arkActionListAssets, map[string]any{"Filter": filter, "SortBy": "UpdateTime"}},
+		{"invalid SortOrder", arkActionListAssets, map[string]any{"Filter": filter, "SortOrder": "ascending"}},
+		{"groups deep paging", arkActionListAssetGroups, map[string]any{"Filter": filter, "PageNumber": 1001, "PageSize": 10}},
+		{"assets deep paging", arkActionListAssets, map[string]any{"Filter": filter, "PageNumber": 2001, "PageSize": 10}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, rec := newArkAssetContext(t, tc.action, 1, tc.body)
+			RelayArkAssetAction(ctx)
+			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			env := decodeArkEnvelope(t, rec)
+			require.NotNil(t, env.ResponseMetadata.Error)
+			assert.Equal(t, "InvalidParameter", env.ResponseMetadata.Error.Code)
+		})
+	}
+}
+
+func TestRelayArkAssetActionListAssetGroupsOfficialPagination(t *testing.T) {
+	db := setupArkAssetControllerDB(t)
+	const userID = 71
+	for i := 1; i <= 12; i++ {
+		require.NoError(t, db.Create(&model.AssetGroup{
+			UserID: userID, ChannelID: 1, GroupID: fmt.Sprintf("g-%02d", i), Name: fmt.Sprintf("group-%02d", i),
+			GroupType: model.AssetGroupTypeDefault, ProjectName: model.AssetProjectNameDefault,
+			CreatedAt: int64(i), UpdatedAt: int64(i),
+		}).Error)
+	}
+	require.NoError(t, db.Create(&model.AssetGroup{
+		UserID: userID, ChannelID: 1, GroupID: "g-other-project", Name: "other-project",
+		GroupType: model.AssetGroupTypeDefault, ProjectName: "project-x",
+	}).Error)
+	require.NoError(t, db.Create(&model.AssetGroup{
+		UserID: userID, ChannelID: 1, GroupID: "g-live", Name: "live",
+		GroupType: model.AssetGroupTypeLivenessFace, ProjectName: model.AssetProjectNameDefault,
+	}).Error)
+
+	invoke := func(body any) (arkEnvelope, *httptest.ResponseRecorder) {
+		ctx, rec := newArkAssetContext(t, arkActionListAssetGroups, userID, body)
+		RelayArkAssetAction(ctx)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		return decodeArkEnvelope(t, rec), rec
+	}
+
+	env, rec := invoke(map[string]any{"Filter": map[string]any{"GroupType": "AIGC"}})
+	var first arkListGroupResult
+	require.NoError(t, common.Unmarshal(env.Result, &first))
+	require.Len(t, first.Items, 10, "游标分页默认 MaxResults 应为 10")
+	assert.Equal(t, "g-12", first.Items[0].Id)
+	assert.Equal(t, "g-03", first.Items[9].Id)
+	assert.NotEmpty(t, first.NextToken)
+	assert.NotContains(t, rec.Body.String(), `"PageNumber"`)
+	assert.NotContains(t, rec.Body.String(), `"TotalCount"`)
+
+	env, rec = invoke(map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"}, "NextToken": first.NextToken,
+	})
+	var second arkListGroupResult
+	require.NoError(t, common.Unmarshal(env.Result, &second))
+	require.Len(t, second.Items, 2)
+	assert.Equal(t, "g-02", second.Items[0].Id)
+	assert.Equal(t, "g-01", second.Items[1].Id)
+	assert.Empty(t, second.NextToken)
+	assert.NotContains(t, rec.Body.String(), `"NextToken"`)
+
+	env, rec = invoke(map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"}, "PageNumber": 2, "PageSize": 5, "SortOrder": "Asc",
+	})
+	var paged arkListGroupResult
+	require.NoError(t, common.Unmarshal(env.Result, &paged))
+	require.Len(t, paged.Items, 5)
+	assert.Equal(t, "g-06", paged.Items[0].Id)
+	assert.Equal(t, "g-10", paged.Items[4].Id)
+	assert.Equal(t, 2, paged.PageNumber)
+	assert.Equal(t, 5, paged.PageSize)
+	assert.EqualValues(t, 12, paged.TotalCount)
+	assert.NotContains(t, rec.Body.String(), `"NextToken"`)
+
+	env, _ = invoke(map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"}, "ProjectName": "project-x",
+	})
+	var projectGroups arkListGroupResult
+	require.NoError(t, common.Unmarshal(env.Result, &projectGroups))
+	require.Len(t, projectGroups.Items, 1)
+	assert.Equal(t, "g-other-project", projectGroups.Items[0].Id)
+
+	env, _ = invoke(map[string]any{"Filter": map[string]any{"GroupType": "LivenessFace"}})
+	var liveGroups arkListGroupResult
+	require.NoError(t, common.Unmarshal(env.Result, &liveGroups))
+	require.Len(t, liveGroups.Items, 1)
+	assert.Equal(t, "g-live", liveGroups.Items[0].Id)
+}
+
+func TestRelayArkAssetActionListAssetsOfficialFiltersAndSorting(t *testing.T) {
+	db := setupArkAssetControllerDB(t)
+	const userID = 72
+	groups := []model.AssetGroup{
+		{UserID: userID, ChannelID: 1, GroupID: "g-a", Name: "a", GroupType: model.AssetGroupTypeDefault, ProjectName: model.AssetProjectNameDefault},
+		{UserID: userID, ChannelID: 1, GroupID: "g-b", Name: "b", GroupType: model.AssetGroupTypeDefault, ProjectName: model.AssetProjectNameDefault},
+		{UserID: userID, ChannelID: 1, GroupID: "g-live", Name: "live", GroupType: model.AssetGroupTypeLivenessFace, ProjectName: model.AssetProjectNameDefault},
+		{UserID: userID, ChannelID: 1, GroupID: "g-other", Name: "other", GroupType: model.AssetGroupTypeDefault, ProjectName: "project-x"},
+	}
+	for i := range groups {
+		require.NoError(t, db.Create(&groups[i]).Error)
+	}
+	assets := []model.Asset{
+		{UserID: userID, ChannelID: 1, AssetID: "asset-b", GroupID: "g-b", Name: "b", AssetType: model.AssetTypeImage, Status: model.AssetStatusActive, ProjectName: model.AssetProjectNameDefault, CreatedAt: 1},
+		{UserID: userID, ChannelID: 1, AssetID: "asset-a", GroupID: "g-a", Name: "a", AssetType: model.AssetTypeImage, Status: model.AssetStatusActive, ProjectName: model.AssetProjectNameDefault, CreatedAt: 2},
+		{UserID: userID, ChannelID: 1, AssetID: "asset-live", GroupID: "g-live", Name: "live", AssetType: model.AssetTypeImage, Status: model.AssetStatusActive, ProjectName: model.AssetProjectNameDefault, CreatedAt: 3},
+		{UserID: userID, ChannelID: 1, AssetID: "asset-other", GroupID: "g-other", Name: "other", AssetType: model.AssetTypeImage, Status: model.AssetStatusActive, ProjectName: "project-x", CreatedAt: 4},
+	}
+	for i := range assets {
+		require.NoError(t, db.Create(&assets[i]).Error)
+	}
+
+	invoke := func(body any) arkListAssetsResult {
+		ctx, rec := newArkAssetContext(t, arkActionListAssets, userID, body)
+		RelayArkAssetAction(ctx)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		env := decodeArkEnvelope(t, rec)
+		var result arkListAssetsResult
+		require.NoError(t, common.Unmarshal(env.Result, &result))
+		return result
+	}
+
+	sorted := invoke(map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"}, "SortBy": "GroupId", "SortOrder": "Asc",
+	})
+	require.Len(t, sorted.Items, 2)
+	assert.Equal(t, "asset-a", sorted.Items[0].Id)
+	assert.Equal(t, "asset-b", sorted.Items[1].Id)
+
+	live := invoke(map[string]any{"Filter": map[string]any{"GroupType": "LivenessFace"}})
+	require.Len(t, live.Items, 1)
+	assert.Equal(t, "asset-live", live.Items[0].Id)
+
+	project := invoke(map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"}, "ProjectName": "project-x",
+	})
+	require.Len(t, project.Items, 1)
+	assert.Equal(t, "asset-other", project.Items[0].Id)
+}
+
+func TestRelayArkAssetActionGetAssetErrorAndLastInferenceTime(t *testing.T) {
+	setupArkAssetControllerDB(t)
+	const userID = 73
+	asset := &model.Asset{
+		UserID: userID, ChannelID: 1, AssetID: "asset-failed", GroupID: "g", Name: "failed",
+		AssetType: model.AssetTypeImage, Status: model.AssetStatusFailed, ProjectName: model.AssetProjectNameDefault,
+		ErrorCode: "InvalidAsset", ErrorMsg: "unsupported frame rate", LastInferenceAt: 1700000000,
+	}
+	require.NoError(t, asset.Insert())
+
+	ctx, rec := newArkAssetContext(t, arkActionGetAsset, userID, map[string]any{"Id": asset.AssetID})
+	RelayArkAssetAction(ctx)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	env := decodeArkEnvelope(t, rec)
+	var got arkAssetResult
+	require.NoError(t, common.Unmarshal(env.Result, &got))
+	require.NotNil(t, got.Error)
+	assert.Equal(t, "InvalidAsset", got.Error.Code)
+	assert.Equal(t, "unsupported frame rate", got.Error.Message)
+	assert.Equal(t, "2023-11-14T22:13:20Z", got.LastInferenceTime)
+}
+
 // TestRelayArkAssetAction_GetAssetIsolationAndMapping 本人 active 素材返回官方信封与
 // Active 状态；跨用户查同一素材 ID 一律 NotFound（即使本地存在），杜绝跨租户读取。
 func TestRelayArkAssetAction_GetAssetIsolationAndMapping(t *testing.T) {
@@ -397,8 +596,11 @@ func TestRelayArkAssetAction_ListAssetsStatusMapping(t *testing.T) {
 	// pending 素材会触发 refreshPendingAssets，但渠道 913 不存在 → 刷新空转 → 仍为 Processing。
 	insertArkAsset(t, owner, 913, "asset-pending", "grp", "c", model.AssetStatusPending)
 	insertArkAsset(t, other, 914, "asset-other", "grp", "d", model.AssetStatusActive)
+	require.NoError(t, (&model.AssetGroup{UserID: owner, ChannelID: 911, GroupID: "grp", Name: "grp"}).Insert())
 
-	ctx, rec := newArkAssetContext(t, arkActionListAssets, owner, map[string]any{})
+	ctx, rec := newArkAssetContext(t, arkActionListAssets, owner, map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"},
+	})
 	RelayArkAssetAction(ctx)
 	require.Equal(t, http.StatusOK, rec.Code)
 	env := decodeArkEnvelope(t, rec)
@@ -425,7 +627,9 @@ func TestRelayArkAssetAction_ListAssetGroupsIsolation(t *testing.T) {
 	require.NoError(t, (&model.AssetGroup{UserID: owner, ChannelID: 1, GroupID: "g-owner", Name: "我的组"}).Insert())
 	require.NoError(t, (&model.AssetGroup{UserID: other, ChannelID: 2, GroupID: "g-other", Name: "他人组"}).Insert())
 
-	ctx, rec := newArkAssetContext(t, arkActionListAssetGroups, owner, map[string]any{})
+	ctx, rec := newArkAssetContext(t, arkActionListAssetGroups, owner, map[string]any{
+		"Filter": map[string]any{"GroupType": "AIGC"},
+	})
 	RelayArkAssetAction(ctx)
 	require.Equal(t, http.StatusOK, rec.Code)
 	env := decodeArkEnvelope(t, rec)
@@ -518,10 +722,10 @@ func TestRelayArkAssetAction_MutateNotFound(t *testing.T) {
 	}
 
 	// other 的资源未被上述越权操作改动
-	remain, _, err := model.GetUserAssetsFiltered(other, nil, nil, "", 0, "")
+	remain, _, err := model.GetUserAssetsFiltered(other, model.AssetListQuery{})
 	require.NoError(t, err)
 	assert.Len(t, remain, 1)
-	remainGroups, _, err := model.GetUserAssetGroups(other, nil, "", 0, "")
+	remainGroups, _, err := model.GetUserAssetGroups(other, model.AssetListQuery{})
 	require.NoError(t, err)
 	assert.Len(t, remainGroups, 1)
 }

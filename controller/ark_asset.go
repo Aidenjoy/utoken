@@ -57,13 +57,14 @@ type arkAssetFilter struct {
 }
 
 type arkListReq struct {
-	Filter     *arkAssetFilter `json:"Filter,omitempty"`
-	MaxResults *int            `json:"MaxResults,omitempty"`
-	SortBy     *string         `json:"SortBy,omitempty"`
-	SortOrder  *string         `json:"SortOrder,omitempty"`
-	NextToken  *string         `json:"NextToken,omitempty"`
-	PageNumber *int            `json:"PageNumber,omitempty"`
-	PageSize   *int            `json:"PageSize,omitempty"`
+	Filter      *arkAssetFilter `json:"Filter,omitempty"`
+	MaxResults  *int            `json:"MaxResults,omitempty"`
+	SortBy      *string         `json:"SortBy,omitempty"`
+	SortOrder   *string         `json:"SortOrder,omitempty"`
+	NextToken   *string         `json:"NextToken,omitempty"`
+	PageNumber  *int            `json:"PageNumber,omitempty"`
+	PageSize    *int            `json:"PageSize,omitempty"`
+	ProjectName *string         `json:"ProjectName,omitempty"`
 }
 
 type arkCreateAssetGroupReq struct {
@@ -95,17 +96,24 @@ type arkModeration struct {
 	Strategy string `json:"Strategy"`
 }
 
+type arkAssetError struct {
+	Code    string `json:"Code"`
+	Message string `json:"Message"`
+}
+
 type arkAssetItem struct {
-	Id          string        `json:"Id"`
-	Name        string        `json:"Name"`
-	AssetType   string        `json:"AssetType"`
-	CreateTime  string        `json:"CreateTime"`
-	UpdateTime  string        `json:"UpdateTime"`
-	ProjectName string        `json:"ProjectName"`
-	URL         string        `json:"URL"`
-	GroupId     string        `json:"GroupId"`
-	Status      string        `json:"Status"`
-	Moderation  arkModeration `json:"Moderation"`
+	Id                string         `json:"Id"`
+	Name              string         `json:"Name"`
+	AssetType         string         `json:"AssetType"`
+	CreateTime        string         `json:"CreateTime"`
+	UpdateTime        string         `json:"UpdateTime"`
+	ProjectName       string         `json:"ProjectName"`
+	URL               string         `json:"URL"`
+	GroupId           string         `json:"GroupId"`
+	Status            string         `json:"Status"`
+	Moderation        arkModeration  `json:"Moderation"`
+	Error             *arkAssetError `json:"Error,omitempty"`
+	LastInferenceTime string         `json:"LastInferenceTime,omitempty"`
 }
 
 type arkAssetGroupItem struct {
@@ -137,11 +145,77 @@ func arkDeref(p *string) string {
 	return *p
 }
 
-func arkDerefInt(p *int) int {
-	if p == nil {
-		return 0
+// officialQuery 校验并转换官方列表参数；allowGroupIDSort 仅 ListAssets 开启。
+func (r *arkListReq) officialQuery(allowGroupIDSort bool, deepPageLimit int) (model.AssetListQuery, error) {
+	if r.Filter == nil {
+		return model.AssetListQuery{}, errors.New("Filter is required")
 	}
-	return *p
+	groupType := strings.TrimSpace(arkDeref(r.Filter.GroupType))
+	if groupType == "" {
+		return model.AssetListQuery{}, errors.New("Filter.GroupType is required")
+	}
+	if groupType != model.AssetGroupTypeDefault && groupType != model.AssetGroupTypeLivenessFace {
+		return model.AssetListQuery{}, errors.New("Filter.GroupType must be AIGC or LivenessFace")
+	}
+
+	sortBy := strings.TrimSpace(arkDeref(r.SortBy))
+	if sortBy == "" {
+		sortBy = "CreateTime"
+	}
+	if sortBy != "CreateTime" && (!allowGroupIDSort || sortBy != "GroupId") {
+		return model.AssetListQuery{}, errors.New("unsupported SortBy")
+	}
+	sortOrder := strings.TrimSpace(arkDeref(r.SortOrder))
+	if sortOrder == "" {
+		sortOrder = "Desc"
+	}
+	if sortOrder != "Desc" && sortOrder != "Asc" {
+		return model.AssetListQuery{}, errors.New("SortOrder must be Desc or Asc")
+	}
+	projectName := strings.TrimSpace(arkDeref(r.ProjectName))
+	if projectName == "" {
+		projectName = model.AssetProjectNameDefault
+	}
+	query := model.AssetListQuery{
+		GroupIDs:    r.Filter.GroupIds,
+		Statuses:    arkLocalStatuses(r.Filter.Statuses),
+		NameFuzzy:   arkDeref(r.Filter.Name),
+		GroupType:   groupType,
+		ProjectName: projectName,
+		SortBy:      sortBy,
+		SortOrder:   sortOrder,
+		NextToken:   arkDeref(r.NextToken),
+	}
+
+	pageMode := r.PageNumber != nil || r.PageSize != nil
+	cursorMode := r.MaxResults != nil || r.NextToken != nil
+	if pageMode && cursorMode {
+		return model.AssetListQuery{}, errors.New("page pagination and cursor pagination are mutually exclusive")
+	}
+	if pageMode {
+		if r.PageNumber == nil || r.PageSize == nil {
+			return model.AssetListQuery{}, errors.New("PageNumber and PageSize must be provided together")
+		}
+		if *r.PageNumber < 1 {
+			return model.AssetListQuery{}, errors.New("PageNumber must be at least 1")
+		}
+		if *r.PageSize < 1 || *r.PageSize > 100 {
+			return model.AssetListQuery{}, errors.New("PageSize must be between 1 and 100")
+		}
+		if *r.PageNumber > deepPageLimit/(*r.PageSize) {
+			return model.AssetListQuery{}, errors.New("page pagination exceeds the deep paging limit")
+		}
+		query.PageNumber = *r.PageNumber
+		query.PageSize = *r.PageSize
+		return query, nil
+	}
+	if r.MaxResults != nil {
+		if *r.MaxResults < 1 || *r.MaxResults > 100 {
+			return model.AssetListQuery{}, errors.New("MaxResults must be between 1 and 100")
+		}
+		query.MaxResults = *r.MaxResults
+	}
+	return query, nil
 }
 
 // arkOfficialStatus 本地三态 → 官方词表（active→Active、pending→Processing、failed→Failed）。
@@ -184,7 +258,7 @@ func arkAssetURL(a *model.Asset) string {
 }
 
 func newArkAssetItem(a *model.Asset) arkAssetItem {
-	return arkAssetItem{
+	item := arkAssetItem{
 		Id:          a.AssetID,
 		Name:        a.Name,
 		AssetType:   a.AssetType,
@@ -196,6 +270,17 @@ func newArkAssetItem(a *model.Asset) arkAssetItem {
 		Status:      arkOfficialStatus(a.Status),
 		Moderation:  arkModeration{Strategy: arkModerationStrategyDefault},
 	}
+	if a.Status == model.AssetStatusFailed || a.ErrorMsg != "" {
+		code := a.ErrorCode
+		if code == "" {
+			code = "AssetProcessingFailed"
+		}
+		item.Error = &arkAssetError{Code: code, Message: a.ErrorMsg}
+	}
+	if a.LastInferenceAt > 0 {
+		item.LastInferenceTime = relayAssetTime(a.LastInferenceAt)
+	}
+	return item
 }
 
 func newArkAssetGroupItem(g *model.AssetGroup) arkAssetGroupItem {
@@ -469,13 +554,12 @@ func arkListAssetGroups(c *gin.Context, action, region string, userId int, body 
 			return
 		}
 	}
-	var groupIDs []string
-	var nameFuzzy string
-	if req.Filter != nil {
-		groupIDs = req.Filter.GroupIds
-		nameFuzzy = arkDeref(req.Filter.Name)
+	query, err := req.officialQuery(false, 10000)
+	if err != nil {
+		arkErr(c, action, region, http.StatusBadRequest, "InvalidParameter", err.Error())
+		return
 	}
-	groups, next, err := model.GetUserAssetGroups(userId, groupIDs, nameFuzzy, arkDerefInt(req.MaxResults), arkDeref(req.NextToken))
+	groups, meta, err := model.GetUserAssetGroups(userId, query)
 	if err != nil {
 		if arkCursorErr(c, action, region, err) {
 			return
@@ -488,8 +572,13 @@ func arkListAssetGroups(c *gin.Context, action, region string, userId int, body 
 		items = append(items, newArkAssetGroupItem(g))
 	}
 	result := gin.H{"Items": items}
-	if next != "" {
-		result["NextToken"] = next
+	if meta.NextToken != "" {
+		result["NextToken"] = meta.NextToken
+	}
+	if meta.PageNumber > 0 {
+		result["PageNumber"] = meta.PageNumber
+		result["PageSize"] = meta.PageSize
+		result["TotalCount"] = meta.TotalCount
 	}
 	arkOK(c, action, region, result)
 }
@@ -502,14 +591,12 @@ func arkListAssets(c *gin.Context, action, region string, userId int, body []byt
 			return
 		}
 	}
-	var groupIDs, statuses []string
-	var nameFuzzy string
-	if req.Filter != nil {
-		groupIDs = req.Filter.GroupIds
-		statuses = arkLocalStatuses(req.Filter.Statuses)
-		nameFuzzy = arkDeref(req.Filter.Name)
+	query, err := req.officialQuery(true, 20000)
+	if err != nil {
+		arkErr(c, action, region, http.StatusBadRequest, "InvalidParameter", err.Error())
+		return
 	}
-	assets, next, err := model.GetUserAssetsFiltered(userId, groupIDs, statuses, nameFuzzy, arkDerefInt(req.MaxResults), arkDeref(req.NextToken))
+	assets, meta, err := model.GetUserAssetsFiltered(userId, query)
 	if err != nil {
 		if arkCursorErr(c, action, region, err) {
 			return
@@ -524,8 +611,13 @@ func arkListAssets(c *gin.Context, action, region string, userId int, body []byt
 		items = append(items, newArkAssetItem(a))
 	}
 	result := gin.H{"Items": items}
-	if next != "" {
-		result["NextToken"] = next
+	if meta.NextToken != "" {
+		result["NextToken"] = meta.NextToken
+	}
+	if meta.PageNumber > 0 {
+		result["PageNumber"] = meta.PageNumber
+		result["PageSize"] = meta.PageSize
+		result["TotalCount"] = meta.TotalCount
 	}
 	arkOK(c, action, region, result)
 }
@@ -613,7 +705,7 @@ func arkUpdateAsset(c *gin.Context, action, region string, userId int, body []by
 	if err := model.UpdateAssetName(a.ID, userId, name); err != nil {
 		common.SysError(fmt.Sprintf("[ArkAsset] UpdateAsset persist failed (asset=%d): %v", a.ID, err))
 	}
-	arkOK(c, action, region, gin.H{})
+	arkOK(c, action, region, gin.H{"Id": id})
 }
 
 func arkUpdateAssetGroup(c *gin.Context, action, region string, userId int, body []byte) {
@@ -660,7 +752,7 @@ func arkUpdateAssetGroup(c *gin.Context, action, region string, userId int, body
 	if err := model.UpdateAssetGroupFields(userId, id, newName, newDescription); err != nil {
 		common.SysError(fmt.Sprintf("[ArkAsset] UpdateAssetGroup persist failed (user=%d, group=%s): %v", userId, id, err))
 	}
-	arkOK(c, action, region, gin.H{})
+	arkOK(c, action, region, gin.H{"Id": id})
 }
 
 func arkDeleteAsset(c *gin.Context, action, region string, userId int, body []byte) {

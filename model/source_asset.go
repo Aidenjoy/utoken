@@ -12,9 +12,9 @@ import (
 // SourceAsset 用户上传到自有 TOS 的源素材记录。
 // 源素材不绑定渠道，由用户上传后按需同步到各渠道（见 assets 表的 SourceAssetId）。
 type SourceAsset struct {
-	ID     int64  `json:"id" gorm:"primaryKey"`
-	RefID  string `json:"ref_id" gorm:"type:varchar(64);uniqueIndex"` // 对外稳定引用 asset-<年月日时分秒>-sm<三位数字>，与官方渠道素材同构、以 sm+纯数字后缀区分
-	UserID int    `json:"user_id" gorm:"index"`
+	ID        int64  `json:"id" gorm:"primaryKey"`
+	RefID     string `json:"ref_id" gorm:"type:varchar(64);uniqueIndex"` // 对外稳定引用 asset-<年月日时分秒>-sm<三位数字>，与官方渠道素材同构、以 sm+纯数字后缀区分
+	UserID    int    `json:"user_id" gorm:"index"`
 	Name      string `json:"name" gorm:"type:varchar(191)"`
 	AssetType string `json:"asset_type" gorm:"type:varchar(20)"` // Image/Video/Audio
 	SourceURL string `json:"source_url" gorm:"type:text"`        // 自有 TOS 的永久 URL
@@ -205,13 +205,14 @@ func UpsertChannelAsset(a *Asset) error {
 		a.ID = existing.ID
 		a.CreatedAt = existing.CreatedAt
 		return DB.Model(&Asset{}).Where("id = ?", existing.ID).Updates(map[string]any{
-			"asset_id":    a.AssetID,
-			"status":      a.Status,
-			"source_url":  a.SourceURL,
-			"group_id":    a.GroupID,
+			"asset_id":     a.AssetID,
+			"status":       a.Status,
+			"source_url":   a.SourceURL,
+			"group_id":     a.GroupID,
 			"project_name": a.ProjectName,
-			"error_msg":   "",
-			"updated_at":  time.Now().Unix(),
+			"error_code":   "",
+			"error_msg":    "",
+			"updated_at":   time.Now().Unix(),
 		}).Error
 	}
 	return a.Insert()

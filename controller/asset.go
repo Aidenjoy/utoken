@@ -111,11 +111,12 @@ func refreshPendingAssets(assets []*model.Asset) {
 		}
 		// 上游预览链接带签名时效，落库前转存自有 TOS 换永久地址
 		preview := mirrorAssetPreviewToTOS(a, res.PreviewURL)
-		_ = model.UpdateAssetStatus(a.ID, res.Status, preview, res.ErrorMsg)
+		_ = model.UpdateAssetStatus(a.ID, res.Status, preview, res.ErrorCode, res.ErrorMsg)
 		a.Status = res.Status
 		if preview != "" {
 			a.PreviewURL = preview
 		}
+		a.ErrorCode = res.ErrorCode
 		a.ErrorMsg = res.ErrorMsg
 		// 终端性失败（如帧率/参数不合规）留痕，便于运维定位素材为何不再轮询。
 		if res.Status == model.AssetStatusFailed {
@@ -153,7 +154,7 @@ func remirrorExternalPreviews(assets []*model.Asset) {
 		if mirrored == res.PreviewURL {
 			continue
 		}
-		if err := model.UpdateAssetStatus(a.ID, a.Status, mirrored, a.ErrorMsg); err != nil {
+		if err := model.UpdateAssetStatus(a.ID, a.Status, mirrored, a.ErrorCode, a.ErrorMsg); err != nil {
 			common.SysLog(fmt.Sprintf("[Asset] remirror persist failed (asset=%d): %v", a.ID, err))
 			continue
 		}

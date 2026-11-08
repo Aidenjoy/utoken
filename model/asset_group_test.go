@@ -21,6 +21,20 @@ func setupAssetGroupFixture(t *testing.T) {
 	t.Cleanup(cleanup)
 }
 
+func getUserAssetGroupsForTest(userId int, groupIDs []string, nameFuzzy string, maxResults int, nextToken string) ([]*AssetGroup, string, error) {
+	groups, meta, err := GetUserAssetGroups(userId, AssetListQuery{
+		GroupIDs: groupIDs, NameFuzzy: nameFuzzy, MaxResults: maxResults, NextToken: nextToken,
+	})
+	return groups, meta.NextToken, err
+}
+
+func getUserAssetsFilteredForTest(userId int, groupIDs []string, statuses []string, nameFuzzy string, maxResults int, nextToken string) ([]*Asset, string, error) {
+	assets, meta, err := GetUserAssetsFiltered(userId, AssetListQuery{
+		GroupIDs: groupIDs, Statuses: statuses, NameFuzzy: nameFuzzy, MaxResults: maxResults, NextToken: nextToken,
+	})
+	return assets, meta.NextToken, err
+}
+
 // TestGetUserAssetGroupsIsolation 多租户隔离铁律：ListAssetGroups 只返回调用者
 // 自己创建的组，即使其他用户的组 ID 与查询条件相同也不泄露。
 func TestGetUserAssetGroupsIsolation(t *testing.T) {
@@ -31,7 +45,7 @@ func TestGetUserAssetGroupsIsolation(t *testing.T) {
 	require.NoError(t, (&AssetGroup{UserID: userA, ChannelID: 1, GroupID: "group-a2", Name: "甲的另一组"}).Insert())
 	require.NoError(t, (&AssetGroup{UserID: userB, ChannelID: 2, GroupID: "group-b1", Name: "乙的素材组"}).Insert())
 
-	gotA, next, err := GetUserAssetGroups(userA, nil, "", 0, "")
+	gotA, next, err := getUserAssetGroupsForTest(userA, nil, "", 0, "")
 	require.NoError(t, err)
 	assert.Empty(t, next)
 	require.Len(t, gotA, 2)
@@ -40,13 +54,13 @@ func TestGetUserAssetGroupsIsolation(t *testing.T) {
 		assert.Contains(t, []string{"group-a1", "group-a2"}, g.GroupID)
 	}
 
-	gotB, _, err := GetUserAssetGroups(userB, nil, "", 0, "")
+	gotB, _, err := getUserAssetGroupsForTest(userB, nil, "", 0, "")
 	require.NoError(t, err)
 	require.Len(t, gotB, 1)
 	assert.Equal(t, "group-b1", gotB[0].GroupID)
 
 	// 即便 A 显式传入 B 的组 ID，也查不到（group_id IN 先经 user_id 过滤）。
-	gotA2, _, err := GetUserAssetGroups(userA, []string{"group-b1"}, "", 0, "")
+	gotA2, _, err := getUserAssetGroupsForTest(userA, []string{"group-b1"}, "", 0, "")
 	require.NoError(t, err)
 	assert.Empty(t, gotA2)
 }
@@ -62,18 +76,18 @@ func TestGetUserAssetGroupsFilters(t *testing.T) {
 	require.NoError(t, (&AssetGroup{UserID: user, ChannelID: 1, GroupID: "g-3", Name: "a_b"}).Insert())
 	require.NoError(t, (&AssetGroup{UserID: user, ChannelID: 1, GroupID: "g-4", Name: "axb"}).Insert())
 
-	byID, _, err := GetUserAssetGroups(user, []string{"g-2"}, "", 0, "")
+	byID, _, err := getUserAssetGroupsForTest(user, []string{"g-2"}, "", 0, "")
 	require.NoError(t, err)
 	require.Len(t, byID, 1)
 	assert.Equal(t, "g-2", byID[0].GroupID)
 
-	byName, _, err := GetUserAssetGroups(user, nil, "lion", 0, "")
+	byName, _, err := getUserAssetGroupsForTest(user, nil, "lion", 0, "")
 	require.NoError(t, err)
 	require.Len(t, byName, 1)
 	assert.Equal(t, "g-1", byName[0].GroupID)
 
 	// "_" 转义后只匹配字面下划线的 "a_b"；若未转义则会当单字符通配误中 "axb"。
-	byUnderscore, _, err := GetUserAssetGroups(user, nil, "_", 0, "")
+	byUnderscore, _, err := getUserAssetGroupsForTest(user, nil, "_", 0, "")
 	require.NoError(t, err)
 	require.Len(t, byUnderscore, 1)
 	assert.Equal(t, "g-3", byUnderscore[0].GroupID)
@@ -92,7 +106,7 @@ func TestGetUserAssetGroupsPagination(t *testing.T) {
 	require.NoError(t, g2.Insert())
 	require.NoError(t, g3.Insert())
 
-	page1, next, err := GetUserAssetGroups(user, nil, "", 2, "")
+	page1, next, err := getUserAssetGroupsForTest(user, nil, "", 2, "")
 	require.NoError(t, err)
 	require.Len(t, page1, 2)
 	assert.NotEmpty(t, next)
@@ -100,7 +114,7 @@ func TestGetUserAssetGroupsPagination(t *testing.T) {
 	assert.Equal(t, g3.ID, page1[0].ID)
 	assert.Equal(t, g2.ID, page1[1].ID)
 
-	page2, next2, err := GetUserAssetGroups(user, nil, "", 2, next)
+	page2, next2, err := getUserAssetGroupsForTest(user, nil, "", 2, next)
 	require.NoError(t, err)
 	require.Len(t, page2, 1)
 	assert.Empty(t, next2)
@@ -111,7 +125,7 @@ func TestGetUserAssetGroupsPagination(t *testing.T) {
 func TestGetUserAssetGroupsInvalidCursor(t *testing.T) {
 	setupAssetGroupFixture(t)
 
-	_, _, err := GetUserAssetGroups(1, nil, "", 0, "!!!not-base64!!!")
+	_, _, err := getUserAssetGroupsForTest(1, nil, "", 0, "!!!not-base64!!!")
 	assert.ErrorIs(t, err, ErrInvalidCursor)
 }
 
@@ -126,7 +140,7 @@ func TestGetUserAssetsFilteredIsolation(t *testing.T) {
 	require.NoError(t, (&Asset{UserID: userA, ChannelID: 1, AssetID: "asset-a2", GroupID: sharedGroup, Name: "a2", AssetType: AssetTypeImage, Status: AssetStatusPending}).Insert())
 	require.NoError(t, (&Asset{UserID: userB, ChannelID: 2, AssetID: "asset-b1", GroupID: sharedGroup, Name: "b1", AssetType: AssetTypeImage, Status: AssetStatusActive}).Insert())
 
-	gotA, _, err := GetUserAssetsFiltered(userA, nil, nil, "", 0, "")
+	gotA, _, err := getUserAssetsFilteredForTest(userA, nil, nil, "", 0, "")
 	require.NoError(t, err)
 	require.Len(t, gotA, 2)
 	for _, a := range gotA {
@@ -134,13 +148,13 @@ func TestGetUserAssetsFilteredIsolation(t *testing.T) {
 	}
 
 	// 状态过滤（本地态 active）：A 只剩一条。
-	activeA, _, err := GetUserAssetsFiltered(userA, nil, []string{AssetStatusActive}, "", 0, "")
+	activeA, _, err := getUserAssetsFilteredForTest(userA, nil, []string{AssetStatusActive}, "", 0, "")
 	require.NoError(t, err)
 	require.Len(t, activeA, 1)
 	assert.Equal(t, "asset-a1", activeA[0].AssetID)
 
 	// 同一 group_id 下 B 查不到 A 的素材。
-	gotB, _, err := GetUserAssetsFiltered(userB, []string{sharedGroup}, nil, "", 0, "")
+	gotB, _, err := getUserAssetsFilteredForTest(userB, []string{sharedGroup}, nil, "", 0, "")
 	require.NoError(t, err)
 	require.Len(t, gotB, 1)
 	assert.Equal(t, "asset-b1", gotB[0].AssetID)
@@ -161,11 +175,11 @@ func TestDeleteAssetsByUserAndGroupID(t *testing.T) {
 	assert.EqualValues(t, 2, deleted)
 
 	// A 的素材已清空，B 的不受影响。
-	remainA, _, err := GetUserAssetsFiltered(userA, nil, nil, "", 0, "")
+	remainA, _, err := getUserAssetsFilteredForTest(userA, nil, nil, "", 0, "")
 	require.NoError(t, err)
 	assert.Empty(t, remainA)
 
-	remainB, _, err := GetUserAssetsFiltered(userB, nil, nil, "", 0, "")
+	remainB, _, err := getUserAssetsFilteredForTest(userB, nil, nil, "", 0, "")
 	require.NoError(t, err)
 	assert.Len(t, remainB, 1)
 
@@ -187,4 +201,28 @@ func TestGetAssetGroupByUserAndGroupID(t *testing.T) {
 
 	_, err = GetAssetGroupByUserAndGroupID(userB, "gx")
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+func TestRecordAssetInferenceScopesUserChannelAndPreservesUpdateTime(t *testing.T) {
+	setupAssetGroupFixture(t)
+	target := &Asset{UserID: 1, ChannelID: 7, AssetID: "used", Name: "target", AssetType: AssetTypeImage, Status: AssetStatusActive}
+	otherChannel := &Asset{UserID: 1, ChannelID: 8, AssetID: "used", Name: "other-channel", AssetType: AssetTypeImage, Status: AssetStatusActive}
+	otherUser := &Asset{UserID: 2, ChannelID: 7, AssetID: "used", Name: "other-user", AssetType: AssetTypeImage, Status: AssetStatusActive}
+	unused := &Asset{UserID: 1, ChannelID: 7, AssetID: "unused", Name: "unused", AssetType: AssetTypeImage, Status: AssetStatusActive}
+	for _, asset := range []*Asset{target, otherChannel, otherUser, unused} {
+		require.NoError(t, asset.Insert())
+	}
+	require.NoError(t, DB.Model(&Asset{}).Where("id = ?", target.ID).Update("updated_at", int64(123)).Error)
+
+	require.NoError(t, RecordAssetInference(1, 7, []string{"used", "used"}, 456))
+
+	got, err := GetAssetById(target.ID)
+	require.NoError(t, err)
+	assert.EqualValues(t, 456, got.LastInferenceAt)
+	assert.EqualValues(t, 123, got.UpdatedAt)
+	for _, asset := range []*Asset{otherChannel, otherUser, unused} {
+		got, err = GetAssetById(asset.ID)
+		require.NoError(t, err)
+		assert.Zero(t, got.LastInferenceAt)
+	}
 }

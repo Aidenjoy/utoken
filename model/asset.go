@@ -26,21 +26,23 @@ const (
 // 因此素材与「用户 × 渠道」绑定；视频任务引用 asset://<AssetID> 时
 // 由 Distribute 中间件强制锁定到 ChannelID 对应渠道转发。
 type Asset struct {
-	ID            int64  `json:"id" gorm:"primaryKey"`
-	CreatedAt     int64  `json:"created_at" gorm:"index"`
-	UpdatedAt     int64  `json:"updated_at"`
-	UserID        int    `json:"user_id" gorm:"index:idx_asset_user_channel,priority:1"`
-	ChannelID     int    `json:"channel_id" gorm:"index:idx_asset_user_channel,priority:2;index:idx_asset_channel_asset,priority:1;uniqueIndex:idx_asset_source_channel,priority:2"`
-	AssetID       string `json:"asset_id" gorm:"type:varchar(191);index:idx_asset_channel_asset,priority:2"`             // 上游素材 ID
-	SourceAssetId *int64 `json:"source_asset_id,omitempty" gorm:"index;uniqueIndex:idx_asset_source_channel,priority:1"` // 源素材关联 ID（可为空，兼容旧数据）
-	Name          string `json:"name" gorm:"type:varchar(191)"`
-	AssetType     string `json:"asset_type" gorm:"type:varchar(20)"`
-	Status        string `json:"status" gorm:"type:varchar(20);index"`
-	SourceURL     string `json:"source_url" gorm:"type:text"`  // 用户注册时提供的素材 URL
-	PreviewURL    string `json:"preview_url" gorm:"type:text"` // 上游返回的可访问 URL（可能带签名时效）
-	GroupID       string `json:"group_id" gorm:"type:varchar(191)"`
-	ProjectName   string `json:"project_name" gorm:"type:varchar(191)"`
-	ErrorMsg      string `json:"error_msg" gorm:"type:text"`
+	ID              int64  `json:"id" gorm:"primaryKey"`
+	CreatedAt       int64  `json:"created_at" gorm:"index"`
+	UpdatedAt       int64  `json:"updated_at"`
+	UserID          int    `json:"user_id" gorm:"index:idx_asset_user_channel,priority:1"`
+	ChannelID       int    `json:"channel_id" gorm:"index:idx_asset_user_channel,priority:2;index:idx_asset_channel_asset,priority:1;uniqueIndex:idx_asset_source_channel,priority:2"`
+	AssetID         string `json:"asset_id" gorm:"type:varchar(191);index:idx_asset_channel_asset,priority:2"`             // 上游素材 ID
+	SourceAssetId   *int64 `json:"source_asset_id,omitempty" gorm:"index;uniqueIndex:idx_asset_source_channel,priority:1"` // 源素材关联 ID（可为空，兼容旧数据）
+	Name            string `json:"name" gorm:"type:varchar(191)"`
+	AssetType       string `json:"asset_type" gorm:"type:varchar(20)"`
+	Status          string `json:"status" gorm:"type:varchar(20);index"`
+	SourceURL       string `json:"source_url" gorm:"type:text"`  // 用户注册时提供的素材 URL
+	PreviewURL      string `json:"preview_url" gorm:"type:text"` // 上游返回的可访问 URL（可能带签名时效）
+	GroupID         string `json:"group_id" gorm:"type:varchar(191)"`
+	ProjectName     string `json:"project_name" gorm:"type:varchar(191)"`
+	ErrorCode       string `json:"error_code" gorm:"type:varchar(191)"`
+	ErrorMsg        string `json:"error_msg" gorm:"type:text"`
+	LastInferenceAt int64  `json:"last_inference_at" gorm:"index"`
 
 	// Username 仅超管全量视角下由控制层填充（非持久化），普通用户查询不返回。
 	Username string `json:"username,omitempty" gorm:"-"`
@@ -62,6 +64,9 @@ func (a *Asset) Insert() error {
 	now := time.Now().Unix()
 	a.CreatedAt = now
 	a.UpdatedAt = now
+	if a.ProjectName == "" {
+		a.ProjectName = AssetProjectNameDefault
+	}
 	return DB.Create(a).Error
 }
 
@@ -106,42 +111,43 @@ func GetUserAssets(userId int, channelId int, startIdx int, num int) ([]*Asset, 
 	return assets, err
 }
 
-// GetUserAssetsFiltered 官方兼容 API 的 ListAssets 数据源：按 user_id 归属过滤 +
-// 可选 group_id IN + 可选本地状态 IN + 可选 name 模糊 + id desc 游标分页。
-// statuses 传本地态（active/pending/failed），由控制器从官方词表映射而来。
-func GetUserAssetsFiltered(userId int, groupIDs []string, statuses []string, nameFuzzy string, maxResults int, nextToken string) ([]*Asset, string, error) {
-	limit := normalizeAssetLimit(maxResults)
-	cursor, err := decodeAssetCursor(nextToken)
-	if err != nil {
-		return nil, "", err
+// GetUserAssetsFiltered 在用户归属范围内执行官方过滤、排序和两种互斥分页。
+// GroupType 通过素材组子查询生效，避免在素材表冗余保存组类型。
+func GetUserAssetsFiltered(userId int, list AssetListQuery) ([]*Asset, AssetListMeta, error) {
+	query := DB.Model(&Asset{}).Where("user_id = ?", userId)
+	if list.GroupType != "" {
+		groups := DB.Model(&AssetGroup{}).Select("group_id").
+			Where("user_id = ? AND group_type = ?", userId, list.GroupType)
+		query = query.Where("group_id IN (?)", groups)
 	}
-	query := DB.Where("user_id = ?", userId)
-	if len(groupIDs) > 0 {
-		query = query.Where("group_id IN ?", groupIDs)
+	if list.ProjectName == AssetProjectNameDefault {
+		query = query.Where("(project_name = ? OR project_name = '' OR project_name IS NULL)", AssetProjectNameDefault)
+	} else if list.ProjectName != "" {
+		query = query.Where("project_name = ?", list.ProjectName)
 	}
-	if len(statuses) > 0 {
-		query = query.Where("status IN ?", statuses)
+	if len(list.GroupIDs) > 0 {
+		query = query.Where("group_id IN ?", list.GroupIDs)
 	}
-	if nameFuzzy != "" {
-		pattern, err := sanitizeLikePattern(nameFuzzy)
+	if len(list.Statuses) > 0 {
+		query = query.Where("status IN ?", list.Statuses)
+	}
+	if list.NameFuzzy != "" {
+		pattern, err := sanitizeLikePattern(list.NameFuzzy)
 		if err != nil {
-			return nil, "", err
+			return nil, AssetListMeta{}, err
 		}
 		query = query.Where("name LIKE ? ESCAPE '!'", "%"+pattern+"%")
 	}
-	if cursor > 0 {
-		query = query.Where("id < ?", cursor)
+	direction := "desc"
+	if list.SortOrder == "Asc" {
+		direction = "asc"
 	}
-	var assets []*Asset
-	if err := query.Order("id desc").Limit(limit + 1).Find(&assets).Error; err != nil {
-		return nil, "", err
+	sortColumn := "created_at"
+	if list.SortBy == "GroupId" {
+		sortColumn = "group_id"
 	}
-	next := ""
-	if len(assets) > limit {
-		assets = assets[:limit]
-		next = encodeAssetCursor(assets[len(assets)-1].ID)
-	}
-	return assets, next, nil
+	query = query.Order(sortColumn + " " + direction + ", id " + direction)
+	return findAssetListPage[Asset](query, list)
 }
 
 // GetUserAssetsByGroupID 返回某用户某组下的全部素材（不分页），供官方 DeleteAssetGroup
@@ -270,10 +276,11 @@ func AdminDeleteChannelAssetById(channelId int, id int64) error {
 	return nil
 }
 
-// UpdateAssetStatus 刷新素材状态与预览地址（上游查询成功时调用）。
-func UpdateAssetStatus(id int64, status string, previewURL string, errMsg string) error {
+// UpdateAssetStatus 刷新素材状态、预览地址与结构化失败原因（上游查询成功时调用）。
+func UpdateAssetStatus(id int64, status string, previewURL string, errCode string, errMsg string) error {
 	updates := map[string]any{
 		"status":     status,
+		"error_code": errCode,
 		"error_msg":  errMsg,
 		"updated_at": time.Now().Unix(),
 	}
@@ -281,6 +288,19 @@ func UpdateAssetStatus(id int64, status string, previewURL string, errMsg string
 		updates["preview_url"] = previewURL
 	}
 	return DB.Model(&Asset{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// RecordAssetInference 记录素材副本最近一次成功提交视频任务的时间，不改写素材 UpdateTime。
+func RecordAssetInference(userId int, channelId int, assetIDs []string, inferredAt int64) error {
+	if len(assetIDs) == 0 {
+		return nil
+	}
+	if inferredAt <= 0 {
+		inferredAt = time.Now().Unix()
+	}
+	return DB.Model(&Asset{}).
+		Where("user_id = ? AND channel_id = ? AND asset_id IN ?", userId, channelId, assetIDs).
+		UpdateColumn("last_inference_at", inferredAt).Error
 }
 
 // UpdateAssetName 更新素材名称（带 user_id 归属过滤），供官方兼容 API 的 UpdateAsset
@@ -306,6 +326,7 @@ func UpsertChannelAssetBySourceURL(a *Asset) error {
 			"status":       a.Status,
 			"group_id":     a.GroupID,
 			"project_name": a.ProjectName,
+			"error_code":   "",
 			"error_msg":    "",
 			"updated_at":   time.Now().Unix(),
 		}).Error

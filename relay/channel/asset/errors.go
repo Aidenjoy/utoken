@@ -108,7 +108,7 @@ func httpStatusFromArkCode(code string) int {
 func terminalFailureResult(err error) *QueryResult {
 	var upErr *UpstreamError
 	if errors.As(err, &upErr) && upErr.Terminal() {
-		return &QueryResult{Status: model.AssetStatusFailed, ErrorMsg: upErr.UserMessage()}
+		return &QueryResult{Status: model.AssetStatusFailed, ErrorCode: upErr.Code, ErrorMsg: upErr.UserMessage()}
 	}
 	return nil
 }

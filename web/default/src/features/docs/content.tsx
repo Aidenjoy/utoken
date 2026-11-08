@@ -564,11 +564,12 @@ curl -X GET ${tasksUrl}/{task_id} \\
       body: (
         <>
           <P>
-            与火山方舟官方素材库接口 1:1 兼容：下游直接用火山官方 SDK 或
-            curl，把 endpoint 指向本站、用在「Key 管理」页生成的 AK/SK 做 V4
-            签名，即可原样调用官方 10 个 Action；请求体、响应体、
+            提供火山方舟官方素材库 10 个 Action 的兼容入口：下游可用火山官方 SDK
+            或 curl，把 endpoint 指向本站、用在「Key 管理」页生成的 AK/SK 做 V4
+            签名调用；请求参数、响应字段和{' '}
             <InlineCode>ResponseMetadata</InlineCode>/{' '}
-            <InlineCode>Result</InlineCode> 信封与鉴权全部与官方一致。
+            <InlineCode>Result</InlineCode> 信封按官方协议转换，渠道未适配的上游
+            操作会返回明确错误。
           </P>
           <Note>
             鉴权与隔离：在「Key 管理」页为令牌生成 Ark AK/SK；签名{' '}
@@ -655,10 +656,10 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
             RequestExpired。
           </Note>
           <Note>
-            限制：官方兼容 API 需上游为
-            ark_official（或透传了完整管理能力的兼容）渠道， relay / ecloud /
-            360 等协议不支持完整管理接口；并发/QPS 以本站为准。上面 Go SDK
-            片段仅为示意，具体实例化方法、输入结构体与字段名以火山官方
+            限制：官方兼容 API 需上游渠道具备对应素材管理能力；ark_official、
+            ecloud 等已适配渠道可使用完整管理接口，其他渠道以实际适配能力为准，
+            未适配时返回明确错误；并发/QPS 以本站为准。上面 Go SDK
+            片段仅为示意， 具体实例化方法、输入结构体与字段名以火山官方
             volcengine-go-sdk（service/ark）为准。
           </Note>
         </>
@@ -688,8 +689,9 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 code='{"Id": "group-20260716105134-zkx8t"}'
               />
               <Note>
-                创建素材组会自动选用你分组下优先级最高的启用素材渠道；同一素材组内的
-                CreateAsset 锁定到建组时的渠道，保证同一上游账号。
+                创建素材组使用当前 Key 绑定的启用素材渠道，Key
+                未绑定渠道时无法建组； 同一素材组内的 CreateAsset
+                锁定到建组时的渠道，保证同一上游账号。
               </Note>
             </>
           ),
@@ -754,7 +756,7 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 <InlineCode>PageNumber</InlineCode> /{' '}
                 <InlineCode>PageSize</InlineCode> /{' '}
                 <InlineCode>TotalCount</InlineCode>。支持{' '}
-                <InlineCode>SortBy=CreateTime|UpdateTime</InlineCode> 与{' '}
+                <InlineCode>SortBy=CreateTime</InlineCode> 与{' '}
                 <InlineCode>SortOrder=Desc|Asc</InlineCode>，
                 <InlineCode>ProjectName</InlineCode> 默认{' '}
                 <InlineCode>default</InlineCode>。
@@ -799,7 +801,7 @@ out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
                 <InlineCode>PageNumber</InlineCode> /{' '}
                 <InlineCode>PageSize</InlineCode> /{' '}
                 <InlineCode>TotalCount</InlineCode>。支持{' '}
-                <InlineCode>SortBy=CreateTime|UpdateTime|GroupId</InlineCode> 与{' '}
+                <InlineCode>SortBy=CreateTime|GroupId</InlineCode> 与{' '}
                 <InlineCode>SortOrder=Desc|Asc</InlineCode>，
                 <InlineCode>ProjectName</InlineCode> 默认{' '}
                 <InlineCode>default</InlineCode>。

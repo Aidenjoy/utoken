@@ -40,6 +40,7 @@ type UploadResult struct {
 type QueryResult struct {
 	Status     string
 	PreviewURL string
+	ErrorCode  string
 	ErrorMsg   string
 }
 

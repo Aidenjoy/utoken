@@ -94,7 +94,7 @@ func syncToChannel(source *model.SourceAsset, channelId int) SyncResult {
 
 	sourceIdCopy := source.ID
 	if existing != nil {
-		_ = model.UpdateAssetStatus(existing.ID, model.AssetStatusPending, "", "")
+		_ = model.UpdateAssetStatus(existing.ID, model.AssetStatusPending, "", "", "")
 		return SyncResult{ChannelID: channelId, ChannelName: channel.Name, Status: "pending", AssetID: existing.AssetID}
 	}
 
@@ -365,7 +365,7 @@ func PollAssetStatuses() {
 			continue
 		}
 		if status != model.AssetStatusPending {
-			_ = model.UpdateAssetStatus(a.ID, status, previewURL, errMsg)
+			_ = model.UpdateAssetStatus(a.ID, status, previewURL, "", errMsg)
 			logger.LogInfo(nil, fmt.Sprintf("[AssetPoll] asset %d (upstream=%s) status changed to %s", a.ID, a.AssetID, status))
 		}
 	}

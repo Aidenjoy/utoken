@@ -261,16 +261,19 @@ func (p *ArkOfficialProtocol) Query(assetID string) (*QueryResult, error) {
 	if preview == "" {
 		preview = result.URL
 	}
+	errCode := ""
 	errMsg := ""
 	if result.Error != nil {
+		errCode = strings.TrimSpace(result.Error.Code)
 		errMsg = strings.TrimSpace(result.Error.Message)
 		if errMsg == "" {
-			errMsg = strings.TrimSpace(result.Error.Code)
+			errMsg = errCode
 		}
 	}
 	return &QueryResult{
 		Status:     NormalizeUpstreamStatus(result.Status),
 		PreviewURL: preview,
+		ErrorCode:  errCode,
 		ErrorMsg:   errMsg,
 	}, nil
 }

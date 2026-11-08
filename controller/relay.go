@@ -679,6 +679,10 @@ func RelayTask(c *gin.Context) {
 		task.Data = result.TaskData
 		task.RequestData = snapshotRedactedRequestBody(c)
 		task.Action = relayInfo.Action
+		assetIDs := middleware.ExtractAssetIDs(task.RequestData)
+		if err := model.RecordAssetInference(task.UserId, task.ChannelId, assetIDs, task.SubmitTime); err != nil {
+			common.SysError("record asset inference error: " + err.Error())
+		}
 		// 消费日志带 task_id，计费视图据此折叠后续结算/退款
 		service.LogTaskConsumption(c, relayInfo, task.TaskID)
 		if insertErr := task.Insert(); insertErr != nil {
