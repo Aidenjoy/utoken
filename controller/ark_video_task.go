@@ -33,6 +33,10 @@ var arkTaskStatusFilters = map[string][]model.TaskStatus{
 // 否则会跨用户泄露任务与结果地址。过滤和 Key 权限全部完成后再计算 total 与分页。
 func ArkVideoTaskList(c *gin.Context) {
 	startTime := time.Now()
+	// 协议快照：本入口不经 Relay()，需单独旁路捕获请求/响应，与审计行同 request_id 关联。
+	requestId := c.GetString(common.RequestIdKey)
+	bw := newRelayBodyWriter(c)
+	defer func() { saveApiCallBodySnapshot(c, requestId, true, bw) }()
 	// 查询类接口（客户端高频轮询）：审计日志受 LogQueryApiCallEnabled 开关门控。
 	defer func() {
 		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
@@ -176,6 +180,10 @@ func arkTaskModelAllowed(c *gin.Context, modelName string) bool {
 func ArkVideoTaskDelete(c *gin.Context) {
 	taskID := strings.TrimSpace(c.Param("task_id"))
 	startTime := time.Now()
+	// 协议快照：本入口不经 Relay()，需单独旁路捕获请求/响应，与审计行同 request_id 关联。
+	requestId := c.GetString(common.RequestIdKey)
+	bw := newRelayBodyWriter(c)
+	defer func() { saveApiCallBodySnapshot(c, requestId, false, bw) }()
 	// 写类接口：取消/删除始终记录审计日志，不受查询开关影响。
 	defer func() {
 		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{

@@ -385,6 +385,11 @@ var arkAssetQueryActions = map[string]bool{
 func RelayArkAssetAction(c *gin.Context) {
 	action := c.Query("Action")
 	startTime := time.Now()
+	// 协议快照：本入口不经 Relay()，需单独旁路捕获请求/响应，与审计行同 request_id
+	// 关联，否则使用日志的协议详情恒为空。
+	requestId := c.GetString(common.RequestIdKey)
+	bw := newRelayBodyWriter(c)
+	defer func() { saveApiCallBodySnapshot(c, requestId, arkAssetQueryActions[action], bw) }()
 	// 统一审计：无论成功/失败（含 Key 类型不符、无效 Action）都落一条
 	// type=API 调用日志，展示于「使用日志-通用日志」。
 	defer func() {

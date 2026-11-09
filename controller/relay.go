@@ -523,6 +523,10 @@ func RelayNotFound(c *gin.Context) {
 func RelayTaskFetch(c *gin.Context) {
 	taskID := c.Param("task_id")
 	startTime := time.Now()
+	// 协议快照：本入口不经 Relay()，需单独旁路捕获请求/响应，与审计行同 request_id 关联。
+	requestId := c.GetString(common.RequestIdKey)
+	bw := newRelayBodyWriter(c)
+	defer func() { saveApiCallBodySnapshot(c, requestId, true, bw) }()
 	// 查询类接口（客户端高频轮询）：审计日志受 LogQueryApiCallEnabled 开关门控。
 	defer func() {
 		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
@@ -574,9 +578,22 @@ func lockTokenBoundVideoChannel(c *gin.Context, info *relaycommon.RelayInfo) *dt
 func RelayTask(c *gin.Context) {
 	requestId := c.GetString(common.RequestIdKey)
 	startTime := time.Now()
+	taskID := ""
 	// 创建视频任务调用审计：与任务日志/消费日志并存，覆盖含失败在内的全部提交路径
 	//（ark/kling/openai/jimeng 等协议均经本入口）。
 	defer func() {
+		other := map[string]interface{}{
+			"api":         "video_task",
+			"action":      "CreateVideoTask",
+			"model":       c.GetString("original_model"),
+			"http_status": c.Writer.Status(),
+		}
+		// 成功行带 task_id：协议详情据此渲染任务详情（请求/响应真源在 tasks 表），
+		// 与消费行口径一致，避免审计行协议详情为空；失败行不写 log_bodies 响应
+		//（当次上游响应在各错误行 content 中按行展示，见 saveRelayBodySnapshotData）。
+		if taskID != "" {
+			other["task_id"] = taskID
+		}
 		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
 			ModelName:      "CreateVideoTask",
 			Content:        fmt.Sprintf("创建视频任务（模型 %s），状态码 %d", c.GetString("original_model"), c.Writer.Status()),
@@ -584,12 +601,7 @@ func RelayTask(c *gin.Context) {
 			TokenId:        c.GetInt("token_id"),
 			ChannelId:      c.GetInt("channel_id"),
 			UseTimeSeconds: int(time.Since(startTime).Seconds()),
-			Other: map[string]interface{}{
-				"api":         "video_task",
-				"action":      "CreateVideoTask",
-				"model":       c.GetString("original_model"),
-				"http_status": c.Writer.Status(),
-			},
+			Other:          other,
 		})
 	}()
 	defer func() {
@@ -718,6 +730,7 @@ func RelayTask(c *gin.Context) {
 		task.Data = result.TaskData
 		task.RequestData = snapshotRedactedRequestBody(c)
 		task.Action = relayInfo.Action
+		taskID = task.TaskID
 		assetIDs := middleware.ExtractAssetIDs(task.RequestData)
 		if err := model.RecordAssetInference(task.UserId, task.ChannelId, assetIDs, task.SubmitTime); err != nil {
 			common.SysError("record asset inference error: " + err.Error())
@@ -826,7 +839,13 @@ func saveRelayBodySnapshot(c *gin.Context, requestId string, w *relayBodyWriter)
 // 前端按行展示，避免同一 request_id 重试多个渠道时共享响应造成串渠道展示。
 // 读取与脱敏在调用方 goroutine 内完成，仅把最终字节交给异步写库。
 func saveRelayBodySnapshotData(c *gin.Context, requestId string, response []byte) {
-	reqBody := truncateRelaySnapshot(snapshotRelayRequestBody(c))
+	saveBodySnapshotData(c, requestId, snapshotRelayRequestBody(c), response)
+}
+
+// saveBodySnapshotData 按 request_id 落库请求/响应快照：两侧各自超限截断（追加
+// ...(truncated) 标记；请求侧脱敏由调用方完成），两体皆空跳过，异步写库不阻塞响应。
+func saveBodySnapshotData(c *gin.Context, requestId string, request, response []byte) {
+	reqBody := truncateRelaySnapshot(request)
 	respBody := truncateRelaySnapshot(logger.RedactBase64(response))
 	if len(reqBody) == 0 && len(respBody) == 0 {
 		return
@@ -836,6 +855,38 @@ func saveRelayBodySnapshotData(c *gin.Context, requestId string, response []byte
 			logger.LogError(c, "failed to save relay log body: "+err.Error())
 		}
 	})
+}
+
+// apiCallRequestSnapshot 抓取非计费 API 调用审计行的「传入参数」：AK/SK 验签已把原始
+// 请求体放进上下文（素材库 Action）；其余 JSON 请求复用中继的 body 存储；GET/DELETE 等
+// 无 body 请求回退「方法 路径?查询」，保证查询类接口的传入参数不为空。
+func apiCallRequestSnapshot(c *gin.Context) []byte {
+	if raw, ok := c.Get(middleware.ArkRawBodyKey); ok {
+		if b, ok := raw.([]byte); ok && len(b) > 0 {
+			return logger.RedactBase64(b)
+		}
+	}
+	if strings.Contains(c.Request.Header.Get("Content-Type"), "application/json") {
+		if b := snapshotRelayRequestBody(c); len(b) > 0 {
+			return b
+		}
+	}
+	line := c.Request.Method + " " + c.Request.URL.Path
+	if q := c.Request.URL.RawQuery; q != "" {
+		line += "?" + q
+	}
+	return []byte(line)
+}
+
+// saveApiCallBodySnapshot 为非计费 API 调用端点（素材库 Action、视频任务查询/列表/删除）
+// 落库请求/响应快照：这些端点不经 Relay() 入口，不单独旁路捕获则协议详情恒为空。
+// 快照与审计行同 request_id 关联；查询类接口与审计行共用 LogQueryApiCallEnabled 开关，
+// 开关关闭时不产生孤立快照。
+func saveApiCallBodySnapshot(c *gin.Context, requestId string, isQuery bool, w *relayBodyWriter) {
+	if w == nil || (isQuery && !common.LogQueryApiCallEnabled) {
+		return
+	}
+	saveBodySnapshotData(c, requestId, apiCallRequestSnapshot(c), w.body.Bytes())
 }
 
 // snapshotRelayRequestBody 抓取使用日志的「传入参数」：仅 application/json 请求体
