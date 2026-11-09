@@ -41,7 +41,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ZoomableImage } from '@/components/zoomable-image'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
@@ -55,7 +54,6 @@ import {
   uploadFile,
 } from '../../api'
 import type { Asset, AssetProvider, AssetType } from '../../types'
-import { SmartAssetsPanel } from './smart-asset-library'
 
 interface AssetLibraryContentProps {
   /** Model used for local file TOS upload; local upload is disabled without it */
@@ -572,31 +570,13 @@ function ChannelAssetsPanel({
 }
 
 /**
- * Asset library with two tabs:
- * - Channel assets: existing per-channel registration (URL / local upload),
- *   referenced by the upstream asset id.
- * - Smart assets: upload once to our own TOS, referenced as
- *   `asset://asset-<YYYYMMDDHHMMSS>-sm<NNN>` and auto-routed to the channel
- *   that serves the selected model at submit time.
+ * Asset library: per-channel registration (URL / local upload), referenced by
+ * the upstream asset id.
  */
 export function AssetLibraryContent({
   model,
   group,
   className,
 }: AssetLibraryContentProps) {
-  const { t } = useTranslation()
-  return (
-    <Tabs defaultValue='smart' className={cn('min-h-0 flex-1', className)}>
-      <TabsList>
-        <TabsTrigger value='smart'>{t('Smart Assets')}</TabsTrigger>
-        <TabsTrigger value='channel'>{t('Channel Assets')}</TabsTrigger>
-      </TabsList>
-      <TabsContent value='smart' className='flex min-h-0 flex-1 flex-col'>
-        <SmartAssetsPanel />
-      </TabsContent>
-      <TabsContent value='channel' className='flex min-h-0 flex-1 flex-col'>
-        <ChannelAssetsPanel model={model} group={group} />
-      </TabsContent>
-    </Tabs>
-  )
+  return <ChannelAssetsPanel model={model} group={group} className={className} />
 }

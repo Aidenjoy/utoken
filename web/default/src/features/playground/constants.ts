@@ -114,34 +114,6 @@ export const ASSET_API_ENDPOINTS = {
   DETAIL: (id: number) => `/pg/assets/${id}`,
 } as const
 
-// Source-asset library (smart assets) endpoints. A source asset is uploaded
-// once to our own TOS and is not bound to a channel; `ensure` pre-warms the
-// per-channel copy for the currently selected model/group.
-export const SOURCE_ASSET_API_ENDPOINTS = {
-  UPLOAD: '/pg/source-assets/upload',
-  LIST: '/pg/source-assets',
-  DETAIL: (id: number) => `/pg/source-assets/${id}`,
-  ENSURE: '/pg/source-assets/ensure',
-} as const
-
-// Smart-asset reference: a source asset is referenced in the video body as
-// `asset://<ref_id>`, where ref_id looks like `asset-<YYYYMMDDHHMMSS>-sm<NNN>`
-// (same shape as official channel assets, distinguished by the sm+digits
-// suffix). The Distribute middleware rewrites it to the real upstream asset id
-// at submit time. Legacy `yun-<id>` refs are still accepted for compatibility.
-export const LEGACY_SMART_ASSET_REF_PREFIX = 'yun-' as const
-
-const SMART_ASSET_REF_PATTERN = /^asset-\d{14}-sm\d{3}$/
-
-/** Whether an asset:// reference id points at a smart (source) asset. */
-export function isSmartAssetRef(id?: string): id is string {
-  if (!id) return false
-  return (
-    id.startsWith(LEGACY_SMART_ASSET_REF_PREFIX) ||
-    SMART_ASSET_REF_PATTERN.test(id)
-  )
-}
-
 export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   model: '',
   group: DEFAULT_GROUP,
