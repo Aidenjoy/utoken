@@ -497,20 +497,6 @@ function buildVideoSections(siteUrl: string, t: DocsTranslate): DocSection[] {
                   )}
                 />
               </Note>
-              <Note>
-                <DocText
-                  text={t(
-                    'Task creation also supports, depending on model capabilities: `omni_reference_task_type` / `frames` / `watermark` / `output_format` / `seed` / `camera_fixed` / `return_last_frame` / `draft` / `service_tier` / `callback_url` / `execution_expires_after` / `priority` / `safety_identifier` / `tools`.'
-                  )}
-                />
-              </Note>
-              <Note>
-                <DocText
-                  text={t(
-                    'Official defaults: `omni_reference_task_type=auto`, `watermark=false`, `output_format=mp4`, `seed=-1`, `camera_fixed=false`, `return_last_frame=false`, `draft=false`, `service_tier=default`, `execution_expires_after=172800`, `priority=0`; available values depend on model capabilities.'
-                  )}
-                />
-              </Note>
             </>
           ),
         },
