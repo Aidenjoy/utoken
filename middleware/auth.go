@@ -502,6 +502,11 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		// 密钥类型协议级隔离：语言/图片/视频 Key 不能跨协议调用（存量空类型 Key 放行）。
+		enforceTokenKeyType(c)
+		if c.IsAborted() {
+			return
+		}
 		c.Next()
 	}
 }
