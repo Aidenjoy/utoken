@@ -430,7 +430,7 @@ export function ApiKeysMutateDrawer({
                             }
                           >
                             <FormControl>
-                              <SelectTrigger>
+                              <SelectTrigger className='w-full'>
                                 <SelectValue
                                   placeholder={t('Select a video model')}
                                 />
