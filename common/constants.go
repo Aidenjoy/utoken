@@ -118,6 +118,10 @@ var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
 
+// LogQueryApiCallEnabled 门控查询类 API 调用审计日志（素材库查询/视频任务查询等
+// 客户端高频轮询接口）；写类接口调用始终记录，不受本开关影响。
+var LogQueryApiCallEnabled = true
+
 var TLSInsecureSkipVerify bool
 var InsecureTLSConfig = &tls.Config{InsecureSkipVerify: true}
 

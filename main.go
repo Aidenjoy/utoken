@@ -113,6 +113,9 @@ func main() {
 	// 不再等待 SyncOptions / SyncChannelCache 周期轮询；Redis 未启用（单机）时自动跳过。
 	go model.StartCacheSyncSubscriber()
 
+	// 查询类 API 调用审计日志缓冲冲刷：每 2 秒把 Redis/内存队列批量落库
+	model.StartApiCallLogFlusher()
+
 	// 周期性重载授权策略，保证多节点/多 master 部署下权限变更能传播到每个实例
 	go authz.StartPolicySync(common.SyncFrequency)
 
@@ -262,6 +265,8 @@ func main() {
 	if common.DataExportEnabled {
 		model.SaveQuotaDataCache()
 	}
+	// 退出前冲刷查询类审计日志缓冲，尽量不丢未落库的轮询审计行
+	model.FlushApiCallLogBuffer()
 	common.SysLog("server exited")
 }
 

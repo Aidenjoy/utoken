@@ -372,9 +372,37 @@ func bestEffortDeleteUpstreamAsset(a *model.Asset) {
 
 // ---- 分发器 ----
 
+// arkAssetQueryActions 查询类 Action（客户端高频轮询），审计日志受
+// LogQueryApiCallEnabled 开关门控；写类 Action 始终记录。
+var arkAssetQueryActions = map[string]bool{
+	arkActionListAssetGroups: true,
+	arkActionListAssets:      true,
+	arkActionGetAsset:        true,
+	arkActionGetAssetGroup:   true,
+}
+
 // RelayArkAssetAction 官方兼容素材库 API 的统一入口：按 ?Action= 分发到 10 个处理函数。
 func RelayArkAssetAction(c *gin.Context) {
 	action := c.Query("Action")
+	startTime := time.Now()
+	// 统一审计：无论成功/失败（含 Key 类型不符、无效 Action）都落一条
+	// type=API 调用日志，展示于「使用日志-通用日志」。
+	defer func() {
+		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
+			ModelName:      action,
+			Content:        fmt.Sprintf("素材库接口 %s 调用，状态码 %d", action, c.Writer.Status()),
+			TokenName:      c.GetString("token_name"),
+			TokenId:        c.GetInt("token_id"),
+			ChannelId:      c.GetInt("token_channel_id"),
+			UseTimeSeconds: int(time.Since(startTime).Seconds()),
+			IsQuery:        arkAssetQueryActions[action],
+			Other: map[string]interface{}{
+				"api":         "ark_asset",
+				"action":      action,
+				"http_status": c.Writer.Status(),
+			},
+		})
+	}()
 	region := c.GetString(middleware.ArkRegionKey)
 	if region == "" {
 		region = middleware.ArkDefaultRegion

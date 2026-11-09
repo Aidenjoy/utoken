@@ -141,6 +141,7 @@ var optionKeySections = map[string][]authz.Permission{
 	"WorkerValidKey":                     {authz.SettingsOperations},
 	"WorkerAllowHttpImageRequestEnabled": {authz.SettingsOperations},
 	"LogConsumeEnabled":                  {authz.SettingsOperations},
+	"LogQueryApiCallEnabled":             {authz.SettingsOperations},
 
 	// 计费与支付（billing）：额度、货币展示、模型定价、分组倍率、支付网关、签到。
 	"QuotaForNewUser":             {authz.SettingsBilling},

@@ -521,6 +521,26 @@ func RelayNotFound(c *gin.Context) {
 }
 
 func RelayTaskFetch(c *gin.Context) {
+	taskID := c.Param("task_id")
+	startTime := time.Now()
+	// 查询类接口（客户端高频轮询）：审计日志受 LogQueryApiCallEnabled 开关门控。
+	defer func() {
+		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
+			ModelName:      "GetVideoTask",
+			Content:        fmt.Sprintf("查询视频任务 %s，状态码 %d", taskID, c.Writer.Status()),
+			TokenName:      c.GetString("token_name"),
+			TokenId:        c.GetInt("token_id"),
+			ChannelId:      c.GetInt("channel_id"),
+			UseTimeSeconds: int(time.Since(startTime).Seconds()),
+			IsQuery:        true,
+			Other: map[string]interface{}{
+				"api":         "video_task",
+				"action":      "GetVideoTask",
+				"task_id":     taskID,
+				"http_status": c.Writer.Status(),
+			},
+		})
+	}()
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
@@ -553,6 +573,25 @@ func lockTokenBoundVideoChannel(c *gin.Context, info *relaycommon.RelayInfo) *dt
 
 func RelayTask(c *gin.Context) {
 	requestId := c.GetString(common.RequestIdKey)
+	startTime := time.Now()
+	// 创建视频任务调用审计：与任务日志/消费日志并存，覆盖含失败在内的全部提交路径
+	//（ark/kling/openai/jimeng 等协议均经本入口）。
+	defer func() {
+		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
+			ModelName:      "CreateVideoTask",
+			Content:        fmt.Sprintf("创建视频任务（模型 %s），状态码 %d", c.GetString("original_model"), c.Writer.Status()),
+			TokenName:      c.GetString("token_name"),
+			TokenId:        c.GetInt("token_id"),
+			ChannelId:      c.GetInt("channel_id"),
+			UseTimeSeconds: int(time.Since(startTime).Seconds()),
+			Other: map[string]interface{}{
+				"api":         "video_task",
+				"action":      "CreateVideoTask",
+				"model":       c.GetString("original_model"),
+				"http_status": c.Writer.Status(),
+			},
+		})
+	}()
 	defer func() {
 		// task 错误行各自持有当次上游响应（logs.content），这里只补共享的请求快照；
 		// 成功任务的请求/响应已在 tasks 表，不重复写 log_bodies。
