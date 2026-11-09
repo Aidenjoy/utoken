@@ -187,24 +187,19 @@ export function DataTableRowActions<TData>({
         <TooltipContent>{t('Edit')}</TooltipContent>
       </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant='ghost'
-              size='icon-sm'
-              onClick={() => {
-                setCurrentRow(apiKey)
-                setOpen('access-key')
-              }}
-              aria-label={t('Ark AK/SK')}
-            />
-          }
-        >
-          <KeyRound />
-        </TooltipTrigger>
-        <TooltipContent>{t('Ark AK/SK')}</TooltipContent>
-      </Tooltip>
+      {/* 纯图标形态发现性差（用户反馈找不到），改为直接可见的中文文案按钮 */}
+      <Button
+        variant='ghost'
+        size='sm'
+        onClick={() => {
+          setCurrentRow(apiKey)
+          setOpen('access-key')
+        }}
+        className='text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2 text-xs'
+      >
+        <KeyRound className='size-3.5' />
+        {t('Ark AK/SK')}
+      </Button>
 
       <DataTableRowActionMenu
         ariaLabel={t('Open menu')}

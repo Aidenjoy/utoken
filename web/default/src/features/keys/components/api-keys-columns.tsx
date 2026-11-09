@@ -147,7 +147,7 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       header: t('Video Model / 4K'),
       cell: ({ row }) => <VideoKeyConfigCell apiKey={row.original} />,
       enableSorting: false,
-      size: 220,
+      size: 280,
       meta: { mobileHidden: true },
     },
     {

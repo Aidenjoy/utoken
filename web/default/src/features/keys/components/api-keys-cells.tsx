@@ -190,17 +190,27 @@ export function VideoKeyConfigCell({ apiKey }: { apiKey: ApiKey }) {
     return <span className='text-muted-foreground text-xs'>-</span>
   }
 
+  const model = apiKey.video_model || '-'
+  const quality = apiKey.video_4k ? '4K' : t('Standard')
+
+  // 模型名过长截断时，悬停展示完整模型名与分辨率档位
   return (
-    <div className='flex min-w-0 items-center gap-2'>
-      <span className='max-w-40 truncate font-mono text-xs'>
-        {apiKey.video_model || '-'}
-      </span>
-      <StatusBadge
-        label={apiKey.video_4k ? '4K' : t('Standard')}
-        variant={apiKey.video_4k ? 'info' : 'neutral'}
-        copyable={false}
-      />
-    </div>
+    <Tooltip>
+      <TooltipTrigger
+        render={<div className='flex min-w-0 items-center gap-2' />}
+      >
+        <span className='min-w-0 truncate font-mono text-xs'>{model}</span>
+        <StatusBadge
+          label={quality}
+          variant={apiKey.video_4k ? 'info' : 'neutral'}
+          copyable={false}
+          className='shrink-0'
+        />
+      </TooltipTrigger>
+      <TooltipContent side='top' className='max-w-xs break-all'>
+        {model} · {quality}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
