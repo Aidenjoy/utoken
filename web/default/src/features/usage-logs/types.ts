@@ -352,6 +352,8 @@ export interface GetLogsParams {
   task_id?: string
   // Agent scope: comma-joined member user ids (server-enforced intersection).
   user_ids?: string
+  // 是否显示查询接口（type=9 轮询审计行）：0 默认隐藏，1 显示
+  show_api_query?: number
 }
 
 export interface GetLogsResponse {

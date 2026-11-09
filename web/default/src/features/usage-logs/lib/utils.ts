@@ -214,6 +214,8 @@ export function buildApiParams(config: {
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
     ...(searchParams.taskId ? { task_id: String(searchParams.taskId) } : {}),
+    // 查询接口可见性始终下发：默认 0（隐藏 type=9 轮询行），避免后端刷屏
+    show_api_query: searchParams.showApiQuery ? 1 : 0,
     ...buildTimeRangeParams(searchParams, false),
   }
 

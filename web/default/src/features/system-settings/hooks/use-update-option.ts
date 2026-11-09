@@ -30,6 +30,7 @@ const STATUS_RELATED_KEYS = [
   'SidebarModulesAdmin',
   'Notice',
   'LogConsumeEnabled',
+  'LogQueryApiCallEnabled',
   'QuotaPerUnit',
   'USDExchangeRate',
   'DisplayInCurrencyEnabled',

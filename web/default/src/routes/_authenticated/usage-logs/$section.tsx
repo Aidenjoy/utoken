@@ -25,7 +25,7 @@ import {
   USAGE_LOGS_DEFAULT_SECTION,
 } from '@/features/usage-logs/section-registry'
 
-const logTypeValues = ['0', '1', '2', '3', '4', '5', '6', '7'] as const
+const logTypeValues = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] as const
 const logTypeSearchSchema = z
   .preprocess((value) => {
     if (value == null || value === '') return undefined
@@ -52,6 +52,8 @@ const usageLogsSearchSchema = z.object({
   taskId: z.string().optional().catch(''),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
+  // 通用日志「是否显示查询接口」：默认不显示（后端排除 type=9 轮询行）
+  showApiQuery: z.boolean().optional().catch(false),
 })
 
 export const Route = createFileRoute('/_authenticated/usage-logs/$section')({

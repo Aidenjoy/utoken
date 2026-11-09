@@ -60,6 +60,7 @@ export const LOG_TYPE_ENUM = {
   ERROR: 5,
   REFUND: 6,
   LOGIN: 7,
+  API_CALL: 8,
 } as const
 
 /**
@@ -98,6 +99,10 @@ export const LOG_TYPES = [
   { value: 5, label: 'Error', color: 'red' },
   { value: 6, label: 'Refund', color: 'blue' },
   { value: 7, label: 'Login', color: 'teal' },
+  // 非计费 API 调用审计行（素材库/视频任务接口），后端 LogTypeApiCall=8
+  { value: 8, label: 'API Call', color: 'pink' },
+  // 查询类 API 调用审计行（高频轮询接口，缓冲批量落库），后端 LogTypeApiQuery=9
+  { value: 9, label: 'API Query', color: 'indigo' },
 ] as const
 
 /**
@@ -390,9 +395,9 @@ export const LOG_CATEGORY_LABELS: Record<LogCategory, string> = {
 /**
  * Log types that are displayable (have detailed info)
  */
-export const DISPLAYABLE_LOG_TYPES = [0, 2, 5, 6] as const
+export const DISPLAYABLE_LOG_TYPES = [0, 2, 5, 6, 8, 9] as const
 
 /**
  * Log types that show timing info
  */
-export const TIMING_LOG_TYPES = [2, 5] as const
+export const TIMING_LOG_TYPES = [2, 5, 8, 9] as const

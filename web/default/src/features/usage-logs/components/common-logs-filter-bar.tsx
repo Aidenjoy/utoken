@@ -65,6 +65,7 @@ type CommonLogDraft = {
   sourceKey: string
   filters: CommonLogFilters
   logType: LogTypeValue
+  showApiQuery: boolean
 }
 
 function isLogTypeValue(value: string): value is LogTypeValue {
@@ -93,6 +94,7 @@ function buildSearchSourceKey(values: {
   upstreamRequestId?: unknown
   taskId?: unknown
   type?: unknown
+  showApiQuery?: unknown
 }) {
   return [
     values.startTime,
@@ -107,6 +109,7 @@ function buildSearchSourceKey(values: {
     values.upstreamRequestId,
     values.taskId,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
+    values.showApiQuery,
   ]
     .map((value) => String(value ?? ''))
     .join('\u001f')
@@ -145,6 +148,7 @@ export function CommonLogsFilterBar<TData>(
       upstreamRequestId: searchParams.upstreamRequestId,
       taskId: searchParams.taskId,
       type: searchParams.type,
+      showApiQuery: searchParams.showApiQuery,
     }
     const filters: CommonLogFilters = {
       startTime: searchParams.startTime
@@ -165,6 +169,7 @@ export function CommonLogsFilterBar<TData>(
       sourceKey: buildSearchSourceKey(sourceValues),
       filters,
       logType: getLogTypeValue(searchParams.type),
+      showApiQuery: !!searchParams.showApiQuery,
     }
   }, [
     searchParams.startTime,
@@ -179,12 +184,14 @@ export function CommonLogsFilterBar<TData>(
     searchParams.upstreamRequestId,
     searchParams.taskId,
     searchParams.type,
+    searchParams.showApiQuery,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
   const activeDraft =
     draft.sourceKey === searchState.sourceKey ? draft : searchState
   const filters = activeDraft.filters
   const logType = activeDraft.logType
+  const showApiQuery = activeDraft.showApiQuery
 
   const handleChange = useCallback(
     (field: keyof CommonLogFilters, value: Date | string | undefined) => {
@@ -195,6 +202,23 @@ export function CommonLogsFilterBar<TData>(
           sourceKey: searchState.sourceKey,
           filters: { ...base.filters, [field]: value },
           logType: base.logType,
+          showApiQuery: base.showApiQuery,
+        }
+      })
+    },
+    [searchState]
+  )
+
+  const handleShowApiQueryChange = useCallback(
+    (value: boolean) => {
+      setDraft((current) => {
+        const base =
+          current.sourceKey === searchState.sourceKey ? current : searchState
+        return {
+          sourceKey: searchState.sourceKey,
+          filters: base.filters,
+          logType: base.logType,
+          showApiQuery: value,
         }
       })
     },
@@ -209,12 +233,13 @@ export function CommonLogsFilterBar<TData>(
       search: {
         ...filterParams,
         type: [logType],
+        showApiQuery,
         page: 1,
       },
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [filters, logType, navigate, queryClient])
+  }, [filters, logType, showApiQuery, navigate, queryClient])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
@@ -223,11 +248,13 @@ export function CommonLogsFilterBar<TData>(
       type: [LOG_TYPE_ALL_VALUE],
       startTime: start.getTime(),
       endTime: end.getTime(),
+      showApiQuery: false,
     }
     setDraft({
       sourceKey: buildSearchSourceKey(resetSearch),
       filters: resetFilters,
       logType: LOG_TYPE_ALL_VALUE,
+      showApiQuery: false,
     })
 
     navigate({
@@ -260,7 +287,11 @@ export function CommonLogsFilterBar<TData>(
 
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
   const hasAdditionalFilters =
-    !!filters.model || !!filters.group || hasTypeFilter || hasExpandedFilters
+    !!filters.model ||
+    !!filters.group ||
+    hasTypeFilter ||
+    showApiQuery ||
+    hasExpandedFilters
 
   const expandedFilterCount = [
     filters.token,
@@ -271,6 +302,16 @@ export function CommonLogsFilterBar<TData>(
     isAgent ? undefined : filters.upstreamRequestId,
     filters.taskId,
   ].filter(Boolean).length
+  const queryVisibilityItems = useMemo(
+    () => [
+      { value: '0', label: t('Hide query requests') },
+      { value: '1', label: t('Show query requests') },
+    ],
+    [t]
+  )
+  const queryVisibilityLabel = showApiQuery
+    ? t('Show query requests')
+    : t('Hide query requests')
   const sensitiveType = sensitiveVisible ? 'text' : 'password'
   const logTypeItems = useMemo(
     () =>
@@ -359,6 +400,7 @@ export function CommonLogsFilterBar<TData>(
               sourceKey: searchState.sourceKey,
               filters: base.filters,
               logType: nextLogType,
+              showApiQuery: base.showApiQuery,
             }
           })
         }}
@@ -371,6 +413,30 @@ export function CommonLogsFilterBar<TData>(
             {LOG_TYPE_FILTERS.map((type) => (
               <SelectItem key={type.value} value={type.value}>
                 {t(type.label)}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </LogsFilterField>
+  )
+  const queryVisibilityFilter = (
+    <LogsFilterField>
+      <Select
+        items={queryVisibilityItems}
+        value={showApiQuery ? '1' : '0'}
+        onValueChange={(value) => {
+          handleShowApiQueryChange(value === '1')
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue>{queryVisibilityLabel}</SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          <SelectGroup>
+            {queryVisibilityItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
               </SelectItem>
             ))}
           </SelectGroup>
@@ -463,6 +529,7 @@ export function CommonLogsFilterBar<TData>(
           {modelFilter}
           {groupFilter}
           {typeFilter}
+          {queryVisibilityFilter}
         </>
       }
       advancedFilters={advancedFilters}
@@ -472,12 +539,14 @@ export function CommonLogsFilterBar<TData>(
           {modelFilter}
           {groupFilter}
           {typeFilter}
+          {queryVisibilityFilter}
           {advancedFilters}
         </>
       }
       mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
-        expandedFilterCount
+        [filters.model, filters.group, hasTypeFilter, showApiQuery].filter(
+          Boolean
+        ).length + expandedFilterCount
       }
       hasAdvancedActiveFilters={hasExpandedFilters}
       advancedFilterCount={expandedFilterCount}
