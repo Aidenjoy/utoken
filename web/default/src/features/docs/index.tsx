@@ -236,7 +236,7 @@ export function DeveloperDocs() {
     <PublicLayout showMainContainer={false}>
       <div className='relative'>
         <PageTopGlow />
-        <PageTransition className='relative mx-auto w-full max-w-6xl px-4 pt-20 pb-16 sm:px-6 sm:pt-24'>
+        <PageTransition className='relative mx-auto w-full max-w-[1440px] px-4 pt-20 pb-16 sm:px-6 sm:pt-24'>
           {/* 模型类型页签：吸顶于公共页头下方，滚动正文时仍可切换 */}
           <div ref={tabSentinelRef} aria-hidden />
           <div
