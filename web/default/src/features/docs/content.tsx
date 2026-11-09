@@ -19,17 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 import type { ReactNode } from 'react'
 
 import { CodeBlock } from './code-block'
-import { InlineCode, Note, P } from './doc-typography'
+import { DocText, Note, P } from './doc-typography'
 
 export type DocsTabId = 'language' | 'image' | 'video' | 'faq'
+
+/** 文档文案翻译函数：键为英文源串，行内代码以反引号标记 */
+export type DocsTranslate = (
+  key: string,
+  options?: Record<string, unknown>
+) => string
 
 export interface DocSection {
   id: string
   title: string
-  /** 侧边栏短标题（缺省用 title）：三级接口条目用 Action 名保持目录紧凑 */
-  short?: string
   body: ReactNode
-  /** 二级/三级菜单子章节：正文渲染为父章节内的子块 */
+  /** 二级菜单子章节：正文渲染为父章节内的子块 */
   children?: DocSection[]
 }
 
@@ -65,17 +69,20 @@ export function resolveDocsSiteUrl(status: unknown): string {
 
 const VIDEO_MODEL = 'doubao-seedance-2.0'
 
-function buildLanguageSections(siteUrl: string): DocSection[] {
+function buildLanguageSections(siteUrl: string, t: DocsTranslate): DocSection[] {
   const baseUrl = `${siteUrl}/v1`
   return [
     {
       id: 'lang-chat',
-      title: '对话补全',
+      title: t('Chat Completions'),
       body: (
         <>
           <P>
-            兼容 OpenAI Chat Completions 协议，将 <InlineCode>model</InlineCode>{' '}
-            替换为模型广场中的语言模型 ID 即可调用。
+            <DocText
+              text={t(
+                'Compatible with the OpenAI Chat Completions protocol: replace `model` with a language model ID from the Model Square and call directly.'
+              )}
+            />
           </P>
           <CodeBlock
             method='POST'
@@ -84,29 +91,29 @@ function buildLanguageSections(siteUrl: string): DocSection[] {
             code={`{
   "model": "kimi-k3",
   "messages": [
-    {"role": "system", "content": "你是一个乐于助人的助手"},
-    {"role": "user", "content": "你是什么模型"}
+    {"role": "system", "content": "${t('You are a helpful assistant')}"},
+    {"role": "user", "content": "${t('What model are you?')}"}
   ],
   "stream": false
 }`}
           />
           <CodeBlock
-            title='curl 示例'
+            title={t('curl example')}
             lang='bash'
             code={`curl -X POST ${baseUrl}/chat/completions \\
-  -H "Authorization: Bearer sk-你的token" \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "kimi-k3",
     "messages": [
-      {"role": "system", "content": "你是一个乐于助人的助手"},
-      {"role": "user", "content": "你是什么模型"}
+      {"role": "system", "content": "${t('You are a helpful assistant')}"},
+      {"role": "user", "content": "${t('What model are you?')}"}
     ],
     "stream": false
   }'`}
           />
           <CodeBlock
-            title='响应示例'
+            title={t('Response example')}
             lang='json'
             code={`{
   "id": "chatcmpl-a1b2c3",
@@ -116,7 +123,7 @@ function buildLanguageSections(siteUrl: string): DocSection[] {
   "choices": [
     {
       "index": 0,
-      "message": {"role": "assistant", "content": "我是由……"},
+      "message": {"role": "assistant", "content": "${t('I am an AI assistant built by……')}"},
       "finish_reason": "stop"
     }
   ],
@@ -124,27 +131,37 @@ function buildLanguageSections(siteUrl: string): DocSection[] {
 }`}
           />
           <Note>
-            示例中的模型 ID 仅作演示，请从「模型广场」复制实际可用的语言模型
-            ID。流式输出将 <InlineCode>stream</InlineCode> 设为{' '}
-            <InlineCode>true</InlineCode>
-            ，响应为 SSE（Server-Sent Events）逐段返回，以{' '}
-            <InlineCode>data: [DONE]</InlineCode> 结束。
+            <DocText
+              text={t(
+                'Model IDs in examples are for demonstration only; copy an actually available language model ID from the Model Square. For streaming output set `stream` to `true`: the response is returned chunk by chunk via SSE (Server-Sent Events) and ends with `data: [DONE]`.'
+              )}
+            />
           </Note>
         </>
       ),
     },
     {
       id: 'lang-models',
-      title: '获取模型列表',
+      title: t('List Models'),
       body: (
         <>
-          <P>查询当前账号分组下可用的全部模型 ID。</P>
+          <P>{t('Lists all model IDs available under the current account group.')}</P>
           <CodeBlock
             method='GET'
             url={`${baseUrl}/models`}
             lang='bash'
             code={`curl -X GET ${baseUrl}/models \\
-  -H "Authorization: Bearer sk-你的token"`}
+  -H "Authorization: Bearer ${t('sk-your-token')}"`}
+          />
+          <CodeBlock
+            title={t('Response example')}
+            lang='json'
+            code={`{
+  "object": "list",
+  "data": [
+    {"id": "kimi-k3", "object": "model", "created": 1767225600, "owned_by": "system"}
+  ]
+}`}
           />
         </>
       ),
@@ -154,17 +171,20 @@ function buildLanguageSections(siteUrl: string): DocSection[] {
 
 const IMAGE_MODEL = 'doubao-seedream-5-0'
 
-function buildImageSections(siteUrl: string): DocSection[] {
+function buildImageSections(siteUrl: string, t: DocsTranslate): DocSection[] {
   const baseUrl = `${siteUrl}/v1`
   return [
     {
       id: 'image-generations',
-      title: '文生图',
+      title: t('Text-to-Image'),
       body: (
         <>
           <P>
-            兼容 OpenAI Images 协议，根据提示词生成图片。示例中的模型 ID
-            仅作演示，请从「模型广场」复制实际的图片模型 ID。
+            <DocText
+              text={t(
+                'Compatible with the OpenAI Images protocol; generates images from prompts. The model ID in examples is for demonstration only; copy an actual image model ID from the Model Square.'
+              )}
+            />
           </P>
           <CodeBlock
             method='POST'
@@ -172,26 +192,26 @@ function buildImageSections(siteUrl: string): DocSection[] {
             lang='json'
             code={`{
   "model": "${IMAGE_MODEL}",
-  "prompt": "一只橘猫在草地上奔跑，阳光明媚，高清摄影风格",
+  "prompt": "${t('An orange cat running on a sunlit grassland, high-definition photography style')}",
   "size": "2048x2048",
   "watermark": false
 }`}
           />
           <CodeBlock
-            title='curl 示例'
+            title={t('curl example')}
             lang='bash'
             code={`curl -X POST ${baseUrl}/images/generations \\
-  -H "Authorization: Bearer sk-你的token" \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${IMAGE_MODEL}",
-    "prompt": "一只橘猫在草地上奔跑，阳光明媚，高清摄影风格",
+    "prompt": "${t('An orange cat running on a sunlit grassland, high-definition photography style')}",
     "size": "2048x2048",
     "watermark": false
   }'`}
           />
           <CodeBlock
-            title='响应示例'
+            title={t('Response example')}
             lang='json'
             code={`{
   "created": 1767225600,
@@ -201,25 +221,26 @@ function buildImageSections(siteUrl: string): DocSection[] {
 }`}
           />
           <Note>
-            <InlineCode>watermark</InlineCode> 设为{' '}
-            <InlineCode>false</InlineCode> 可去除图片右下角的「AI 生成」水印；
-            <InlineCode>size</InlineCode>{' '}
-            等参数的可选值因模型而异，请以「模型广场」中对应模型的说明为准；生成的图片
-            URL 为临时地址，请及时下载保存。
+            <DocText
+              text={t(
+                'Set `watermark` to `false` to remove the "AI-generated" watermark at the bottom-right of the image; available values for parameters such as `size` vary by model — refer to the corresponding model description in the Model Square; generated image URLs are temporary, please download and save them promptly.'
+              )}
+            />
           </Note>
         </>
       ),
     },
     {
       id: 'image-to-image',
-      title: '图生图',
+      title: t('Image-to-Image'),
       body: (
         <>
           <P>
-            与文生图同一接口，通过 <InlineCode>image</InlineCode>{' '}
-            传入一张输入图片，按提示词在其基础上生成新图；取值支持可公开访问的
-            URL 或 base64（
-            <InlineCode>data:image/png;base64,...</InlineCode>）。
+            <DocText
+              text={t(
+                'Same endpoint as text-to-image: pass one input image via `image` and generate a new image based on it according to the prompt; the value supports publicly accessible URLs or base64 (`data:image/png;base64,...`).'
+              )}
+            />
           </P>
           <CodeBlock
             method='POST'
@@ -227,42 +248,57 @@ function buildImageSections(siteUrl: string): DocSection[] {
             lang='json'
             code={`{
   "model": "${IMAGE_MODEL}",
-  "prompt": "将照片转换为水彩画风格，保持构图不变",
+  "prompt": "${t('Convert the photo to watercolor style, keeping the composition unchanged')}",
   "image": "https://example.com/photo.jpg",
   "size": "2048x2048",
   "watermark": false
 }`}
           />
           <CodeBlock
-            title='curl 示例'
+            title={t('curl example')}
             lang='bash'
             code={`curl -X POST ${baseUrl}/images/generations \\
-  -H "Authorization: Bearer sk-你的token" \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${IMAGE_MODEL}",
-    "prompt": "将照片转换为水彩画风格，保持构图不变",
+    "prompt": "${t('Convert the photo to watercolor style, keeping the composition unchanged')}",
     "image": "https://example.com/photo.jpg",
     "size": "2048x2048",
     "watermark": false
   }'`}
           />
+          <CodeBlock
+            title={t('Response example')}
+            lang='json'
+            code={`{
+  "created": 1767225600,
+  "data": [
+    {"url": "https://example.com/generated-image.png"}
+  ]
+}`}
+          />
           <Note>
-            输入图片需为可公开访问的 URL 或 base64
-            内联数据；响应结构与文生图一致。
+            <DocText
+              text={t(
+                'The input image must be a publicly accessible URL or base64 inline data.'
+              )}
+            />
           </Note>
         </>
       ),
     },
     {
       id: 'image-edits',
-      title: '图片编辑（参考生图）',
+      title: t('Image Editing (Reference-based)'),
       body: (
         <>
           <P>
-            与文生图同一接口，<InlineCode>image</InlineCode>{' '}
-            传入多张参考图（数组），模型综合各图内容按提示词生成，例如人物换装、
-            风格融合。
+            <DocText
+              text={t(
+                'Same endpoint as text-to-image: pass multiple reference images via `image` (array); the model combines the content of all images and generates according to the prompt, e.g. character outfit change or style fusion.'
+              )}
+            />
           </P>
           <CodeBlock
             method='POST'
@@ -270,7 +306,7 @@ function buildImageSections(siteUrl: string): DocSection[] {
             lang='json'
             code={`{
   "model": "${IMAGE_MODEL}",
-  "prompt": "将图一中的人物穿上图二中的服装，保持人物姿态不变",
+  "prompt": "${t('Dress the person in the first image in the outfit from the second image, keeping the pose unchanged')}",
   "image": [
     "https://example.com/person.jpg",
     "https://example.com/outfit.jpg"
@@ -280,14 +316,14 @@ function buildImageSections(siteUrl: string): DocSection[] {
 }`}
           />
           <CodeBlock
-            title='curl 示例'
+            title={t('curl example')}
             lang='bash'
             code={`curl -X POST ${baseUrl}/images/generations \\
-  -H "Authorization: Bearer sk-你的token" \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${IMAGE_MODEL}",
-    "prompt": "将图一中的人物穿上图二中的服装，保持人物姿态不变",
+    "prompt": "${t('Dress the person in the first image in the outfit from the second image, keeping the pose unchanged')}",
     "image": [
       "https://example.com/person.jpg",
       "https://example.com/outfit.jpg"
@@ -296,9 +332,22 @@ function buildImageSections(siteUrl: string): DocSection[] {
     "watermark": false
   }'`}
           />
+          <CodeBlock
+            title={t('Response example')}
+            lang='json'
+            code={`{
+  "created": 1767225600,
+  "data": [
+    {"url": "https://example.com/generated-image.png"}
+  ]
+}`}
+          />
           <Note>
-            参考图需为可公开访问的 URL 或 base64
-            内联数据；响应结构与文生图一致。
+            <DocText
+              text={t(
+                'Reference images must be publicly accessible URLs or base64 inline data.'
+              )}
+            />
           </Note>
         </>
       ),
@@ -306,31 +355,46 @@ function buildImageSections(siteUrl: string): DocSection[] {
   ]
 }
 
-const videoSubmitResponse = `{"id": "cgt-20260826120000-abc12"}`
+const videoSubmitResponse = `{
+  "id": "cgt-20260826120000-abc12"
+}`
 
-function buildVideoSections(siteUrl: string): DocSection[] {
+function buildVideoSections(siteUrl: string, t: DocsTranslate): DocSection[] {
   const tasksUrl = `${siteUrl}/api/v3/contents/generations/tasks`
   return [
     {
-      id: 'video-reference',
-      title: '参考生成',
+      id: 'video-create',
+      title: t('Create Video Generation Task'),
       body: (
-        <>
-          <P>
-            参考生成支持文本 + 参考图（0-9 张）+ 参考视频（0-3 个）+
-            参考音频（0-3
-            个）自由组合，示例中的各项按需删减即可；音频不可单独参考，至少搭配一张图片或一个视频。参考图片支持两种写法：直接
-            URL，或素材库引用 <InlineCode>asset://&lt;素材ID&gt;</InlineCode>
-            （真人虚拟素材上传见「素材库」一节）
-          </P>
-          <CodeBlock
-            method='POST'
-            url={tasksUrl}
-            lang='json'
-            code={`{
+        <P>
+          <DocText
+            text={t(
+              'Three creation modes are supported: reference-based generation, text-to-video, and first & last frame; a successful submission returns a task ID for later status queries and task cancellation or deletion.'
+            )}
+          />
+        </P>
+      ),
+      children: [
+        {
+          id: 'video-reference',
+          title: t('Reference-based Generation'),
+          body: (
+            <>
+              <P>
+                <DocText
+                  text={t(
+                    'Reference-based generation freely combines text + reference images (0-9) + reference videos (0-3) + reference audio (0-3); trim the example fields as needed. Audio cannot be referenced alone — pair it with at least one image or one video. Reference images support two forms: a direct URL, or an asset library reference `asset://<AssetID>` (see the Asset Library section for uploading real-person virtual assets).'
+                  )}
+                />
+              </P>
+              <CodeBlock
+                method='POST'
+                url={tasksUrl}
+                lang='json'
+                code={`{
   "model": "${VIDEO_MODEL}",
   "content": [
-    {"type": "text", "text": "结合参考图中的人物与场景，跟随参考视频的运镜生成新视频，并以参考音频为背景音乐节奏"},
+    {"type": "text", "text": "${t('Combine the person and scene from the reference images, follow the camera movement of the reference video, and use the reference audio as the background music rhythm')}"},
     {"type": "image_url", "image_url": {"url": "https://example.com/reference1.jpg"}, "role": "reference_image"},
     {"type": "image_url", "image_url": {"url": "asset://asset-20260716111338-vwmxj"}, "role": "reference_image"},
     {"type": "video_url", "video_url": {"url": "https://example.com/reference.mp4"}, "role": "reference_video"},
@@ -340,22 +404,17 @@ function buildVideoSections(siteUrl: string): DocSection[] {
   "duration": 4,
   "generate_audio": true
 }`}
-          />
-          <CodeBlock
-            title='提交响应（id 为任务 ID，用于查询）'
-            lang='json'
-            code={videoSubmitResponse}
-          />
-          <CodeBlock
-            title='curl 示例'
-            lang='bash'
-            code={`curl -X POST ${tasksUrl} \\
-  -H "Authorization: Bearer sk-你的token" \\
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl -X POST ${tasksUrl} \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${VIDEO_MODEL}",
     "content": [
-      {"type": "text", "text": "结合参考图中的人物与场景，跟随参考视频的运镜生成新视频，并以参考音频为背景音乐节奏"},
+      {"type": "text", "text": "${t('Combine the person and scene from the reference images, follow the camera movement of the reference video, and use the reference audio as the background music rhythm')}"},
       {"type": "image_url", "image_url": {"url": "https://example.com/reference1.jpg"}, "role": "reference_image"},
       {"type": "image_url", "image_url": {"url": "asset://asset-20260716111338-vwmxj"}, "role": "reference_image"},
       {"type": "video_url", "video_url": {"url": "https://example.com/reference.mp4"}, "role": "reference_video"},
@@ -365,107 +424,116 @@ function buildVideoSections(siteUrl: string): DocSection[] {
     "duration": 4,
     "generate_audio": true
   }'`}
-          />
-          <Note>
-            含参考视频时按视频编辑任务处理：输出比例跟随输入视频，无需传{' '}
-            <InlineCode>ratio</InlineCode>；<InlineCode>duration</InlineCode> 传
-            -1 表示输出时长跟随输入视频。
-          </Note>
-        </>
-      ),
-    },
-    {
-      id: 'video-text',
-      title: '文生视频',
-      body: (
-        <>
-          <P>仅通过文字提示词生成视频。</P>
-          <CodeBlock
-            method='POST'
-            url={tasksUrl}
-            lang='json'
-            code={`{
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={videoSubmitResponse}
+              />
+              <Note>
+                <DocText
+                  text={t(
+                    'The `id` in the response example is the task ID, used for later status queries and task cancellation or deletion.'
+                  )}
+                />
+              </Note>
+              <Note>
+                <DocText
+                  text={t(
+                    'When a reference video is included, the request is treated as a video editing task: the output ratio follows the input video and `ratio` is not required; `duration` set to -1 means the output duration follows the input video.'
+                  )}
+                />
+              </Note>
+            </>
+          ),
+        },
+        {
+          id: 'video-text',
+          title: t('Text-to-Video'),
+          body: (
+            <>
+              <P>{t('Generates a video from a text prompt only.')}</P>
+              <CodeBlock
+                method='POST'
+                url={tasksUrl}
+                lang='json'
+                code={`{
   "model": "${VIDEO_MODEL}",
   "content": [
-    {"type": "text", "text": "一只橘猫在草地上奔跑，阳光明媚"}
+    {"type": "text", "text": "${t('An orange cat running on a sunlit grassland, bright and sunny')}"}
   ],
   "resolution": "480p",
   "ratio": "16:9",
   "duration": 4,
   "generate_audio": true
 }`}
-          />
-          <CodeBlock
-            title='提交响应（id 为任务 ID，用于查询）'
-            lang='json'
-            code={videoSubmitResponse}
-          />
-          <CodeBlock
-            title='curl 示例'
-            lang='bash'
-            code={`curl -X POST ${tasksUrl} \\
-  -H "Authorization: Bearer sk-你的token" \\
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl -X POST ${tasksUrl} \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${VIDEO_MODEL}",
     "content": [
-      {"type": "text", "text": "一只橘猫在草地上奔跑，阳光明媚"}
+      {"type": "text", "text": "${t('An orange cat running on a sunlit grassland, bright and sunny')}"}
     ],
     "resolution": "480p",
     "ratio": "16:9",
     "duration": 4,
     "generate_audio": true
   }'`}
-          />
-          <Note>
-            创建任务还可按模型能力使用{' '}
-            <InlineCode>omni_reference_task_type</InlineCode> /{' '}
-            <InlineCode>frames</InlineCode> / <InlineCode>watermark</InlineCode>{' '}
-            / <InlineCode>output_format</InlineCode> /{' '}
-            <InlineCode>seed</InlineCode> /{' '}
-            <InlineCode>camera_fixed</InlineCode> /{' '}
-            <InlineCode>return_last_frame</InlineCode> /{' '}
-            <InlineCode>draft</InlineCode> /{' '}
-            <InlineCode>service_tier</InlineCode> /{' '}
-            <InlineCode>callback_url</InlineCode> /{' '}
-            <InlineCode>execution_expires_after</InlineCode> /{' '}
-            <InlineCode>priority</InlineCode> /{' '}
-            <InlineCode>safety_identifier</InlineCode> /{' '}
-            <InlineCode>tools</InlineCode>。
-          </Note>
-          <Note>
-            官方默认值：<InlineCode>omni_reference_task_type=auto</InlineCode>、
-            <InlineCode>watermark=false</InlineCode>、
-            <InlineCode>output_format=mp4</InlineCode>、
-            <InlineCode>seed=-1</InlineCode>、
-            <InlineCode>camera_fixed=false</InlineCode>、
-            <InlineCode>return_last_frame=false</InlineCode>、
-            <InlineCode>draft=false</InlineCode>、
-            <InlineCode>service_tier=default</InlineCode>、
-            <InlineCode>execution_expires_after=172800</InlineCode>、
-            <InlineCode>priority=0</InlineCode>；具体可用取值以模型能力为准。
-          </Note>
-        </>
-      ),
-    },
-    {
-      id: 'video-frames',
-      title: '首尾帧生视频',
-      body: (
-        <>
-          <P>
-            通过 <InlineCode>first_frame</InlineCode> 与{' '}
-            <InlineCode>last_frame</InlineCode>{' '}
-            指定视频的首帧与尾帧画面，模型生成中间过渡内容。
-          </P>
-          <CodeBlock
-            method='POST'
-            url={tasksUrl}
-            lang='json'
-            code={`{
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={videoSubmitResponse}
+              />
+              <Note>
+                <DocText
+                  text={t(
+                    'The `id` in the response example is the task ID, used for later status queries and task cancellation or deletion.'
+                  )}
+                />
+              </Note>
+              <Note>
+                <DocText
+                  text={t(
+                    'Task creation also supports, depending on model capabilities: `omni_reference_task_type` / `frames` / `watermark` / `output_format` / `seed` / `camera_fixed` / `return_last_frame` / `draft` / `service_tier` / `callback_url` / `execution_expires_after` / `priority` / `safety_identifier` / `tools`.'
+                  )}
+                />
+              </Note>
+              <Note>
+                <DocText
+                  text={t(
+                    'Official defaults: `omni_reference_task_type=auto`, `watermark=false`, `output_format=mp4`, `seed=-1`, `camera_fixed=false`, `return_last_frame=false`, `draft=false`, `service_tier=default`, `execution_expires_after=172800`, `priority=0`; available values depend on model capabilities.'
+                  )}
+                />
+              </Note>
+            </>
+          ),
+        },
+        {
+          id: 'video-frames',
+          title: t('First & Last Frame'),
+          body: (
+            <>
+              <P>
+                <DocText
+                  text={t(
+                    'Specify the first and last frame of the video via `first_frame` and `last_frame`; the model generates the transitional content in between.'
+                  )}
+                />
+              </P>
+              <CodeBlock
+                method='POST'
+                url={tasksUrl}
+                lang='json'
+                code={`{
   "model": "${VIDEO_MODEL}",
   "content": [
-    {"type": "text", "text": "从白天过渡到黑夜的城市天际线"},
+    {"type": "text", "text": "${t('A city skyline transitioning from day to night')}"},
     {"type": "image_url", "image_url": {"url": "https://example.com/first-frame.jpg"}, "role": "first_frame"},
     {"type": "image_url", "image_url": {"url": "https://example.com/last-frame.jpg"}, "role": "last_frame"}
   ],
@@ -473,17 +541,17 @@ function buildVideoSections(siteUrl: string): DocSection[] {
   "ratio": "16:9",
   "duration": 4
 }`}
-          />
-          <CodeBlock
-            title='curl 示例'
-            lang='bash'
-            code={`curl -X POST ${tasksUrl} \\
-  -H "Authorization: Bearer sk-你的token" \\
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl -X POST ${tasksUrl} \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${VIDEO_MODEL}",
     "content": [
-      {"type": "text", "text": "从白天过渡到黑夜的城市天际线"},
+      {"type": "text", "text": "${t('A city skyline transitioning from day to night')}"},
       {"type": "image_url", "image_url": {"url": "https://example.com/first-frame.jpg"}, "role": "first_frame"},
       {"type": "image_url", "image_url": {"url": "https://example.com/last-frame.jpg"}, "role": "last_frame"}
     ],
@@ -491,30 +559,46 @@ function buildVideoSections(siteUrl: string): DocSection[] {
     "ratio": "16:9",
     "duration": 4
   }'`}
-          />
-        </>
-      ),
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={videoSubmitResponse}
+              />
+              <Note>
+                <DocText
+                  text={t(
+                    'The `id` in the response example is the task ID, used for later status queries and task cancellation or deletion.'
+                  )}
+                />
+              </Note>
+            </>
+          ),
+        },
+      ],
     },
     {
       id: 'video-query',
-      title: '查询任务状态',
+      title: t('Query Video Generation Task'),
       body: (
         <>
           <P>
-            视频生成为异步任务，提交后轮询该接口直到{' '}
-            <InlineCode>status</InlineCode> 变为{' '}
-            <InlineCode>succeeded</InlineCode>。
+            <DocText
+              text={t(
+                'Video generation is asynchronous: poll this endpoint after submission until `status` becomes `succeeded`.'
+              )}
+            />
           </P>
           <CodeBlock
             method='GET'
             url={`${tasksUrl}/{task_id}`}
             lang='bash'
-            code={`# 将 {task_id} 替换为提交任务返回的 id
+            code={`# ${t('Replace {task_id} with the id returned by the task submission')}
 curl -X GET ${tasksUrl}/{task_id} \\
-  -H "Authorization: Bearer sk-你的token"`}
+  -H "Authorization: Bearer ${t('sk-your-token')}"`}
           />
           <CodeBlock
-            title='响应示例'
+            title={t('Response example')}
             lang='json'
             code={`{
   "id": "cgt-20260826120000-abc12",
@@ -539,60 +623,36 @@ curl -X GET ${tasksUrl}/{task_id} \\
 }`}
           />
           <Note>
-            <InlineCode>status</InlineCode> 取值 <InlineCode>queued</InlineCode>{' '}
-            / <InlineCode>running</InlineCode> /{' '}
-            <InlineCode>cancelled</InlineCode> /{' '}
-            <InlineCode>succeeded</InlineCode> / <InlineCode>failed</InlineCode>{' '}
-            / <InlineCode>expired</InlineCode>；
-            <InlineCode>succeeded</InlineCode> 时{' '}
-            <InlineCode>content.video_url</InlineCode> 为视频地址，有效期 24
-            小时，请及时下载或转存。
+            <DocText
+              text={t(
+                '`status` values: `queued` / `running` / `cancelled` / `succeeded` / `failed` / `expired`; on `succeeded`, `content.video_url` is the video address, valid for 24 hours — download or transfer it promptly.'
+              )}
+            />
           </Note>
           <Note>
-            <InlineCode>failed</InlineCode> 时通过{' '}
-            <InlineCode>error.code</InlineCode> /{' '}
-            <InlineCode>error.message</InlineCode> 返回失败原因；创建时设置{' '}
-            <InlineCode>return_last_frame=true</InlineCode> 后，成功响应还会包含{' '}
-            <InlineCode>content.last_frame_url</InlineCode>。
+            <DocText
+              text={t(
+                'On `failed`, the failure reason is returned via `error.code` / `error.message`; if `return_last_frame=true` was set at creation, the success response also includes `content.last_frame_url`.'
+              )}
+            />
           </Note>
         </>
       ),
     },
     {
       id: 'video-asset-official',
-      title: '素材库',
+      title: t('Asset Library'),
       body: (
         <>
-          <P>
-            提供火山方舟官方素材库 10 个 Action 的兼容入口：下游可用火山官方 SDK
-            或 curl，把 endpoint 指向本站、用在「Key 管理」页生成的 AK/SK 做 V4
-            签名调用；请求参数、响应字段和{' '}
-            <InlineCode>ResponseMetadata</InlineCode>/{' '}
-            <InlineCode>Result</InlineCode> 信封按官方协议转换，渠道未适配的上游
-            操作会返回明确错误。
-          </P>
           <Note>
-            鉴权与隔离：在「Key 管理」页为令牌生成 Ark AK/SK；签名{' '}
-            <InlineCode>service=ark</InlineCode>、
-            <InlineCode>region</InlineCode> 任意（如{' '}
-            <InlineCode>cn-beijing</InlineCode>
-            ）。列表/查询以本站数据库为准，按
-            AK→令牌→用户归属过滤，只能查到自己创建的素材与素材组，天然多租户隔离。
-          </Note>
-          <Note>
-            调用形态：统一{' '}
-            <InlineCode>{`POST ${siteUrl}/?Action=<接口名>&Version=2024-01-01`}</InlineCode>
-            ，<InlineCode>Content-Type: application/json</InlineCode>
-            ，AK/SK V4 签名（
-            <InlineCode>Authorization: HMAC-SHA256 Credential=...</InlineCode>
-            ）。状态词表 <InlineCode>Active</InlineCode> /{' '}
-            <InlineCode>Processing</InlineCode> /{' '}
-            <InlineCode>Failed</InlineCode>；列表用{' '}
-            <InlineCode>NextToken</InlineCode> 游标分页（
-            <InlineCode>MaxResults</InlineCode> 默认 10、范围 1～100）。
+            <DocText
+              text={t(
+                'Auth & isolation: generate Ark AK/SK for the token on the Key Management page. List/query requests are served from this site\'s database, filtered by AK → token → user ownership, so you can only see assets and asset groups you created.'
+              )}
+            />
           </Note>
           <CodeBlock
-            title='成功响应信封'
+            title={t('Success response')}
             lang='json'
             code={`{
   "ResponseMetadata": {
@@ -606,7 +666,7 @@ curl -X GET ${tasksUrl}/{task_id} \\
 }`}
           />
           <CodeBlock
-            title='错误响应信封（无 Result）'
+            title={t('Error response (no Result)')}
             lang='json'
             code={`{
   "ResponseMetadata": {
@@ -619,326 +679,638 @@ curl -X GET ${tasksUrl}/{task_id} \\
   }
 }`}
           />
-          <CodeBlock
-            title='火山官方 Go SDK（service/ark）示意：仅把 endpoint 指向本站'
-            lang='bash'
-            code={`svc := ark.NewInstance()
-svc.SetRegion("cn-beijing")            // region 任意
-svc.SetService("ark")                  // 固定 ark
-svc.SetEndpoint("${siteUrl}")          // ← 指向本站（系统设置 → 服务器地址）
-svc.SetAK("AKUTxxxxxxxxxxxxxxxxxxxx")  // 「Key 管理」页生成的 AccessKey
-svc.SetSK("your-secret-key")           // 「Key 管理」页生成的 SecretKey
-
-out, err := svc.CreateAssetGroup(ctx, &ark.CreateAssetGroupInput{
-    Name:        ark.String("我的素材组"),
-    Description: ark.String("可选描述"),
-})
-// out.Result.Id 即素材组 ID；SDK 自动完成 V4 签名`}
-          />
-          <CodeBlock
-            title='curl 签名请求示例（把 <你的域名> 换成本站域名，不含 https://）'
-            lang='bash'
-            code={`curl -X POST "${siteUrl}/?Action=ListAssets&Version=2024-01-01" \\
-  -H "Content-Type: application/json" \\
-  -H "Host: <你的域名>" \\
-  -H "X-Date: 20260716T031338Z" \\
-  -H "X-Content-Sha256: <请求体的 SHA256 十六进制>" \\
-  -H "Authorization: HMAC-SHA256 Credential=<AK>/20260716/cn-beijing/ark/request, SignedHeaders=host;x-content-sha256;x-date, Signature=<V4 签名>" \\
-  -d '{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"GroupType":"AIGC"},"MaxResults":10}'`}
-          />
-          <Note>
-            V4 签名步骤（用官方 SDK 可自动完成，无需手写）：①
-            构造规范请求（方法、 URI、query、参与签名的头、payload 哈希）；② 拼
-            StringToSign（算法、X-Date、 scope、规范请求哈希）；③ 用 SK
-            逐级派生签名密钥（date/region/service）；④ HMAC-SHA256 得到
-            Signature 并写入 Authorization 头。X-Date 需在 ±15 分钟内，
-            X-Content-Sha256 须等于请求体哈希，否则返回 SignatureDoesNotMatch /
-            RequestExpired。
-          </Note>
-          <Note>
-            限制：官方兼容 API 需上游渠道具备对应素材管理能力；ark_official、
-            ecloud 等已适配渠道可使用完整管理接口，其他渠道以实际适配能力为准，
-            未适配时返回明确错误；并发/QPS 以本站为准。上面 Go SDK
-            片段仅为示意， 具体实例化方法、输入结构体与字段名以火山官方
-            volcengine-go-sdk（service/ark）为准。
-          </Note>
         </>
       ),
       children: [
         {
           id: 'video-asset-official-create-group',
-          title: 'CreateAssetGroup · 创建素材组',
-          short: 'CreateAssetGroup',
+          title: t('Create Asset Group'),
           body: (
             <>
               <P>
-                创建素材组。<InlineCode>GroupType</InlineCode>{' '}
-                可省略，当前仅支持 <InlineCode>AIGC</InlineCode>；
-                <InlineCode>ProjectName</InlineCode> 默认{' '}
-                <InlineCode>default</InlineCode>。
+                <DocText
+                  text={t(
+                    'Creates an asset group. `GroupType` can be omitted (currently only `AIGC` is supported); `ProjectName` defaults to `default`.'
+                  )}
+                />
               </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=CreateAssetGroup&Version=2024-01-01`}
                 lang='json'
-                code='{"Name":"我的素材组","Description":"可选描述","GroupType":"AIGC","ProjectName":"default"}'
+                code={`{
+  "Name": "demo-portrait-group",
+  "Description": "${t('Demo virtual portrait asset group')}",
+  "GroupType": "AIGC",
+  "ProjectName": "default"
+}`}
               />
               <CodeBlock
-                title='Result'
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=CreateAssetGroup&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Name": "demo-portrait-group",
+    "Description": "${t('Demo virtual portrait asset group')}",
+    "GroupType": "AIGC",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
                 lang='json'
-                code='{"Id": "group-20260716105134-zkx8t"}'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "20240514212750B2C3D4E5F6789ABCDE",
+    "Action": "CreateAssetGroup",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Id": "group-20240514212750-b5e9m"
+  }
+}`}
               />
               <Note>
-                创建素材组使用当前 Key 绑定的启用素材渠道，Key
-                未绑定渠道时无法建组； 同一素材组内的 CreateAsset
-                锁定到建组时的渠道，保证同一上游账号。
+                <DocText
+                  text={t(
+                    'Creating an asset group uses the enabled asset channel bound to the current Key; without a bound channel, group creation fails. CreateAsset within the same group is locked to the channel used at group creation, ensuring the same upstream account.'
+                  )}
+                />
               </Note>
             </>
           ),
         },
         {
           id: 'video-asset-official-create',
-          title: 'CreateAsset · 创建素材',
-          short: 'CreateAsset',
+          title: t('Create Asset'),
           body: (
             <>
               <P>
-                在指定素材组内创建素材。<InlineCode>URL</InlineCode>{' '}
-                必须是公网可访问的 http(s) 地址（由上游拉取，非文件流）；
-                <InlineCode>AssetType</InlineCode> 取值{' '}
-                <InlineCode>Image</InlineCode> / <InlineCode>Video</InlineCode>{' '}
-                / <InlineCode>Audio</InlineCode>；<InlineCode>Name</InlineCode>{' '}
-                可省略。
+                <DocText
+                  text={t(
+                    'Creates an asset in the specified group. `URL` must be a publicly accessible http(s) address (fetched by upstream, not a file stream); `AssetType` values: `Image` / `Video` / `Audio`; `Name` can be omitted.'
+                  )}
+                />
               </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=CreateAsset&Version=2024-01-01`}
                 lang='json'
-                code='{"GroupId":"group-20260716105134-zkx8t","URL":"https://picsum.photos/id/1074/800/600","AssetType":"Image","Name":"lion01","ProjectName":"default"}'
+                code={`{
+  "GroupId": "group-20240514212750-b5e9m",
+  "URL": "${siteUrl}/asset-20240514212750-a3f8k.jpg",
+  "Name": "demo-portrait-image",
+  "AssetType": "Image",
+  "ProjectName": "default"
+}`}
               />
               <CodeBlock
-                title='Result'
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=CreateAsset&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "GroupId": "group-20240514212750-b5e9m",
+    "URL": "${siteUrl}/asset-20240514212750-a3f8k.jpg",
+    "Name": "demo-portrait-image",
+    "AssetType": "Image",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
                 lang='json'
-                code='{"Id": "asset-20260716111338-vwmxj"}'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "20240514212750A1B2C3D4E5F67890",
+    "Action": "CreateAsset",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Id": "asset-20240514212750-a3f8k"
+  }
+}`}
               />
             </>
           ),
         },
         {
           id: 'video-asset-official-list-groups',
-          title: 'ListAssetGroups · 列出素材组',
-          short: 'ListAssetGroups',
+          title: t('List Asset Groups'),
           body: (
             <>
               <P>
-                列出素材组，<InlineCode>Filter</InlineCode> 与{' '}
-                <InlineCode>Filter.GroupType</InlineCode> 必选，支持{' '}
-                <InlineCode>GroupIds</InlineCode> /{' '}
-                <InlineCode>Name</InlineCode> 过滤。
+                <DocText
+                  text={t(
+                    'Lists asset groups. `Filter` and `Filter.GroupType` are required; `GroupIds` / `Name` filters are supported.'
+                  )}
+                />
               </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=ListAssetGroups&Version=2024-01-01`}
                 lang='json'
-                code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"GroupType":"AIGC"},"MaxResults":10}'
+                code={`{
+  "Filter": {
+    "GroupIds": [
+      "group-20240514212750-b5e9m",
+      "group-20240514212810-c7n2p"
+    ],
+    "GroupType": "AIGC"
+  },
+  "MaxResults": 1,
+  "SortBy": "CreateTime",
+  "SortOrder": "Desc",
+  "ProjectName": "default"
+}`}
               />
               <CodeBlock
-                title='Result'
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=ListAssetGroups&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Filter": {
+      "GroupIds": [
+        "group-20240514212750-b5e9m",
+        "group-20240514212810-c7n2p"
+      ],
+      "GroupType": "AIGC"
+    },
+    "MaxResults": 1,
+    "SortBy": "CreateTime",
+    "SortOrder": "Desc",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
                 lang='json'
-                code='{"Items": [{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}]}'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "202405142130002B3C4D5E6F70819203",
+    "Action": "ListAssetGroups",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Items": [
+      {
+        "Id": "group-20240514212750-b5e9m",
+        "Name": "demo-portrait-group",
+        "Description": "${t('Demo virtual portrait asset group')}",
+        "GroupType": "AIGC",
+        "ProjectName": "default",
+        "CreateTime": "2024-05-14T21:27:50Z",
+        "UpdateTime": "2024-05-14T21:30:00Z"
+      }
+    ],
+    "NextToken": "****bmNyeXB0ZWRfY3Vyc29yIjoiLi4****"
+  }
+}`}
               />
               <Note>
-                <InlineCode>NextToken</InlineCode> +{' '}
-                <InlineCode>MaxResults</InlineCode> 游标分页与{' '}
-                <InlineCode>PageNumber</InlineCode> +{' '}
-                <InlineCode>PageSize</InlineCode>{' '}
-                页码分页二选一；页码分页响应返回{' '}
-                <InlineCode>PageNumber</InlineCode> /{' '}
-                <InlineCode>PageSize</InlineCode> /{' '}
-                <InlineCode>TotalCount</InlineCode>。支持{' '}
-                <InlineCode>SortBy=CreateTime</InlineCode> 与{' '}
-                <InlineCode>SortOrder=Desc|Asc</InlineCode>，
-                <InlineCode>ProjectName</InlineCode> 默认{' '}
-                <InlineCode>default</InlineCode>。
+                <DocText
+                  text={t(
+                    'Cursor pagination via `NextToken` + `MaxResults` and page pagination via `PageNumber` + `PageSize` are mutually exclusive; page pagination responses return `PageNumber` / `PageSize` / `TotalCount`. Supports `SortBy=CreateTime` and `SortOrder=Desc|Asc`; `ProjectName` defaults to `default`.'
+                  )}
+                />
               </Note>
             </>
           ),
         },
         {
           id: 'video-asset-official-list',
-          title: 'ListAssets · 列出素材',
-          short: 'ListAssets',
+          title: t('List Assets'),
           body: (
             <>
               <P>
-                列出素材，<InlineCode>Filter</InlineCode> 与{' '}
-                <InlineCode>Filter.GroupType</InlineCode> 必选，支持{' '}
-                <InlineCode>GroupIds</InlineCode> /{' '}
-                <InlineCode>Statuses</InlineCode> /{' '}
-                <InlineCode>Name</InlineCode> 过滤。
-                <InlineCode>Statuses</InlineCode> 用官方词表{' '}
-                <InlineCode>Active</InlineCode> /{' '}
-                <InlineCode>Processing</InlineCode> /{' '}
-                <InlineCode>Failed</InlineCode>。
+                <DocText
+                  text={t(
+                    'Lists assets. `Filter` and `Filter.GroupType` are required; `GroupIds` / `Statuses` / `Name` filters are supported. `Statuses` uses the official vocabulary `Active` / `Processing` / `Failed`.'
+                  )}
+                />
               </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=ListAssets&Version=2024-01-01`}
                 lang='json'
-                code='{"Filter":{"GroupIds":["group-20260716105134-zkx8t"],"GroupType":"AIGC"},"MaxResults":10}'
+                code={`{
+  "Filter": {
+    "GroupIds": ["group-20240514212750-b5e9m"],
+    "GroupType": "AIGC",
+    "Statuses": ["Active"]
+  },
+  "MaxResults": 1,
+  "SortBy": "CreateTime",
+  "SortOrder": "Desc",
+  "ProjectName": "default"
+}`}
               />
               <CodeBlock
-                title='Result'
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=ListAssets&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Filter": {
+      "GroupIds": ["group-20240514212750-b5e9m"],
+      "GroupType": "AIGC",
+      "Statuses": ["Active"]
+    },
+    "MaxResults": 1,
+    "SortBy": "CreateTime",
+    "SortOrder": "Desc",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
                 lang='json'
-                code='{"Items": [{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "ProjectName": "default", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "Status": "Active", "Moderation": {"Strategy": "Default"}}]}'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "202405142130001A2B3C4D5E6F708192",
+    "Action": "ListAssets",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Items": [
+      {
+        "Id": "asset-20240514212750-a3f8k",
+        "Name": "demo-portrait-image",
+        "URL": "${siteUrl}/asset-20240514212750-a3f8k.jpg?X-Amz-Expires=43200",
+        "GroupId": "group-20240514212750-b5e9m",
+        "AssetType": "Image",
+        "Status": "Active",
+        "Moderation": {
+          "Strategy": "Default"
+        },
+        "Error": {
+          "Code": "",
+          "Message": ""
+        },
+        "ProjectName": "default",
+        "CreateTime": "2024-05-14T21:27:50Z",
+        "UpdateTime": "2024-05-14T21:30:00Z",
+        "LastInferenceTime": "2024-05-14T22:15:30Z"
+      }
+    ],
+    "NextToken": "****bmNyeXB0ZWRfY3Vyc29yIjoiLi4****"
+  }
+}`}
               />
               <Note>
-                <InlineCode>NextToken</InlineCode> +{' '}
-                <InlineCode>MaxResults</InlineCode> 游标分页与{' '}
-                <InlineCode>PageNumber</InlineCode> +{' '}
-                <InlineCode>PageSize</InlineCode>{' '}
-                页码分页二选一；页码分页响应返回{' '}
-                <InlineCode>PageNumber</InlineCode> /{' '}
-                <InlineCode>PageSize</InlineCode> /{' '}
-                <InlineCode>TotalCount</InlineCode>。支持{' '}
-                <InlineCode>SortBy=CreateTime|GroupId</InlineCode> 与{' '}
-                <InlineCode>SortOrder=Desc|Asc</InlineCode>，
-                <InlineCode>ProjectName</InlineCode> 默认{' '}
-                <InlineCode>default</InlineCode>。
+                <DocText
+                  text={t(
+                    'Cursor pagination via `NextToken` + `MaxResults` and page pagination via `PageNumber` + `PageSize` are mutually exclusive; page pagination responses return `PageNumber` / `PageSize` / `TotalCount`. Supports `SortBy=CreateTime|GroupId` and `SortOrder=Desc|Asc`; `ProjectName` defaults to `default`.'
+                  )}
+                />
               </Note>
             </>
           ),
         },
         {
           id: 'video-asset-official-get',
-          title: 'GetAsset · 查询素材',
-          short: 'GetAsset',
+          title: t('Get Asset'),
           body: (
             <>
-              <P>按 Id 查询单个素材的详情与状态。</P>
+              <P>{t('Queries the details and status of a single asset by Id.')}</P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=GetAsset&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"asset-20260716111338-vwmxj","ProjectName":"default"}'
+                code={`{
+  "Id": "asset-20240514212750-a3f8k",
+  "ProjectName": "default"
+}`}
               />
               <CodeBlock
-                title='Result'
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=GetAsset&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Id": "asset-20240514212750-a3f8k",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
                 lang='json'
-                code='{"Id": "asset-20260716111338-vwmxj", "Name": "lion01", "AssetType": "Image", "Status": "Active", "URL": "https://ark-media-asset.tos-cn-beijing.volces.com/xxx", "GroupId": "group-20260716105134-zkx8t", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:40Z", "Moderation": {"Strategy": "Default"}}'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "20240514213000E5F6789ABCDEF01234",
+    "Action": "GetAsset",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Id": "asset-20240514212750-a3f8k",
+    "Name": "demo-portrait-image",
+    "URL": "${siteUrl}/asset-20240514212750-a3f8k.jpg?X-Amz-Expires=43200",
+    "AssetType": "Image",
+    "GroupId": "group-20240514212750-b5e9m",
+    "Status": "Active",
+    "Moderation": {
+      "Strategy": "Default"
+    },
+    "Error": {
+      "Code": "",
+      "Message": ""
+    },
+    "CreateTime": "2024-05-14T21:27:50Z",
+    "UpdateTime": "2024-05-14T21:30:00Z",
+    "LastInferenceTime": "2024-05-14T22:15:30Z",
+    "ProjectName": "default"
+  }
+}`}
               />
               <Note>
-                <InlineCode>Status=Failed</InlineCode> 时查看{' '}
-                <InlineCode>Error.Code</InlineCode> /{' '}
-                <InlineCode>Error.Message</InlineCode>；
-                <InlineCode>LastInferenceTime</InlineCode>{' '}
-                表示最近提交至视频生成任务的时间，素材未被任务调用时不返回。
+                <DocText
+                  text={t(
+                    'When `Status=Failed`, check `Error.Code` / `Error.Message`; `LastInferenceTime` is the last time the asset was submitted to a video generation task, and is omitted when the asset has never been used by a task.'
+                  )}
+                />
               </Note>
             </>
           ),
         },
         {
           id: 'video-asset-official-get-group',
-          title: 'GetAssetGroup · 查询素材组',
-          short: 'GetAssetGroup',
+          title: t('Get Asset Group'),
           body: (
             <>
-              <P>按 Id 查询单个素材组的详情。</P>
+              <P>{t('Queries the details of a single asset group by Id.')}</P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=GetAssetGroup&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"group-20260716105134-zkx8t","ProjectName":"default"}'
+                code={`{
+  "Id": "group-20240514212750-b5e9m",
+  "ProjectName": "default"
+}`}
               />
               <CodeBlock
-                title='Result'
-                lang='json'
-                code='{"Id": "group-20260716105134-zkx8t", "Name": "我的素材组", "Description": "可选描述", "GroupType": "AIGC", "ProjectName": "default", "CreateTime": "2026-07-16T03:13:38Z", "UpdateTime": "2026-07-16T03:13:38Z"}'
-              />
-            </>
-          ),
-        },
-        {
-          id: 'video-asset-official-update',
-          title: 'UpdateAsset · 更新素材',
-          short: 'UpdateAsset',
-          body: (
-            <>
-              <P>更新素材（官方当前仅支持改名）。</P>
-              <CodeBlock
-                method='POST'
-                url={`${siteUrl}/?Action=UpdateAsset&Version=2024-01-01`}
-                lang='json'
-                code='{"Id":"asset-20260716111338-vwmxj","Name":"新素材名","ProjectName":"default"}'
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=GetAssetGroup&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Id": "group-20240514212750-b5e9m",
+    "ProjectName": "default"
+  }'`}
               />
               <CodeBlock
-                title='Result'
+                title={t('Response example')}
                 lang='json'
-                code='{"Id":"asset-20260716111338-vwmxj"}'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "20240514213000F6789ABCDEF0123456",
+    "Action": "GetAssetGroup",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Id": "group-20240514212750-b5e9m",
+    "Name": "demo-portrait-group",
+    "Description": "${t('Demo virtual portrait asset group')}",
+    "GroupType": "AIGC",
+    "ProjectName": "default",
+    "CreateTime": "2024-05-14T21:27:50Z",
+    "UpdateTime": "2024-05-14T21:30:00Z"
+  }
+}`}
               />
             </>
           ),
         },
         {
           id: 'video-asset-official-update-group',
-          title: 'UpdateAssetGroup · 更新素材组',
-          short: 'UpdateAssetGroup',
+          title: t('Update Asset Group'),
           body: (
             <>
-              <P>更新素材组名称 / 描述，官方当前仅支持这两个更新字段。</P>
+              <P>
+                {t(
+                  'Updates the name / description of an asset group — the only two update fields currently supported officially.'
+                )}
+              </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=UpdateAssetGroup&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"group-20260716105134-zkx8t","Name":"新组名","Description":"新描述","ProjectName":"default"}'
+                code={`{
+  "Id": "group-20240514212750-b5e9m",
+  "Name": "demo-portrait-group-renamed",
+  "Description": "${t('Updated demo virtual portrait asset group description')}",
+  "ProjectName": "default"
+}`}
               />
               <CodeBlock
-                title='Result'
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=UpdateAssetGroup&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Id": "group-20240514212750-b5e9m",
+    "Name": "demo-portrait-group-renamed",
+    "Description": "${t('Updated demo virtual portrait asset group description')}",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
                 lang='json'
-                code='{"Id":"group-20260716105134-zkx8t"}'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "202405142130004D5E6F708192031A2B",
+    "Action": "UpdateAssetGroup",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Id": "group-20240514212750-b5e9m"
+  }
+}`}
+              />
+            </>
+          ),
+        },
+        {
+          id: 'video-asset-official-update',
+          title: t('Update Asset'),
+          body: (
+            <>
+              <P>{t('Updates an asset (officially only renaming is supported).')}</P>
+              <CodeBlock
+                method='POST'
+                url={`${siteUrl}/?Action=UpdateAsset&Version=2024-01-01`}
+                lang='json'
+                code={`{
+  "Id": "asset-20240514212750-a3f8k",
+  "Name": "demo-portrait-image-renamed",
+  "ProjectName": "default"
+}`}
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=UpdateAsset&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Id": "asset-20240514212750-a3f8k",
+    "Name": "demo-portrait-image-renamed",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "202405142130003C4D5E6F708192031A",
+    "Action": "UpdateAsset",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {
+    "Id": "asset-20240514212750-a3f8k"
+  }
+}`}
               />
             </>
           ),
         },
         {
           id: 'video-asset-official-delete',
-          title: 'DeleteAsset · 删除素材',
-          short: 'DeleteAsset',
+          title: t('Delete Asset'),
           body: (
             <>
               <P>
-                删除素材，尽力联动上游一并删除（best-effort）：上游故障不阻断本地删除。
+                {t(
+                  'Deletes an asset, with best-effort upstream deletion: upstream failures do not block local deletion.'
+                )}
               </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=DeleteAsset&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"asset-20260716111338-vwmxj","ProjectName":"default"}'
+                code={`{
+  "Id": "asset-20240514212750-a3f8k",
+  "ProjectName": "default"
+}`}
               />
-              <CodeBlock title='Result' lang='json' code='{}' />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=DeleteAsset&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Id": "asset-20240514212750-a3f8k",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "20240514213000C3D4E5F6789ABCDEF0",
+    "Action": "DeleteAsset",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {}
+}`}
+              />
             </>
           ),
         },
         {
           id: 'video-asset-official-delete-group',
-          title: 'DeleteAssetGroup · 删除素材组',
-          short: 'DeleteAssetGroup',
+          title: t('Delete Asset Group'),
           body: (
             <>
               <P>
-                删除素材组：组内素材先尽力联动上游删除（best-effort），再清理本地登记。
+                {t(
+                  'Deletes an asset group: assets in the group are first deleted upstream on a best-effort basis, then local registrations are cleaned up.'
+                )}
               </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=DeleteAssetGroup&Version=2024-01-01`}
                 lang='json'
-                code='{"Id":"group-20260716105134-zkx8t","ProjectName":"default"}'
+                code={`{
+  "Id": "group-20240514212750-b5e9m",
+  "ProjectName": "default"
+}`}
               />
-              <CodeBlock title='Result' lang='json' code='{}' />
-              <Note>
-                官方定义成功响应为空对象；部分上游可能额外返回{' '}
-                <InlineCode>Id</InlineCode>，调用方不应依赖该字段。
-              </Note>
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl '${siteUrl}/?Action=DeleteAssetGroup&Version=2024-01-01' \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-Date: <X-Date>' \\
+  -H 'X-Content-Sha256: <X-Content-Sha256>' \\
+  -H 'Authorization: HMAC-SHA256 Credential=<AK>/<X-Date>/cn-beijing/ark/request, SignedHeaders=content-type;host;x-content-sha256;x-date, Signature=<Signature>' \\
+  -d '{
+    "Id": "group-20240514212750-b5e9m",
+    "ProjectName": "default"
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={`{
+  "ResponseMetadata": {
+    "RequestId": "20240514213000D4E5F6789ABCDEF012",
+    "Action": "DeleteAssetGroup",
+    "Version": "2024-01-01",
+    "Service": "ark",
+    "Region": "cn-beijing"
+  },
+  "Result": {}
+}`}
+              />
             </>
           ),
         },
@@ -958,46 +1330,63 @@ function FaqItem(props: { q: string; a: ReactNode }) {
   )
 }
 
-function buildFaqSections(siteUrl: string): DocSection[] {
+function buildFaqSections(siteUrl: string, t: DocsTranslate): DocSection[] {
   return [
     {
       id: 'faq-start',
-      title: '入门引导',
+      title: t('Getting Started'),
       body: (
         <>
           <FaqItem
-            q='Q1：网页如何体验？'
+            q={t('Q1: How to try it on the web?')}
             a={
               <ol className='list-decimal space-y-1.5 pl-5'>
                 <li>
-                  浏览器打开 <InlineCode>{siteUrl}</InlineCode>
+                  <DocText
+                    text={t('Open `{{url}}` in a browser', { url: siteUrl })}
+                  />
                 </li>
-                <li>输入用户名和密码</li>
+                <li>{t('Enter your username and password')}</li>
                 <li>
-                  点击左侧「新对话」菜单，在右侧页面切换模型（如{' '}
-                  <InlineCode>seedance</InlineCode>）
+                  <DocText
+                    text={t(
+                      'Click the New Conversation menu on the left and switch models (e.g. `seedance`) on the right'
+                    )}
+                  />
                 </li>
-                <li>输入提示词</li>
-                <li>点击右下角生成</li>
+                <li>{t('Enter a prompt')}</li>
+                <li>{t('Click Generate at the bottom right')}</li>
               </ol>
             }
           />
           <FaqItem
-            q='Q2：接口如何对接？'
+            q={t('Q2: How to integrate via API?')}
             a={
               <>
                 <ol className='list-decimal space-y-1.5 pl-5'>
                   <li>
-                    浏览器打开 <InlineCode>{siteUrl}</InlineCode>
+                    <DocText
+                      text={t('Open `{{url}}` in a browser', { url: siteUrl })}
+                    />
                   </li>
-                  <li>输入用户名和密码</li>
-                  <li>点击左侧「API 密钥」菜单，点击右上角「创建 API 密钥」</li>
+                  <li>{t('Enter your username and password')}</li>
                   <li>
-                    使用密钥替换示例中的 <InlineCode>sk-你的token</InlineCode>
+                    {t(
+                      'Click the API Keys menu on the left, then Create API Key at the top right'
+                    )}
+                  </li>
+                  <li>
+                    <DocText
+                      text={t(
+                        'Replace `sk-your-token` in the examples with your key'
+                      )}
+                    />
                   </li>
                 </ol>
                 <P>
-                  各接口的调用方式与示例见上方「语言模型」「图片模型」「视频模型」页签。
+                  {t(
+                    'See the Language Models, Image Models, and Video Models tabs above for calling conventions and examples of each endpoint.'
+                  )}
                 </P>
               </>
             }
@@ -1007,30 +1396,35 @@ function buildFaqSections(siteUrl: string): DocSection[] {
     },
     {
       id: 'faq-compliance',
-      title: '真人与合规',
+      title: t('Real Persons & Compliance'),
       body: (
         <>
           <FaqItem
-            q='Q3：能通过真人人脸核验吗？'
-            a='人脸需要使用素材库核验后才能生成视频：把真人图片上传到素材库，素材通过审核后，生成视频时使用 assetID。生成视频时直接使用真人图片存在合规风险，会造成生成视频失败。'
+            q={t('Q3: Can real-person face verification be passed?')}
+            a={t(
+              'Faces must be verified via the asset library before video generation: upload the real-person image to the asset library, and after the asset passes review, use its asset ID for video generation. Using real-person images directly for video generation carries compliance risks and will cause generation failures.'
+            )}
           />
           <FaqItem
-            q='Q4：有高级创作权益包吗？'
-            a='有高级创作权益包，支持100万个素材。'
+            q={t('Q4: Is there an advanced creation entitlement package?')}
+            a={t('Yes, the advanced creation entitlement package supports 1 million assets.')}
           />
           <FaqItem
-            q='Q5：素材上传接口是什么？'
+            q={t('Q5: What is the asset upload endpoint?')}
             a={
               <>
-                参考{' '}
+                {t('Refer to the')}{' '}
                 <a
                   href={`${siteUrl}/docs#video-asset-official`}
                   className='text-primary hover:underline'
                 >
-                  素材库 API
+                  {t('Asset Library API')}
                 </a>
-                。通过素材库创建素材组并上传素材，审核通过后得到素材
-                ID，在视频任务中以 asset://&lt;素材ID&gt; 引用。
+                <DocText
+                  text={t(
+                    '. Create an asset group and upload assets via the asset library; after review passes you get an asset ID, referenced as `asset://<AssetID>` in video tasks.'
+                  )}
+                />
               </>
             }
           />
@@ -1039,76 +1433,97 @@ function buildFaqSections(siteUrl: string): DocSection[] {
     },
     {
       id: 'faq-quota',
-      title: '限流与配额',
+      title: t('Rate Limits & Quota'),
       body: (
         <FaqItem
-          q='Q6：网站并发如何？'
-          a='接口请求 rpm600（每分钟接口请求数 600）；素材上传 QPM 20（真人虚拟素材库每分钟上传 20 个），和火山方舟一致。如果需要更大的并发需要提前报备并开通指定的 url。'
+          q={t('Q6: What is the site concurrency?')}
+          a={t(
+            'API requests rpm600 (600 API requests per minute); asset upload QPM 20 (20 uploads per minute for the real-person virtual asset library), consistent with Volcano Ark. Higher concurrency requires advance registration and enabling of designated URLs.'
+          )}
         />
       ),
     },
     {
       id: 'faq-billing',
-      title: '接入与计费',
+      title: t('Integration & Billing'),
       body: (
         <>
-          <FaqItem q='Q7：平台跟火山是直连吗？' a='是，协议透传。' />
           <FaqItem
-            q='Q8：计费按 token 还是按秒？'
+            q={t('Q7: Is the platform directly connected to Volcano?')}
+            a={t('Yes, protocol passthrough.')}
+          />
+          <FaqItem
+            q={t('Q8: Is billing per token or per second?')}
             a={
               <>
-                按
-                token，和官方计价方式一致。同一模型按分辨率和是否带视频输入费用不同，不同模型费用也不同，费用请参考{' '}
+                {t(
+                  'Per token, consistent with official pricing. For the same model, fees differ by resolution and whether video input is included; fees also differ across models — see the'
+                )}{' '}
                 <a
                   href={`${siteUrl}/pricing`}
                   className='text-primary hover:underline'
                 >
-                  模型广场
+                  {t('Model Square')}
                 </a>
-                。
+                {t('.')}
               </>
             }
           />
           <FaqItem
-            q='Q9：平台如何计费？'
-            a='提交任务时先预扣一笔费用，任务完成后按官方返回的实际 token 消耗结算，多退少补。'
+            q={t('Q9: How does the platform bill?')}
+            a={t(
+              'A fee is pre-deducted when the task is submitted; after completion it is settled by the actual token consumption returned officially, with refunds or extra charges as appropriate.'
+            )}
           />
-          <FaqItem q='Q10：失败的任务扣费吗？' a='不扣。失败任务不扣费。' />
+          <FaqItem
+            q={t('Q10: Are failed tasks charged?')}
+            a={t('No. Failed tasks are not charged.')}
+          />
         </>
       ),
     },
     {
       id: 'faq-models',
-      title: '模型与能力',
+      title: t('Models & Capabilities'),
       body: (
         <>
           <FaqItem
-            q='Q11：支持哪些模型？文本/图像/视频三类能力都通吗？'
-            a='文本/图像/视频三类能力全部打通。'
+            q={t(
+              'Q11: Which models are supported? Are text/image/video capabilities all covered?'
+            )}
+            a={t('All three capabilities — text, image, and video — are fully integrated.')}
           />
           <FaqItem
-            q='Q12：任务详情能回读吗？方便对账吗？'
-            a='支持。任务查询接口可回读任务号、状态、进度、结果地址、token 用量等，便于对账。'
+            q={t('Q12: Can task details be read back? Is reconciliation convenient?')}
+            a={t(
+              'Yes. The task query endpoint returns task number, status, progress, result URL, token usage, etc., facilitating reconciliation.'
+            )}
           />
         </>
       ),
     },
     {
       id: 'faq-stability',
-      title: '稳定性与交付定位',
+      title: t('Stability & Delivery Positioning'),
       body: (
         <FaqItem
-          q='Q13：供给稳定性如何？能承载正式交付吗？'
-          a='上游资源火山方舟，上游波动时可静默切换渠道，提升系统稳定性。'
+          q={t('Q13: How is supply stability? Can it support formal delivery?')}
+          a={t(
+            'Upstream resources come from Volcano Ark; on upstream fluctuations the channel can be switched silently to improve system stability.'
+          )}
         />
       ),
     },
   ]
 }
 
-export function getDocSections(tab: DocsTabId, siteUrl: string): DocSection[] {
-  if (tab === 'image') return buildImageSections(siteUrl)
-  if (tab === 'video') return buildVideoSections(siteUrl)
-  if (tab === 'faq') return buildFaqSections(siteUrl)
-  return buildLanguageSections(siteUrl)
+export function getDocSections(
+  tab: DocsTabId,
+  siteUrl: string,
+  t: DocsTranslate
+): DocSection[] {
+  if (tab === 'image') return buildImageSections(siteUrl, t)
+  if (tab === 'video') return buildVideoSections(siteUrl, t)
+  if (tab === 'faq') return buildFaqSections(siteUrl, t)
+  return buildLanguageSections(siteUrl, t)
 }

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 
 export function P(props: { children: ReactNode }) {
   return (
@@ -39,5 +39,20 @@ export function Note(props: { children: ReactNode }) {
     <div className='border-border/70 bg-muted/40 text-muted-foreground rounded-lg border px-3.5 py-2.5 text-xs leading-relaxed'>
       {props.children}
     </div>
+  )
+}
+
+/** 渲染 i18n 译文：反引号包裹的片段渲染为行内代码，避免译文与 InlineCode 碎片拼接 */
+export function DocText(props: { text: string }) {
+  return (
+    <>
+      {props.text.split('`').map((part, i) =>
+        i % 2 === 1 ? (
+          <InlineCode key={i}>{part}</InlineCode>
+        ) : (
+          <Fragment key={i}>{part}</Fragment>
+        )
+      )}
+    </>
   )
 }

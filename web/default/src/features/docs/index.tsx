@@ -23,7 +23,8 @@ import {
   MessageSquareText,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
 import { PageTopGlow } from '@/components/page-top-glow'
@@ -38,14 +39,14 @@ import {
   type DocSection,
   type DocsTabId,
 } from './content'
-import { videoKeySection } from './video-key-section'
+import { buildVideoKeySection } from './video-key-section'
 import { buildVideoTaskSections } from './video-task-sections'
 
 const TABS: { id: DocsTabId; label: string; icon: LucideIcon }[] = [
-  { id: 'language', label: '语言模型', icon: MessageSquareText },
-  { id: 'image', label: '图片模型', icon: ImageIcon },
-  { id: 'video', label: '视频模型', icon: Clapperboard },
-  { id: 'faq', label: '常见问题', icon: CircleHelp },
+  { id: 'language', label: 'Text Models', icon: MessageSquareText },
+  { id: 'image', label: 'Image Models', icon: ImageIcon },
+  { id: 'video', label: 'Video Models', icon: Clapperboard },
+  { id: 'faq', label: 'FAQ', icon: CircleHelp },
 ]
 
 const TAB_ACTIVE_STYLES: Record<DocsTabId, string> = {
@@ -90,14 +91,7 @@ function DocNavList(props: {
                   {String(i + 1).padStart(2, '0')}
                 </span>
               )}
-              <span
-                className={cn(
-                  'leading-snug',
-                  depth >= 2 && s.short && 'font-mono text-[11px]'
-                )}
-              >
-                {s.short ?? s.title}
-              </span>
+              <span className='leading-snug'>{s.title}</span>
             </a>
             {s.children && (
               <div className='border-border/50 ml-4 border-l pl-1.5'>
@@ -143,7 +137,7 @@ function DocSectionBlock(props: {
     heading = <h4 className='mb-2 text-sm font-semibold'>{section.title}</h4>
   }
   return (
-    <section id={section.id} className='scroll-mt-24'>
+    <section id={section.id} className='scroll-mt-[180px] sm:scroll-mt-[134px]'>
       {heading}
       <div className='space-y-4'>{section.body}</div>
       {section.children && (
@@ -168,26 +162,40 @@ function DocSectionBlock(props: {
 
 export function DeveloperDocs() {
   const { status } = useStatus()
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<DocsTabId>('video')
   const [activeSection, setActiveSection] = useState('')
+  // 页签栏吸顶后才加底色：页面顶部保持透明，避免在背景光晕上出现白色色块
+  const tabSentinelRef = useRef<HTMLDivElement>(null)
+  const [tabsStuck, setTabsStuck] = useState(false)
+  useEffect(() => {
+    const sentinel = tabSentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setTabsStuck(!entry.isIntersecting),
+      { rootMargin: '-57px 0px 0px 0px' }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [])
   const siteUrl = useMemo(() => resolveDocsSiteUrl(status), [status])
   const sections = useMemo(() => {
-    const docSections = getDocSections(activeTab, siteUrl)
+    const docSections = getDocSections(activeTab, siteUrl, t)
     if (activeTab !== 'video') return docSections
     const queryIndex = docSections.findIndex(
       (section) => section.id === 'video-query'
     )
-    const taskSections = buildVideoTaskSections(siteUrl)
+    const taskSections = buildVideoTaskSections(siteUrl, t)
     if (queryIndex < 0) {
-      return [videoKeySection, ...docSections, ...taskSections]
+      return [buildVideoKeySection(t), ...docSections, ...taskSections]
     }
     return [
-      videoKeySection,
+      buildVideoKeySection(t),
       ...docSections.slice(0, queryIndex + 1),
       ...taskSections,
       ...docSections.slice(queryIndex + 1),
     ]
-  }, [activeTab, siteUrl])
+  }, [activeTab, siteUrl, t])
 
   const flatSections = useMemo(() => flattenDocSections(sections), [sections])
 
@@ -229,8 +237,14 @@ export function DeveloperDocs() {
       <div className='relative'>
         <PageTopGlow />
         <PageTransition className='relative mx-auto w-full max-w-6xl px-4 pt-20 pb-16 sm:px-6 sm:pt-24'>
-          {/* 模型类型页签 */}
-          <div className='mb-8 flex flex-wrap items-center gap-2'>
+          {/* 模型类型页签：吸顶于公共页头下方，滚动正文时仍可切换 */}
+          <div ref={tabSentinelRef} aria-hidden />
+          <div
+            className={cn(
+              'sticky top-14 z-30 mb-8 flex flex-wrap items-center gap-2 py-3 transition-colors duration-200',
+              tabsStuck && 'bg-background/95 backdrop-blur-xl'
+            )}
+          >
             {TABS.map((tab) => (
               <button
                 key={tab.id}
@@ -244,7 +258,7 @@ export function DeveloperDocs() {
                 )}
               >
                 <tab.icon className='size-4' />
-                {tab.label}
+                {t(tab.label)}
               </button>
             ))}
           </div>
@@ -252,7 +266,7 @@ export function DeveloperDocs() {
           {/* 目录 + 正文 */}
           <div className='grid gap-10 lg:grid-cols-[212px_minmax(0,1fr)]'>
             <nav className='hidden lg:block'>
-              <div className='sticky top-24 max-h-[calc(100vh-7rem)] space-y-1 overflow-y-auto pr-1 pb-2'>
+              <div className='sticky top-[126px] max-h-[calc(100vh-142px)] space-y-1 overflow-y-auto pr-1 pb-2'>
                 <DocNavList
                   sections={sections}
                   depth={0}
@@ -273,11 +287,13 @@ export function DeveloperDocs() {
               ))}
 
               <p className='text-muted-foreground/70 border-border/60 border-t pt-6 text-xs leading-relaxed'>
-                提示：本文示例中的模型 ID 仅作演示，实际可用模型及价格以「
+                {t(
+                  'Note: model IDs in the examples on this page are for demonstration only; for actually available models and pricing refer to the'
+                )}
                 <a href='/pricing' className='text-primary hover:underline'>
-                  模型广场
+                  {t('Model Square')}
                 </a>
-                」页面为准。
+                {t('page.')}
               </p>
             </div>
           </div>
