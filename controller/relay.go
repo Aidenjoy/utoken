@@ -521,30 +521,6 @@ func RelayNotFound(c *gin.Context) {
 }
 
 func RelayTaskFetch(c *gin.Context) {
-	taskID := c.Param("task_id")
-	startTime := time.Now()
-	// 协议快照：本入口不经 Relay()，需单独旁路捕获请求/响应，与审计行同 request_id 关联。
-	requestId := c.GetString(common.RequestIdKey)
-	bw := newRelayBodyWriter(c)
-	defer func() { saveApiCallBodySnapshot(c, requestId, true, bw) }()
-	// 查询类接口（客户端高频轮询）：审计日志受 LogQueryApiCallEnabled 开关门控。
-	defer func() {
-		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
-			ModelName:      "GetVideoTask",
-			Content:        fmt.Sprintf("查询视频任务 %s，状态码 %d", taskID, c.Writer.Status()),
-			TokenName:      c.GetString("token_name"),
-			TokenId:        c.GetInt("token_id"),
-			ChannelId:      c.GetInt("channel_id"),
-			UseTimeSeconds: int(time.Since(startTime).Seconds()),
-			IsQuery:        true,
-			Other: map[string]interface{}{
-				"api":         "video_task",
-				"action":      "GetVideoTask",
-				"task_id":     taskID,
-				"http_status": c.Writer.Status(),
-			},
-		})
-	}()
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &dto.TaskError{
@@ -577,33 +553,6 @@ func lockTokenBoundVideoChannel(c *gin.Context, info *relaycommon.RelayInfo) *dt
 
 func RelayTask(c *gin.Context) {
 	requestId := c.GetString(common.RequestIdKey)
-	startTime := time.Now()
-	taskID := ""
-	// 创建视频任务调用审计：与任务日志/消费日志并存，覆盖含失败在内的全部提交路径
-	//（ark/kling/openai/jimeng 等协议均经本入口）。
-	defer func() {
-		other := map[string]interface{}{
-			"api":         "video_task",
-			"action":      "CreateVideoTask",
-			"model":       c.GetString("original_model"),
-			"http_status": c.Writer.Status(),
-		}
-		// 成功行带 task_id：协议详情据此渲染任务详情（请求/响应真源在 tasks 表），
-		// 与消费行口径一致，避免审计行协议详情为空；失败行不写 log_bodies 响应
-		//（当次上游响应在各错误行 content 中按行展示，见 saveRelayBodySnapshotData）。
-		if taskID != "" {
-			other["task_id"] = taskID
-		}
-		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
-			ModelName:      "CreateVideoTask",
-			Content:        fmt.Sprintf("创建视频任务（模型 %s），状态码 %d", c.GetString("original_model"), c.Writer.Status()),
-			TokenName:      c.GetString("token_name"),
-			TokenId:        c.GetInt("token_id"),
-			ChannelId:      c.GetInt("channel_id"),
-			UseTimeSeconds: int(time.Since(startTime).Seconds()),
-			Other:          other,
-		})
-	}()
 	defer func() {
 		// task 错误行各自持有当次上游响应（logs.content），这里只补共享的请求快照；
 		// 成功任务的请求/响应已在 tasks 表，不重复写 log_bodies。
@@ -730,7 +679,6 @@ func RelayTask(c *gin.Context) {
 		task.Data = result.TaskData
 		task.RequestData = snapshotRedactedRequestBody(c)
 		task.Action = relayInfo.Action
-		taskID = task.TaskID
 		assetIDs := middleware.ExtractAssetIDs(task.RequestData)
 		if err := model.RecordAssetInference(task.UserId, task.ChannelId, assetIDs, task.SubmitTime); err != nil {
 			common.SysError("record asset inference error: " + err.Error())
@@ -878,10 +826,10 @@ func apiCallRequestSnapshot(c *gin.Context) []byte {
 	return []byte(line)
 }
 
-// saveApiCallBodySnapshot 为非计费 API 调用端点（素材库 Action、视频任务查询/列表/删除）
-// 落库请求/响应快照：这些端点不经 Relay() 入口，不单独旁路捕获则协议详情恒为空。
-// 快照与审计行同 request_id 关联；查询类接口与审计行共用 LogQueryApiCallEnabled 开关，
-// 开关关闭时不产生孤立快照。
+// saveApiCallBodySnapshot 为非计费 API 调用端点（素材库 Action）落库请求/响应快照：
+// 这些端点不经 Relay() 入口，不单独旁路捕获则协议详情恒为空。快照与审计行同
+// request_id 关联；查询类接口与审计行共用 LogQueryApiCallEnabled 开关，开关关闭时
+// 不产生孤立快照。
 func saveApiCallBodySnapshot(c *gin.Context, requestId string, isQuery bool, w *relayBodyWriter) {
 	if w == nil || (isQuery && !common.LogQueryApiCallEnabled) {
 		return

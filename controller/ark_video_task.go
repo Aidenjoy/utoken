@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -32,27 +31,6 @@ var arkTaskStatusFilters = map[string][]model.TaskStatus{
 // ArkVideoTaskList 从本站任务记录构造官方列表，不能透传共享上游账号的全量任务，
 // 否则会跨用户泄露任务与结果地址。过滤和 Key 权限全部完成后再计算 total 与分页。
 func ArkVideoTaskList(c *gin.Context) {
-	startTime := time.Now()
-	// 协议快照：本入口不经 Relay()，需单独旁路捕获请求/响应，与审计行同 request_id 关联。
-	requestId := c.GetString(common.RequestIdKey)
-	bw := newRelayBodyWriter(c)
-	defer func() { saveApiCallBodySnapshot(c, requestId, true, bw) }()
-	// 查询类接口（客户端高频轮询）：审计日志受 LogQueryApiCallEnabled 开关门控。
-	defer func() {
-		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
-			ModelName:      "ListVideoTasks",
-			Content:        fmt.Sprintf("查询视频任务列表，状态码 %d", c.Writer.Status()),
-			TokenName:      c.GetString("token_name"),
-			TokenId:        c.GetInt("token_id"),
-			UseTimeSeconds: int(time.Since(startTime).Seconds()),
-			IsQuery:        true,
-			Other: map[string]interface{}{
-				"api":         "video_task",
-				"action":      "ListVideoTasks",
-				"http_status": c.Writer.Status(),
-			},
-		})
-	}()
 	pageNum, err := arkTaskPageParam(c, "page_num", 1)
 	if err != nil {
 		respondTaskError(c, service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest))
@@ -179,27 +157,6 @@ func arkTaskModelAllowed(c *gin.Context, modelName string) bool {
 // 上游成功后才改变本地状态，避免上游失败却提前退款或隐藏任务。
 func ArkVideoTaskDelete(c *gin.Context) {
 	taskID := strings.TrimSpace(c.Param("task_id"))
-	startTime := time.Now()
-	// 协议快照：本入口不经 Relay()，需单独旁路捕获请求/响应，与审计行同 request_id 关联。
-	requestId := c.GetString(common.RequestIdKey)
-	bw := newRelayBodyWriter(c)
-	defer func() { saveApiCallBodySnapshot(c, requestId, false, bw) }()
-	// 写类接口：取消/删除始终记录审计日志，不受查询开关影响。
-	defer func() {
-		model.RecordApiCallLog(c, c.GetInt("id"), model.RecordApiCallLogParams{
-			ModelName:      "DeleteVideoTask",
-			Content:        fmt.Sprintf("取消/删除视频任务 %s，状态码 %d", taskID, c.Writer.Status()),
-			TokenName:      c.GetString("token_name"),
-			TokenId:        c.GetInt("token_id"),
-			UseTimeSeconds: int(time.Since(startTime).Seconds()),
-			Other: map[string]interface{}{
-				"api":         "video_task",
-				"action":      "DeleteVideoTask",
-				"task_id":     taskID,
-				"http_status": c.Writer.Status(),
-			},
-		})
-	}()
 	if taskID == "" {
 		respondTaskError(c, service.TaskErrorWrapperLocal(errors.New("task_id is required"), "invalid_request", http.StatusBadRequest))
 		return
