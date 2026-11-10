@@ -110,20 +110,16 @@ export const LOG_TYPES = [
  * Log types for DataTableToolbar filters (single select mode)
  * Backend treats type=0 as "all logs" in list/stat endpoints, so the filter
  * must not expose the display-only "Unknown" label for that value.
- * API Call(8)/API Query(9) 是素材库审计行，在「全部类型」下内联展示（徽章仍由
- * LOG_TYPES 渲染），故意不作为独立筛选项暴露。
+ * API Call(8)/API Query(9) 为素材库审计行，作为独立筛选项暴露以便按类检索。
  */
 export const LOG_TYPE_FILTERS = [
   { label: 'All Types', value: LOG_TYPE_ALL_VALUE },
-  ...LOG_TYPES.filter(
-    (type) =>
-      type.value !== LOG_TYPE_ENUM.UNKNOWN &&
-      type.value !== LOG_TYPE_ENUM.API_CALL &&
-      type.value !== LOG_TYPE_ENUM.API_QUERY
-  ).map((type) => ({
-    label: type.label,
-    value: String(type.value),
-  })),
+  ...LOG_TYPES.filter((type) => type.value !== LOG_TYPE_ENUM.UNKNOWN).map(
+    (type) => ({
+      label: type.label,
+      value: String(type.value),
+    })
+  ),
 ] as const
 
 // ============================================================================
