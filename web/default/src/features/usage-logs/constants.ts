@@ -61,6 +61,7 @@ export const LOG_TYPE_ENUM = {
   REFUND: 6,
   LOGIN: 7,
   API_CALL: 8,
+  API_QUERY: 9,
 } as const
 
 /**
@@ -99,9 +100,9 @@ export const LOG_TYPES = [
   { value: 5, label: 'Error', color: 'red' },
   { value: 6, label: 'Refund', color: 'blue' },
   { value: 7, label: 'Login', color: 'teal' },
-  // 非计费 API 调用审计行（素材库/视频任务接口），后端 LogTypeApiCall=8
+  // 非计费 API 调用审计行（素材库写类接口），后端 LogTypeApiCall=8
   { value: 8, label: 'API Call', color: 'pink' },
-  // 查询类 API 调用审计行（高频轮询接口，缓冲批量落库），后端 LogTypeApiQuery=9
+  // 查询类 API 调用审计行（素材库查询接口，缓冲批量落库），后端 LogTypeApiQuery=9
   { value: 9, label: 'API Query', color: 'indigo' },
 ] as const
 
@@ -109,16 +110,51 @@ export const LOG_TYPES = [
  * Log types for DataTableToolbar filters (single select mode)
  * Backend treats type=0 as "all logs" in list/stat endpoints, so the filter
  * must not expose the display-only "Unknown" label for that value.
+ * API Call(8)/API Query(9) 是素材库审计行，在「全部类型」下内联展示（徽章仍由
+ * LOG_TYPES 渲染），故意不作为独立筛选项暴露。
  */
 export const LOG_TYPE_FILTERS = [
   { label: 'All Types', value: LOG_TYPE_ALL_VALUE },
-  ...LOG_TYPES.filter((type) => type.value !== LOG_TYPE_ENUM.UNKNOWN).map(
-    (type) => ({
-      label: type.label,
-      value: String(type.value),
-    })
-  ),
+  ...LOG_TYPES.filter(
+    (type) =>
+      type.value !== LOG_TYPE_ENUM.UNKNOWN &&
+      type.value !== LOG_TYPE_ENUM.API_CALL &&
+      type.value !== LOG_TYPE_ENUM.API_QUERY
+  ).map((type) => ({
+    label: type.label,
+    value: String(type.value),
+  })),
 ] as const
+
+// ============================================================================
+// Common Logs Status Filter (接口状态：成功/失败/未知)
+// ============================================================================
+
+/**
+ * 通用日志「接口状态」筛选与展示（筛选项放在类型之后、查询接口可见性之前）。
+ * 口径与后端 model.applyCommonStatusFilter 一致；variant 沿用任务日志的
+ * green(成功)/red(失败)/neutral(未知)，格式与任务日志状态列完全对齐。
+ */
+export const COMMON_STATUS = {
+  SUCCESS: 'success',
+  ERROR: 'error',
+  UNKNOWN: 'unknown',
+} as const
+
+// 「全部状态」哨兵：非空字符串，filter-bar 选中时映射为 undefined（不下发 status）。
+export const COMMON_STATUS_ALL_VALUE = 'all' as const
+
+export const COMMON_STATUS_FILTERS = [
+  { label: 'All Statuses', value: COMMON_STATUS_ALL_VALUE },
+  { label: 'Success', value: COMMON_STATUS.SUCCESS },
+  { label: 'Failed', value: COMMON_STATUS.ERROR },
+] as const
+
+export const COMMON_STATUS_MAPPINGS: Record<string, StatusMapping> = {
+  [COMMON_STATUS.SUCCESS]: { label: 'Success', variant: 'green' },
+  [COMMON_STATUS.ERROR]: { label: 'Failed', variant: 'red' },
+  [COMMON_STATUS.UNKNOWN]: { label: 'Unknown', variant: 'neutral' },
+}
 
 // ============================================================================
 // Drawing Logs (MjProxy) Constants

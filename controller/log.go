@@ -23,7 +23,8 @@ func GetAllLogs(c *gin.Context) {
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
 	taskID := c.Query("task_id")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, taskID, parseShowApiQuery(c))
+	status := c.Query("status")
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, taskID, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -46,7 +47,8 @@ func GetUserLogs(c *gin.Context) {
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
 	taskID := c.Query("task_id")
-	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId, taskID, parseShowApiQuery(c))
+	status := c.Query("status")
+	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId, taskID, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -95,13 +97,6 @@ func GetLogByKey(c *gin.Context) {
 		"message": "",
 		"data":    logs,
 	})
-}
-
-// parseShowApiQuery 读取「是否显示查询接口」筛选：默认不显示（列表排除
-// type=LogTypeApiQuery 的轮询行），仅当前端显式传 show_api_query=1/true 时包含。
-func parseShowApiQuery(c *gin.Context) bool {
-	value := c.Query("show_api_query")
-	return value == "1" || value == "true"
 }
 
 func GetLogsStat(c *gin.Context) {

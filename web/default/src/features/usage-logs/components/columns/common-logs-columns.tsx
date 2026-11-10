@@ -63,7 +63,9 @@ import {
   isTimingLogType,
   getLogTypeConfig,
   isPerCallBilling,
+  deriveCommonLogStatus,
 } from '../../lib/utils'
+import { commonStatusMapper } from '../../lib/mappers'
 import type { LogOtherData, LogsScope } from '../../types'
 import { CommonLogDetailsDialog } from '../dialogs/common-log-details-dialog'
 import { DetailsDialog } from '../dialogs/details-dialog'
@@ -815,6 +817,24 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
                 )}
             </div>
           </div>
+        )
+      },
+    },
+
+    {
+      id: 'status',
+      header: t('Status'),
+      cell: ({ row }) => {
+        const log = row.original
+        const status = deriveCommonLogStatus(log)
+        return (
+          <StatusBadge
+            label={t(commonStatusMapper.getLabel(status))}
+            variant={commonStatusMapper.getVariant(status)}
+            size='sm'
+            copyable={false}
+            className='-ml-1.5'
+          />
         )
       },
     },

@@ -32,8 +32,10 @@ import {
 } from '../api'
 import {
   LOG_TYPES,
+  LOG_TYPE_ENUM,
   DISPLAYABLE_LOG_TYPES,
   TIMING_LOG_TYPES,
+  COMMON_STATUS,
 } from '../constants'
 import type {
   GetLogsParams,
@@ -43,6 +45,7 @@ import type {
   GetTaskLogsParams,
   LogsScope,
 } from '../types'
+import { parseLogOther } from './format'
 
 export { buildQueryParams } from './query-params'
 
@@ -69,6 +72,28 @@ export function isTimingLogType(type: number): boolean {
  */
 export function getLogTypeConfig(type: number) {
   return LOG_TYPES.find((t) => t.value === type) || LOG_TYPES[0]
+}
+
+/**
+ * 派生通用日志的「接口状态」，口径与后端 applyCommonStatusFilter 完全一致：
+ * http_status>=400 失败；1xx-3xx 成功；http_status=0（非 API 行/历史行）时按
+ * type 兜底——type=5(错误) 失败、type=0(未知) 未知，其余类型成功。历史 API 行
+ * 真列为 0 时回落 other.http_status，保证展示准确（筛选走后端真列）。
+ */
+export function deriveCommonLogStatus(log: {
+  type: number
+  http_status?: number
+  other?: string
+}): string {
+  let httpStatus = log.http_status ?? 0
+  if (!httpStatus && log.other) {
+    httpStatus = Number(parseLogOther(log.other)?.http_status) || 0
+  }
+  if (httpStatus >= 400) return COMMON_STATUS.ERROR
+  if (httpStatus >= 100) return COMMON_STATUS.SUCCESS
+  if (log.type === LOG_TYPE_ENUM.ERROR) return COMMON_STATUS.ERROR
+  if (log.type === LOG_TYPE_ENUM.UNKNOWN) return COMMON_STATUS.UNKNOWN
+  return COMMON_STATUS.SUCCESS
 }
 
 /**
@@ -214,8 +239,7 @@ export function buildApiParams(config: {
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
     ...(searchParams.taskId ? { task_id: String(searchParams.taskId) } : {}),
-    // 查询接口可见性始终下发：默认 0（隐藏 type=9 轮询行），避免后端刷屏
-    show_api_query: searchParams.showApiQuery ? 1 : 0,
+    ...(searchParams.status ? { status: String(searchParams.status) } : {}),
     ...buildTimeRangeParams(searchParams, false),
   }
 

@@ -27,6 +27,7 @@ import {
   TASK_ACTION_MAPPINGS,
   TASK_STATUS_MAPPINGS,
   TASK_PLATFORM_MAPPINGS,
+  COMMON_STATUS_MAPPINGS,
 } from '../constants'
 import { createStatusMapper } from './status'
 
@@ -69,3 +70,12 @@ export const taskStatusMapper = createStatusMapper(TASK_STATUS_MAPPINGS)
  * Task platform mapper
  */
 export const taskPlatformMapper = createStatusMapper(TASK_PLATFORM_MAPPINGS)
+
+// ============================================================================
+// Common Logs Mappers
+// ============================================================================
+
+/**
+ * Common logs 接口状态 mapper（成功/失败/未知），与任务日志状态列同一渲染口径。
+ */
+export const commonStatusMapper = createStatusMapper(COMMON_STATUS_MAPPINGS)

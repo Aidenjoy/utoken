@@ -50,6 +50,9 @@ export const usageLogSchema = z.object({
   other: z.string().default(''),
   request_id: z.string().default(''),
   upstream_request_id: z.string().default(''),
+  // API 审计日志（type=8/9）的响应 HTTP 状态码；非 API 行与历史行为 0，
+  // 展示层为 0 时回落 other.http_status 兜底。
+  http_status: z.number().default(0),
 })
 
 export type UsageLog = z.infer<typeof usageLogSchema>

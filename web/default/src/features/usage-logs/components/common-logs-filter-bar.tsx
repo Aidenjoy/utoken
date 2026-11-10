@@ -41,7 +41,12 @@ import {
 import { useAgentMemberOptions } from '@/features/agents/hooks'
 import { useLogsScope } from '@/hooks/use-admin'
 
-import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
+import {
+  LOG_TYPE_ALL_VALUE,
+  LOG_TYPE_FILTERS,
+  COMMON_STATUS_ALL_VALUE,
+  COMMON_STATUS_FILTERS,
+} from '../constants'
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
 import type { CommonLogFilters } from '../types'
@@ -65,7 +70,6 @@ type CommonLogDraft = {
   sourceKey: string
   filters: CommonLogFilters
   logType: LogTypeValue
-  showApiQuery: boolean
 }
 
 function isLogTypeValue(value: string): value is LogTypeValue {
@@ -93,8 +97,8 @@ function buildSearchSourceKey(values: {
   requestId?: unknown
   upstreamRequestId?: unknown
   taskId?: unknown
+  status?: unknown
   type?: unknown
-  showApiQuery?: unknown
 }) {
   return [
     values.startTime,
@@ -108,8 +112,8 @@ function buildSearchSourceKey(values: {
     values.requestId,
     values.upstreamRequestId,
     values.taskId,
+    values.status,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
-    values.showApiQuery,
   ]
     .map((value) => String(value ?? ''))
     .join('\u001f')
@@ -147,8 +151,8 @@ export function CommonLogsFilterBar<TData>(
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
       taskId: searchParams.taskId,
+      status: searchParams.status,
       type: searchParams.type,
-      showApiQuery: searchParams.showApiQuery,
     }
     const filters: CommonLogFilters = {
       startTime: searchParams.startTime
@@ -164,12 +168,12 @@ export function CommonLogsFilterBar<TData>(
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
       taskId: searchParams.taskId || undefined,
+      status: searchParams.status || undefined,
     }
     return {
       sourceKey: buildSearchSourceKey(sourceValues),
       filters,
       logType: getLogTypeValue(searchParams.type),
-      showApiQuery: !!searchParams.showApiQuery,
     }
   }, [
     searchParams.startTime,
@@ -183,15 +187,14 @@ export function CommonLogsFilterBar<TData>(
     searchParams.requestId,
     searchParams.upstreamRequestId,
     searchParams.taskId,
+    searchParams.status,
     searchParams.type,
-    searchParams.showApiQuery,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
   const activeDraft =
     draft.sourceKey === searchState.sourceKey ? draft : searchState
   const filters = activeDraft.filters
   const logType = activeDraft.logType
-  const showApiQuery = activeDraft.showApiQuery
 
   const handleChange = useCallback(
     (field: keyof CommonLogFilters, value: Date | string | undefined) => {
@@ -202,23 +205,6 @@ export function CommonLogsFilterBar<TData>(
           sourceKey: searchState.sourceKey,
           filters: { ...base.filters, [field]: value },
           logType: base.logType,
-          showApiQuery: base.showApiQuery,
-        }
-      })
-    },
-    [searchState]
-  )
-
-  const handleShowApiQueryChange = useCallback(
-    (value: boolean) => {
-      setDraft((current) => {
-        const base =
-          current.sourceKey === searchState.sourceKey ? current : searchState
-        return {
-          sourceKey: searchState.sourceKey,
-          filters: base.filters,
-          logType: base.logType,
-          showApiQuery: value,
         }
       })
     },
@@ -233,13 +219,12 @@ export function CommonLogsFilterBar<TData>(
       search: {
         ...filterParams,
         type: [logType],
-        showApiQuery,
         page: 1,
       },
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [filters, logType, showApiQuery, navigate, queryClient])
+  }, [filters, logType, navigate, queryClient])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
@@ -248,13 +233,12 @@ export function CommonLogsFilterBar<TData>(
       type: [LOG_TYPE_ALL_VALUE],
       startTime: start.getTime(),
       endTime: end.getTime(),
-      showApiQuery: false,
+      status: '',
     }
     setDraft({
       sourceKey: buildSearchSourceKey(resetSearch),
       filters: resetFilters,
       logType: LOG_TYPE_ALL_VALUE,
-      showApiQuery: false,
     })
 
     navigate({
@@ -290,7 +274,7 @@ export function CommonLogsFilterBar<TData>(
     !!filters.model ||
     !!filters.group ||
     hasTypeFilter ||
-    showApiQuery ||
+    !!filters.status ||
     hasExpandedFilters
 
   const expandedFilterCount = [
@@ -302,16 +286,6 @@ export function CommonLogsFilterBar<TData>(
     isAgent ? undefined : filters.upstreamRequestId,
     filters.taskId,
   ].filter(Boolean).length
-  const queryVisibilityItems = useMemo(
-    () => [
-      { value: '0', label: t('Hide query requests') },
-      { value: '1', label: t('Show query requests') },
-    ],
-    [t]
-  )
-  const queryVisibilityLabel = showApiQuery
-    ? t('Show query requests')
-    : t('Hide query requests')
   const sensitiveType = sensitiveVisible ? 'text' : 'password'
   const logTypeItems = useMemo(
     () =>
@@ -323,6 +297,18 @@ export function CommonLogsFilterBar<TData>(
   )
   const logTypeLabel =
     logTypeItems.find((type) => type.value === logType)?.label ?? t('All Types')
+  const statusItems = useMemo(
+    () =>
+      COMMON_STATUS_FILTERS.map((status) => ({
+        value: status.value,
+        label: t(status.label),
+      })),
+    [t]
+  )
+  const statusValue = filters.status || COMMON_STATUS_ALL_VALUE
+  const statusLabel =
+    statusItems.find((status) => status.value === statusValue)?.label ??
+    t('All Statuses')
 
   const statsBar = (
     <div className='flex flex-wrap items-center gap-2'>
@@ -400,7 +386,6 @@ export function CommonLogsFilterBar<TData>(
               sourceKey: searchState.sourceKey,
               filters: base.filters,
               logType: nextLogType,
-              showApiQuery: base.showApiQuery,
             }
           })
         }}
@@ -420,23 +405,27 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
-  const queryVisibilityFilter = (
+  const statusFilter = (
     <LogsFilterField>
       <Select
-        items={queryVisibilityItems}
-        value={showApiQuery ? '1' : '0'}
+        items={statusItems}
+        value={statusValue}
         onValueChange={(value) => {
-          handleShowApiQueryChange(value === '1')
+          const nextStatus =
+            value === null || value === COMMON_STATUS_ALL_VALUE
+              ? undefined
+              : value
+          handleChange('status', nextStatus)
         }}
       >
-        <SelectTrigger>
-          <SelectValue>{queryVisibilityLabel}</SelectValue>
+        <SelectTrigger aria-label={t('Status')}>
+          <SelectValue>{statusLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent alignItemWithTrigger={false}>
           <SelectGroup>
-            {queryVisibilityItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
+            {COMMON_STATUS_FILTERS.map((status) => (
+              <SelectItem key={status.value} value={status.value}>
+                {t(status.label)}
               </SelectItem>
             ))}
           </SelectGroup>
@@ -529,7 +518,7 @@ export function CommonLogsFilterBar<TData>(
           {modelFilter}
           {groupFilter}
           {typeFilter}
-          {queryVisibilityFilter}
+          {statusFilter}
         </>
       }
       advancedFilters={advancedFilters}
@@ -539,12 +528,12 @@ export function CommonLogsFilterBar<TData>(
           {modelFilter}
           {groupFilter}
           {typeFilter}
-          {queryVisibilityFilter}
+          {statusFilter}
           {advancedFilters}
         </>
       }
       mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter, showApiQuery].filter(
+        [filters.model, filters.group, hasTypeFilter, filters.status].filter(
           Boolean
         ).length + expandedFilterCount
       }

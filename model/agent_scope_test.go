@@ -73,7 +73,7 @@ func TestGetAgentScopedLogs(t *testing.T) {
 	require.NoError(t, DB.Create(mk(2, `{}`)).Error)
 	require.NoError(t, DB.Create(mk(99, `{"admin_info":{"secret":1}}`)).Error)
 
-	logs, total, err := GetAgentScopedLogs([]int{1, 2}, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "", true)
+	logs, total, err := GetAgentScopedLogs([]int{1, 2}, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	require.Len(t, logs, 2)
@@ -88,13 +88,13 @@ func TestGetAgentScopedLogs(t *testing.T) {
 	assert.Contains(t, logs[0].Other+logs[1].Other, "agent-task")
 
 	// 空 ids → 空结果（不回退全量）
-	logs, total, err = GetAgentScopedLogs(nil, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "", true)
+	logs, total, err = GetAgentScopedLogs(nil, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total)
 	assert.Empty(t, logs)
 
 	// 只请求非成员 id → 空结果
-	logs, total, err = GetAgentScopedLogs([]int{99}, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "", true)
+	logs, total, err = GetAgentScopedLogs([]int{99}, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, logs, 1)

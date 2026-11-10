@@ -95,6 +95,10 @@ type Log struct {
 	// 上游对账（渠道账单中心）只统计 consume 且非 settle 行，排除本行避免双计。
 	// 整单退款行（RefundTaskQuota）不带本标记，仅供明细审计展示。
 	TaskSettle bool `json:"task_settle" gorm:"index"`
+	// HttpStatus 记录 API 审计日志（type=8/9）的响应 HTTP 状态码，供通用日志列表
+	// 按成功/失败筛选。此前只存于 other JSON，SQL 过滤跨三库不可行（同 cache_hit、
+	// task_settle 先例），故加真列；非 API 行与历史行为 0，展示层回落 other 兜底。
+	HttpStatus int `json:"http_status" gorm:"index;default:0"`
 }
 
 // UpstreamTokenUsage 返回上游对账口径的真实 token 用量：
@@ -124,12 +128,12 @@ const (
 	LogTypeError   = 5
 	LogTypeRefund  = 6
 	LogTypeLogin   = 7
-	// LogTypeApiCall 非计费 API 调用审计行（素材库/视频任务接口），quota 恒为 0，
+	// LogTypeApiCall 非计费 API 调用审计行（素材库写类接口），quota 恒为 0，
 	// 不计入消费/对账统计（均按 type=2/6 过滤）。
 	LogTypeApiCall = 8
-	// LogTypeApiQuery 查询类 API 调用审计行（客户端高频轮询接口），quota 恒为 0。
-	// 与写类（LogTypeApiCall）分型：列表查询默认隐藏本型（见 showApiQuery 参数），
-	// 写入走缓冲批量落库（见 log_api_call_buffer.go），避免轮询高峰逐条 INSERT。
+	// LogTypeApiQuery 查询类 API 调用审计行（素材库查询接口，客户端高频轮询），quota 恒为 0。
+	// 与写类（LogTypeApiCall）分型：写入走缓冲批量落库（见 log_api_call_buffer.go），
+	// 避免轮询高峰逐条 INSERT；受系统设置 LogQueryApiCallEnabled 开关门控。
 	LogTypeApiQuery = 9
 )
 
@@ -564,7 +568,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 
 // RecordApiCallLogParams API 调用审计日志（type=LogTypeApiCall，quota=0）参数。
 type RecordApiCallLogParams struct {
-	// ModelName 为接口名（素材库 Action、CreateVideoTask 等），供日志列表模型列展示与筛选。
+	// ModelName 为接口名（素材库 Action 等），供日志列表模型列展示与筛选。
 	ModelName string
 	Content   string
 	TokenName string
@@ -578,10 +582,9 @@ type RecordApiCallLogParams struct {
 	Other   map[string]interface{}
 }
 
-// RecordApiCallLog 记录一条非计费的 API 调用审计日志：覆盖素材库 10 个 Action 与
-// 视频任务创建/查询/列表/删除等不产生消费日志的接口，展示于「使用日志-通用日志」。
-// 写类同步单条 INSERT；查询类（高频轮询）入队缓冲、由后台任务批量落库，
-// 并可通过系统设置开关整体关闭。
+// RecordApiCallLog 记录一条非计费的 API 调用审计日志：覆盖素材库 10 个 Action 等
+// 不产生消费日志的接口，展示于「使用日志-通用日志」。写类同步单条 INSERT；查询类
+// （高频轮询）入队缓冲、由后台任务批量落库，并可通过系统设置开关整体关闭。
 func RecordApiCallLog(c *gin.Context, userId int, params RecordApiCallLogParams) {
 	if params.IsQuery && !common.LogQueryApiCallEnabled {
 		return
@@ -599,6 +602,19 @@ func RecordApiCallLog(c *gin.Context, userId int, params RecordApiCallLogParams)
 	if params.IsQuery {
 		logType = LogTypeApiQuery
 	}
+
+	// 从 other 抽取 http_status 落到真列，供列表按成功/失败跨库 SQL 过滤
+	// （同 cache_hit/task_settle 先例）。调用方仍只写 params.Other，无需感知该列。
+	httpStatus := 0
+	if raw, ok := params.Other["http_status"]; ok {
+		switch v := raw.(type) {
+		case int:
+			httpStatus = v
+		case float64:
+			httpStatus = int(v)
+		}
+	}
+
 	log := &Log{
 		UserId:    userId,
 		Username:  username,
@@ -616,8 +632,9 @@ func RecordApiCallLog(c *gin.Context, userId int, params RecordApiCallLogParams)
 			}
 			return ""
 		}(),
-		RequestId: c.GetString(common.RequestIdKey),
-		Other:     common.MapToJsonStr(params.Other),
+		RequestId:  c.GetString(common.RequestIdKey),
+		HttpStatus: httpStatus,
+		Other:      common.MapToJsonStr(params.Other),
 	}
 	if params.IsQuery {
 		// 查询类只入队（Redis 列表 / 内存队列），由冲刷任务批量落库。
@@ -814,14 +831,25 @@ func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, us
 	return res.RowsAffected, res.Error
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, taskID string, showApiQuery bool) (logs []*Log, total int64, err error) {
+// applyCommonStatusFilter 按接口成功/失败状态过滤日志（通用日志列表用）。口径与前端
+// deriveCommonLogStatus 一致：http_status>=400 失败；1xx-3xx 成功；http_status=0
+// （非 API 行/历史行）时按 type 兜底——type=5 失败、type=0 未知（两者均不纳入成功/
+// 失败），其余类型成功。status 为空或 "all" 时不过滤。
+func applyCommonStatusFilter(tx *gorm.DB, status string) *gorm.DB {
+	switch status {
+	case "error":
+		return tx.Where("(logs.http_status >= 400 OR (logs.http_status = 0 AND logs.type = ?))", LogTypeError)
+	case "success":
+		return tx.Where("((logs.http_status >= 100 AND logs.http_status < 400) OR (logs.http_status = 0 AND logs.type NOT IN (?, ?)))", LogTypeUnknown, LogTypeError)
+	default:
+		return tx
+	}
+}
+
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, taskID string, status string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
-		if !showApiQuery {
-			// 默认隐藏查询类轮询行，避免刷屏掩盖主要日志；显式选型时尊重所选类型。
-			tx = tx.Where("logs.type <> ?", LogTypeApiQuery)
-		}
 	} else {
 		tx = LOG_DB.Where("logs.type = ?", logType)
 	}
@@ -856,6 +884,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if taskID != "" {
 		tx = tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"task_id":"%s"%%`, taskID))
 	}
+	tx = applyCommonStatusFilter(tx, status)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
@@ -952,13 +981,10 @@ func attachLogChannelNames(logs []*Log) error {
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, taskID string, showApiQuery bool) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, taskID string, status string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
-		if !showApiQuery {
-			tx = tx.Where("logs.type <> ?", LogTypeApiQuery)
-		}
 	} else {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
 	}
@@ -987,6 +1013,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if taskID != "" {
 		tx = tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"task_id":"%s"%%`, taskID))
 	}
+	tx = applyCommonStatusFilter(tx, status)
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count user logs: " + err.Error())
@@ -1011,16 +1038,13 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 // 自由筛选，范围完全由服务端传入的 userIds 决定；结尾走 formatUserLogs 剥离
 // admin_info/audit_info/stream_status 与渠道名（保留 username/user_id 以区分成员），
 // 因此代理商拿到的字段口径与普通用户的 self 视图一致（最小权限）。
-func GetAgentScopedLogs(userIds []int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, taskID string, showApiQuery bool) (logs []*Log, total int64, err error) {
+func GetAgentScopedLogs(userIds []int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, taskID string, status string) (logs []*Log, total int64, err error) {
 	if len(userIds) == 0 {
 		return nil, 0, nil
 	}
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id IN ?", userIds)
-		if !showApiQuery {
-			tx = tx.Where("logs.type <> ?", LogTypeApiQuery)
-		}
 	} else {
 		tx = LOG_DB.Where("logs.user_id IN ? and logs.type = ?", userIds, logType)
 	}
@@ -1046,6 +1070,7 @@ func GetAgentScopedLogs(userIds []int, logType int, startTimestamp int64, endTim
 	if taskID != "" {
 		tx = tx.Where("logs.other LIKE ?", fmt.Sprintf(`%%"task_id":"%s"%%`, taskID))
 	}
+	tx = applyCommonStatusFilter(tx, status)
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
 		common.SysError("failed to count agent scoped logs: " + err.Error())

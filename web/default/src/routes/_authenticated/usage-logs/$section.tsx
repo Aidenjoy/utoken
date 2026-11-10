@@ -52,8 +52,6 @@ const usageLogsSearchSchema = z.object({
   taskId: z.string().optional().catch(''),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
-  // 通用日志「是否显示查询接口」：默认不显示（后端排除 type=9 轮询行）
-  showApiQuery: z.boolean().optional().catch(false),
 })
 
 export const Route = createFileRoute('/_authenticated/usage-logs/$section')({

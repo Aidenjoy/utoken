@@ -96,33 +96,65 @@ func TestApiCallLogBufferBatchFlush(t *testing.T) {
 	assert.Equal(t, int64(3), countApiCallLogsByType(t, LogTypeApiQuery))
 }
 
-// TestGetAllLogsHidesApiQueryByDefault 锁定列表查询的可见性契约：
-// 未显式选型时默认排除 type=LogTypeApiQuery 轮询行，showApiQuery=true 时包含；
-// 消费行不受该筛选影响。
-func TestGetAllLogsHidesApiQueryByDefault(t *testing.T) {
+// TestGetAllLogsShowsAllTypesByDefault 锁定列表默认可见性契约：未显式选型时返回
+// 全部类型（含素材库写类 type=8 与查询类 type=9），不再隐藏任何类型；
+// 显式选型时只返回所选类型。
+func TestGetAllLogsShowsAllTypesByDefault(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.Create(&User{Id: 1, Username: "alice"}).Error)
 	require.NoError(t, LOG_DB.Create(&Log{UserId: 1, Type: LogTypeConsume, Content: "consume"}).Error)
 	require.NoError(t, LOG_DB.Create(&Log{UserId: 1, Type: LogTypeApiCall, Content: "write"}).Error)
 	require.NoError(t, LOG_DB.Create(&Log{UserId: 1, Type: LogTypeApiQuery, Content: "poll"}).Error)
 
-	logs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "", "", "", false)
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), total)
-	for _, l := range logs {
-		assert.NotEqual(t, LogTypeApiQuery, l.Type)
-	}
-
-	logs, total, err = GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "", "", "", true)
+	logs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
+	gotTypes := make([]int, 0, len(logs))
+	for _, l := range logs {
+		gotTypes = append(gotTypes, l.Type)
+	}
+	assert.ElementsMatch(t, []int{LogTypeConsume, LogTypeApiCall, LogTypeApiQuery}, gotTypes)
 
-	// 显式选型时尊重所选类型：type=9 即使 showApiQuery=false 也返回。
-	logs, total, err = GetAllLogs(LogTypeApiQuery, 0, 0, "", "", "", 0, 10, 0, "", "", "", "", false)
+	// 显式选型时只返回所选类型。
+	logs, total, err = GetAllLogs(LogTypeApiQuery, 0, 0, "", "", "", 0, 10, 0, "", "", "", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, logs, 1)
 	assert.Equal(t, "poll", logs[0].Content)
+}
+
+// TestGetAllLogsStatusFilter 锁定通用日志「状态」筛选口径（与前端
+// deriveCommonLogStatus 一致）：http_status>=400 或 type=5(错误) 归失败；
+// 1xx-3xx 或非 API 行(type∉{0,5}) 归成功；type=0(未知) 两者都不纳入，仅在「全部」出现。
+func TestGetAllLogsStatusFilter(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Create(&User{Id: 1, Username: "alice"}).Error)
+	rows := []*Log{
+		{UserId: 1, Type: LogTypeApiCall, HttpStatus: 200, Content: "api-ok"},
+		{UserId: 1, Type: LogTypeApiCall, HttpStatus: 502, Content: "api-bad"},
+		{UserId: 1, Type: LogTypeError, HttpStatus: 0, Content: "err-log"},
+		{UserId: 1, Type: LogTypeConsume, HttpStatus: 0, Content: "consume"},
+		{UserId: 1, Type: LogTypeUnknown, HttpStatus: 0, Content: "unknown"},
+	}
+	for _, r := range rows {
+		require.NoError(t, LOG_DB.Create(r).Error)
+	}
+
+	contents := func(status string) []string {
+		logs, total, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "", "", "", status)
+		require.NoError(t, err)
+		require.Equal(t, int64(len(logs)), total)
+		got := make([]string, 0, len(logs))
+		for _, l := range logs {
+			got = append(got, l.Content)
+		}
+		return got
+	}
+
+	assert.ElementsMatch(t, []string{"api-bad", "err-log"}, contents("error"))
+	assert.ElementsMatch(t, []string{"api-ok", "consume"}, contents("success"))
+	assert.ElementsMatch(t, []string{"api-ok", "api-bad", "err-log", "consume", "unknown"}, contents(""))
+	assert.ElementsMatch(t, []string{"api-ok", "api-bad", "err-log", "consume", "unknown"}, contents("all"))
 }
 
 // TestRecordApiCallLogFields 锁定落库字段口径：查询类 type=9、quota=0（不污染消费统计），

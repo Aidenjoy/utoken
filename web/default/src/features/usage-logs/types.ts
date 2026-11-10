@@ -63,6 +63,8 @@ export interface CommonLogFilters extends CommonFilters {
   requestId?: string
   upstreamRequestId?: string
   taskId?: string
+  // 接口状态筛选：'' / 'all' 全部，'success' 成功，'error' 失败
+  status?: string
 }
 
 /**
@@ -245,6 +247,9 @@ export interface LogOtherData {
   is_task?: boolean
   task_id?: string
   reason?: string
+  // API 审计日志（type=8/9）的响应 HTTP 状态码。新行同步落 http_status 真列，
+  // 此处保留供历史行（真列为 0）展示回落。
+  http_status?: number
   // Subscription billing fields
   subscription_plan_id?: string
   subscription_plan_title?: string
@@ -350,10 +355,10 @@ export interface GetLogsParams {
   request_id?: string
   upstream_request_id?: string
   task_id?: string
+  // 接口状态筛选：'' 全部，'success' 成功，'error' 失败（三个 scope 通用）
+  status?: string
   // Agent scope: comma-joined member user ids (server-enforced intersection).
   user_ids?: string
-  // 是否显示查询接口（type=9 轮询审计行）：0 默认隐藏，1 显示
-  show_api_query?: number
 }
 
 export interface GetLogsResponse {

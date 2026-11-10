@@ -396,7 +396,8 @@ func GetAgentLogs(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	taskID := c.Query("task_id")
-	logs, total, err := model.GetAgentScopedLogs(effectiveIds, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, taskID, parseShowApiQuery(c))
+	status := c.Query("status")
+	logs, total, err := model.GetAgentScopedLogs(effectiveIds, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, taskID, status)
 	if err != nil {
 		common.ApiError(c, err)
 		return
