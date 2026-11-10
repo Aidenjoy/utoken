@@ -61,23 +61,21 @@ func appendApiCallPending(logs ...Log) {
 	}
 }
 
-// drainRedisApiCallLogs 从 Redis 列表批量弹出待落库日志，直到取空或达到单轮上限。
+// drainRedisApiCallLogs 从 Redis 列表逐条 LPop 弹出待落库日志，直到取空或达到单轮
+// 上限。必须用单条 LPop 而非 LPopCount：LPOP 的 count 参数需 Redis>=6.2，生产常见
+// 5.x 会报 "wrong number of arguments for 'lpop'"，使冲刷恒空、查询日志只堆积在
+// 列表永不落库；单条 LPop 原子且全版本可用。
 func drainRedisApiCallLogs() []Log {
 	var out []Log
 	ctx := context.Background()
 	for len(out) < apiCallFlushBatchSize*4 {
-		items, err := common.RDB.LPopCount(ctx, apiCallBufferRedisKey, apiCallFlushBatchSize).Result()
-		if err != nil || len(items) == 0 {
+		item, err := common.RDB.LPop(ctx, apiCallBufferRedisKey).Result()
+		if err != nil { // 含 redis.Nil（列表已空）
 			break
 		}
-		for _, item := range items {
-			var log Log
-			if common.UnmarshalJsonStr(item, &log) == nil {
-				out = append(out, log)
-			}
-		}
-		if len(items) < apiCallFlushBatchSize {
-			break
+		var log Log
+		if common.UnmarshalJsonStr(item, &log) == nil {
+			out = append(out, log)
 		}
 	}
 	return out
