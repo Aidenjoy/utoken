@@ -326,6 +326,12 @@ func assetManagementForChannel(channel *model.Channel) (assetrelay.AssetManageme
 	return mgmt, nil
 }
 
+// assetProtocolForChannel 由渠道构造协议适配器，仅要求 Protocol（Upload/Query），
+// 不断言 AssetManagement。用于 relay 协议渠道的降级路径。
+func assetProtocolForChannel(channel *model.Channel) (assetrelay.Protocol, error) {
+	return assetrelay.NewProtocol(buildAssetChannelConfig(channel))
+}
+
 // assetManagementByChannelID 按已记录的 ChannelID 取渠道并断言管理能力，
 // 保证 CreateAsset/Update/Delete 与建组时命中同一上游账号。
 func assetManagementByChannelID(channelID int) (*model.Channel, assetrelay.AssetManagement, error) {
@@ -484,16 +490,21 @@ func arkCreateAssetGroup(c *gin.Context, action, region string, userId int, body
 		arkErr(c, action, region, http.StatusBadRequest, "ChannelBindingRequired", err.Error())
 		return
 	}
-	mgmt, err := assetManagementForChannel(channel)
-	if err != nil {
-		arkErr(c, action, region, http.StatusBadRequest, "ChannelUnavailable", err.Error())
-		return
-	}
-	groupID, err := mgmt.CreateAssetGroup(name, description, groupType, projectName)
-	if err != nil {
-		common.SysError(fmt.Sprintf("[ArkAsset] CreateAssetGroup upstream failed (user=%d, channel=%d): %v", userId, channel.Id, err))
-		arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
-		return
+
+	// 尝试上游建组；relay 协议不支持 AssetManagement 时降级为本地记录。
+	var groupID string
+	mgmt, mgmtErr := assetManagementForChannel(channel)
+	if mgmtErr == nil {
+		groupID, err = mgmt.CreateAssetGroup(name, description, groupType, projectName)
+		if err != nil {
+			common.SysError(fmt.Sprintf("[ArkAsset] CreateAssetGroup upstream failed (user=%d, channel=%d): %v", userId, channel.Id, err))
+			arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
+			return
+		}
+	} else {
+		// relay 协议（天翼云 ctaigw 等）无上游组管理，生成本地 GroupID 供后续 CreateAsset 引用。
+		groupID = "group-" + common.GetUUID()[:16]
+		common.SysLog(fmt.Sprintf("[ArkAsset] CreateAssetGroup local-only (user=%d, channel=%d, group=%s): %v", userId, channel.Id, groupID, mgmtErr))
 	}
 	group := &model.AssetGroup{
 		UserID:      userId,
@@ -519,10 +530,6 @@ func arkCreateAsset(c *gin.Context, action, region string, userId int, body []by
 		return
 	}
 	groupID := strings.TrimSpace(arkDeref(req.GroupId))
-	if groupID == "" {
-		arkErr(c, action, region, http.StatusBadRequest, "InvalidParameter", "GroupId is required")
-		return
-	}
 	assetURL := strings.TrimSpace(arkDeref(req.URL))
 	if !strings.HasPrefix(assetURL, "http://") && !strings.HasPrefix(assetURL, "https://") {
 		arkErr(c, action, region, http.StatusBadRequest, "InvalidParameter", "URL must be a public http(s) URL")
@@ -537,29 +544,80 @@ func arkCreateAsset(c *gin.Context, action, region string, userId int, body []by
 	if name == "" {
 		name = arkDeriveAssetName(assetURL)
 	}
-
-	// 归属校验：组必须属于该用户；命中后锁定到建组时的同一渠道。
-	group, err := model.GetAssetGroupByUserAndGroupID(userId, groupID)
-	if err != nil {
-		arkErr(c, action, region, http.StatusNotFound, "NotFound", "asset group not found")
-		return
-	}
 	projectName := strings.TrimSpace(arkDeref(req.ProjectName))
-	if projectName == "" {
-		projectName = group.ProjectName
+
+	// 两条路径：GroupId 非空时锁定到建组时的渠道；为空时从 token 绑定渠道解析。
+	var channel *model.Channel
+	var res *assetrelay.UploadResult
+
+	if groupID != "" {
+		// 路径 A：归属校验——组必须属于该用户。
+		group, err := model.GetAssetGroupByUserAndGroupID(userId, groupID)
+		if err != nil {
+			arkErr(c, action, region, http.StatusNotFound, "NotFound", "asset group not found")
+			return
+		}
+		if projectName == "" {
+			projectName = group.ProjectName
+		}
+		var ch *model.Channel
+		ch, mgmt, mgmtErr := assetManagementByChannelID(group.ChannelID)
+		if mgmtErr == nil {
+			// 渠道支持完整官方管理 API：走 CreateAssetInGroup。
+			res, err = mgmt.CreateAssetInGroup(groupID, assetURL, assetType, name, projectName)
+			if err != nil {
+				common.SysError(fmt.Sprintf("[ArkAsset] CreateAsset upstream failed (user=%d, channel=%d, group=%s): %v", userId, group.ChannelID, groupID, err))
+				arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
+				return
+			}
+		} else {
+			// relay 协议降级：用 Protocol.Upload 直接上传，GroupId 仅作为本地组织单元。
+			ch, err = model.GetChannelById(group.ChannelID, true)
+			if err != nil {
+				arkErr(c, action, region, http.StatusInternalServerError, "NoAvailableChannel", err.Error())
+				return
+			}
+			proto, perr := assetProtocolForChannel(ch)
+			if perr != nil {
+				arkErr(c, action, region, http.StatusBadRequest, "ChannelUnavailable", perr.Error())
+				return
+			}
+			res, err = proto.Upload(assetrelay.UploadRequest{URL: assetURL, AssetType: assetType, Name: name})
+			if err != nil {
+				common.SysError(fmt.Sprintf("[ArkAsset] CreateAsset upload failed (user=%d, channel=%d): %v", userId, ch.Id, err))
+				arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
+				return
+			}
+		}
+		channel = ch
+	} else {
+		// 路径 B：GroupId 为空——从 token 绑定渠道解析，用 Upload 直接上传。
+		var err error
+		channel, err = service.ResolveTokenBoundChannel(c.GetInt("token_channel_id"))
+		if err != nil {
+			arkErr(c, action, region, http.StatusBadRequest, "ChannelBindingRequired", err.Error())
+			return
+		}
+		if projectName == "" {
+			projectName = model.AssetProjectNameDefault
+		}
+		proto, perr := assetProtocolForChannel(channel)
+		if perr != nil {
+			arkErr(c, action, region, http.StatusBadRequest, "ChannelUnavailable", perr.Error())
+			return
+		}
+		res, err = proto.Upload(assetrelay.UploadRequest{URL: assetURL, AssetType: assetType, Name: name})
+		if err != nil {
+			common.SysError(fmt.Sprintf("[ArkAsset] CreateAsset upload failed (user=%d, channel=%d): %v", userId, channel.Id, err))
+			arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
+			return
+		}
+		// 未指定组时用上游返回的 GroupId（可能为空）。
+		if res.GroupID != "" {
+			groupID = res.GroupID
+		}
 	}
 
-	channel, mgmt, err := assetManagementByChannelID(group.ChannelID)
-	if err != nil {
-		arkErr(c, action, region, http.StatusInternalServerError, "NoAvailableChannel", err.Error())
-		return
-	}
-	res, err := mgmt.CreateAssetInGroup(groupID, assetURL, assetType, name, projectName)
-	if err != nil {
-		common.SysError(fmt.Sprintf("[ArkAsset] CreateAsset upstream failed (user=%d, channel=%d, group=%s): %v", userId, channel.Id, groupID, err))
-		arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
-		return
-	}
 	a := &model.Asset{
 		UserID:      userId,
 		ChannelID:   channel.Id,
@@ -725,15 +783,16 @@ func arkUpdateAsset(c *gin.Context, action, region string, userId int, body []by
 	if projectName == "" {
 		projectName = a.ProjectName
 	}
-	_, mgmt, err := assetManagementByChannelID(a.ChannelID)
-	if err != nil {
-		arkErr(c, action, region, http.StatusInternalServerError, "NoAvailableChannel", err.Error())
-		return
-	}
-	if err := mgmt.UpdateAsset(id, name, projectName); err != nil {
-		common.SysError(fmt.Sprintf("[ArkAsset] UpdateAsset upstream failed (user=%d, upstream_id=%s): %v", userId, id, err))
-		arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
-		return
+	_, mgmt, mgmtErr := assetManagementByChannelID(a.ChannelID)
+	if mgmtErr == nil {
+		if err := mgmt.UpdateAsset(id, name, projectName); err != nil {
+			common.SysError(fmt.Sprintf("[ArkAsset] UpdateAsset upstream failed (user=%d, upstream_id=%s): %v", userId, id, err))
+			arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
+			return
+		}
+	} else {
+		// relay 协议无上游 UpdateAsset，仅更新本地记录。
+		common.SysLog(fmt.Sprintf("[ArkAsset] UpdateAsset local-only (user=%d, asset=%s): %v", userId, id, mgmtErr))
 	}
 	if err := model.UpdateAssetName(a.ID, userId, name); err != nil {
 		common.SysError(fmt.Sprintf("[ArkAsset] UpdateAsset persist failed (asset=%d): %v", a.ID, err))
@@ -763,15 +822,16 @@ func arkUpdateAssetGroup(c *gin.Context, action, region string, userId int, body
 	if projectName == "" {
 		projectName = group.ProjectName
 	}
-	_, mgmt, err := assetManagementByChannelID(group.ChannelID)
-	if err != nil {
-		arkErr(c, action, region, http.StatusInternalServerError, "NoAvailableChannel", err.Error())
-		return
-	}
-	if err := mgmt.UpdateAssetGroup(id, name, description, projectName); err != nil {
-		common.SysError(fmt.Sprintf("[ArkAsset] UpdateAssetGroup upstream failed (user=%d, group=%s): %v", userId, id, err))
-		arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
-		return
+	_, mgmt, mgmtErr := assetManagementByChannelID(group.ChannelID)
+	if mgmtErr == nil {
+		if err := mgmt.UpdateAssetGroup(id, name, description, projectName); err != nil {
+			common.SysError(fmt.Sprintf("[ArkAsset] UpdateAssetGroup upstream failed (user=%d, group=%s): %v", userId, id, err))
+			arkErr(c, action, region, http.StatusBadGateway, "UpstreamError", err.Error())
+			return
+		}
+	} else {
+		// relay 协议无上游组管理，仅更新本地记录。
+		common.SysLog(fmt.Sprintf("[ArkAsset] UpdateAssetGroup local-only (user=%d, group=%s): %v", userId, id, mgmtErr))
 	}
 	// 本地更新：未提供的字段保留原值（空 Name 不改名，空 Description 不清空）。
 	newName := group.Name
