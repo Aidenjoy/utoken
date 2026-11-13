@@ -287,12 +287,19 @@ export interface DirectorModelSettings {
   videoModel: string
 }
 
+export interface DirectorTokenInfo {
+  tokenId: number
+  name: string
+}
+
 export interface DirectorSettingsResponse {
   settings: DirectorModelSettings | null
-  token: {
-    tokenId: number
-    name: string
-  } | null
+  // 语言/图片/视频三项能力各自绑定的模型 Key，未绑定时为 null
+  tokens: {
+    text: DirectorTokenInfo | null
+    image: DirectorTokenInfo | null
+    video: DirectorTokenInfo | null
+  }
 }
 
 export interface DirectorPipelineStep {

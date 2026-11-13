@@ -75,7 +75,7 @@ func directorEntityImageInfo(userID int, entityType string, entityID int) (image
 	return "", "", err
 }
 
-// directorVideoModelGroup 解析当前视频模型与回环调用所在分组（令牌分组优先，回退用户分组）
+// directorVideoModelGroup 解析当前视频模型与回环调用所在分组（视频 Key 分组优先，回退用户分组）
 func directorVideoModelGroup(userID int) (videoModel, group string, err error) {
 	settings, err := model.GetDirectorModelSettings(userID)
 	if err != nil {
@@ -85,7 +85,7 @@ func directorVideoModelGroup(userID int) (videoModel, group string, err error) {
 	if videoModel == "" {
 		return "", "", errors.New("video model not configured")
 	}
-	if token, tErr := model.GetDirectorTokenInfo(userID); tErr == nil && token != nil {
+	if token, tErr := model.GetDirectorTokenInfo(userID, "video"); tErr == nil && token != nil {
 		group = token.Group
 	}
 	if group == "" {

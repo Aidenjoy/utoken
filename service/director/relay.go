@@ -1,7 +1,6 @@
 package director
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,9 +65,9 @@ func getDirectorConfig(userID int, serviceType string) (directorCallConfig, erro
 		modelName = strings.TrimSpace(settings.TextModel)
 	}
 	if modelName == "" {
-		return directorCallConfig{}, errors.New("还未设置云导演模型，请先在「模型设定」中选择模型")
+		return directorCallConfig{}, fmt.Errorf("还未设置云导演%s，请先在「模型设定」中选择模型", model.DirectorServiceLabel(serviceType))
 	}
-	key, err := model.GetDirectorTokenKey(userID)
+	key, err := model.GetDirectorTokenKey(userID, serviceType)
 	if err != nil {
 		return directorCallConfig{}, err
 	}

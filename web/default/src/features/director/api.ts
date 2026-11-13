@@ -59,13 +59,15 @@ export async function updateDirectorSettings(params: {
   textModel?: string
   imageModel?: string
   videoModel?: string
-  tokenId?: number
+  textTokenId?: number
+  imageTokenId?: number
+  videoTokenId?: number
 }): Promise<ApiResponse<DirectorModelSettings>> {
   const res = await api.put(`${BASE}/settings`, params)
   return res.data
 }
 
-// 用户已有令牌列表（供模型设定页选择内部令牌）
+// 用户已有令牌列表（供模型设定页按能力选择模型 Key）
 export async function getDirectorTokenOptions(): Promise<
   ApiResponse<{
     items: {
@@ -73,6 +75,8 @@ export async function getDirectorTokenOptions(): Promise<
       name: string
       key: string
       status: number
+      key_type: string
+      video_model: string
     }[]
     total: number
   }>

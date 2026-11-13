@@ -164,7 +164,7 @@ func (s *VideoGenerationService) ResumeDirectorPolling() {
 		if t.StoryboardID == nil || t.TaskID == "" || t.UserID <= 0 {
 			continue
 		}
-		key, keyErr := model.GetDirectorTokenKey(t.UserID)
+		key, keyErr := model.GetDirectorTokenKey(t.UserID, "video")
 		if keyErr != nil {
 			continue
 		}

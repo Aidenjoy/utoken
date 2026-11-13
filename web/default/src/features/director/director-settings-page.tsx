@@ -49,10 +49,12 @@ export function DirectorSettingsPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
-  const [tokenId, setTokenId] = React.useState('')
   const [textModel, setTextModel] = React.useState('')
   const [imageModel, setImageModel] = React.useState('')
   const [videoModel, setVideoModel] = React.useState('')
+  const [textTokenId, setTextTokenId] = React.useState('')
+  const [imageTokenId, setImageTokenId] = React.useState('')
+  const [videoTokenId, setVideoTokenId] = React.useState('')
 
   const settingsQuery = useQuery({
     queryKey: ['director', 'settings'],
@@ -78,9 +80,9 @@ export function DirectorSettingsPage() {
       setImageModel(settings.imageModel ?? '')
       setVideoModel(settings.videoModel ?? '')
     }
-    if (data.token) {
-      setTokenId(String(data.token.tokenId))
-    }
+    setTextTokenId(data.tokens?.text ? String(data.tokens.text.tokenId) : '')
+    setImageTokenId(data.tokens?.image ? String(data.tokens.image.tokenId) : '')
+    setVideoTokenId(data.tokens?.video ? String(data.tokens.video.tokenId) : '')
   }, [settingsQuery.data])
 
   // 下拉选项按能力分类过滤：语言/图片/视频模型各自只展示同类模型
@@ -107,16 +109,57 @@ export function DirectorSettingsPage() {
   )
 
   // 仅展示启用中的令牌（后端拒绝绑定已禁用令牌）
-  const tokenOptions = React.useMemo(
+  const enabledTokens = React.useMemo(
     () =>
-      (tokensQuery.data?.data?.items ?? [])
-        .filter((token) => token.status === 1)
+      (tokensQuery.data?.data?.items ?? []).filter(
+        (token) => token.status === 1
+      ),
+    [tokensQuery.data]
+  )
+
+  // Key 按能力过滤：已分类 Key 只出现在对应能力下；存量空类型 Key 三项能力通用
+  const textTokenOptions = React.useMemo(
+    () =>
+      enabledTokens
+        .filter((token) => !token.key_type || token.key_type === 'language')
         .map((token) => ({
           value: String(token.id),
           label: `${token.name} sk-${token.key}`,
         })),
-    [tokensQuery.data]
+    [enabledTokens]
   )
+  const imageTokenOptions = React.useMemo(
+    () =>
+      enabledTokens
+        .filter((token) => !token.key_type || token.key_type === 'image')
+        .map((token) => ({
+          value: String(token.id),
+          label: `${token.name} sk-${token.key}`,
+        })),
+    [enabledTokens]
+  )
+  // 视频 Key 锁定单一视频模型，选项标注绑定模型便于核对
+  const videoTokenOptions = React.useMemo(
+    () =>
+      enabledTokens
+        .filter((token) => !token.key_type || token.key_type === 'video')
+        .map((token) => ({
+          value: String(token.id),
+          label: token.video_model
+            ? `${token.name} (${token.video_model}) sk-${token.key}`
+            : `${token.name} sk-${token.key}`,
+        })),
+    [enabledTokens]
+  )
+
+  // 视频 Key 与模型强绑定：选中 Key 后自动填入其绑定模型，避免模型/Key 不一致
+  const handleVideoTokenChange = (value: string) => {
+    setVideoTokenId(value)
+    const token = enabledTokens.find((item) => String(item.id) === value)
+    if (token?.video_model) {
+      setVideoModel(token.video_model)
+    }
+  }
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -124,7 +167,9 @@ export function DirectorSettingsPage() {
         textModel: textModel.trim(),
         imageModel: imageModel.trim(),
         videoModel: videoModel.trim(),
-        tokenId: Number(tokenId) || 0,
+        textTokenId: Number(textTokenId) || 0,
+        imageTokenId: Number(imageTokenId) || 0,
+        videoTokenId: Number(videoTokenId) || 0,
       }),
     onSuccess: (res) => {
       if (res.success) {
@@ -135,7 +180,8 @@ export function DirectorSettingsPage() {
     onError: handleServerError,
   })
 
-  const isPending = settingsQuery.isPending || modelsQuery.isPending
+  const isPending =
+    settingsQuery.isPending || modelsQuery.isPending || tokensQuery.isPending
 
   return (
     <SectionPageLayout>
@@ -148,7 +194,7 @@ export function DirectorSettingsPage() {
             <Info aria-hidden='true' className='size-4' />
             <AlertDescription>
               {t(
-                'Models are served by the gateway channels. Pick a model for each capability; usage is billed to your own account.'
+                'Models are served by the gateway channels. Pick a model and key for each capability; usage is billed to your own account.'
               )}
             </AlertDescription>
           </Alert>
@@ -157,7 +203,7 @@ export function DirectorSettingsPage() {
             <CardHeader>
               <CardTitle>{t('Model Selection')}</CardTitle>
               <CardDescription>
-                {t('Choose the models used by the production pipeline')}
+                {t('Choose the models and keys used by the production pipeline')}
               </CardDescription>
             </CardHeader>
             <CardContent className='space-y-5'>
@@ -170,52 +216,84 @@ export function DirectorSettingsPage() {
                 </div>
               ) : (
                 <>
-                  <div className='grid gap-2'>
-                    <Label htmlFor='director-internal-token'>
-                      {t('Internal Token')}
-                    </Label>
-                    <ComboboxInput
-                      id='director-internal-token'
-                      options={tokenOptions}
-                      value={tokenId}
-                      onValueChange={setTokenId}
-                      placeholder={t('Select a token for AI calls...')}
-                      emptyText={t('No token found.')}
-                    />
-                    <p className='text-muted-foreground text-xs'>
-                      {t(
-                        'AI calls are billed through this token. Create tokens on the API Keys page.'
+                  <div className='grid gap-4 sm:grid-cols-2'>
+                    <ComboboxField
+                      id='director-text-model'
+                      label={t('Text Model')}
+                      description={t(
+                        'Used for rewriting, extraction and storyboard splitting'
                       )}
-                    </p>
+                      options={textModelOptions}
+                      value={textModel}
+                      onValueChange={setTextModel}
+                      placeholder={t('Select or type a model name...')}
+                      emptyText={t('No model found.')}
+                      allowCustomValue
+                    />
+                    <ComboboxField
+                      id='director-text-token'
+                      label={t('Language Model Key')}
+                      options={textTokenOptions}
+                      value={textTokenId}
+                      onValueChange={setTextTokenId}
+                      placeholder={t('Select a language model key...')}
+                      emptyText={t('No available key.')}
+                    />
                   </div>
-                  <ModelField
-                    id='director-text-model'
-                    label={t('Text Model')}
-                    description={t(
-                      'Used for rewriting, extraction and storyboard splitting'
+                  <div className='grid gap-4 border-t pt-5 sm:grid-cols-2'>
+                    <ComboboxField
+                      id='director-image-model'
+                      label={t('Image Model')}
+                      description={t(
+                        'Used for character, scene, prop and storyboard images'
+                      )}
+                      options={imageModelOptions}
+                      value={imageModel}
+                      onValueChange={setImageModel}
+                      placeholder={t('Select or type a model name...')}
+                      emptyText={t('No model found.')}
+                      allowCustomValue
+                    />
+                    <ComboboxField
+                      id='director-image-token'
+                      label={t('Image Model Key')}
+                      options={imageTokenOptions}
+                      value={imageTokenId}
+                      onValueChange={setImageTokenId}
+                      placeholder={t('Select an image model key...')}
+                      emptyText={t('No available key.')}
+                    />
+                  </div>
+                  <div className='grid gap-4 border-t pt-5 sm:grid-cols-2'>
+                    <ComboboxField
+                      id='director-video-model'
+                      label={t('Video Model')}
+                      description={t('Used for shot video generation')}
+                      options={videoModelOptions}
+                      value={videoModel}
+                      onValueChange={setVideoModel}
+                      placeholder={t('Select or type a model name...')}
+                      emptyText={t('No model found.')}
+                      allowCustomValue
+                    />
+                    <ComboboxField
+                      id='director-video-token'
+                      label={t('Video Model Key')}
+                      description={t(
+                        'A video key is bound to a single video model. Selecting a key fills in its model automatically.'
+                      )}
+                      options={videoTokenOptions}
+                      value={videoTokenId}
+                      onValueChange={handleVideoTokenChange}
+                      placeholder={t('Select a video model key...')}
+                      emptyText={t('No available key.')}
+                    />
+                  </div>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'AI calls are billed through the key selected for each capability. Create language, image and video model keys on the API Keys page.'
                     )}
-                    options={textModelOptions}
-                    value={textModel}
-                    onValueChange={setTextModel}
-                  />
-                  <ModelField
-                    id='director-image-model'
-                    label={t('Image Model')}
-                    description={t(
-                      'Used for character, scene, prop and storyboard images'
-                    )}
-                    options={imageModelOptions}
-                    value={imageModel}
-                    onValueChange={setImageModel}
-                  />
-                  <ModelField
-                    id='director-video-model'
-                    label={t('Video Model')}
-                    description={t('Used for shot video generation')}
-                    options={videoModelOptions}
-                    value={videoModel}
-                    onValueChange={setVideoModel}
-                  />
+                  </p>
                 </>
               )}
               <Button
@@ -232,17 +310,19 @@ export function DirectorSettingsPage() {
   )
 }
 
-interface ModelFieldProps {
+interface ComboboxFieldProps {
   id: string
   label: string
-  description: string
+  description?: string
   options: { value: string; label: string }[]
   value: string
   onValueChange: (value: string) => void
+  placeholder: string
+  emptyText: string
+  allowCustomValue?: boolean
 }
 
-function ModelField(props: ModelFieldProps) {
-  const { t } = useTranslation()
+function ComboboxField(props: ComboboxFieldProps) {
   return (
     <div className='grid gap-2'>
       <Label htmlFor={props.id}>{props.label}</Label>
@@ -251,11 +331,13 @@ function ModelField(props: ModelFieldProps) {
         options={props.options}
         value={props.value}
         onValueChange={props.onValueChange}
-        placeholder={t('Select or type a model name...')}
-        emptyText={t('No model found.')}
-        allowCustomValue
+        placeholder={props.placeholder}
+        emptyText={props.emptyText}
+        allowCustomValue={props.allowCustomValue}
       />
-      <p className='text-muted-foreground text-xs'>{props.description}</p>
+      {props.description && (
+        <p className='text-muted-foreground text-xs'>{props.description}</p>
+      )}
     </div>
   )
 }
