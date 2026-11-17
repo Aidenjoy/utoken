@@ -230,9 +230,13 @@ func (p *ArkOfficialProtocol) DeleteAssetGroup(groupID, projectName string) erro
 }
 
 func (p *ArkOfficialProtocol) Query(assetID string) (*QueryResult, error) {
-	body, err := common.Marshal(map[string]any{
-		"Id": assetID,
-	})
+	payload := map[string]any{"Id": assetID}
+	// 项目隔离：非 default 项目的素材（如 BytePlus 邀测账号仅授权专属项目）
+	// 不带 ProjectName 会落到 default/project/* 鉴权，直接 403 AccessDenied。
+	if projectName := strings.TrimSpace(p.cfg.Settings.AssetProjectName); projectName != "" {
+		payload["ProjectName"] = projectName
+	}
+	body, err := common.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}

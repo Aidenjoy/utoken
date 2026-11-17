@@ -145,6 +145,8 @@ func TestArkOfficialQueryAndError(t *testing.T) {
 		assert.Equal(t, "GetAsset", r.URL.Query().Get("Action"))
 		b, _ := io.ReadAll(r.Body)
 		assert.Contains(t, string(b), `"Id":"asset-x"`)
+		// 项目隔离：GetAsset 必须带渠道 ProjectName，否则非 default 项目素材 403
+		assert.Contains(t, string(b), `"ProjectName":"test-project"`)
 		_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Status":"Active","URL":"https://cdn.example.com/p.jpg"}}`))
 	}))
 	defer srv.Close()

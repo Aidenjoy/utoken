@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -72,4 +73,25 @@ func TestByteplusOfficialUploadSignsApSoutheastScope(t *testing.T) {
 	assert.True(t, strings.HasPrefix(gotAuth, "HMAC-SHA256 Credential=ak-test/"), "auth=%s", gotAuth)
 	assert.Contains(t, gotAuth, "/ap-southeast-1/ark/request")
 	assert.Contains(t, gotAuth, "SignedHeaders=content-type;host;x-content-sha256;x-date")
+}
+
+func TestByteplusOfficialQuerySendsProjectName(t *testing.T) {
+	// BytePlus 邀测账号的 AK/SK 仅授权专属项目（如 zc_en_01）：
+	// GetAsset 不带 ProjectName 会落到 default/project/* 鉴权，实测 403 AccessDenied
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		_, _ = w.Write([]byte(`{"ResponseMetadata":{},"Result":{"Status":"Active","URL":"https://cdn.example.com/p.jpg"}}`))
+	}))
+	defer srv.Close()
+
+	cfg := byteplusOfficialConfig("")
+	cfg.Settings.AssetProjectName = "zc_en_01"
+	p := newByteplusOfficialProtocol(cfg)
+	p.endpoint = srv.URL
+	res, err := p.Query("asset-x")
+	require.NoError(t, err)
+	assert.Equal(t, model.AssetStatusActive, res.Status)
+	assert.Contains(t, gotBody, `"ProjectName":"zc_en_01"`)
 }
