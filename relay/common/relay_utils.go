@@ -175,6 +175,151 @@ func RepairResponsesOrphanToolCalls(input json.RawMessage) json.RawMessage {
 	return out
 }
 
+// InlineKimiToolSchemaRefs 内联展开 Kimi 模型工具参数 schema 里的本地 $ref。
+// Ark coding plan 端点对 array items 内指向复合 schema（oneOf 等）的 $ref
+// 解引用不完整，直接泛化 400（"A parameter specified in the request is not
+// valid"，kimi-k3/kimi-k3.1-pro 的 responses 与 chat 路径均已实测复现；
+// codex 挂载 MCP 工具后必现，doubao 不受影响）；悬空 $ref 同样被拒。
+// MCP 服务器（pydantic 风格）普遍输出 $defs+$ref schema，转发前递归解析
+// #/$defs/、#/definitions/ 本地引用并内联，随后移除 defs 块；无法解析的
+// 引用替换为空 schema（放行任意值），避免悬空引用触发 400。
+// 仅对 Kimi 固定采样参数模型生效；无 $ref 时原样返回，避免无谓重序列化。
+func InlineKimiToolSchemaRefs(model string, tools json.RawMessage) json.RawMessage {
+	if !IsKimiFixedSamplingModel(model) || len(tools) == 0 || !strings.Contains(string(tools), `"$ref"`) {
+		return tools
+	}
+	var items []map[string]any
+	if err := common.Unmarshal(tools, &items); err != nil {
+		return tools
+	}
+	changed := false
+	for _, tool := range items {
+		// Responses 格式 parameters 在工具顶层，chat 格式嵌在 function 里；
+		// namespace 工具的子工具在 tools 数组里，两种形态都要覆盖。
+		paramsHolders := []map[string]any{tool}
+		if fn, ok := tool["function"].(map[string]any); ok {
+			paramsHolders = append(paramsHolders, fn)
+		}
+		if subs, ok := tool["tools"].([]any); ok {
+			for _, sub := range subs {
+				if subTool, ok := sub.(map[string]any); ok {
+					paramsHolders = append(paramsHolders, subTool)
+				}
+			}
+		}
+		for _, holder := range paramsHolders {
+			params, ok := holder["parameters"].(map[string]any)
+			if !ok {
+				continue
+			}
+			if resolveSchemaRefs(params, params, make(map[string]bool), 0) {
+				holder["parameters"] = params
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return tools
+	}
+	out, err := common.Marshal(items)
+	if err != nil {
+		return tools
+	}
+	return out
+}
+
+// resolveSchemaRefs 递归内联 node 里的本地 $ref：root 提供 $defs/definitions
+// 查找表，visiting 防止循环引用，depth 限制递归展开深度。返回是否发生改动。
+func resolveSchemaRefs(node map[string]any, root map[string]any, visiting map[string]bool, depth int) bool {
+	changed := false
+	if ref, ok := node["$ref"].(string); ok {
+		name := ""
+		if strings.HasPrefix(ref, "#/$defs/") {
+			name = strings.TrimPrefix(ref, "#/$defs/")
+		} else if strings.HasPrefix(ref, "#/definitions/") {
+			name = strings.TrimPrefix(ref, "#/definitions/")
+		}
+		var target map[string]any
+		if name != "" && !visiting[name] && depth < 32 {
+			for _, defsKey := range []string{"$defs", "definitions"} {
+				if defs, ok := root[defsKey].(map[string]any); ok {
+					if def, ok := defs[name].(map[string]any); ok {
+						target = def
+						break
+					}
+				}
+			}
+		}
+		delete(node, "$ref")
+		if target == nil {
+			// 悬空/外部/循环引用：上游对无法解析的 $ref 直接 400，
+			// 替换为空 schema 放行任意值，保住整个请求。
+			changed = true
+		} else {
+			visiting[name] = true
+			// 深拷贝目标定义：同一 $defs 可能被多处引用，原地解析会
+			// 污染查找表里的共享子树。
+			resolved := deepCopySchemaValue(target).(map[string]any)
+			resolveSchemaRefs(resolved, root, visiting, depth+1)
+			delete(visiting, name)
+			for k, v := range resolved {
+				if _, exists := node[k]; !exists {
+					node[k] = v
+				}
+			}
+			changed = true
+		}
+	}
+	for k, v := range node {
+		if k == "$defs" || k == "definitions" {
+			continue
+		}
+		switch child := v.(type) {
+		case map[string]any:
+			if resolveSchemaRefs(child, root, visiting, depth+1) {
+				changed = true
+			}
+		case []any:
+			for _, elem := range child {
+				if elemMap, ok := elem.(map[string]any); ok {
+					if resolveSchemaRefs(elemMap, root, visiting, depth+1) {
+						changed = true
+					}
+				}
+			}
+		}
+	}
+	// 引用已全部内联，defs 块不再需要；留着反而可能带上游不支持的结构。
+	if _, ok := node["$defs"]; ok {
+		delete(node, "$defs")
+		changed = true
+	}
+	if _, ok := node["definitions"]; ok {
+		delete(node, "definitions")
+		changed = true
+	}
+	return changed
+}
+
+func deepCopySchemaValue(v any) any {
+	switch value := v.(type) {
+	case map[string]any:
+		copied := make(map[string]any, len(value))
+		for k, elem := range value {
+			copied[k] = deepCopySchemaValue(elem)
+		}
+		return copied
+	case []any:
+		copied := make([]any, len(value))
+		for i, elem := range value {
+			copied[i] = deepCopySchemaValue(elem)
+		}
+		return copied
+	default:
+		return v
+	}
+}
+
 func createTaskError(err error, code string, statusCode int, localError bool) *dto.TaskError {
 	return &dto.TaskError{
 		Code:       code,

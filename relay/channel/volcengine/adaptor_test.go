@@ -277,3 +277,112 @@ func TestConvertResponsesRequestRepairsOrphanToolCalls(t *testing.T) {
 		})
 	}
 }
+
+// TestConvertResponsesRequestInlinesKimiToolSchemaRefs 保护 Kimi 工具 schema
+// 内联契约：Ark 端点对 array items 内指向复合 schema 的 $ref 解引用不完整
+// 会泛化 400（codex 挂 MCP 工具后必现，已实测），转发前必须把本地 $ref
+// 全部内联展开；悬空引用替换为空 schema；非 Kimi/无引用请求不受影响。
+func TestConvertResponsesRequestInlinesKimiToolSchemaRefs(t *testing.T) {
+	// 最小复现形态：steps 数组 items 用 $ref 指向 oneOf 复合定义。
+	refTool := `{"type":"function","name":"capture","description":"t","strict":false,"parameters":{"type":"object","properties":{"steps":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/Step"}}},"required":["steps"],"$defs":{"Step":{"oneOf":[{"type":"object","properties":{"kind":{"type":"string","enum":["click"]}},"required":["kind"]},{"type":"object","properties":{"kind":{"type":"string","enum":["wait"]}},"required":["kind"]}]}}}}`
+	tests := []struct {
+		name      string
+		model     string
+		tools     string
+		unchanged bool
+	}{
+		{"items引用oneOf被内联", "kimi-k3.1-pro", `[` + refTool + `]`, false},
+		{"悬空引用替换为空schema", "kimi-k3.1-pro",
+			`[{"type":"function","name":"f","parameters":{"type":"object","properties":{"a":{"$ref":"#/$defs/Missing"}},"required":[]}}]`, false},
+		{"defs内嵌套引用链全部展开", "kimi-k3.1-pro",
+			`[{"type":"function","name":"f","parameters":{"type":"object","properties":{"a":{"$ref":"#/$defs/A"}},"required":[],"$defs":{"A":{"$ref":"#/$defs/B","description":"d"},"B":{"type":"integer"}}}}]`, false},
+		{"namespace子工具同样内联", "kimi-k3.1-pro",
+			`[{"type":"namespace","name":"mcp","tools":[` + refTool + `]}]`, false},
+		{"非Kimi模型不处理", "doubao-seed-2.1-pro", `[` + refTool + `]`, true},
+		{"无引用原样返回", "kimi-k3.1-pro",
+			`[{"type":"function","name":"f","parameters":{"type":"object","properties":{"a":{"type":"integer"}},"required":[]}}]`, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model},
+			}
+			request := dto.OpenAIResponsesRequest{Model: tt.model, Tools: json.RawMessage(tt.tools)}
+			converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, request)
+			require.NoError(t, err)
+			convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
+			require.True(t, ok)
+			if tt.unchanged {
+				assert.JSONEq(t, tt.tools, string(convertedRequest.Tools))
+				return
+			}
+			result := string(convertedRequest.Tools)
+			assert.NotContains(t, result, `"$ref"`)
+			assert.NotContains(t, result, `"$defs"`)
+			var tools []map[string]any
+			require.NoError(t, common.Unmarshal(convertedRequest.Tools, &tools))
+			require.Len(t, tools, 1)
+			// 定位 parameters：namespace 在子工具里，其余在顶层。
+			paramsHolder := tools[0]
+			if subs, ok := tools[0]["tools"].([]any); ok {
+				require.Len(t, subs, 1)
+				paramsHolder = subs[0].(map[string]any)
+			}
+			params, ok := paramsHolder["parameters"].(map[string]any)
+			require.True(t, ok)
+			props := params["properties"].(map[string]any)
+			if tt.name == "悬空引用替换为空schema" {
+				assert.Empty(t, props["a"])
+				return
+			}
+			if tt.name == "defs内嵌套引用链全部展开" {
+				assert.Equal(t, map[string]any{"type": "integer", "description": "d"}, props["a"])
+				return
+			}
+			steps := props["steps"].(map[string]any)
+			assert.Equal(t, float64(1), steps["minItems"])
+			items := steps["items"].(map[string]any)
+			oneOf, ok := items["oneOf"].([]any)
+			require.True(t, ok, "oneOf 分支必须被完整内联保留")
+			assert.Len(t, oneOf, 2)
+		})
+	}
+}
+
+// TestConvertRequestInlinesKimiToolSchemaRefsChat chat/completions 路径同样
+// 受 Ark $ref 解引用缺陷影响（已实测），function.parameters 里的引用必须内联。
+func TestConvertRequestInlinesKimiToolSchemaRefsChat(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "kimi-k3.1-pro"},
+	}
+	request := &dto.GeneralOpenAIRequest{
+		Model: "kimi-k3.1-pro",
+		Tools: []dto.ToolCallRequest{{
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name: "capture",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"steps": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"$ref": "#/$defs/Step"}},
+					},
+					"required": []any{"steps"},
+					"$defs": map[string]any{
+						"Step": map[string]any{"oneOf": []any{
+							map[string]any{"type": "object", "properties": map[string]any{"kind": map[string]any{"type": "string", "enum": []any{"click"}}}, "required": []any{"kind"}},
+						}},
+					},
+				},
+			},
+		}},
+	}
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	require.NoError(t, err)
+	convertedRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	raw, err := common.Marshal(convertedRequest.Tools)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), `"$ref"`)
+	assert.NotContains(t, string(raw), `"$defs"`)
+	assert.Contains(t, string(raw), `"oneOf"`)
+}

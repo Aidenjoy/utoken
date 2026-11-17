@@ -349,6 +349,16 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
 	relaycommon.NormalizeKimiFixedSamplingParams(upstreamModel, request.TopP, request.PresencePenalty, request.FrequencyPenalty)
+	// Kimi 上游对工具参数 schema 里 array items 内指向复合 schema 的 $ref
+	// 解引用不完整，MCP 工具的 $defs+$ref schema 会触发泛化 400，转发前内联。
+	if relaycommon.IsKimiFixedSamplingModel(upstreamModel) && len(request.Tools) > 0 {
+		if raw, err := common.Marshal(request.Tools); err == nil && strings.Contains(string(raw), `"$ref"`) {
+			var tools []dto.ToolCallRequest
+			if err := common.Unmarshal(relaycommon.InlineKimiToolSchemaRefs(upstreamModel, raw), &tools); err == nil {
+				request.Tools = tools
+			}
+		}
+	}
 	return request, nil
 }
 
@@ -375,6 +385,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	// 循环被中断后留下的孤立调用项会触发泛化 400，转发前修复。
 	if relaycommon.IsKimiFixedSamplingModel(upstreamModel) {
 		request.Input = relaycommon.RepairResponsesOrphanToolCalls(request.Input)
+		request.Tools = relaycommon.InlineKimiToolSchemaRefs(upstreamModel, request.Tools)
 	}
 	return request, nil
 }
