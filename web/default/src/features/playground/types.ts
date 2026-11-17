@@ -217,9 +217,17 @@ export interface AssetProvider {
   protocol: string
 }
 
+/** 视频渠道选择器候选渠道（仅 id/name，不暴露 key） */
+export interface VideoChannel {
+  id: number
+  name: string
+}
+
 export interface VideoConfig {
   model: string
   group: string
+  /** 显式指定渠道（0=自动，走渠道优先级选路） */
+  channelId: number
   mode: VideoMode
   ratio: AspectRatio
   resolution: Resolution
@@ -268,6 +276,7 @@ export interface VideoSubmitRequest {
   duration?: number
   watermark?: boolean
   group?: string
+  channel_id?: number
 }
 
 export interface VideoSubmitResponse {

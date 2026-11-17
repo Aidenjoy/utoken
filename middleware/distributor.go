@@ -128,6 +128,8 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+				// playground 渠道选择器：用户显式指定的渠道（0=自动走优先级），仅视频提交生效。
+				playgroundChannelId := 0
 				// playground 的生成类接口把 group 放在 body 里：对话、视频、图片
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") ||
 					strings.HasPrefix(c.Request.URL.Path, "/pg/video/generations") ||
@@ -145,6 +147,9 @@ func Distribute() func(c *gin.Context) {
 						}
 						usingGroup = playgroundRequest.Group
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+					}
+					if isVideoSubmitPath(c.Request.URL.Path) {
+						playgroundChannelId = playgroundRequest.ChannelId
 					}
 				} else if strings.HasPrefix(c.Request.URL.Path, "/pg/files/upload") {
 					// File upload uses multipart/form-data, read group from query parameter
@@ -195,8 +200,9 @@ func Distribute() func(c *gin.Context) {
 						common.SysLog(fmt.Sprintf("[TokenChannel] request bound to channel %d (group=%s, model=%s, user=%d, token=%d)",
 							channel.Id, selectGroup, modelRequest.Model, c.GetInt("id"), c.GetInt("token_id")))
 					} else {
-						// C端 playground（会话，无 Key）：沿用素材锁定 / 智能素材路由。
-						lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"), modelRequest.Model, usingGroup, requiredResolution)
+						// C端 playground（会话，无 Key）：沿用素材锁定 / 智能素材路由；
+						// 无素材锁定时尊重用户显式指定的渠道（渠道选择器）。
+						lockedChannelId, lockErr := ResolveAssetLockedChannelId(c, c.GetInt("id"), modelRequest.Model, usingGroup, requiredResolution, playgroundChannelId)
 						if lockErr != nil {
 							abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
 							return
@@ -208,6 +214,23 @@ func Distribute() func(c *gin.Context) {
 								return
 							}
 							common.SysLog(fmt.Sprintf("[Asset] request locked to channel %d (group=%s, model=%s, user=%d)",
+								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
+						} else if playgroundChannelId > 0 {
+							channel, selectGroup, lockErr = selectAssetLockedChannel(c, playgroundChannelId, modelRequest.Model, usingGroup)
+							if lockErr != nil {
+								abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorUserChannelUnavailable, map[string]any{
+									"Channel": playgroundChannelId, "Model": modelRequest.Model,
+								}))
+								return
+							}
+							// 指定渠道不支持本次分辨率时明确报错，不静默降级到别的渠道。
+							if requiredResolution != "" && !model.ChannelSupportsResolution(playgroundChannelId, modelRequest.Model, requiredResolution) {
+								abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorUserChannelResolution, map[string]any{
+									"Channel": playgroundChannelId, "Model": modelRequest.Model, "Resolution": requiredResolution,
+								}))
+								return
+							}
+							common.SysLog(fmt.Sprintf("[Playground] request pinned to channel %d (group=%s, model=%s, user=%d)",
 								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 						}
 					}

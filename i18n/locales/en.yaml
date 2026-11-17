@@ -286,6 +286,9 @@ distributor.asset_channel_unavailable: "The channel {{.Channel}} owning the refe
 distributor.asset_not_ready: "The referenced asset is not ready on the target channel (syncing or review failed); try again later or use another asset"
 distributor.asset_no_protocol_channel: "None of the channels serving model {{.Model}} have the asset upload protocol enabled, so smart assets cannot be synced automatically"
 distributor.asset_smart_sync_failed: "Smart asset {{.Ref}} failed to sync to the channel automatically: {{.Error}}"
+distributor.user_channel_unavailable: "The selected channel {{.Channel}} is unavailable (disabled, or model {{.Model}} is not enabled under the current group)"
+distributor.user_channel_resolution: "The selected channel {{.Channel}} does not support {{.Resolution}} for model {{.Model}}; switch to Auto or another channel"
+distributor.user_channel_asset_conflict: "The referenced asset belongs to channel {{.AssetChannel}} and cannot be used with the selected channel {{.Channel}}; switch the channel to Auto or to the asset's owning channel"
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "Custom OAuth provider not found"

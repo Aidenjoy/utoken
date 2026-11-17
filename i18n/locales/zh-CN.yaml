@@ -287,6 +287,9 @@ distributor.asset_channel_unavailable: "引用素材所属渠道 {{.Channel}} �
 distributor.asset_not_ready: "引用的素材在目标渠道尚未就绪（同步中或审核未通过），请稍后重试或更换素材"
 distributor.asset_no_protocol_channel: "服务模型 {{.Model}} 的渠道均未启用素材上传协议，无法智能同步素材"
 distributor.asset_smart_sync_failed: "智能素材 {{.Ref}} 自动同步到渠道失败：{{.Error}}"
+distributor.user_channel_unavailable: "所选渠道 {{.Channel}} 不可用（已禁用，或当前分组下未启用模型 {{.Model}}）"
+distributor.user_channel_resolution: "所选渠道 {{.Channel}} 不支持模型 {{.Model}} 的 {{.Resolution}} 分辨率，请改用自动或其他渠道"
+distributor.user_channel_asset_conflict: "引用的素材归属渠道 {{.AssetChannel}}，无法与所选渠道 {{.Channel}} 一起使用；请将渠道改为自动或素材归属渠道"
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "自定义 OAuth 提供商不存在"

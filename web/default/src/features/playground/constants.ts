@@ -104,6 +104,7 @@ export const VIDEO_API_ENDPOINTS = {
   FETCH: (taskId: string) => `/pg/video/generations/${taskId}`,
   CANCEL: (taskId: string) => `/pg/video/generations/${taskId}/cancel`,
   FILE_UPLOAD: '/pg/files/upload',
+  CHANNELS: '/pg/video/channels',
 } as const
 
 // Asset library (virtual portrait library) endpoints
@@ -123,6 +124,7 @@ export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   duration: 5,
   count: 1,
   audio: true,
+  channelId: 0,
   images: [],
   mediaItems: [],
 }

@@ -162,6 +162,8 @@ function buildSubmitPayload(
     // explicitly false, so it is always sent: the playground offers no toggle.
     watermark: false,
     group: config.group,
+    // 渠道选择器：0=自动不传，走优先级选路；>0 后端锁定到该渠道。
+    channel_id: config.channelId > 0 ? config.channelId : undefined,
   }
   if (config.ratio !== 'smart' && !hasReferenceVideo) {
     payload.ratio = config.ratio

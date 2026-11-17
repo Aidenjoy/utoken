@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,13 +54,16 @@ const (
 	SmartAssetNoModelChannel    SmartAssetErrorKind = "no_model_channel"
 	SmartAssetNoProtocolChannel SmartAssetErrorKind = "no_protocol_channel"
 	SmartAssetSyncFailed        SmartAssetErrorKind = "sync_failed"
+	// SmartAssetChannelUnavailable 用户显式指定的渠道不在候选集（模型/分辨率/素材协议不满足）。
+	SmartAssetChannelUnavailable SmartAssetErrorKind = "channel_unavailable"
 )
 
 // SmartAssetError 带类型的解析失败错误。
 type SmartAssetError struct {
-	Kind   SmartAssetErrorKind
-	Ref    string
-	Detail string
+	Kind      SmartAssetErrorKind
+	Ref       string
+	Detail    string
+	ChannelId int // channel_unavailable 时为用户指定的渠道 ID
 }
 
 func (e *SmartAssetError) Error() string {
@@ -90,6 +94,14 @@ type SmartAssetResolution struct {
 //  3. 否则取层内首个（即 ID 最小的）渠道，缺副本的引用现场调用 syncToChannel 上传，
 //     转为 pending，本次提交随后被预检以「审核中」拦截，轮询转 active 后重试即成功。
 func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups []string, requiredResolution string) ([]*SmartAssetResolution, int, error) {
+	return ResolveSmartAssetRefsOnChannel(userId, refs, modelName, groups, requiredResolution, 0)
+}
+
+// ResolveSmartAssetRefsOnChannel 与 ResolveSmartAssetRefs 相同，但 preferredChannelId > 0 时
+// 收敛到用户显式指定的渠道（体验页渠道选择器）：该渠道必须在候选集内（分组启用模型、
+// 支持分辨率、已配素材协议），否则报 SmartAssetChannelUnavailable，不静默回落其他渠道；
+// 命中时跳过优先级分层——手动指定渠道本身就是对优先级调度的显式覆盖。
+func ResolveSmartAssetRefsOnChannel(userId int, refs []string, modelName string, groups []string, requiredResolution string, preferredChannelId int) ([]*SmartAssetResolution, int, error) {
 	if len(refs) == 0 {
 		return nil, 0, nil
 	}
@@ -126,7 +138,15 @@ func ResolveSmartAssetRefs(userId int, refs []string, modelName string, groups [
 		}
 	}
 
-	channelId, needSyncIdx := chooseSmartAssetChannel(highestPriorityTier(protocolChannels, priorities), copies)
+	tier := highestPriorityTier(protocolChannels, priorities)
+	if preferredChannelId > 0 {
+		if !slices.Contains(protocolChannels, preferredChannelId) {
+			return nil, 0, &SmartAssetError{Kind: SmartAssetChannelUnavailable, Ref: refs[0], ChannelId: preferredChannelId,
+				Detail: fmt.Sprintf("preferred channel %d not eligible for model %s (resolution %q, asset protocol)", preferredChannelId, modelName, requiredResolution)}
+		}
+		tier = []int{preferredChannelId}
+	}
+	channelId, needSyncIdx := chooseSmartAssetChannel(tier, copies)
 	resolutions := make([]*SmartAssetResolution, 0, len(sources))
 	for i, source := range sources {
 		res := &SmartAssetResolution{Ref: refs[i], SourceAssetId: source.ID, ChannelId: channelId}

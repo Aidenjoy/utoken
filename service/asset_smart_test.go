@@ -356,6 +356,34 @@ func TestResolveSmartAssetRefsStrictPriority(t *testing.T) {
 	assert.Equal(t, 1, stub.uploadCalls)
 }
 
+// TestResolveSmartAssetRefsOnChannelPreferred 体验页渠道选择器：显式指定渠道
+// 覆盖优先级分层，副本同步到该渠道；指定渠道不在候选集时明确报错不静默回落。
+func TestResolveSmartAssetRefsOnChannelPreferred(t *testing.T) {
+	savedCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = savedCache })
+
+	stub := &stubAssetAdapter{uploadAssetID: "up-pref"}
+	setupSmartAssetTest(t, stub)
+	seedSmartChannel(t, 30, 9, "") // 高优先级
+	seedSmartChannel(t, 31, 1, "") // 低优先级，用户指定
+	seedSmartAbility(t, "default", "seedance-lite", 30)
+	seedSmartAbility(t, "default", "seedance-lite", 31)
+	seedSmartSourceAsset(t, 950, 42)
+
+	resolutions, channelId, err := ResolveSmartAssetRefsOnChannel(42, []string{"yun-950"}, "seedance-lite", []string{"default"}, "", 31)
+	require.NoError(t, err)
+	assert.Equal(t, 31, channelId, "手动指定渠道应覆盖优先级分层")
+	require.Len(t, resolutions, 1)
+	assert.Equal(t, "up-pref", resolutions[0].UpstreamAssetId)
+	assert.Equal(t, 1, stub.uploadCalls)
+
+	// 32 未启用模型：不在候选集，报 channel_unavailable，不回落 30/31。
+	_, _, err = ResolveSmartAssetRefsOnChannel(42, []string{"yun-950"}, "seedance-lite", []string{"default"}, "", 32)
+	require.Error(t, err)
+	assert.Equal(t, SmartAssetChannelUnavailable, smartErrorKind(t, err))
+}
+
 // TestResolveSmartAssetRefsSyncFailure 上游上传失败时返回 sync_failed 并带上游错误详情。
 func TestResolveSmartAssetRefsSyncFailure(t *testing.T) {
 	stub := &stubAssetAdapter{uploadErr: errors.New("upstream 400: invalid media")}
@@ -452,4 +480,3 @@ func TestResolveSmartAssetRefsNewRefFormat(t *testing.T) {
 	assert.Equal(t, "up-700", resolutions[0].UpstreamAssetId)
 	assert.Equal(t, 1, stub.uploadCalls)
 }
-

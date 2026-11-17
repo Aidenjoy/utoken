@@ -102,7 +102,10 @@ func (e *AssetLockError) Error() string {
 // requiredResolution 为本次请求要求的分辨率：智能素材据此只挑支持该分辨率的
 // 渠道；渠道素材所属渠道不支持该分辨率时改走智能解析（见
 // fallbackToResolutionCapableChannel），避免把请求硬发到必然拒绝它的上游。
-func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, usingGroup string, requiredResolution string) (int, error) {
+//
+// preferredChannelId 为用户在体验页显式指定的渠道（0=自动）：智能素材优先收敛到该渠道；
+// 渠道素材归属渠道与之冲突时明确报错，不静默改路。
+func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, usingGroup string, requiredResolution string, preferredChannelId int) (int, error) {
 	body, err := readBodyForAssetRefs(c)
 	if err != nil {
 		return 0, err
@@ -123,7 +126,7 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, u
 
 	lockedChannelId := 0
 	if len(smartRefs) > 0 {
-		channelId, resolveErr := resolveSmartAssetRefs(c, userId, smartRefs, modelName, usingGroup, requiredResolution)
+		channelId, resolveErr := resolveSmartAssetRefs(c, userId, smartRefs, modelName, usingGroup, requiredResolution, preferredChannelId)
 		if resolveErr != nil {
 			return 0, resolveErr
 		}
@@ -140,7 +143,7 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, u
 		}
 		if requiredResolution != "" && !model.ChannelSupportsResolution(channelId, modelName, requiredResolution) {
 			fallbackChannelId, fallbackErr := fallbackToResolutionCapableChannel(
-				c, userId, upstreamRefs, modelName, usingGroup, requiredResolution, channelId)
+				c, userId, upstreamRefs, modelName, usingGroup, requiredResolution, channelId, preferredChannelId)
 			if fallbackErr != nil {
 				return 0, fallbackErr
 			}
@@ -151,6 +154,12 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, u
 		if lockedChannelId > 0 && channelId != lockedChannelId {
 			return 0, translateAssetLockError(c, &AssetLockError{Kind: AssetLockChannelConflict, Asset: upstreamRefs[0]})
 		}
+		// 用户显式指定渠道与素材归属渠道冲突：副本只在归属渠道上游有效，硬发必被拒。
+		if preferredChannelId > 0 && channelId != preferredChannelId {
+			return 0, fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorUserChannelAssetConflict, map[string]any{
+				"Channel": preferredChannelId, "AssetChannel": channelId,
+			}))
+		}
 		lockedChannelId = channelId
 	}
 	return lockedChannelId, nil
@@ -158,9 +167,9 @@ func ResolveAssetLockedChannelId(c *gin.Context, userId int, modelName string, u
 
 // resolveSmartAssetRefs 解析智能素材引用，把 body 中的 yun 引用改写为所选渠道上的
 // 真实上游素材 ID，返回全部引用收敛到的渠道 ID。
-func resolveSmartAssetRefs(c *gin.Context, userId int, refs []string, modelName string, usingGroup string, requiredResolution string) (int, error) {
-	resolutions, channelId, err := service.ResolveSmartAssetRefs(
-		userId, refs, modelName, smartAssetCandidateGroups(c, usingGroup), requiredResolution)
+func resolveSmartAssetRefs(c *gin.Context, userId int, refs []string, modelName string, usingGroup string, requiredResolution string, preferredChannelId int) (int, error) {
+	resolutions, channelId, err := service.ResolveSmartAssetRefsOnChannel(
+		userId, refs, modelName, smartAssetCandidateGroups(c, usingGroup), requiredResolution, preferredChannelId)
 	if err != nil {
 		return 0, translateSmartAssetError(c, err, modelName, usingGroup)
 	}
@@ -179,7 +188,7 @@ func resolveSmartAssetRefs(c *gin.Context, userId int, refs []string, modelName 
 // （source_assets），就按智能引用重新挑选支持该分辨率的渠道、必要时现场同步副本，
 // 并把 body 中的旧上游 ID 改写为新渠道上的副本 ID，返回新渠道 ID。
 // 任一素材没有源素材（旧数据或直接注册的上游素材）时无从同步，返回 0 维持原锁定。
-func fallbackToResolutionCapableChannel(c *gin.Context, userId int, upstreamRefs []string, modelName string, usingGroup string, requiredResolution string, lockedChannelId int) (int, error) {
+func fallbackToResolutionCapableChannel(c *gin.Context, userId int, upstreamRefs []string, modelName string, usingGroup string, requiredResolution string, lockedChannelId int, preferredChannelId int) (int, error) {
 	assets, err := model.GetUserAssetsByAssetIDs(userId, upstreamRefs)
 	if err != nil || len(assets) != len(upstreamRefs) {
 		return 0, nil
@@ -197,8 +206,8 @@ func fallbackToResolutionCapableChannel(c *gin.Context, userId int, upstreamRefs
 		refs = append(refs, service.LegacySmartAssetRefPrefix+strconv.FormatInt(*asset.SourceAssetId, 10))
 	}
 
-	resolutions, channelId, err := service.ResolveSmartAssetRefs(
-		userId, refs, modelName, smartAssetCandidateGroups(c, usingGroup), requiredResolution)
+	resolutions, channelId, err := service.ResolveSmartAssetRefsOnChannel(
+		userId, refs, modelName, smartAssetCandidateGroups(c, usingGroup), requiredResolution, preferredChannelId)
 	if err != nil {
 		var smartErr *service.SmartAssetError
 		if errors.As(err, &smartErr) &&
@@ -292,6 +301,8 @@ func translateSmartAssetError(c *gin.Context, err error, modelName string, using
 		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelName}))
 	case service.SmartAssetNoProtocolChannel:
 		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorAssetNoProtocolChannel, map[string]any{"Model": modelName}))
+	case service.SmartAssetChannelUnavailable:
+		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorUserChannelUnavailable, map[string]any{"Channel": smartErr.ChannelId, "Model": modelName}))
 	case service.SmartAssetSyncFailed:
 		return fmt.Errorf("%s", i18n.T(c, i18n.MsgDistributorAssetSmartSyncFailed, map[string]any{"Ref": smartErr.Ref, "Error": smartErr.Detail}))
 	default:

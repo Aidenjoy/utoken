@@ -34,6 +34,7 @@ import type {
   ImageGenerationResponse,
   ModelOption,
   GroupOption,
+  VideoChannel,
   VideoSubmitRequest,
   VideoSubmitResponse,
   VideoTaskResponse,
@@ -271,6 +272,25 @@ export async function getAssetProviders(): Promise<AssetProvider[]> {
       skipErrorHandler: true,
     } as Record<string, unknown>)
     return Array.isArray(res.data?.providers) ? res.data.providers : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * List channels that can serve the given video model in the user's group.
+ * An empty model returns all enabled channels (channel-first selection).
+ */
+export async function getVideoChannels(
+  model: string,
+  group: string
+): Promise<VideoChannel[]> {
+  try {
+    const res = await api.get(VIDEO_API_ENDPOINTS.CHANNELS, {
+      params: { model, group },
+      skipErrorHandler: true,
+    } as Record<string, unknown>)
+    return Array.isArray(res.data?.channels) ? res.data.channels : []
   } catch {
     return []
   }

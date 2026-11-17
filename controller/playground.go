@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -333,4 +334,49 @@ func PlaygroundTaskCancel(c *gin.Context) {
 		"success": true,
 		"data":    gin.H{"status": string(status)},
 	})
+}
+
+// ListVideoChannels 体验页渠道选择器：返回当前分组下可服务指定模型的启用渠道
+// （仅 id/name，不暴露 key）。?model= 按模型过滤，空则返回全部启用渠道（先选渠道再选模型）；
+// ?group= 指定分组（须在用户可用分组内），auto 展开自动分组，缺省取可用分组并集。
+func ListVideoChannels(c *gin.Context) {
+	userId := c.GetInt("id")
+	modelName := strings.TrimSpace(c.Query("model"))
+	group := strings.TrimSpace(c.Query("group"))
+	userGroup, _ := model.GetUserGroup(userId, false)
+	var groups []string
+	switch {
+	case group == "auto":
+		groups = service.GetUserAutoGroup(userGroup)
+	case group != "" && (group == userGroup || service.GroupInUserUsableGroups(userGroup, group)):
+		groups = []string{group}
+	default:
+		for g := range service.GetUserUsableGroups(userGroup) {
+			groups = append(groups, g)
+		}
+	}
+	channels, err := model.GetEnabledChannels()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{"message": err.Error(), "type": "query_data_error"},
+		})
+		return
+	}
+	list := make([]gin.H, 0)
+	for _, ch := range channels {
+		if modelName != "" {
+			supported := false
+			for _, g := range groups {
+				if model.IsChannelEnabledForGroupModel(g, modelName, ch.Id) {
+					supported = true
+					break
+				}
+			}
+			if !supported {
+				continue
+			}
+		}
+		list = append(list, gin.H{"id": ch.Id, "name": ch.Name})
+	}
+	c.JSON(http.StatusOK, gin.H{"channels": list})
 }
