@@ -1,0 +1,243 @@
+安装 Go 依赖
+```
+运行前需要在 web/default 和 web/classic 下面创建 dist/index.html，写入<!DOCTYPE html><html><body></body></html>
+
+go mod download
+```
+
+
+配置开发环境
+New API 支持通过 .env 文件配置环境变量。创建 .env 文件（可从 .env.example 复制）：
+```
+cp .env.example .env
+```
+
+
+编辑 .env 文件，根据需要修改配置。以下是开发环境中常用的配置：
+```
+PORT=3000
+SQL_DSN=root:password@tcp(localhost:3306)/new-api   # 如使用MySQL，取消注释并修改
+# REDIS_CONN_STRING=redis://localhost:6379         # 如使用Redis，取消注释并修改
+```
+
+
+运行后端服务
+```
+# 直接运行
+go run main.go
+# 或者编译后运行
+go build -o new-api
+./new-api
+```
+
+
+新版前端 (default)
+```
+cd web/default
+bun install   # 使用 bun 安装新版前端依赖
+
+# 修改 rsbuild.config.ts 在 host: '0.0.0.0' 下面添加 port: 8000 防止端口冲突
+bun run dev
+
+# 使用 bun 构建新版前端资源
+bun run build
+```
+
+
+## 生产环境部署
+
+编译项目
+```
+# 1. 构建前端静态资源
+cd web/default
+bun install
+bun run build
+cd ../..
+
+# 2. 将前端资源嵌入 Go 二进制（下载报错需要设置国内源 export GOPROXY=https://goproxy.cn,direct  查询是go env GOPROXY）
+go build -o new-api
+```
+
+启动服务
+```
+#  配置环境变量
+cp .env.example .env
+redis 需要注意，用户名和密码都写到后面，密码里有冒号必须 URL 编码，把 : 转成 %3A，格式为 redis://:用户名%3A密码
+
+# 启动（后台运行，日志写入 new-api.log）
+./deploy/start.sh
+
+# 停止服务
+./deploy/stop.sh
+
+# 重启服务
+./deploy/stop.sh && ./deploy/start.sh
+
+# 查看日志
+tail -f new-api.log
+```
+
+检查运行状态
+```
+# 查看进程
+ps aux | grep new-api
+
+# 查看 PID
+cat new-api.pid
+
+# 确认端口监听
+lsof -i :3000
+```
+
+查看 nginx 配置
+grep -rl "token.yundashi" /etc/nginx/ 2>/dev/null
+
+添加上传文件限制，修改后执行
+nginx -t
+nginx -s reload
+
+配置如下：
+
+server {
+    listen 80;
+    server_name token.yundashi.com;
+
+    # 添加这一行，允许最大 200MB 上传
+    client_max_body_size 200m;
+    # 视频生成任务耗时长，超时需放大，否则上游还在跑 nginx 就先返回 504
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
+
+    gzip on;
+    gzip_static on;     # 需要http_gzip_static_module 模块
+    gzip_min_length 1k;
+    gzip_comp_level 4;
+    gzip_proxied any;
+    # 必须含 application/javascript 与 application/json，否则 JS/接口响应不会被压缩
+    gzip_types text/plain text/xml text/css text/js application/javascript application/json;
+    gzip_vary on;
+    gzip_http_version   1.0; #兼容多层nginx 反代
+    gzip_disable "MSIE [1-6]\.(?!.*SV1)";
+
+    # 前端打包好的dist目录文件
+    #root /uyg_data/uyg-customer-ui;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 流式响应（stream=true / SSE）必须关闭缓冲，否则会攒批输出、前端看到卡顿
+        proxy_buffering off;
+    }
+
+    # 大文件上传：边收边转发，避免 nginx 先把整个 body 落盘
+    location /pg/files/upload {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        client_max_body_size 200m;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+    }
+
+    # 源素材上传（与 /pg/files/upload 同理）
+    location /pg/source-assets/upload {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        client_max_body_size 200m;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+    }
+
+    # WebSocket 长连接（/v1/realtime 语音等），需单独配置协议升级头
+    location /v1/realtime {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+}
+
+> **多机集群部署**（前置机 + 多应用节点 + 独立数据库）见 `docs/yun/deployment.md`。
+> 单机改多机时，nginx 需调整的差异点（upstream、keepalive、流式缓冲等）见该文档第 5.5 节。
+
+**批量更新与信任并发**（可选，多节点部署时建议开启）：
+
+```bash
+# .env 追加
+BATCH_UPDATE_ENABLED=true       # 启用批量额度累加（降低 DB 写压力）
+BATCH_UPDATE_INTERVAL=5         # 刷写间隔（秒）
+TRUST_CONCURRENT_LIMIT=5        # 同用户信任旁路并发上限，防高并发透支
+```
+
+> `BATCH_UPDATE_ENABLED=true` 时，额度变更先在内存与 Redis 累加、每 5 秒批量刷写 DB。
+> 集群模式下 Redis 会持久化未刷写的增量；单机部署若不开 Redis，进程重启会丢失这不到 5 秒的增量。
+> 不接受该风险就保持默认（不设该变量），走实时写库。
+
+
+
+
+
+# 服务器安装 ffmpeg — 剪辑合成必需
+```
+# x86_64 ECS
+wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+
+tar -xf ffmpeg-release-amd64-static.tar.xz
+cd ffmpeg-7.0.2-amd64-static
+
+# 拷贝二进制到系统PATH目录
+cp ffmpeg /usr/local/bin/
+cp ffprobe /usr/local/bin/
+
+chmod +x /usr/local/bin/ffmpeg
+chmod +x /usr/local/bin/ffprobe
+
+# 验证
+ffmpeg -version
+ffprobe -version
+ffmpeg -hide_banner -filters | grep -E ' (ass|drawtext|xfade) '
+
+
+# 重启服务生效
+./deploy/stop.sh && ./deploy/start.sh
+```
+
+
+
+# 服务器安装中文字体 — 字幕必需（不装字幕会烧成方块）
+```
+# Linux 上程序按顺序解析：请求字体 → 系统已装中文字体(fc-list :lang=zh) → resource/fonts 内置字体 → 明确报错
+yum install -y fontconfig
+yum install -y google-noto-sans-cjk-ttc-fonts || yum install -y wqy-zenhei-fonts wqy-microhei-fonts
+fc-cache -f
+
+# 验证（有输出即中文字体可用）
+fc-list :lang=zh
+
+# 备选：yum 源装不上时，把任意中文字体文件（如 simhei.ttf、NotoSansSC-Regular.otf）放到
+# 程序所在目录的 resource/fonts 下即可被自动加载（免系统安装，scp 上传后重启）：
+mkdir -p ~/utoken/resource/fonts
+
+# 重启服务生效（字体探测有缓存，必须重启）
+./deploy/stop.sh && ./deploy/start.sh
+```
+
