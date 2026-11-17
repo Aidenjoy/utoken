@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Ban, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -67,6 +49,25 @@ import {
 } from '../../api'
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { ChannelQuotaSummary } from '../channel-quota-summary'
 
 interface Props {
   open: boolean
@@ -345,6 +346,13 @@ export function UserSubscriptionsDialog(props: Props) {
                     const sub = record.subscription
                     const total = Number(sub.amount_total || 0)
                     const used = Number(sub.amount_used || 0)
+                    if (sub.meter_type === 'channel') {
+                      return (
+                        <ChannelQuotaSummary
+                          quotas={record.channel_quotas ?? []}
+                        />
+                      )
+                    }
                     return total > 0
                       ? `${formatQuota(used)}/${formatQuota(total)}`
                       : t('Unlimited')
@@ -397,6 +405,7 @@ export function UserSubscriptionsDialog(props: Props) {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
+                          disabled={sub.meter_type === 'channel'}
                           variant='destructive'
                           onClick={() =>
                             setConfirmAction({

@@ -105,7 +105,14 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       accessorKey: 'name',
       header: t('Name'),
       cell: ({ row }) => (
-        <span className='font-medium'>{row.getValue('name')}</span>
+        <span className='font-medium'>
+          {row.getValue('name')}
+          {row.original.user_subscription_id ? (
+            <span className='text-muted-foreground ml-2 text-xs'>
+              {t('Channel membership')} #{row.original.user_subscription_id}
+            </span>
+          ) : null}
+        </span>
       ),
       size: 180,
       meta: { mobileTitle: true },
@@ -183,6 +190,13 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       header: t('Quota'),
       cell: ({ row }) => {
         const apiKey = row.original
+        if (apiKey.user_subscription_id) {
+          return (
+            <span>
+              {t('Channel membership')} #{apiKey.user_subscription_id}
+            </span>
+          )
+        }
         if (apiKey.unlimited_quota) {
           return (
             <StatusBadge
@@ -285,9 +299,14 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
           {
             id: 'channel_id',
             header: t('Bound Channel'),
-            cell: ({ row }: { row: { original: ApiKey } }) => (
-              <ChannelBindingCell apiKey={row.original} />
-            ),
+            cell: ({ row }: { row: { original: ApiKey } }) =>
+              row.original.user_subscription_id ? (
+                <span>
+                  {t('Channel {{id}}', { id: row.original.channel_id })}
+                </span>
+              ) : (
+                <ChannelBindingCell apiKey={row.original} />
+              ),
             enableSorting: false,
             size: 170,
             meta: { mobileHidden: true },

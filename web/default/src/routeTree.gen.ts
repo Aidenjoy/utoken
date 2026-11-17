@@ -52,6 +52,7 @@ import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_auth
 import { Route as AuthenticatedOrganizationsIndexRouteImport } from './routes/_authenticated/organizations/index'
 import { Route as AuthenticatedOrganizationIndexRouteImport } from './routes/_authenticated/organization/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
+import { Route as AuthenticatedMembershipsIndexRouteImport } from './routes/_authenticated/memberships/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedDirectorIndexRouteImport } from './routes/_authenticated/director/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
@@ -332,6 +333,12 @@ const AuthenticatedModelsIndexRoute =
   AuthenticatedModelsIndexRouteImport.update({
     id: '/models/',
     path: '/models/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedMembershipsIndexRoute =
+  AuthenticatedMembershipsIndexRouteImport.update({
+    id: '/memberships/',
+    path: '/memberships/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
@@ -715,6 +722,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/director/': typeof AuthenticatedDirectorIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
+  '/memberships/': typeof AuthenticatedMembershipsIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/organization/': typeof AuthenticatedOrganizationIndexRoute
   '/organizations/': typeof AuthenticatedOrganizationsIndexRoute
@@ -810,6 +818,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/director': typeof AuthenticatedDirectorIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
+  '/memberships': typeof AuthenticatedMembershipsIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/organization': typeof AuthenticatedOrganizationIndexRoute
   '/organizations': typeof AuthenticatedOrganizationsIndexRoute
@@ -909,6 +918,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/director/': typeof AuthenticatedDirectorIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
+  '/_authenticated/memberships/': typeof AuthenticatedMembershipsIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/organization/': typeof AuthenticatedOrganizationIndexRoute
   '/_authenticated/organizations/': typeof AuthenticatedOrganizationsIndexRoute
@@ -1008,6 +1018,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/director/'
     | '/keys/'
+    | '/memberships/'
     | '/models/'
     | '/organization/'
     | '/organizations/'
@@ -1103,6 +1114,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/director'
     | '/keys'
+    | '/memberships'
     | '/models'
     | '/organization'
     | '/organizations'
@@ -1201,6 +1213,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/'
     | '/_authenticated/director/'
     | '/_authenticated/keys/'
+    | '/_authenticated/memberships/'
     | '/_authenticated/models/'
     | '/_authenticated/organization/'
     | '/_authenticated/organizations/'
@@ -1560,6 +1573,13 @@ declare module '@tanstack/react-router' {
       path: '/models'
       fullPath: '/models/'
       preLoaderRoute: typeof AuthenticatedModelsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/memberships/': {
+      id: '/_authenticated/memberships/'
+      path: '/memberships'
+      fullPath: '/memberships/'
+      preLoaderRoute: typeof AuthenticatedMembershipsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/keys/': {
@@ -2100,6 +2120,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedDirectorIndexRoute: typeof AuthenticatedDirectorIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
+  AuthenticatedMembershipsIndexRoute: typeof AuthenticatedMembershipsIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedOrganizationIndexRoute: typeof AuthenticatedOrganizationIndexRoute
   AuthenticatedOrganizationsIndexRoute: typeof AuthenticatedOrganizationsIndexRoute
@@ -2158,6 +2179,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedDirectorIndexRoute: AuthenticatedDirectorIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
+  AuthenticatedMembershipsIndexRoute: AuthenticatedMembershipsIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedOrganizationIndexRoute: AuthenticatedOrganizationIndexRoute,
   AuthenticatedOrganizationsIndexRoute: AuthenticatedOrganizationsIndexRoute,

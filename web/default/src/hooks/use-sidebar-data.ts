@@ -377,6 +377,11 @@ export function useSidebarData(): SidebarData {
       title: t('Personal'),
       items: [
         {
+          title: t('Channel membership'),
+          url: '/memberships',
+          icon: Package,
+        },
+        {
           title: t('Wallet'),
           url: '/wallet',
           icon: Wallet,

@@ -47,6 +47,7 @@ import {
 } from '../../api'
 import { formatDuration, formatResetPeriod } from '../../lib'
 import type { PlanRecord } from '../../types'
+import { ChannelQuotaSummary } from '../channel-quota-summary'
 
 interface PaymentMethod {
   type: string
@@ -85,10 +86,12 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const plan = props.plan?.plan
   if (!plan) return null
 
-  const hasStripe = props.enableStripe && !!plan.stripe_price_id
-  const hasCreem = props.enableCreem && !!plan.creem_product_id
+  const isMembership = plan.meter_type === 'channel'
+  const hasStripe =
+    !isMembership && props.enableStripe && !!plan.stripe_price_id
+  const hasCreem = !isMembership && props.enableCreem && !!plan.creem_product_id
   const hasWaffoPancake =
-    props.enableWaffoPancake && !!plan.waffo_pancake_product_id
+    !isMembership && props.enableWaffoPancake && !!plan.waffo_pancake_product_id
   const hasEpay =
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
   const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
@@ -297,15 +300,19 @@ export function SubscriptionPurchaseDialog(props: Props) {
               <span className='text-sm'>{formatResetPeriod(plan, t)}</span>
             </div>
           )}
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('Plan Quota')}
-            </span>
-            <span className='flex items-center gap-1 text-sm'>
-              <Package className='h-3.5 w-3.5' />
-              {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
-            </span>
-          </div>
+          {isMembership ? (
+            <ChannelQuotaSummary quotas={plan.channel_quotas ?? []} />
+          ) : (
+            <div className='flex items-center justify-between'>
+              <span className='text-muted-foreground text-sm'>
+                {t('Plan Quota')}
+              </span>
+              <span className='flex items-center gap-1 text-sm'>
+                <Package className='h-3.5 w-3.5' />
+                {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+              </span>
+            </div>
+          )}
           {plan.upgrade_group && (
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-sm'>
@@ -405,12 +412,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
             {hasEpay && (
               <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
                 <Select
-                  items={[
-                    ...(props.epayMethods || []).map((m) => ({
-                      value: m.type,
-                      label: m.name || m.type,
-                    })),
-                  ]}
+                  items={(props.epayMethods || []).map((m) => ({
+                    value: m.type,
+                    label: m.name || m.type,
+                  }))}
                   value={selectedEpayMethod}
                   onValueChange={(v) => v !== null && setSelectedEpayMethod(v)}
                   disabled={limitReached}

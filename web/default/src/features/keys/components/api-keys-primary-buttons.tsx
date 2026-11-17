@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -35,6 +36,13 @@ export function ApiKeysPrimaryButtons() {
       )}
       {canManage && (
         <>
+          <Button
+            size='sm'
+            variant='outline'
+            render={<Link to='/memberships' />}
+          >
+            {t('Create membership Key')}
+          </Button>
           <Button size='sm' onClick={() => openCreate('language')}>
             <Plus className='h-4 w-4' />
             {t('Create Language Model Key')}

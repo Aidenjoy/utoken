@@ -21,10 +21,16 @@ import { z } from 'zod'
 
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
-import type { SubscriptionPlan, PlanPayload } from '../types'
+import {
+  channelQuotaConfigSchema,
+  type SubscriptionPlan,
+  type PlanPayload,
+} from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
   return z.object({
+    meter_type: z.enum(['quota', 'channel']),
+    channel_quotas: z.array(channelQuotaConfigSchema),
     title: z.string().min(1, t('Please enter plan title')),
     subtitle: z.string().optional(),
     price_amount: z.coerce.number().min(0, t('Please enter amount')),
@@ -56,6 +62,8 @@ export function getPlanFormSchema(t: TFunction) {
 export type PlanFormValues = z.infer<ReturnType<typeof getPlanFormSchema>>
 
 export const PLAN_FORM_DEFAULTS: PlanFormValues = {
+  meter_type: 'quota',
+  channel_quotas: [],
   title: '',
   subtitle: '',
   price_amount: 0,
@@ -79,6 +87,8 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
   return {
+    meter_type: plan.meter_type === 'channel' ? 'channel' : 'quota',
+    channel_quotas: plan.channel_quotas || [],
     title: plan.title || '',
     subtitle: plan.subtitle || '',
     price_amount: Number(plan.price_amount || 0),
@@ -109,16 +119,28 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),
       custom_seconds: Number(values.custom_seconds || 0),
-      quota_reset_period: values.quota_reset_period || 'never',
+      quota_reset_period:
+        values.meter_type === 'channel'
+          ? 'never'
+          : values.quota_reset_period || 'never',
       quota_reset_custom_seconds:
         values.quota_reset_period === 'custom'
           ? Number(values.quota_reset_custom_seconds || 0)
           : 0,
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-      total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),
-      upgrade_group: values.upgrade_group || '',
-      downgrade_group: values.downgrade_group || '',
+      total_amount:
+        values.meter_type === 'channel'
+          ? 0
+          : parseQuotaFromDollars(Number(values.total_amount || 0)),
+      channel_quotas:
+        values.meter_type === 'channel' ? values.channel_quotas : [],
+      allow_wallet_overflow:
+        values.meter_type === 'channel' ? false : values.allow_wallet_overflow,
+      upgrade_group:
+        values.meter_type === 'channel' ? '' : values.upgrade_group || '',
+      downgrade_group:
+        values.meter_type === 'channel' ? '' : values.downgrade_group || '',
     },
   }
 }

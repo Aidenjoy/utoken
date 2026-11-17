@@ -19,7 +19,8 @@
 
     /* Alias */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "i18next": ["./node_modules/i18next"]
     },
 
     /* Linting */

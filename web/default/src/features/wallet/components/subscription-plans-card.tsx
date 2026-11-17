@@ -50,6 +50,7 @@ import {
   getSelfSubscriptionFull,
   updateBillingPreference,
 } from '@/features/subscriptions/api'
+import { ChannelQuotaSummary } from '@/features/subscriptions/components/channel-quota-summary'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
 import type {
@@ -244,8 +245,8 @@ export function SubscriptionPlansCard({
         <CardContent className='space-y-4 p-3 sm:p-5'>
           <Skeleton className='h-20 w-full' />
           <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className='h-48 w-full' />
+            {['first', 'second', 'third'].map((id) => (
+              <Skeleton key={id} className='h-48 w-full' />
             ))}
           </div>
         </CardContent>
@@ -412,6 +413,15 @@ export function SubscriptionPlansCard({
                   const isActive =
                     subscription?.status === 'active' && !isExpired
 
+                  let statusLabel = t('Expired')
+                  let endLabel = t('Expired at')
+                  if (isActive) {
+                    statusLabel = t('Active')
+                    endLabel = t('Until')
+                  } else if (isCancelled) {
+                    statusLabel = t('Cancelled')
+                    endLabel = t('Cancelled at')
+                  }
                   return (
                     <div
                       key={subscription?.id}
@@ -424,25 +434,11 @@ export function SubscriptionPlansCard({
                               ? `${planTitle} · ${t('Subscription')} #${subscription?.id}`
                               : `${t('Subscription')} #${subscription?.id}`}
                           </span>
-                          {isActive ? (
-                            <StatusBadge
-                              label={t('Active')}
-                              variant='success'
-                              copyable={false}
-                            />
-                          ) : isCancelled ? (
-                            <StatusBadge
-                              label={t('Cancelled')}
-                              variant='neutral'
-                              copyable={false}
-                            />
-                          ) : (
-                            <StatusBadge
-                              label={t('Expired')}
-                              variant='neutral'
-                              copyable={false}
-                            />
-                          )}
+                          <StatusBadge
+                            label={statusLabel}
+                            variant={isActive ? 'success' : 'neutral'}
+                            copyable={false}
+                          />
                         </div>
                         {isActive && (
                           <span className='text-muted-foreground'>
@@ -453,11 +449,7 @@ export function SubscriptionPlansCard({
                         )}
                       </div>
                       <div className='text-muted-foreground mt-1.5'>
-                        {isActive
-                          ? t('Until')
-                          : isCancelled
-                            ? t('Cancelled at')
-                            : t('Expired at')}{' '}
+                        {endLabel}{' '}
                         {new Date(
                           (subscription?.end_time || 0) * 1000
                         ).toLocaleString()}
@@ -466,29 +458,35 @@ export function SubscriptionPlansCard({
                         <div className='text-muted-foreground mt-1'>
                           {t('Next reset')}:{' '}
                           {new Date(
-                            subscription!.next_reset_time! * 1000
+                            (subscription.next_reset_time ?? 0) * 1000
                           ).toLocaleString()}
                         </div>
                       )}
                       <div className='text-muted-foreground mt-1'>
                         {t('Total Quota')}:{' '}
-                        {totalAmount > 0 ? (
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={<span className='cursor-help' />}
-                            >
-                              {formatQuota(usedAmount)}/
-                              {formatQuota(totalAmount)} · {t('Remaining')}{' '}
-                              {formatQuota(remainAmount)}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {t('Raw Quota')}: {usedAmount}/{totalAmount} ·{' '}
-                              {t('Remaining')} {remainAmount}
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          t('Unlimited')
+                        {subscription?.meter_type === 'channel' && (
+                          <ChannelQuotaSummary
+                            quotas={sub.channel_quotas ?? []}
+                          />
                         )}
+                        {subscription?.meter_type !== 'channel' &&
+                          (totalAmount > 0 ? (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={<span className='cursor-help' />}
+                              >
+                                {formatQuota(usedAmount)}/
+                                {formatQuota(totalAmount)} · {t('Remaining')}{' '}
+                                {formatQuota(remainAmount)}
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t('Raw Quota')}: {usedAmount}/{totalAmount} ·{' '}
+                                {t('Remaining')} {remainAmount}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            t('Unlimited')
+                          ))}
                         {totalAmount > 0 && (
                           <span className='ml-2'>
                             {t('Used')} {usagePercent}%
@@ -525,14 +523,18 @@ export function SubscriptionPlansCard({
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
 
+              let quotaBenefit = `${t('Total Quota')}: ${t('Unlimited')}`
+              if (plan.meter_type === 'channel') {
+                quotaBenefit = t('Channel membership')
+              } else if (totalAmount > 0) {
+                quotaBenefit = `${t('Total Quota')}: ${formatQuota(totalAmount)}`
+              }
               const benefits = [
                 `${t('Validity Period')}: ${formatDuration(plan, t)}`,
                 formatResetPeriod(plan, t) !== t('No Reset')
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
-                totalAmount > 0
-                  ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
-                  : `${t('Total Quota')}: ${t('Unlimited')}`,
+                quotaBenefit,
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
                 plan.upgrade_group
                   ? `${t('Upgrade Group')}: ${plan.upgrade_group}`

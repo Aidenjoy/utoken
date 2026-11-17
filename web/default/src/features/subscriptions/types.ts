@@ -22,7 +22,38 @@ import { z } from 'zod'
 // Subscription Plan Schema & Types
 // ============================================================================
 
+export const channelQuotaConfigSchema = z.object({
+  channel_id: z.number().int().positive(),
+  profile: z.enum(['openai_chat_text_v1', 'openai_images_count_v1']),
+  unit: z.enum(['input_output_tokens', 'images']),
+  models: z.array(z.string()).min(1),
+  quantity_limit: z.number().int().min(0).max(2147483647).optional(),
+  input_limit: z.number().int().min(0).max(2147483647),
+  output_limit: z.number().int().min(0).max(2147483647),
+})
+export type ChannelQuotaConfig = z.infer<typeof channelQuotaConfigSchema>
+export interface ChannelQuota extends ChannelQuotaConfig {
+  id: number
+  user_subscription_id: number
+  quantity_used: number
+  quantity_reserved: number
+  channel_name?: string
+  input_used: number
+  output_used: number
+  input_reserved: number
+  output_reserved: number
+}
+export interface MembershipChannelOption {
+  profile: ChannelQuotaConfig['profile']
+  unit: ChannelQuotaConfig['unit']
+  id: number
+  name: string
+  models: string[]
+}
+
 export const subscriptionPlanSchema = z.object({
+  meter_type: z.enum(['quota', 'channel']).optional(),
+  channel_quotas: z.array(channelQuotaConfigSchema).nullish(),
   id: z.number(),
   title: z.string(),
   subtitle: z.string().optional(),
@@ -57,6 +88,7 @@ export interface PlanRecord {
 // ============================================================================
 
 export const userSubscriptionSchema = z.object({
+  meter_type: z.string().optional(),
   id: z.number(),
   user_id: z.number(),
   plan_id: z.number(),
@@ -72,6 +104,7 @@ export const userSubscriptionSchema = z.object({
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
 export interface UserSubscriptionRecord {
+  channel_quotas?: ChannelQuota[]
   subscription: UserSubscription
 }
 

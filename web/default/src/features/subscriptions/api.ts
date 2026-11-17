@@ -237,3 +237,18 @@ export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
   return res.data
 }
+
+// Eligible channels contain no upstream credentials.
+export async function getMembershipChannels() {
+  const res = await api.get<
+    ApiResponse<import('./types').MembershipChannelOption[]>
+  >('/api/subscription/admin/channels')
+  return res.data
+}
+export async function getMembershipAccount() {
+  const res =
+    await api.get<ApiResponse<{ quota: number; group: string }>>(
+      '/api/user/self'
+    )
+  return res.data
+}

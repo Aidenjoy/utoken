@@ -108,6 +108,7 @@ export function ApiKeysMutateDrawer({
   currentRow,
 }: ApiKeyMutateDrawerProps) {
   const { t } = useTranslation()
+  const isMembership = Boolean(currentRow?.user_subscription_id)
   const isUpdate = !!currentRow
   const { triggerRefresh, owner, createKeyType } = useApiKeys()
   const { status } = useStatus()
@@ -210,10 +211,7 @@ export function ApiKeysMutateDrawer({
 
   // Correct group after groups load: if the form value is not in available groups, fall back
   useEffect(() => {
-    if (
-      groups.length === 0 ||
-      (isUpdate && currentRow?.key_type === 'video')
-    ) {
+    if (groups.length === 0 || (isUpdate && currentRow?.key_type === 'video')) {
       return
     }
     const currentGroup = form.getValues('group')
@@ -592,7 +590,9 @@ export function ApiKeysMutateDrawer({
                           min='1'
                           placeholder={t('Number of keys to create')}
                           onChange={(e) =>
-                            field.onChange(Number.parseInt(e.target.value, 10) || 1)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 1
+                            )
                           }
                         />
                       </FormControl>
@@ -608,66 +608,74 @@ export function ApiKeysMutateDrawer({
               )}
             </SideDrawerSection>
 
-            <SideDrawerSection>
-              <SideDrawerSectionHeader
-                title={t('Quota Settings')}
-                description={t('Set quota amount and limits')}
-                icon={<WalletCards className='size-4' />}
-              />
-              {!unlimitedQuota && (
+            {isMembership ? (
+              <p className='text-muted-foreground text-sm'>
+                {t('Channel membership never falls back to wallet balance.')}
+              </p>
+            ) : (
+              <SideDrawerSection>
+                <SideDrawerSectionHeader
+                  title={t('Quota Settings')}
+                  description={t('Set quota amount and limits')}
+                  icon={<WalletCards className='size-4' />}
+                />
+                {!unlimitedQuota && (
+                  <FormField
+                    control={form.control}
+                    name='remain_quota_dollars'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{quotaLabel}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            step={tokensOnly ? 1 : 0.01}
+                            placeholder={quotaPlaceholder}
+                            onChange={(e) =>
+                              field.onChange(
+                                Number.parseFloat(e.target.value) || 0
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {tokensOnly
+                            ? t('Enter the quota amount in tokens')
+                            : t('Enter the quota amount in {{currency}}', {
+                                currency: currencyLabel,
+                              })}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
                 <FormField
                   control={form.control}
-                  name='remain_quota_dollars'
+                  name='unlimited_quota'
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{quotaLabel}</FormLabel>
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <div className='flex flex-col gap-0.5'>
+                        <FormLabel className='text-sm'>
+                          {t('Unlimited Quota')}
+                        </FormLabel>
+                        <FormDescription className='text-xs'>
+                          {t('Enable unlimited quota for this API key')}
+                        </FormDescription>
+                      </div>
                       <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          step={tokensOnly ? 1 : 0.01}
-                          placeholder={quotaPlaceholder}
-                          onChange={(e) =>
-                            field.onChange(Number.parseFloat(e.target.value) || 0)
-                          }
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
                         />
                       </FormControl>
-                      <FormDescription>
-                        {tokensOnly
-                          ? t('Enter the quota amount in tokens')
-                          : t('Enter the quota amount in {{currency}}', {
-                              currency: currencyLabel,
-                            })}
-                      </FormDescription>
-                      <FormMessage />
                     </FormItem>
                   )}
                 />
-              )}
-
-              <FormField
-                control={form.control}
-                name='unlimited_quota'
-                render={({ field }) => (
-                  <FormItem className={sideDrawerSwitchItemClassName()}>
-                    <div className='flex flex-col gap-0.5'>
-                      <FormLabel className='text-sm'>
-                        {t('Unlimited Quota')}
-                      </FormLabel>
-                      <FormDescription className='text-xs'>
-                        {t('Enable unlimited quota for this API key')}
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </SideDrawerSection>
+              </SideDrawerSection>
+            )}
 
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <SideDrawerSection>

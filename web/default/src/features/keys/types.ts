@@ -27,6 +27,7 @@ export const apiKeyTypeSchema = z.enum(['', 'language', 'image', 'video'])
 export type ApiKeyType = z.infer<typeof apiKeyTypeSchema>
 
 export const apiKeySchema = z.object({
+  user_subscription_id: z.number().optional(),
   id: z.number(),
   name: z.string(),
   key: z.string(),
@@ -112,6 +113,7 @@ export interface VideoKeyOption {
 }
 
 export interface ApiKeyFormData {
+  user_subscription_id?: number
   user_id?: number
   name: string
   remain_quota: number
