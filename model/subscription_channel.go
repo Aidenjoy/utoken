@@ -1,0 +1,255 @@
+package model
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"gorm.io/gorm"
+)
+
+const (
+	SubscriptionMeterQuota         = "quota"
+	SubscriptionMeterChannel       = "channel"
+	MembershipTextProfile          = "openai_chat_text_v1"
+	MembershipUnitTokens           = "input_output_tokens"
+	MembershipMaxTokens      int64 = 2147483647
+)
+
+var ErrMembershipQuota = errors.New("membership channel quota insufficient")
+
+// SubscriptionChannelConfig defines a channel's sellable, versioned metering contract.
+// Models are public model names; the text profile additionally checks the final upstream model.
+type SubscriptionChannelConfig struct {
+	ChannelId   int      `json:"channel_id"`
+	Profile     string   `json:"profile"`
+	Unit        string   `json:"unit"`
+	Models      []string `json:"models"`
+	InputLimit  int64    `json:"input_limit"`
+	OutputLimit int64    `json:"output_limit"`
+}
+
+// SubscriptionChannelQuota is an activation snapshot, shared by all keys for this grant.
+type SubscriptionChannelQuota struct {
+	Id                 int       `json:"id"`
+	UserSubscriptionId int       `json:"user_subscription_id" gorm:"uniqueIndex:uk_subscription_channel_grant"`
+	ChannelId          int       `json:"channel_id" gorm:"uniqueIndex:uk_subscription_channel_grant"`
+	Profile            string    `json:"profile" gorm:"type:varchar(64)"`
+	Unit               string    `json:"unit" gorm:"type:varchar(32)"`
+	Models             JSONValue `json:"models" gorm:"type:text"`
+	InputLimit         int64     `json:"input_limit"`
+	OutputLimit        int64     `json:"output_limit"`
+	InputUsed          int64     `json:"input_used"`
+	OutputUsed         int64     `json:"output_used"`
+	InputReserved      int64     `json:"input_reserved"`
+	OutputReserved     int64     `json:"output_reserved"`
+	CreatedAt          int64     `json:"created_at"`
+	UpdatedAt          int64     `json:"updated_at"`
+}
+
+// SubscriptionChannelRequest persists the request state independently of HTTP lifetime.
+// prepared -> dispatched -> settled/pending; prepared alone may be released without usage.
+type SubscriptionChannelRequest struct {
+	Id                 int    `json:"id"`
+	RequestId          string `json:"request_id" gorm:"type:varchar(128);uniqueIndex"`
+	UserId             int    `json:"user_id"`
+	TokenId            int    `json:"token_id"`
+	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
+	ChannelId          int    `json:"channel_id"`
+	Model              string `json:"model" gorm:"type:varchar(255)"`
+	InputReserved      int64  `json:"input_reserved"`
+	OutputReserved     int64  `json:"output_reserved"`
+	InputUsed          int64  `json:"input_used"`
+	OutputUsed         int64  `json:"output_used"`
+	Status             string `json:"status" gorm:"type:varchar(32);index"`
+	Reason             string `json:"reason" gorm:"type:varchar(255)"`
+	CreatedAt          int64  `json:"created_at"`
+	UpdatedAt          int64  `json:"updated_at"`
+}
+
+// IsQuotaSubscription preserves the empty discriminator of legacy records.
+func IsQuotaSubscription(meter string) bool {
+	return meter == "" || meter == SubscriptionMeterQuota
+}
+
+// ValidateSubscriptionChannels rejects unsupported units and adapters before selling a plan.
+func ValidateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan) ([]SubscriptionChannelConfig, error) {
+	if IsQuotaSubscription(plan.MeterType) {
+		if len(plan.ChannelQuotas) > 0 && string(plan.ChannelQuotas) != "null" && string(plan.ChannelQuotas) != "[]" {
+			return nil, errors.New("quota plans cannot include channel grants")
+		}
+		return nil, nil
+	}
+	if plan.MeterType != SubscriptionMeterChannel {
+		return nil, errors.New("unsupported subscription meter type")
+	}
+	if plan.TotalAmount != 0 || plan.UpgradeGroup != "" || plan.DowngradeGroup != "" || NormalizeResetPeriod(plan.QuotaResetPeriod) != SubscriptionResetNever {
+		return nil, errors.New("channel membership requires no legacy quota, resets or group changes")
+	}
+	var configs []SubscriptionChannelConfig
+	if err := common.Unmarshal(plan.ChannelQuotas, &configs); err != nil {
+		return nil, errors.New("invalid channel quota configuration")
+	}
+	if len(configs) == 0 {
+		return nil, errors.New("channel quotas required")
+	}
+	seen := make(map[int]bool)
+	for _, cfg := range configs {
+		if cfg.ChannelId <= 0 || seen[cfg.ChannelId] || cfg.InputLimit <= 0 || cfg.OutputLimit <= 0 || cfg.InputLimit > MembershipMaxTokens || cfg.OutputLimit > MembershipMaxTokens {
+			return nil, errors.New("invalid or duplicate channel quota")
+		}
+		seen[cfg.ChannelId] = true
+		if cfg.Profile != MembershipTextProfile || cfg.Unit != MembershipUnitTokens || len(cfg.Models) == 0 {
+			return nil, errors.New("channel metering profile is not supported for sale")
+		}
+		var channel Channel
+		if err := tx.First(&channel, cfg.ChannelId).Error; err != nil {
+			return nil, err
+		}
+		if channel.Type != constant.ChannelTypeOpenAI || channel.Status != common.ChannelStatusEnabled || channel.GetSetting().PassThroughBodyEnabled {
+			return nil, errors.New("channel does not support membership text metering")
+		}
+		var mapping map[string]string
+		if channel.ModelMapping != nil && strings.TrimSpace(*channel.ModelMapping) != "" {
+			if err := common.UnmarshalJsonStr(*channel.ModelMapping, &mapping); err != nil {
+				return nil, err
+			}
+		}
+		for _, name := range cfg.Models {
+			upstream := name
+			if mapped := mapping[name]; mapped != "" {
+				upstream = mapped
+			}
+			if !slices.Contains(channel.GetModels(), name) || !MembershipTextModelSupported(upstream) {
+				return nil, fmt.Errorf("model %s has no supported membership text contract", name)
+			}
+		}
+	}
+	return configs, nil
+}
+
+// MembershipTextModelSupported limits the first profile to known text tokenizer/output contracts.
+func MembershipTextModelSupported(name string) bool {
+	return name == "gpt-4o-mini" || name == "gpt-4o-mini-2024-07-18"
+}
+
+// GetMembershipGrant verifies ownership and lifetime using the database, never an auth cache.
+func GetMembershipGrant(tx *gorm.DB, userId, subscriptionId, channelId int) (*SubscriptionChannelQuota, error) {
+	var sub UserSubscription
+	now := getDBTimestampTx(tx)
+	if err := tx.Where("id = ? AND user_id = ? AND meter_type = ? AND status = ? AND start_time <= ? AND end_time > ?", subscriptionId, userId, SubscriptionMeterChannel, "active", now, now).First(&sub).Error; err != nil {
+		return nil, errors.New("membership unavailable, expired or not owned by user")
+	}
+	var grant SubscriptionChannelQuota
+	if err := tx.Where("user_subscription_id = ? AND channel_id = ?", subscriptionId, channelId).First(&grant).Error; err != nil {
+		return nil, errors.New("channel not included in membership")
+	}
+	return &grant, nil
+}
+
+// ReserveMembership atomically reserves both token dimensions, including SQLite's lockless path.
+func ReserveMembership(record *SubscriptionChannelRequest) error {
+	if record.RequestId == "" || record.InputReserved <= 0 || record.OutputReserved <= 0 || record.InputReserved > MembershipMaxTokens || record.OutputReserved > MembershipMaxTokens {
+		return errors.New("invalid membership reservation")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		grant, err := GetMembershipGrant(tx, record.UserId, record.UserSubscriptionId, record.ChannelId)
+		if err != nil {
+			return err
+		}
+		var models []string
+		if common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, record.Model) {
+			return errors.New("model not included in membership")
+		}
+		// A duplicate request cannot reserve twice, even when its original outcome is unknown.
+		var existing SubscriptionChannelRequest
+		result := tx.Where("request_id = ?", record.RequestId).Limit(1).Find(&existing)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected > 0 {
+			return errors.New("membership request already reserved")
+		}
+		result = tx.Model(&SubscriptionChannelQuota{}).Where("id = ? AND input_limit - input_used - input_reserved >= ? AND output_limit - output_used - output_reserved >= ?", grant.Id, record.InputReserved, record.OutputReserved).Updates(map[string]interface{}{
+			"input_reserved": gorm.Expr("input_reserved + ?", record.InputReserved), "output_reserved": gorm.Expr("output_reserved + ?", record.OutputReserved), "updated_at": common.GetTimestamp(),
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrMembershipQuota
+		}
+		record.Status = "prepared"
+		record.CreatedAt = common.GetTimestamp()
+		record.UpdatedAt = record.CreatedAt
+		return tx.Create(record).Error
+	})
+}
+
+// DispatchMembership persists the uncertain-outcome boundary before any network write.
+func DispatchMembership(requestId string) error {
+	result := DB.Model(&SubscriptionChannelRequest{}).Where("request_id = ? AND status = ?", requestId, "prepared").Updates(map[string]interface{}{"status": "dispatched", "updated_at": common.GetTimestamp()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("membership request cannot be dispatched")
+	}
+	return nil
+}
+
+// FinishMembership settles reliable counters or keeps unknown outcomes reserved for reconciliation.
+// Expiry is intentionally not checked here: accepted work belongs to its original subscription.
+func FinishMembership(requestId string, input, output int64, outcome, reason string) error {
+	if input < 0 || output < 0 || input > MembershipMaxTokens || output > MembershipMaxTokens {
+		return errors.New("invalid membership usage")
+	}
+	if outcome != "settled" && outcome != "released" && outcome != "pending" {
+		return errors.New("invalid membership outcome")
+	}
+	if outcome != "settled" && (input != 0 || output != 0) {
+		return errors.New("non-settlement carries usage")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var record SubscriptionChannelRequest
+		if err := lockForUpdate(tx).Where("request_id = ?", requestId).First(&record).Error; err != nil {
+			return err
+		}
+		if record.Status == "settled" || record.Status == "released" {
+			if record.Status == outcome && record.InputUsed == input && record.OutputUsed == output {
+				return nil
+			}
+			return errors.New("membership outcome conflicts with final ledger")
+		}
+		if outcome == "released" && record.Status != "prepared" {
+			return errors.New("dispatched membership requires reconciliation, not automatic release")
+		}
+		if outcome == "settled" && (record.Status == "prepared" || input > record.InputReserved || output > record.OutputReserved) {
+			return errors.New("usage violates membership reservation; reconciliation required")
+		}
+		result := tx.Model(&SubscriptionChannelRequest{}).Where("id = ? AND status = ?", record.Id, record.Status).Updates(map[string]interface{}{"status": outcome, "input_used": input, "output_used": output, "reason": reason, "updated_at": common.GetTimestamp()})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("membership concurrent settlement")
+		}
+		if outcome == "pending" {
+			return nil
+		}
+		result = tx.Model(&SubscriptionChannelQuota{}).Where("user_subscription_id = ? AND channel_id = ? AND input_reserved >= ? AND output_reserved >= ?", record.UserSubscriptionId, record.ChannelId, record.InputReserved, record.OutputReserved).Updates(map[string]interface{}{
+			"input_reserved": gorm.Expr("input_reserved - ?", record.InputReserved), "output_reserved": gorm.Expr("output_reserved - ?", record.OutputReserved),
+			"input_used": gorm.Expr("input_used + ?", input), "output_used": gorm.Expr("output_used + ?", output), "updated_at": common.GetTimestamp(),
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("membership grant ledger mismatch")
+		}
+		return nil
+	})
+}

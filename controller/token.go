@@ -426,6 +426,28 @@ func AddToken(c *gin.Context) {
 		}
 		bindChannelId = token.ChannelId
 	}
+	if token.UserSubscriptionId < 0 {
+		common.ApiErrorMsg(c, "invalid membership binding")
+		return
+	}
+	if token.UserSubscriptionId > 0 {
+		if token.KeyType != model.TokenKeyTypeLanguage {
+			common.ApiErrorMsg(c, "membership currently requires a language key")
+			return
+		}
+		if _, err := model.GetMembershipGrant(model.DB, ownerId, token.UserSubscriptionId, token.ChannelId); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		channel, err := model.GetChannelById(token.ChannelId, false)
+		if err != nil || channel.Status != common.ChannelStatusEnabled || channel.Type != 1 {
+			common.ApiErrorMsg(c, "membership channel unavailable")
+			return
+		}
+		bindChannelId = token.ChannelId
+		token.UnlimitedQuota = true // Key quota is not a second spending pool.
+		token.CrossGroupRetry = false
+	}
 	key, err := common.GenerateKey()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)
@@ -440,6 +462,7 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
+		UserSubscriptionId: token.UserSubscriptionId,
 		UserId:             ownerId,
 		Name:               token.Name,
 		Key:                key,
@@ -516,6 +539,18 @@ func UpdateToken(c *gin.Context) {
 	cleanToken, err := manageableToken(c, token.Id)
 	if err != nil {
 		tokenApiError(c, err)
+		return
+	}
+	if cleanToken.UserSubscriptionId > 0 {
+		if c.Query("channel_only") != "" || (token.ChannelId != 0 && token.ChannelId != cleanToken.ChannelId) || (token.UserSubscriptionId != 0 && token.UserSubscriptionId != cleanToken.UserSubscriptionId) {
+			common.ApiErrorMsg(c, "membership binding is immutable")
+			return
+		}
+		token.ChannelId = cleanToken.ChannelId
+		token.UnlimitedQuota = true
+		token.CrossGroupRetry = false
+	} else if token.UserSubscriptionId != 0 {
+		common.ApiErrorMsg(c, "create a new key to bind membership")
 		return
 	}
 	if token.Status == common.TokenStatusEnabled {

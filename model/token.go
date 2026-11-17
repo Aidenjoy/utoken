@@ -18,6 +18,7 @@ const (
 )
 
 type Token struct {
+	UserSubscriptionId int     `json:"user_subscription_id" gorm:"index"`
 	Id                 int     `json:"id"`
 	UserId             int     `json:"user_id" gorm:"index"`
 	Key                string  `json:"key" gorm:"type:varchar(128);uniqueIndex"`
@@ -395,6 +396,9 @@ func ValidateTokenByAccessKey(ak string) (*Token, error) {
 		}
 		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
+	if token.UserSubscriptionId > 0 {
+		return nil, ErrTokenInvalid
+	} // Membership has no Ark metering contract yet.
 	if uerr := checkTokenUsable(token); uerr != nil {
 		return token, uerr
 	}

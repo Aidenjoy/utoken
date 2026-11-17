@@ -210,6 +210,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	if _, err := model.ValidateSubscriptionChannels(model.DB, &req.Plan); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	err := model.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)
@@ -285,9 +289,15 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 
+	if _, err := model.ValidateSubscriptionChannels(model.DB, &req.Plan); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
+			"meter_type":                 req.Plan.MeterType,
+			"channel_quotas":             req.Plan.ChannelQuotas,
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,

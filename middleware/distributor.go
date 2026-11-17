@@ -81,6 +81,26 @@ func Distribute() func(c *gin.Context) {
 		if agentModelForbidden(c, modelRequest.Model) {
 			return
 		}
+		if subscriptionId := c.GetInt("membership_subscription_id"); subscriptionId > 0 {
+			grant, err := model.GetMembershipGrant(model.DB, c.GetInt("id"), subscriptionId, c.GetInt("token_channel_id"))
+			if err != nil {
+				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+				return
+			}
+			var models []string
+			if common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, modelRequest.Model) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "model not included in membership")
+				return
+			}
+			if c.GetBool("token_model_limit_enabled") {
+				value, _ := c.Get("token_model_limit")
+				limits, _ := value.(map[string]bool)
+				if !limits[ratio_setting.FormatMatchingModelName(modelRequest.Model)] {
+					abortWithOpenAiMessage(c, http.StatusForbidden, "membership key model forbidden")
+					return
+				}
+			}
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -90,6 +110,10 @@ func Distribute() func(c *gin.Context) {
 			channel, err = model.GetChannelById(id, true)
 			if err != nil {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
+				return
+			}
+			if c.GetInt("membership_subscription_id") > 0 && (channel.Type != constant.ChannelTypeOpenAI || !slices.Contains(channel.GetModels(), modelRequest.Model) || !slices.Contains(channel.GetGroups(), common.GetContextKeyString(c, constant.ContextKeyUsingGroup))) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "membership channel model or group unavailable")
 				return
 			}
 			if channel.Status != common.ChannelStatusEnabled {
