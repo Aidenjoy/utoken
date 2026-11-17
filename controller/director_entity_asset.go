@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -180,8 +181,17 @@ func DirectorGetEntityAssetList(c *gin.Context) {
 		assetByKey[m.ID] = a.Status
 	}
 	refreshPendingAssets(assets)
+	// 预览转存涉及跨境下载，走后台不阻塞列表响应。
+	backgroundRefreshAssets(assets)
+	statusByAsset := make(map[string]string, len(assets))
+	for _, a := range assets {
+		statusByAsset[fmt.Sprintf("%d:%s", a.ChannelID, a.AssetID)] = a.Status
+	}
 	list := make([]directorEntityAssetVO, 0, len(mappings))
 	for _, m := range mappings {
+		if s, ok := statusByAsset[fmt.Sprintf("%d:%s", m.ChannelID, m.AssetID)]; ok {
+			assetByKey[m.ID] = s
+		}
 		list = append(list, directorEntityAssetVO{
 			ID:         m.ID,
 			EntityType: m.EntityType,

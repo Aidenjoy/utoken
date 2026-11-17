@@ -697,6 +697,8 @@ func arkListAssets(c *gin.Context, action, region string, userId int, body []byt
 	}
 	// 本地优先：仅对结果中的 pending 项向上游刷新状态（防抖 10s，见 refreshPendingAssets）。
 	refreshPendingAssets(assets)
+	// 预览转存涉及跨境下载，走后台不阻塞列表响应。
+	backgroundRefreshAssets(assets)
 	items := make([]arkAssetItem, 0, len(assets))
 	for _, a := range assets {
 		items = append(items, newArkAssetItem(a))
@@ -735,6 +737,7 @@ func arkGetAsset(c *gin.Context, action, region string, userId int, body []byte)
 	}
 	a := assets[0]
 	refreshPendingAssets([]*model.Asset{a})
+	backgroundRefreshAssets([]*model.Asset{a})
 	arkOK(c, action, region, newArkAssetItem(a))
 }
 

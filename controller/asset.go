@@ -26,6 +26,9 @@ const assetRefreshDebounceSeconds = 10
 var (
 	assetRefreshMu     sync.Mutex
 	assetLastRefreshAt = map[int64]int64{}
+	// assetMirrorInFlight 转存任务闸：同一素材同时只允许一个跨境下载/上传任务。
+	assetMirrorMu       sync.Mutex
+	assetMirrorInFlight = map[int64]bool{}
 )
 
 func videoAssetKeyError(c *gin.Context) string {
@@ -109,12 +112,12 @@ func refreshPendingAssets(assets []*model.Asset) {
 			common.SysLog(fmt.Sprintf("[Asset] refresh failed (asset=%d, upstream_id=%s): %v", a.ID, a.AssetID, err))
 			continue
 		}
-		// 上游预览链接带签名时效，落库前转存自有 TOS 换永久地址
-		preview := mirrorAssetPreviewToTOS(a, res.PreviewURL)
-		_ = model.UpdateAssetStatus(a.ID, res.Status, preview, res.ErrorCode, res.ErrorMsg)
+		// 预览先原样落上游链接（带签名时效）：转存自有 TOS 涉及跨境下载，
+		// 可能分钟级，统一交给后台 remirrorExternalPreviews，不阻塞请求路径。
+		_ = model.UpdateAssetStatus(a.ID, res.Status, res.PreviewURL, res.ErrorCode, res.ErrorMsg)
 		a.Status = res.Status
-		if preview != "" {
-			a.PreviewURL = preview
+		if res.PreviewURL != "" {
+			a.PreviewURL = res.PreviewURL
 		}
 		a.ErrorCode = res.ErrorCode
 		a.ErrorMsg = res.ErrorMsg
@@ -175,6 +178,8 @@ func isOwnTOSURL(rawURL string) bool {
 
 // mirrorAssetPreviewToTOS 把上游返回的临时预览链接转存到自有 TOS，返回永久可访问地址；
 // 已是自有地址、TOS 未配置或转存失败时原样返回上游链接。
+// 进程内同一素材同时只允许一个转存任务：跨境下载可达分钟级，
+// 列表轮询会反复触发 remirror，不加闸会并发重复下载/上传同一素材。
 func mirrorAssetPreviewToTOS(a *model.Asset, remoteURL string) string {
 	if remoteURL == "" || isOwnTOSURL(remoteURL) {
 		return remoteURL
@@ -182,6 +187,18 @@ func mirrorAssetPreviewToTOS(a *model.Asset, remoteURL string) string {
 	if _, ok := common.GetTOSUploadConfig(); !ok {
 		return remoteURL
 	}
+	assetMirrorMu.Lock()
+	if assetMirrorInFlight[a.ID] {
+		assetMirrorMu.Unlock()
+		return remoteURL
+	}
+	assetMirrorInFlight[a.ID] = true
+	assetMirrorMu.Unlock()
+	defer func() {
+		assetMirrorMu.Lock()
+		delete(assetMirrorInFlight, a.ID)
+		assetMirrorMu.Unlock()
+	}()
 	client := &http.Client{Timeout: 300 * time.Second}
 	resp, err := client.Get(remoteURL)
 	if err != nil {
@@ -222,6 +239,25 @@ func assetPreviewExt(a *model.Asset, remoteURL string) string {
 	default:
 		return ".png"
 	}
+}
+
+// backgroundRefreshAssets 值拷贝快照后在后台刷新上游状态与转存预览：
+// 跨境下载（海外 TOS 预览链接）可达分钟级，不能阻塞列表/详情请求路径；
+// 前端对 pending 素材有静默轮询，状态变化下一轮自然带出。
+// 拷贝而非原切片：后台 goroutine 会改写 Status/PreviewURL，与响应序列化共用即数据竞争。
+func backgroundRefreshAssets(assets []*model.Asset) {
+	if len(assets) == 0 {
+		return
+	}
+	cp := make([]*model.Asset, len(assets))
+	for i, a := range assets {
+		c := *a
+		cp[i] = &c
+	}
+	go func() {
+		refreshPendingAssets(cp)
+		remirrorExternalPreviews(cp)
+	}()
 }
 
 // GetAssetProviders 返回开启了素材协议的启用渠道（仅 id/name/protocol，不暴露 key）。
@@ -660,8 +696,10 @@ func RelayGetAsset(c *gin.Context) {
 		return
 	}
 	asset := assets[0]
+	// 1:1 契约：GetAsset 同步返回上游最新状态（Query 仅一次签名请求，快）；
+	// 预览转存涉及跨境下载，走后台不阻塞下游客户端。
 	refreshPendingAssets([]*model.Asset{asset})
-	remirrorExternalPreviews([]*model.Asset{asset})
+	backgroundRefreshAssets([]*model.Asset{asset})
 	relayAssetJSON(c, 0, "ok", gin.H{
 		"Id":          asset.AssetID,
 		"Name":        asset.Name,
@@ -687,6 +725,8 @@ func relayGetSmartAsset(c *gin.Context, userId int, ref string) {
 	}
 	copies, _ := model.GetAssetsBySourceAssetId(source.ID)
 	refreshPendingAssets(copies)
+	// 预览转存涉及跨境下载，走后台不阻塞状态查询。
+	backgroundRefreshAssets(copies)
 
 	anyActive, anyPending := false, false
 	for _, cp := range copies {
@@ -787,7 +827,8 @@ func persistAssetGroupID(channel *model.Channel, groupID string) error {
 		Updates(map[string]interface{}{"settings": channel.OtherSettings}).Error
 }
 
-// ListAssets 列出素材（?channel_id= 过滤），pending 素材顺带向上游刷新状态。
+// ListAssets 列出素材（?channel_id= 过滤），立即返回本地快照；
+// pending 刷新与预览转存在后台进行（跨境下载不阻塞请求），前端轮询带出最新状态。
 // 默认仅本人素材；超管可用 ?owner=all 查看全部用户、?owner=<username> 查看指定用户，
 // 此时返回体额外填充 username 字段。
 // ?model=（可选 ?group=）进一步过滤：素材只在注册它的渠道上游有效，
@@ -821,8 +862,7 @@ func ListAssets(c *gin.Context) {
 		assetJSONError(c, http.StatusInternalServerError, "query_data_error", err.Error())
 		return
 	}
-	refreshPendingAssets(assets)
-	remirrorExternalPreviews(assets)
+	backgroundRefreshAssets(assets)
 
 	if modelName := c.Query("model"); modelName != "" {
 		groups := []string{}
@@ -862,7 +902,7 @@ func ListAssets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"assets": assets})
 }
 
-// GetAsset 获取单个素材详情（校验归属），pending 时顺带刷新。
+// GetAsset 获取单个素材详情（校验归属），立即返回本地快照，刷新/转存走后台。
 func GetAsset(c *gin.Context) {
 	userId := c.GetInt("id")
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -875,8 +915,7 @@ func GetAsset(c *gin.Context) {
 		assetJSONError(c, http.StatusNotFound, "not_found", "asset not found")
 		return
 	}
-	refreshPendingAssets([]*model.Asset{asset})
-	remirrorExternalPreviews([]*model.Asset{asset})
+	backgroundRefreshAssets([]*model.Asset{asset})
 	c.JSON(http.StatusOK, asset)
 }
 
