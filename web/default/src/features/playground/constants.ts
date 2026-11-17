@@ -139,7 +139,7 @@ export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
 
 export const RESOLUTIONS = ['480P', '720P', '1080P', '4K'] as const
 export const DURATION_OPTIONS = [
-  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 30,
 ] as const
 // 智能时长：Ark 视频编辑（含参考视频）任务要求 duration=-1，输出时长跟随输入视频
 export const SMART_VIDEO_DURATION = -1

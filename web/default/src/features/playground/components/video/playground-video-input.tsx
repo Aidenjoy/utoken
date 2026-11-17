@@ -174,7 +174,7 @@ export function PlaygroundVideoInput({
   const maxImages =
     VIDEO_MODES.find((m) => m.value === config.mode)?.maxImages ?? 1
 
-  // seedance 2.5（模型名含 2-5）时长上限 30 秒，其余模型保持 4–15 秒
+  // seedance 2.5（模型名含 2-5）提供 4–30 秒连续选项，其余模型 4–15 秒 + 20/30 秒
   const durationOptions = config.model.includes('2-5')
     ? Array.from({ length: 30 - 4 + 1 }, (_, i) => i + 4)
     : DURATION_OPTIONS
@@ -186,9 +186,9 @@ export function PlaygroundVideoInput({
     onConfigChange({ ...config, [key]: value })
   }
 
-  // 模型切换后当前时长超出上限时回落（2.5 上限 30 秒，其余 15 秒）
+  // 模型切换后当前时长超出上限时回落（上限 30 秒）
   useEffect(() => {
-    const maxDuration = config.model.includes('2-5') ? 30 : 15
+    const maxDuration = 30
     if (config.duration > maxDuration) {
       updateField('duration', maxDuration)
     }
