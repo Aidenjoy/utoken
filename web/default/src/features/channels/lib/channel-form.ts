@@ -237,6 +237,7 @@ export const channelFormSchema = z
         "ecloud",
         "bit_official",
         "xswj_official",
+        "byteplus_official",
         "baidu_databuilder",
         "qihoo360",
       ])
@@ -471,6 +472,7 @@ export function transformChannelToFormDefaults(
     | "ecloud"
     | "bit_official"
     | "xswj_official"
+    | "byteplus_official"
     | "baidu_databuilder"
     | "qihoo360" = "";
   let assetUploadPath = "";
@@ -516,6 +518,7 @@ export function transformChannelToFormDefaults(
         parsed.asset_upload_protocol === "ecloud" ||
         parsed.asset_upload_protocol === "bit_official" ||
         parsed.asset_upload_protocol === "xswj_official" ||
+        parsed.asset_upload_protocol === "byteplus_official" ||
         parsed.asset_upload_protocol === "baidu_databuilder" ||
         parsed.asset_upload_protocol === "qihoo360"
           ? parsed.asset_upload_protocol
@@ -855,6 +858,7 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       formData.asset_upload_protocol === "ark_official" ||
       formData.asset_upload_protocol === "bit_official" ||
       formData.asset_upload_protocol === "xswj_official" ||
+      formData.asset_upload_protocol === "byteplus_official" ||
       formData.asset_upload_protocol === "baidu_databuilder"
     ) {
       settingsObj.asset_ak = (formData.asset_ak || "").trim();

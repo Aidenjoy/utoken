@@ -699,6 +699,9 @@ export function ChannelMutateDrawer({
     xswj_official: t(
       'Asset group of the Xingshu Wuji asset library; if empty, a default group is created automatically'
     ),
+    byteplus_official: t(
+      'Asset group of the BytePlus asset library; if empty, a default group is created automatically'
+    ),
     baidu_databuilder: t(
       'Asset group of the Baidu DataBuilder asset library; if empty, a default group is created automatically'
     ),
@@ -2776,6 +2779,10 @@ export function ChannelMutateDrawer({
                                               label: t('Xingshu Wuji'),
                                             },
                                             {
+                                              value: 'byteplus_official',
+                                              label: t('BytePlus'),
+                                            },
+                                            {
                                               value: 'baidu_databuilder',
                                               label: t('Baidu DataBuilder'),
                                             },
@@ -2817,6 +2824,9 @@ export function ChannelMutateDrawer({
                                               </SelectItem>
                                               <SelectItem value='xswj_official'>
                                                 {t('Xingshu Wuji')}
+                                              </SelectItem>
+                                              <SelectItem value='byteplus_official'>
+                                                {t('BytePlus')}
                                               </SelectItem>
                                               <SelectItem value='baidu_databuilder'>
                                                 {t('Baidu DataBuilder')}
@@ -2894,6 +2904,8 @@ export function ChannelMutateDrawer({
                                       'bit_official' ||
                                     currentAssetUploadProtocol ===
                                       'xswj_official' ||
+                                    currentAssetUploadProtocol ===
+                                      'byteplus_official' ||
                                     currentAssetUploadProtocol ===
                                       'baidu_databuilder' ||
                                     currentAssetUploadProtocol ===
@@ -3053,7 +3065,9 @@ export function ChannelMutateDrawer({
                                       {!assetUsesBearerAuth &&
                                         !assetUsesChannelKey &&
                                         currentAssetUploadProtocol !==
-                                          'baidu_databuilder' && (
+                                          'baidu_databuilder' &&
+                                        currentAssetUploadProtocol !==
+                                          'byteplus_official' && (
                                           <FormField
                                             control={form.control}
                                             name='asset_region'

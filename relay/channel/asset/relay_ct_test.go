@@ -146,6 +146,11 @@ func TestNewProtocol(t *testing.T) {
 			AssetUploadProtocol: dto.AssetUploadProtocolBitOfficial,
 			AssetAK:             "ak", AssetSK: "sk",
 		}, "*asset.ArkOfficialProtocol", ""},
+		{"byteplus_official without keys", dto.ChannelOtherSettings{AssetUploadProtocol: dto.AssetUploadProtocolByteplusOfficial}, "", "asset_ak"},
+		{"byteplus_official with keys", dto.ChannelOtherSettings{
+			AssetUploadProtocol: dto.AssetUploadProtocolByteplusOfficial,
+			AssetAK:             "ak", AssetSK: "sk",
+		}, "*asset.ArkOfficialProtocol", ""},
 		{"qihoo360 without channel key", dto.ChannelOtherSettings{AssetUploadProtocol: dto.AssetUploadProtocolQihoo360}, "", "channel api key"},
 	}
 	for _, tt := range tests {

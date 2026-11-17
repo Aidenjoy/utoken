@@ -84,6 +84,7 @@ const (
 	AssetUploadProtocolEcloud           = "ecloud"            // 移动云 MoMA 官方：query 参数签名调素材资产库 API
 	AssetUploadProtocolBitOfficial      = "bit_official"      // TokenBit 官方：方舟兼容 V4 签名走 tokenbit 网关
 	AssetUploadProtocolXswjOfficial     = "xswj_official"     // 星枢无极：方舟兼容 V4 签名走 mintel.591ll.com 网关
+	AssetUploadProtocolByteplusOfficial = "byteplus_official" // BytePlus ModelArk（火山方舟海外版）：方舟兼容 V4 签名走 ark.ap-southeast-1.byteplusapi.com 网关
 	AssetUploadProtocolBaiduDataBuilder = "baidu_databuilder" // 百度 DataBuilder：BCE V1 AK/SK 签名调素材库 Action API
 	AssetUploadProtocolQihoo360         = "qihoo360"          // 360 智脑：Bearer 密钥调 /v1/images/generations（cmecloud 素材管理模型）
 )
@@ -126,7 +127,7 @@ type ChannelOtherSettings struct {
 	AdvancedCustom                        *AdvancedCustomConfig `json:"advanced_custom,omitempty"`
 
 	// 虚拟人像素材库（asset:// 引用）配置
-	AssetUploadProtocol string `json:"asset_upload_protocol,omitempty"` // ""/relay/ark_official/ecloud/bit_official/xswj_official/baidu_databuilder/qihoo360
+	AssetUploadProtocol string `json:"asset_upload_protocol,omitempty"` // ""/relay/ark_official/ecloud/bit_official/xswj_official/byteplus_official/baidu_databuilder/qihoo360
 	AssetUploadPath     string `json:"asset_upload_path,omitempty"`     // relay 协议注册路径，默认 /api/assets/upload
 	AssetQueryPath      string `json:"asset_query_path,omitempty"`      // relay 协议查询路径模板，默认 /api/assets/{id}
 	AssetAK             string `json:"asset_ak,omitempty"`              // 官方协议 AccessKey
@@ -135,7 +136,7 @@ type ChannelOtherSettings struct {
 	AssetProjectName    string `json:"asset_project_name,omitempty"`    // 官方协议 ProjectName
 	AssetRegion         string `json:"asset_region,omitempty"`          // 官方协议区域，默认 cn-beijing
 	// AssetEndpoint 方舟兼容素材网关地址（如百度智能云网关 https://aigw.bce.baidu.com/volc）。
-	// 仅 ark_official 协议读取：留空走火山官方默认地址，bit_official/xswj_official
+	// 仅 ark_official 协议读取：留空走火山官方默认地址，bit_official/xswj_official/byteplus_official
 	// 的网关是各自固定服务，仍由代码内常量决定，不受该字段影响。
 	AssetEndpoint string `json:"asset_endpoint,omitempty"`
 	// AssetAuthMode ark_official 协议的鉴权方式：""/v4 走 AK/SK V4 签名，bearer 走渠道密钥。

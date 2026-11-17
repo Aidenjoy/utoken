@@ -113,6 +113,11 @@ func NewProtocol(cfg ChannelConfig) (Protocol, error) {
 			return nil, fmt.Errorf("xswj_official asset protocol requires asset_ak and asset_sk")
 		}
 		return newXswjOfficialProtocol(cfg), nil
+	case dto.AssetUploadProtocolByteplusOfficial:
+		if strings.TrimSpace(cfg.Settings.AssetAK) == "" || strings.TrimSpace(cfg.Settings.AssetSK) == "" {
+			return nil, fmt.Errorf("byteplus_official asset protocol requires asset_ak and asset_sk")
+		}
+		return newByteplusOfficialProtocol(cfg), nil
 	case dto.AssetUploadProtocolBaiduDataBuilder:
 		// AK/SK 优先取 asset_ak/asset_sk，未配置时回落渠道密钥 "AK|SK"（构造函数内校验）
 		return newBaiduDataBuilderProtocol(cfg)
