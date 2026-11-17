@@ -1,6 +1,8 @@
 package volcengine
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -206,6 +208,72 @@ func TestConvertRequestKimiFixedSamplingParams(t *testing.T) {
 			convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
 			require.True(t, ok)
 			assert.Equal(t, tt.wantTopP, convertedRequest.TopP)
+		})
+	}
+}
+
+// TestConvertResponsesRequestRepairsOrphanToolCalls 保护 Kimi Responses 路径的
+// 工具调用历史修复契约：客户端工具循环被中断后留下的孤立 function_call
+// 会被上游泛化 400 拒绝，转发前必须补占位输出；孤立输出必须删除；
+// 完整配对/非 Kimi 模型/字符串 input 不受影响。
+func TestConvertResponsesRequestRepairsOrphanToolCalls(t *testing.T) {
+	orphanCallInput := json.RawMessage(`[{"role":"user","content":"北京天气?"},{"type":"function_call","call_id":"call_1","name":"get_weather","arguments":"{}"}]`)
+	tests := []struct {
+		name      string
+		model     string
+		input     json.RawMessage
+		wantTypes []string
+		unchanged bool
+	}{
+		{"孤立调用补占位输出", "kimi-k3.1-pro", orphanCallInput,
+			[]string{"", "function_call", "function_call_output"}, false},
+		{"孤立输出被删除", "kimi-k3.1-pro",
+			json.RawMessage(`[{"role":"user","content":"hi"},{"type":"function_call_output","call_id":"call_x","output":"晴"}]`),
+			[]string{""}, false},
+		{"完整配对不动", "kimi-k3.1-pro",
+			json.RawMessage(`[{"role":"user","content":"hi"},{"type":"function_call","call_id":"call_1","name":"f","arguments":"{}"},{"type":"function_call_output","call_id":"call_1","output":"ok"}]`),
+			nil, true},
+		{"字符串input不动", "kimi-k3.1-pro", json.RawMessage(`"说:好"`), nil, true},
+		{"非Kimi模型不修复", "doubao-seed-2.1-pro", orphanCallInput, nil, true},
+		{"两个call只补缺失的一个", "kimi-k3.1-pro",
+			json.RawMessage(`[{"type":"function_call","call_id":"c1","name":"f","arguments":"{}"},{"type":"function_call","call_id":"c2","name":"f","arguments":"{}"},{"type":"function_call_output","call_id":"c1","output":"ok"}]`),
+			[]string{"function_call", "function_call", "function_call_output", "function_call_output"}, false},
+		{"custom_tool_call同样修复", "kimi-k3.1-pro",
+			json.RawMessage(`[{"type":"custom_tool_call","call_id":"c1","name":"t","input":"x"}]`),
+			[]string{"custom_tool_call", "custom_tool_call_output"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model},
+			}
+			request := dto.OpenAIResponsesRequest{Model: tt.model, Input: tt.input}
+			converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, request)
+			require.NoError(t, err)
+			convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
+			require.True(t, ok)
+			if tt.unchanged {
+				assert.JSONEq(t, string(tt.input), string(convertedRequest.Input))
+				return
+			}
+			var items []struct {
+				Type   string `json:"type"`
+				CallID string `json:"call_id"`
+				Output string `json:"output"`
+			}
+			require.NoError(t, common.Unmarshal(convertedRequest.Input, &items))
+			require.Len(t, items, len(tt.wantTypes))
+			for i, wantType := range tt.wantTypes {
+				assert.Equal(t, wantType, items[i].Type, "item %d", i)
+			}
+			// 占位输出必须紧跟对应调用项且 call_id 一致（既有正常输出不受此约束）
+			for i, item := range items {
+				if !strings.Contains(item.Output, "interrupted") {
+					continue
+				}
+				require.Greater(t, i, 0)
+				assert.Equal(t, items[i-1].CallID, item.CallID)
+			}
 		})
 	}
 }

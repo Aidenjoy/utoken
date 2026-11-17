@@ -371,6 +371,11 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
 	relaycommon.NormalizeKimiFixedSamplingParams(upstreamModel, request.TopP, nil, nil)
+	// Kimi 上游要求 input 历史里的工具调用项必须有配对输出，客户端工具
+	// 循环被中断后留下的孤立调用项会触发泛化 400，转发前修复。
+	if relaycommon.IsKimiFixedSamplingModel(upstreamModel) {
+		request.Input = relaycommon.RepairResponsesOrphanToolCalls(request.Input)
+	}
 	return request, nil
 }
 

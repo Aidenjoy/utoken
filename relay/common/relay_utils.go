@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -54,6 +55,14 @@ func IsTemperatureOneOnlyModel(model string) bool {
 	return lowered == "kimi-k2.6" || strings.HasPrefix(lowered, "kimi-k3")
 }
 
+// IsKimiFixedSamplingModel 上游固定采样参数的 Kimi 推理模型：K3 系列
+// （kimi-k3/kimi-k3.1-pro 等）、kimi-k2.7-code、kimi-k2.6，官方参数参考
+// 一致，火山方舟 coding plan 端点已实测。
+func IsKimiFixedSamplingModel(model string) bool {
+	lowered := strings.ToLower(model)
+	return lowered == "kimi-k2.6" || strings.HasPrefix(lowered, "kimi-k3") || strings.HasPrefix(lowered, "kimi-k2.7-code")
+}
+
 // NormalizeKimiFixedSamplingParams 归一化 Kimi 推理模型被上游固定的其余采样
 // 参数：top_p 只允许 0.95，presence_penalty/frequency_penalty 只允许 0，
 // 传其他值直接 400（官方参数参考对 K3 系列/kimi-k2.7-code/kimi-k2.6 一致，
@@ -61,8 +70,7 @@ func IsTemperatureOneOnlyModel(model string) bool {
 // n 不在此列：Ark 端点实测放行 n>1，强制改 1 会静默丢弃多选请求。
 // 传 nil 指针表示该请求格式没有对应字段（如 Responses 无 penalty）。
 func NormalizeKimiFixedSamplingParams(model string, topP, presencePenalty, frequencyPenalty *float64) {
-	lowered := strings.ToLower(model)
-	if lowered != "kimi-k2.6" && !strings.HasPrefix(lowered, "kimi-k3") && !strings.HasPrefix(lowered, "kimi-k2.7-code") {
+	if !IsKimiFixedSamplingModel(model) {
 		return
 	}
 	if topP != nil && *topP != 0.95 {
@@ -74,6 +82,97 @@ func NormalizeKimiFixedSamplingParams(model string, topP, presencePenalty, frequ
 	if frequencyPenalty != nil && *frequencyPenalty != 0 {
 		*frequencyPenalty = 0
 	}
+}
+
+// responsesToolCallOutputTypes Responses input 里工具调用项 → 配对输出项的类型映射。
+var responsesToolCallOutputTypes = map[string]string{
+	"function_call":    "function_call_output",
+	"custom_tool_call": "custom_tool_call_output",
+	"local_shell_call": "local_shell_call_output",
+}
+
+// RepairResponsesOrphanToolCalls 修复 Responses input 历史里孤立的工具调用项：
+// Kimi 上游要求每个工具调用项必须有同 call_id 的配对输出项，客户端工具
+// 循环被中断（取消/断连）后历史里会留下无输出的调用项，下一轮请求直接
+// 被泛化 400 拒绝（"A parameter specified in the request is not valid"，
+// 火山方舟 coding plan 端点已实测复现）。修复策略：给孤立调用项紧跟一条
+// “已中断、无结果”的占位输出（保留调用事实，不静默删历史）；删除没有
+// 对应调用项的孤立输出（上游报 tool_call_id is not found）。
+// 字符串形式或非法结构的 input 不处理；无孤立项时原样返回，避免无谓重序列化。
+func RepairResponsesOrphanToolCalls(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		return input
+	}
+	var items []json.RawMessage
+	if err := common.Unmarshal(input, &items); err != nil {
+		return input
+	}
+	type itemMeta struct {
+		itemType string
+		callID   string
+	}
+	metas := make([]itemMeta, len(items))
+	hasCall := make(map[string]bool)
+	hasOutput := make(map[string]bool)
+	for i, raw := range items {
+		var m struct {
+			Type   string `json:"type"`
+			CallID string `json:"call_id"`
+		}
+		if err := common.Unmarshal(raw, &m); err != nil {
+			continue
+		}
+		metas[i] = itemMeta{itemType: m.Type, callID: m.CallID}
+		if m.CallID == "" {
+			continue
+		}
+		if _, ok := responsesToolCallOutputTypes[m.Type]; ok {
+			hasCall[m.Type+"|"+m.CallID] = true
+		}
+		for _, outputType := range responsesToolCallOutputTypes {
+			if m.Type == outputType {
+				hasOutput[m.Type+"|"+m.CallID] = true
+				break
+			}
+		}
+	}
+	repaired := make([]json.RawMessage, 0, len(items))
+	changed := false
+	for i, raw := range items {
+		m := metas[i]
+		if outputType, ok := responsesToolCallOutputTypes[m.itemType]; ok && m.callID != "" && !hasOutput[outputType+"|"+m.callID] {
+			placeholder, err := common.Marshal(map[string]string{
+				"type":    outputType,
+				"call_id": m.callID,
+				"output":  "[tool call was interrupted before a result was returned; no output is available]",
+			})
+			if err == nil {
+				repaired = append(repaired, raw, placeholder)
+				changed = true
+				continue
+			}
+		}
+		orphanOutput := false
+		for callType, outputType := range responsesToolCallOutputTypes {
+			if m.itemType == outputType && m.callID != "" && !hasCall[callType+"|"+m.callID] {
+				orphanOutput = true
+				break
+			}
+		}
+		if orphanOutput {
+			changed = true
+			continue
+		}
+		repaired = append(repaired, raw)
+	}
+	if !changed {
+		return input
+	}
+	out, err := common.Marshal(repaired)
+	if err != nil {
+		return input
+	}
+	return out
 }
 
 func createTaskError(err error, code string, statusCode int, localError bool) *dto.TaskError {
