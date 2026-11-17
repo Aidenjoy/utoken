@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	channelconstant "github.com/QuantumNous/new-api/constant"
@@ -81,7 +80,7 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
-	if request.Temperature != nil && isTemperatureOneOnlyModel(getUpstreamModelName(info, request.Model)) && *request.Temperature != 1.0 {
+	if request.Temperature != nil && relaycommon.IsTemperatureOneOnlyModel(getUpstreamModelName(info, request.Model)) && *request.Temperature != 1.0 {
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
 	return request, nil
@@ -92,10 +91,6 @@ func getUpstreamModelName(info *relaycommon.RelayInfo, fallback string) string {
 		return info.UpstreamModelName
 	}
 	return fallback
-}
-
-func isTemperatureOneOnlyModel(model string) bool {
-	return strings.EqualFold(model, "kimi-k2.6")
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {

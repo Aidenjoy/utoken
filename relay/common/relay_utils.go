@@ -45,6 +45,15 @@ func GetAPIVersion(c *gin.Context) string {
 	return apiVersion
 }
 
+// IsTemperatureOneOnlyModel 上游把采样温度固定为 1 的模型：Kimi K2.6 与
+// K3 系列（kimi-k3/kimi-k3.1-pro 等）传其他值直接 400
+// （"`temperature` only 1 is allowed for this model"），各渠道适配器
+// 转发前需归一化为 1；客户端未传时保持省略。
+func IsTemperatureOneOnlyModel(model string) bool {
+	lowered := strings.ToLower(model)
+	return lowered == "kimi-k2.6" || strings.HasPrefix(lowered, "kimi-k3")
+}
+
 func createTaskError(err error, code string, statusCode int, localError bool) *dto.TaskError {
 	return &dto.TaskError{
 		Code:       code,

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	channelconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -337,6 +338,17 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		request.Model = info.UpstreamModelName
 		request.THINKING = json.RawMessage(`{"type": "enabled"}`)
 	}
+	// Kimi K2.6/K3 系列（含 coding plan 转售）上游温度固定为 1，
+	// 体验页默认 0.7 等值会被 400 拒绝，转发前归一化。
+	if request.Temperature != nil && *request.Temperature != 1.0 {
+		upstreamModel := info.UpstreamModelName
+		if upstreamModel == "" {
+			upstreamModel = request.Model
+		}
+		if relaycommon.IsTemperatureOneOnlyModel(upstreamModel) {
+			request.Temperature = common.GetPointer[float64](1.0)
+		}
+	}
 	return request, nil
 }
 
@@ -349,6 +361,17 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+	// 与 chat 路径一致：Kimi K2.6/K3 系列只接受 temperature=1，
+	// Responses 请求同样需要归一化，否则上游报 InvalidParameter。
+	if request.Temperature != nil && *request.Temperature != 1.0 {
+		upstreamModel := info.UpstreamModelName
+		if upstreamModel == "" {
+			upstreamModel = request.Model
+		}
+		if relaycommon.IsTemperatureOneOnlyModel(upstreamModel) {
+			request.Temperature = common.GetPointer[float64](1.0)
+		}
+	}
 	return request, nil
 }
 

@@ -3,6 +3,8 @@ package volcengine
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
@@ -98,4 +100,49 @@ func TestGetRequestURLClaudeFormatVersionedBase(t *testing.T) {
 	got, err := adaptor.GetRequestURL(info)
 	require.NoError(t, err)
 	assert.Equal(t, "https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions", got)
+}
+
+// TestConvertRequestKimiTemperatureOneOnly Kimi K2.6/K3 系列（含火山方舟
+// coding plan 转售的 kimi-k3.1-pro）上游温度固定为 1，非 1 值会被 400
+// 拒绝；chat 与 Responses 两条转发路径都必须归一化，其他模型不受影响，
+// 客户端未传温度时保持省略。
+func TestConvertRequestKimiTemperatureOneOnly(t *testing.T) {
+	tests := []struct {
+		name        string
+		model       string
+		temperature *float64
+		want        *float64
+	}{
+		{"kimi-k3.1-pro 非 1 归一化", "kimi-k3.1-pro", common.GetPointer[float64](0.7), common.GetPointer[float64](1.0)},
+		{"kimi-k3 非 1 归一化", "kimi-k3", common.GetPointer[float64](0.2), common.GetPointer[float64](1.0)},
+		{"kimi-k2.6 非 1 归一化", "kimi-k2.6", common.GetPointer[float64](0.7), common.GetPointer[float64](1.0)},
+		{"kimi-k3.1-pro 已是 1 不变", "kimi-k3.1-pro", common.GetPointer[float64](1.0), common.GetPointer[float64](1.0)},
+		{"kimi-k3.1-pro 省略保持省略", "kimi-k3.1-pro", nil, nil},
+		{"豆包模型不受影响", "doubao-seed-2.1-pro", common.GetPointer[float64](0.7), common.GetPointer[float64](0.7)},
+		{"kimi-k2.5 不受影响", "kimi-k2.5", common.GetPointer[float64](0.7), common.GetPointer[float64](0.7)},
+	}
+	for _, tt := range tests {
+		t.Run("chat/"+tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model},
+			}
+			request := &dto.GeneralOpenAIRequest{Model: tt.model, Temperature: tt.temperature}
+			converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+			require.NoError(t, err)
+			convertedRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+			require.True(t, ok)
+			assert.Equal(t, tt.want, convertedRequest.Temperature)
+		})
+		t.Run("responses/"+tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model},
+			}
+			request := dto.OpenAIResponsesRequest{Model: tt.model, Temperature: tt.temperature}
+			converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, request)
+			require.NoError(t, err)
+			convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
+			require.True(t, ok)
+			assert.Equal(t, tt.want, convertedRequest.Temperature)
+		})
+	}
 }
