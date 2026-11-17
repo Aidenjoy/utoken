@@ -112,7 +112,7 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidChannelId))
 				return
 			}
-			if c.GetInt("membership_subscription_id") > 0 && (channel.Type != constant.ChannelTypeOpenAI || !slices.Contains(channel.GetModels(), modelRequest.Model) || !slices.Contains(channel.GetGroups(), common.GetContextKeyString(c, constant.ContextKeyUsingGroup))) {
+			if c.GetInt("membership_subscription_id") > 0 && (!model.MembershipTextChannelSupported(channel.Type) || !slices.Contains(channel.GetModels(), modelRequest.Model) || !slices.Contains(channel.GetGroups(), common.GetContextKeyString(c, constant.ContextKeyUsingGroup))) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, "membership channel model or group unavailable")
 				return
 			}

@@ -12,9 +12,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// MembershipTextSession owns one reservation and its provider usage receipt.
+// MembershipSession owns one reservation and its provider usage receipt.
 // It deliberately does not implement wallet billing or use normalized quota usage.
-type MembershipTextSession struct {
+type MembershipSession struct {
+	Quantity     int64
 	Request      model.SubscriptionChannelRequest
 	Input        int64
 	Output       int64
@@ -27,7 +28,7 @@ type MembershipTextSession struct {
 // PrepareMembershipText validates the final outbound body and reserves both token dimensions.
 // The conservative UTF-8 byte bound avoids under-reserving a provider-specific tokenizer;
 // it is only a reservation, never presented as provider input usage.
-func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []byte, maxOutputLimit uint) (*MembershipTextSession, error) {
+func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []byte, maxOutputLimit uint) (*MembershipSession, error) {
 	var req dto.GeneralOpenAIRequest
 	if err := common.Unmarshal(body, &req); err != nil {
 		return nil, err
@@ -62,7 +63,7 @@ func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []b
 			return nil, errors.New("membership input is too large")
 		}
 	}
-	session := &MembershipTextSession{Request: model.SubscriptionChannelRequest{
+	session := &MembershipSession{Request: model.SubscriptionChannelRequest{
 		RequestId: common.GetUUID(), UserId: info.UserId, TokenId: info.TokenId,
 		UserSubscriptionId: c.GetInt("membership_subscription_id"), ChannelId: info.ChannelId,
 		Model: info.OriginModelName, InputReserved: inputBound, OutputReserved: int64(*limit),
@@ -70,15 +71,15 @@ func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []b
 	if err := model.ReserveMembership(&session.Request); err != nil {
 		return nil, err
 	}
-	c.Set("membership_text_session", session)
+	c.Set("membership_session", session)
 	logger.LogInfo(c, fmt.Sprintf("membership reserved request=%s subscription=%d channel=%d input_bound=%d output_limit=%d", session.Request.RequestId, session.Request.UserSubscriptionId, info.ChannelId, inputBound, *limit))
 	return session, nil
 }
 
 // ObserveMembershipUsage captures explicit raw provider counters before any fallback or ratio conversion.
 func ObserveMembershipUsage(c *gin.Context, body []byte) {
-	value, ok := c.Get("membership_text_session")
-	session, valid := value.(*MembershipTextSession)
+	value, ok := c.Get("membership_session")
+	session, valid := value.(*MembershipSession)
 	if !ok || !valid {
 		return
 	}
@@ -109,9 +110,9 @@ func ObserveMembershipUsage(c *gin.Context, body []byte) {
 	session.Input, session.Output, session.HasUsage = *u.Input, *u.Output, true
 }
 
-// FinishMembershipText records unknown outcomes without returning potentially consumed capacity.
+// FinishMembershipRequest records unknown outcomes without returning potentially consumed capacity.
 // Called once by TextHelper's defer on success, network errors, local errors and stream termination.
-func FinishMembershipText(c *gin.Context, info *relaycommon.RelayInfo, session *MembershipTextSession, succeeded bool) {
+func FinishMembershipRequest(c *gin.Context, info *relaycommon.RelayInfo, session *MembershipSession, succeeded bool) {
 	if len(session.UsageReceipt) > 0 {
 		if err := model.SaveMembershipUsageReceipt(session.Request.RequestId, session.UsageReceipt); err != nil {
 			logger.LogError(c, "membership usage evidence could not be saved: "+err.Error())
@@ -119,26 +120,31 @@ func FinishMembershipText(c *gin.Context, info *relaycommon.RelayInfo, session *
 		}
 	}
 	outcome, reason := "pending", "upstream outcome unknown"
-	input, output := int64(0), int64(0)
+	input, output, quantity := int64(0), int64(0), int64(0)
 	if !session.Dispatched {
 		outcome, reason = "released", "request was not dispatched"
 	} else if succeeded && c.Request.Context().Err() == nil && session.HasUsage && !session.InvalidUsage && (!info.IsStream || (info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone && !info.StreamStatus.HasErrors())) {
-		outcome, reason = "settled", "raw provider input/output receipt"
-		input, output = session.Input, session.Output
+		outcome, reason = "settled", "raw provider usage receipt"
+		input, output, quantity = session.Input, session.Output, session.Quantity
 	}
-	err := model.FinishMembership(session.Request.RequestId, input, output, outcome, reason)
+	var err error
+	if session.Request.Unit == model.MembershipUnitImages {
+		err = model.FinishMembershipQuantity(session.Request.RequestId, quantity, outcome, reason)
+	} else {
+		err = model.FinishMembership(session.Request.RequestId, input, output, outcome, reason)
+	}
 	if err != nil {
 		logger.LogError(c, "membership settlement requires reconciliation: "+err.Error())
 		if pendingErr := model.FinishMembership(session.Request.RequestId, 0, 0, "pending", "settlement failed or exceeded reservation"); pendingErr != nil {
 			logger.LogError(c, pendingErr.Error())
 		}
-		outcome, input, output = "pending", 0, 0
+		outcome, input, output, quantity = "pending", 0, 0, 0
 	}
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId, TokenId: info.TokenId, TokenName: c.GetString("token_name"), ModelName: info.OriginModelName,
 		PromptTokens: int(input), CompletionTokens: int(output), IsStream: info.IsStream, Group: info.UsingGroup,
 		Content: "channel membership " + outcome,
-		Other:   map[string]interface{}{"billing_source": "channel_membership", "membership_status": outcome, "membership_request_id": session.Request.RequestId, "user_subscription_id": session.Request.UserSubscriptionId},
+		Other:   map[string]interface{}{"billing_source": "channel_membership", "membership_status": outcome, "membership_request_id": session.Request.RequestId, "user_subscription_id": session.Request.UserSubscriptionId, "metering_unit": session.Request.Unit, "quantity_used": quantity},
 	})
-	logger.LogInfo(c, fmt.Sprintf("membership request=%s outcome=%s input=%d output=%d", session.Request.RequestId, outcome, input, output))
+	logger.LogInfo(c, fmt.Sprintf("membership request=%s outcome=%s input=%d output=%d quantity=%d unit=%s", session.Request.RequestId, outcome, input, output, quantity, session.Request.Unit))
 }

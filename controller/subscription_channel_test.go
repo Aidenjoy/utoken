@@ -326,3 +326,83 @@ func TestMembershipHTTPMappedFreeModelStillConsumesMembership(t *testing.T) {
 	assert.EqualValues(t, 12, record.InputUsed)
 	assert.EqualValues(t, 15, record.OutputUsed)
 }
+
+func TestMembershipHTTPAzureTextMock(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			var calls atomic.Int32
+			r, db, key, subId := membershipHTTPFixture(t, func(w http.ResponseWriter, req *http.Request) {
+				calls.Add(1)
+				assert.Contains(t, req.URL.Path, "/openai/deployments/gpt-4o-mini/chat/completions")
+				assert.Equal(t, "mock-upstream", req.Header.Get("api-key"))
+				if stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = fmt.Fprint(w, "data: {\"id\":\"azure\",\"choices\":[],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":15,\"total_tokens\":27}}\n\ndata: [DONE]\n\n")
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(w, `{"id":"azure","choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":12,"completion_tokens":15,"total_tokens":27}}`)
+			})
+			require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 8102).Updates(map[string]interface{}{"type": constant.ChannelTypeAzure, "other": "2024-06-01"}).Error)
+			body := fmt.Sprintf(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}],"max_tokens":20,"stream":%t}`, stream)
+			result := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, body)
+			require.Equal(t, http.StatusOK, result.Code, result.Body.String())
+			var grant model.SubscriptionChannelQuota
+			require.NoError(t, db.Where("user_subscription_id = ?", subId).First(&grant).Error)
+			assert.EqualValues(t, 12, grant.InputUsed)
+			assert.EqualValues(t, 15, grant.OutputUsed)
+			assert.Equal(t, http.StatusForbidden, membershipHTTPRequest(r, "/v1/chat/completions", key.Key, body).Code)
+			assert.EqualValues(t, 1, calls.Load())
+		})
+	}
+}
+
+func TestMembershipHTTPAdditionalTextModelMock(t *testing.T) {
+	r, db, key, subId := membershipHTTPFixture(t, func(w http.ResponseWriter, req *http.Request) {
+		var body dto.GeneralOpenAIRequest
+		if !assert.NoError(t, common.DecodeJson(req.Body, &body)) {
+			w.WriteHeader(400)
+			return
+		}
+		assert.Equal(t, "gpt-4.1-mini", body.Model)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"gpt41","choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":12,"completion_tokens":15,"total_tokens":27}}`)
+	})
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 8102).Update("model_mapping", `{"member-text":"gpt-4.1-mini"}`).Error)
+	result := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, `{"model":"member-text","messages":[{"role":"user","content":"hello"}],"max_tokens":20}`)
+	require.Equal(t, http.StatusOK, result.Code, result.Body.String())
+	var grant model.SubscriptionChannelQuota
+	require.NoError(t, db.Where("user_subscription_id = ?", subId).First(&grant).Error)
+	assert.EqualValues(t, 12, grant.InputUsed)
+	assert.EqualValues(t, 15, grant.OutputUsed)
+}
+
+func TestMembershipHTTPUnimplementedProtocolsNeverReachWalletOrUpstream(t *testing.T) {
+	r, db, key, _ := membershipHTTPFixture(t, func(w http.ResponseWriter, req *http.Request) { t.Error("unsupported protocol reached upstream") })
+	var wallet model.User
+	require.NoError(t, db.First(&wallet, 8101).Error)
+	before := wallet.Quota
+	var accepted atomic.Int32
+	for _, endpoint := range []struct{ method, path string }{
+		{http.MethodPost, "/v1/audio/transcriptions"},
+		{http.MethodPost, "/v1/audio/translations"},
+		{http.MethodPost, "/v1/audio/speech"},
+		{http.MethodGet, "/v1/realtime"},
+		{http.MethodPost, "/v1/videos"},
+		{http.MethodPost, "/api/v3/contents/generations/tasks"},
+		{http.MethodPost, "/v1/messages"},
+		{http.MethodPost, "/v1/responses"},
+		{http.MethodPost, "/v1/images/edits"},
+	} {
+		r.Handle(endpoint.method, endpoint.path, middleware.TokenAuth(), func(c *gin.Context) { accepted.Add(1); c.Status(http.StatusOK) })
+		request := httptest.NewRequest(endpoint.method, endpoint.path, strings.NewReader(`{"model":"gpt-4o-mini"}`))
+		request.Header.Set("Authorization", "Bearer sk-"+key.Key)
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		r.ServeHTTP(response, request)
+		assert.Equal(t, http.StatusForbidden, response.Code, endpoint.path)
+	}
+	assert.Zero(t, accepted.Load())
+	require.NoError(t, db.First(&wallet, 8101).Error)
+	assert.Equal(t, before, wallet.Quota)
+}

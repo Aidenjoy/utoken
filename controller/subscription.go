@@ -6,12 +6,62 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// AdminMembershipChannels exposes eligible model names without returning provider credentials.
+func AdminMembershipChannels(c *gin.Context) {
+	var channels []model.Channel
+	if err := model.DB.Select("id", "name", "type", "status", "models", "model_mapping", "setting").Where("status = ? AND type IN ?", common.ChannelStatusEnabled, []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAzure}).Order("id asc").Find(&channels).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	type option struct {
+		Profile string   `json:"profile"`
+		Unit    string   `json:"unit"`
+		Id      int      `json:"id"`
+		Name    string   `json:"name"`
+		Models  []string `json:"models"`
+	}
+	options := make([]option, 0)
+	for _, channel := range channels {
+		if channel.GetSetting().PassThroughBodyEnabled {
+			continue
+		}
+		models := make([]string, 0)
+		imageModels := make([]string, 0)
+		var mapping map[string]string
+		if channel.ModelMapping != nil && *channel.ModelMapping != "" {
+			if common.UnmarshalJsonStr(*channel.ModelMapping, &mapping) != nil {
+				continue
+			}
+		}
+		for _, name := range channel.GetModels() {
+			upstream := name
+			if mapped := mapping[name]; mapped != "" {
+				upstream = mapped
+			}
+			if channel.Type == constant.ChannelTypeOpenAI && model.MembershipImageModelSupported(upstream) {
+				imageModels = append(imageModels, name)
+			}
+			if model.MembershipTextModelSupported(upstream) {
+				models = append(models, name)
+			}
+		}
+		if len(models) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: models, Profile: model.MembershipTextProfile, Unit: model.MembershipUnitTokens})
+		}
+		if len(imageModels) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: imageModels, Profile: model.MembershipImageProfile, Unit: model.MembershipUnitImages})
+		}
+	}
+	common.ApiSuccess(c, options)
+}
 
 // ---- Shared types ----
 

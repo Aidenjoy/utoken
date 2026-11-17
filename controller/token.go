@@ -431,23 +431,25 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	if token.UserSubscriptionId > 0 {
-		if token.KeyType != model.TokenKeyTypeLanguage {
-			common.ApiErrorMsg(c, "membership currently requires a language key")
-			return
-		}
-		if _, err := model.GetMembershipGrant(model.DB, ownerId, token.UserSubscriptionId, token.ChannelId); err != nil {
+		grant, err := model.GetMembershipGrant(model.DB, ownerId, token.UserSubscriptionId, token.ChannelId)
+		if err != nil {
 			common.ApiError(c, err)
 			return
 		}
+		if (grant.Profile == model.MembershipTextProfile && token.KeyType != model.TokenKeyTypeLanguage) || (grant.Profile == model.MembershipImageProfile && token.KeyType != model.TokenKeyTypeImage) {
+			common.ApiErrorMsg(c, "membership key type does not match its metering profile")
+			return
+		}
 		channel, err := model.GetChannelById(token.ChannelId, false)
-		if err != nil || channel.Status != common.ChannelStatusEnabled || channel.Type != 1 {
+		if err != nil || channel.Status != common.ChannelStatusEnabled || !model.MembershipTextChannelSupported(channel.Type) || (grant.Profile == model.MembershipImageProfile && channel.Type != 1) {
 			common.ApiErrorMsg(c, "membership channel unavailable")
 			return
 		}
 		bindChannelId = token.ChannelId
-		token.UnlimitedQuota = true // Key quota is not a second spending pool.
+		token.UnlimitedQuota = true
 		token.CrossGroupRetry = false
 	}
+
 	key, err := common.GenerateKey()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgTokenGenerateFailed)

@@ -257,6 +257,7 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionAdminRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuSubscriptions))
 		{
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
+			subscriptionAdminRoute.GET("/channels", controller.AdminMembershipChannels)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)

@@ -1,27 +1,28 @@
 package model
 
 import (
+	"os"
 	"sync"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 // membershipFixture isolates billing state from .env and the application's running database.
 func membershipFixture(t *testing.T) (*SubscriptionPlan, *UserSubscription) {
 	t.Helper()
 	previousDB, previousLog := DB, LOG_DB
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
+	db := openMembershipFixtureDB(t)
 	DB, LOG_DB = db, db
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
+	if os.Getenv("MEMBERSHIP_TEST_DSN") != "" {
+		sqlDB.SetMaxOpenConns(10)
+	}
 	t.Cleanup(func() { DB, LOG_DB = previousDB, previousLog; _ = sqlDB.Close() })
 	require.NoError(t, db.AutoMigrate(&User{}, &Channel{}, &Log{}, &SubscriptionPlan{}, &UserSubscription{}, &SubscriptionOrder{}, &TopUp{}, &SubscriptionChannelQuota{}, &SubscriptionChannelRequest{}, &SubscriptionPreConsumeRecord{}))
 	require.NoError(t, db.Create(&User{Id: 701, Username: "membership", AffCode: "membership", Quota: 1000000, Group: "default"}).Error)
@@ -130,8 +131,9 @@ func TestMembershipPaymentCallbackUsesSnapshotAndGrantsOnce(t *testing.T) {
 	require.NoError(t, DB.Create(order).Error)
 	// The callback must use purchased rights even if the plan has since changed.
 	require.NoError(t, DB.Model(plan).Update("channel_quotas", JSONValue(`[]`)).Error)
-	require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, "mock receipt", PaymentProviderEpay, "alipay"))
-	require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, "duplicate receipt", PaymentProviderEpay, "alipay"))
+	require.Error(t, CompleteEpaySubscriptionOrder(order.TradeNo, "wrong amount", "alipay", "0.01"))
+	require.NoError(t, CompleteEpaySubscriptionOrder(order.TradeNo, "mock receipt", "alipay", "1.00"))
+	require.NoError(t, CompleteEpaySubscriptionOrder(order.TradeNo, "duplicate receipt", "alipay", "1.00"))
 	var count int64
 	require.NoError(t, DB.Model(&UserSubscription{}).Count(&count).Error)
 	assert.EqualValues(t, 2, count, "one balance purchase and one paid order")
@@ -159,4 +161,28 @@ func TestMembershipRejectsUnsupportedMeteringAndRetainsLedger(t *testing.T) {
 	var retained UserSubscription
 	require.NoError(t, DB.First(&retained, sub.Id).Error)
 	assert.Equal(t, SubscriptionMeterChannel, retained.MeterType)
+}
+
+func TestMembershipImageCountLedgerDoesNotFabricateTokens(t *testing.T) {
+	_, _ = membershipFixture(t)
+	require.NoError(t, DB.Create(&Channel{Id: 704, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Models: "dall-e-2"}).Error)
+	config, err := common.Marshal([]SubscriptionChannelConfig{{ChannelId: 704, Profile: MembershipImageProfile, Unit: MembershipUnitImages, Models: []string{"dall-e-2"}, QuantityLimit: 2}})
+	require.NoError(t, err)
+	plan := &SubscriptionPlan{Id: 705, Title: "image count", MeterType: SubscriptionMeterChannel, ChannelQuotas: JSONValue(config), PriceAmount: 1, Enabled: true, DurationUnit: SubscriptionDurationDay, DurationValue: 1}
+	require.NoError(t, DB.Create(plan).Error)
+	require.NoError(t, PurchaseSubscriptionWithBalance(701, plan.Id))
+	var sub UserSubscription
+	require.NoError(t, DB.Where("plan_id = ?", plan.Id).First(&sub).Error)
+	record := &SubscriptionChannelRequest{RequestId: "image-count", UserId: 701, UserSubscriptionId: sub.Id, ChannelId: 704, Model: "dall-e-2", QuantityReserved: 2}
+	require.NoError(t, ReserveMembership(record))
+	require.NoError(t, DispatchMembership(record.RequestId))
+	require.NoError(t, FinishMembershipQuantity(record.RequestId, 1, "settled", "one image returned"))
+	require.NoError(t, FinishMembershipQuantity(record.RequestId, 1, "settled", "duplicate"))
+	var grant SubscriptionChannelQuota
+	require.NoError(t, DB.Where("user_subscription_id = ?", sub.Id).First(&grant).Error)
+	assert.Zero(t, grant.InputUsed)
+	assert.Zero(t, grant.OutputUsed)
+	assert.EqualValues(t, 1, grant.QuantityUsed)
+	assert.Zero(t, grant.QuantityReserved)
+	require.ErrorIs(t, ReserveMembership(&SubscriptionChannelRequest{RequestId: "image-insufficient", UserId: 701, UserSubscriptionId: sub.Id, ChannelId: 704, Model: "dall-e-2", QuantityReserved: 2}), ErrMembershipQuota)
 }

@@ -516,18 +516,22 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		return fmt.Errorf("token is nil")
 	}
 	if token.UserSubscriptionId > 0 {
-		if token.KeyType != model.TokenKeyTypeLanguage || len(parts) > 1 || c.Request.Method != http.MethodPost || c.Request.URL.Path != "/v1/chat/completions" {
-			err := fmt.Errorf("membership endpoint is not supported")
+		grant, err := model.GetMembershipGrant(model.DB, token.UserId, token.UserSubscriptionId, token.ChannelId)
+		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 			return err
 		}
-		if _, err := model.GetMembershipGrant(model.DB, token.UserId, token.UserSubscriptionId, token.ChannelId); err != nil {
+		text := grant.Profile == model.MembershipTextProfile && token.KeyType == model.TokenKeyTypeLanguage && c.Request.URL.Path == "/v1/chat/completions"
+		image := grant.Profile == model.MembershipImageProfile && token.KeyType == model.TokenKeyTypeImage && c.Request.URL.Path == "/v1/images/generations"
+		if len(parts) > 1 || c.Request.Method != http.MethodPost || (!text && !image) {
+			err := fmt.Errorf("membership endpoint is not supported")
 			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 			return err
 		}
 		c.Set("membership_subscription_id", token.UserSubscriptionId)
 		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(token.ChannelId))
 	}
+
 	c.Set("id", token.UserId)
 	c.Set("token_id", token.Id)
 	c.Set("token_key", token.Key)

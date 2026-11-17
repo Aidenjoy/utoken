@@ -87,6 +87,11 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
+	// Real-time membership metering is not implemented yet. Reject before even
+	// reading wallet quota, including price-based sessions that otherwise skip checks.
+	if ctx.GetInt("membership_subscription_id") > 0 {
+		return errors.New("membership realtime metering is not supported; wallet fallback is forbidden")
+	}
 	if relayInfo.UsePrice {
 		return nil
 	}
@@ -157,6 +162,12 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 
 func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, modelName string,
 	usage *dto.RealtimeUsage, extraContent string) {
+	// Keep this second boundary: settlement callbacks must not mutate legacy
+	// wallet counters even if a caller bypasses the session admission check.
+	if ctx.GetInt("membership_subscription_id") > 0 {
+		logger.LogError(ctx, "membership realtime settlement rejected before legacy wallet accounting")
+		return
+	}
 
 	var tieredResult *billingexpr.TieredResult
 	tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, billingexpr.TokenParams{

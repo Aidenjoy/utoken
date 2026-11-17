@@ -11,7 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -44,6 +46,17 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 	adaptor.Init(info)
 
+	var membership *service.MembershipSession
+	if c.GetInt("membership_subscription_id") > 0 {
+		if info.ChannelType != constant.ChannelTypeOpenAI || info.RelayMode != relayconstant.RelayModeImagesGenerations || info.IsStream || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+			return types.NewErrorWithStatusCode(fmt.Errorf("unsupported membership image path"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		defer func() {
+			if membership != nil {
+				service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
+			}
+		}()
+	}
 	var requestBody io.Reader
 
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
@@ -61,6 +74,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 		switch convertedRequest.(type) {
 		case *bytes.Buffer:
+			if c.GetInt("membership_subscription_id") > 0 {
+				return types.NewError(fmt.Errorf("membership multipart image path unsupported"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+			}
 			requestBody = convertedRequest.(io.Reader)
 		default:
 			jsonData, err := common.Marshal(convertedRequest)
@@ -76,6 +92,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 				}
 			}
 
+			if c.GetInt("membership_subscription_id") > 0 {
+				membership, err = service.PrepareMembershipImages(c, info, jsonData)
+				if err != nil {
+					return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+				}
+			}
 			logger.LogDebugJSON(c, "image request body: %s", jsonData)
 			body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 			if err != nil {
@@ -90,6 +112,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
+	if membership != nil {
+		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
+			return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		membership.Dispatched = true
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
@@ -118,6 +146,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return newAPIError
 	}
 
+	if membership != nil {
+		return nil
+	} // Count settlement must precede legacy placeholder usage.
 	imageN := uint(1)
 	if request.N != nil {
 		imageN = *request.N

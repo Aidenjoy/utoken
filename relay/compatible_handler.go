@@ -71,9 +71,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	}
 	adaptor.Init(info)
 
-	var membership *service.MembershipTextSession
+	var membership *service.MembershipSession
 	if c.GetInt("membership_subscription_id") > 0 {
-		if info.ChannelType != constant.ChannelTypeOpenAI || info.RelayMode != relayconstant.RelayModeChatCompletions || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		if !model.MembershipTextChannelSupported(info.ChannelType) || info.RelayMode != relayconstant.RelayModeChatCompletions || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
 			return types.NewErrorWithStatusCode(fmt.Errorf("membership channel or protocol conversion is not supported"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		if info.IsStream {
@@ -84,7 +84,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 		defer func() {
 			if membership != nil {
-				service.FinishMembershipText(c, info, membership, newAPIError == nil)
+				service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
 			}
 		}()
 	}

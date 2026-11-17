@@ -235,16 +235,21 @@ type SubscriptionOrder struct {
 
 func (o *SubscriptionOrder) Insert() error {
 	var plan SubscriptionPlan
-	if err := DB.First(&plan, o.PlanId).Error; err != nil {
+	if o.PlanSnapshot != "" {
+		if err := common.UnmarshalJsonStr(o.PlanSnapshot, &plan); err != nil {
+			return err
+		}
+		if plan.Id != o.PlanId {
+			return errors.New("subscription quote mismatch")
+		}
+	} else if err := DB.First(&plan, o.PlanId).Error; err != nil {
 		return err
 	}
 	if _, err := ValidateSubscriptionChannels(DB, &plan); err != nil {
 		return err
 	}
-	if plan.MeterType == SubscriptionMeterChannel {
-		// Online membership payment acceptance belongs to phase three. Freeze rights now,
-		// but prevent exposing an unverified gateway for a new metering contract.
-		return errors.New("channel membership currently supports balance purchase only")
+	if plan.MeterType == SubscriptionMeterChannel && o.PaymentProvider != PaymentProviderEpay {
+		return errors.New("channel membership online payment currently supports Epay only")
 	}
 	data, err := common.Marshal(plan)
 	if err != nil {
@@ -530,7 +535,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	configs, err := ValidateSubscriptionChannels(tx, plan)
+	configs, err := validateSubscriptionChannels(tx, plan, source != "order")
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +600,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		if err != nil {
 			return nil, err
 		}
-		if err := tx.Create(&SubscriptionChannelQuota{UserSubscriptionId: sub.Id, ChannelId: cfg.ChannelId, Profile: cfg.Profile, Unit: cfg.Unit, Models: JSONValue(models), InputLimit: cfg.InputLimit, OutputLimit: cfg.OutputLimit, CreatedAt: nowUnix, UpdatedAt: nowUnix}).Error; err != nil {
+		if err := tx.Create(&SubscriptionChannelQuota{UserSubscriptionId: sub.Id, ChannelId: cfg.ChannelId, Profile: cfg.Profile, Unit: cfg.Unit, Models: JSONValue(models), InputLimit: cfg.InputLimit, OutputLimit: cfg.OutputLimit, QuantityLimit: cfg.QuantityLimit, CreatedAt: nowUnix, UpdatedAt: nowUnix}).Error; err != nil {
 			return nil, err
 		}
 	}
@@ -606,6 +611,20 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
 // actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
+	return completeSubscriptionOrder(tradeNo, providerPayload, expectedPaymentProvider, actualPaymentMethod, nil)
+}
+
+// CompleteEpaySubscriptionOrder validates a signed payment amount inside the activation transaction.
+func CompleteEpaySubscriptionOrder(tradeNo, providerPayload, actualPaymentMethod, receivedAmount string) error {
+	amount, err := decimal.NewFromString(receivedAmount)
+	if err != nil || !amount.IsPositive() {
+		return errors.New("invalid subscription payment amount")
+	}
+	return completeSubscriptionOrder(tradeNo, providerPayload, PaymentProviderEpay, actualPaymentMethod, &amount)
+}
+
+// completeSubscriptionOrder claims the pending order and grants its purchased snapshot atomically.
+func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string, receivedAmount *decimal.Decimal) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
@@ -625,6 +644,12 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
+		}
+		if receivedAmount != nil {
+			expected, err := decimal.NewFromString(strconv.FormatFloat(order.Money, 'f', 2, 64))
+			if err != nil || !receivedAmount.Equal(expected) {
+				return errors.New("subscription payment amount mismatch")
+			}
 		}
 		if order.Status == common.TopUpStatusSuccess {
 			return nil
