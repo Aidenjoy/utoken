@@ -54,6 +54,28 @@ func IsTemperatureOneOnlyModel(model string) bool {
 	return lowered == "kimi-k2.6" || strings.HasPrefix(lowered, "kimi-k3")
 }
 
+// NormalizeKimiFixedSamplingParams 归一化 Kimi 推理模型被上游固定的其余采样
+// 参数：top_p 只允许 0.95，presence_penalty/frequency_penalty 只允许 0，
+// 传其他值直接 400（官方参数参考对 K3 系列/kimi-k2.7-code/kimi-k2.6 一致，
+// 火山方舟 coding plan 端点已实测）。客户端未传的字段保持省略；
+// n 不在此列：Ark 端点实测放行 n>1，强制改 1 会静默丢弃多选请求。
+// 传 nil 指针表示该请求格式没有对应字段（如 Responses 无 penalty）。
+func NormalizeKimiFixedSamplingParams(model string, topP, presencePenalty, frequencyPenalty *float64) {
+	lowered := strings.ToLower(model)
+	if lowered != "kimi-k2.6" && !strings.HasPrefix(lowered, "kimi-k3") && !strings.HasPrefix(lowered, "kimi-k2.7-code") {
+		return
+	}
+	if topP != nil && *topP != 0.95 {
+		*topP = 0.95
+	}
+	if presencePenalty != nil && *presencePenalty != 0 {
+		*presencePenalty = 0
+	}
+	if frequencyPenalty != nil && *frequencyPenalty != 0 {
+		*frequencyPenalty = 0
+	}
+}
+
 func createTaskError(err error, code string, statusCode int, localError bool) *dto.TaskError {
 	return &dto.TaskError{
 		Code:       code,

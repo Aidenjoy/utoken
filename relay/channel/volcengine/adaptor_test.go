@@ -146,3 +146,66 @@ func TestConvertRequestKimiTemperatureOneOnly(t *testing.T) {
 		})
 	}
 }
+
+// TestConvertRequestKimiFixedSamplingParams Kimi 推理模型上游 top_p 固定
+// 0.95、presence_penalty/frequency_penalty 固定 0（官方参数参考 + Ark
+// coding plan 实测）；体验页默认 top_p=1 会被 400 拒绝。chat 与 Responses
+// 双路径归一化，未传保持省略，其他模型不受影响。
+func TestConvertRequestKimiFixedSamplingParams(t *testing.T) {
+	tests := []struct {
+		name             string
+		model            string
+		topP             *float64
+		presencePenalty  *float64
+		frequencyPenalty *float64
+		wantTopP         *float64
+		wantPresence     *float64
+		wantFrequency    *float64
+	}{
+		{"kimi-k3.1-pro 默认值归一化", "kimi-k3.1-pro",
+			common.GetPointer[float64](1), common.GetPointer[float64](0.5), common.GetPointer[float64](0.5),
+			common.GetPointer[float64](0.95), common.GetPointer[float64](0), common.GetPointer[float64](0)},
+		{"kimi-k3.1-pro 合法值不变", "kimi-k3.1-pro",
+			common.GetPointer[float64](0.95), common.GetPointer[float64](0), common.GetPointer[float64](0),
+			common.GetPointer[float64](0.95), common.GetPointer[float64](0), common.GetPointer[float64](0)},
+		{"kimi-k3.1-pro 省略保持省略", "kimi-k3.1-pro", nil, nil, nil, nil, nil, nil},
+		{"kimi-k2.7-code 同样归一化", "kimi-k2.7-code",
+			common.GetPointer[float64](0.9), nil, nil,
+			common.GetPointer[float64](0.95), nil, nil},
+		{"豆包模型不受影响", "doubao-seed-2.1-pro",
+			common.GetPointer[float64](1), common.GetPointer[float64](0.5), common.GetPointer[float64](0.5),
+			common.GetPointer[float64](1), common.GetPointer[float64](0.5), common.GetPointer[float64](0.5)},
+		{"kimi-k2.5 不受影响", "kimi-k2.5",
+			common.GetPointer[float64](1), nil, nil,
+			common.GetPointer[float64](1), nil, nil},
+	}
+	for _, tt := range tests {
+		t.Run("chat/"+tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model},
+			}
+			request := &dto.GeneralOpenAIRequest{
+				Model: tt.model, TopP: tt.topP,
+				PresencePenalty: tt.presencePenalty, FrequencyPenalty: tt.frequencyPenalty,
+			}
+			converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+			require.NoError(t, err)
+			convertedRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantTopP, convertedRequest.TopP)
+			assert.Equal(t, tt.wantPresence, convertedRequest.PresencePenalty)
+			assert.Equal(t, tt.wantFrequency, convertedRequest.FrequencyPenalty)
+		})
+		t.Run("responses/"+tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model},
+			}
+			request := dto.OpenAIResponsesRequest{Model: tt.model, TopP: tt.topP}
+			converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, request)
+			require.NoError(t, err)
+			convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantTopP, convertedRequest.TopP)
+		})
+	}
+}

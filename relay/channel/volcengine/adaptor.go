@@ -338,17 +338,17 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		request.Model = info.UpstreamModelName
 		request.THINKING = json.RawMessage(`{"type": "enabled"}`)
 	}
-	// Kimi K2.6/K3 系列（含 coding plan 转售）上游温度固定为 1，
-	// 体验页默认 0.7 等值会被 400 拒绝，转发前归一化。
-	if request.Temperature != nil && *request.Temperature != 1.0 {
-		upstreamModel := info.UpstreamModelName
-		if upstreamModel == "" {
-			upstreamModel = request.Model
-		}
-		if relaycommon.IsTemperatureOneOnlyModel(upstreamModel) {
-			request.Temperature = common.GetPointer[float64](1.0)
-		}
+	// Kimi K2.6/K3 系列（含 coding plan 转售）上游采样参数固定：
+	// temperature 只允许 1，top_p 只允许 0.95，penalty 只允许 0，
+	// 体验页默认 temperature=0.7/top_p=1 等值会被 400 拒绝，转发前归一化。
+	upstreamModel := info.UpstreamModelName
+	if upstreamModel == "" {
+		upstreamModel = request.Model
 	}
+	if request.Temperature != nil && *request.Temperature != 1.0 && relaycommon.IsTemperatureOneOnlyModel(upstreamModel) {
+		request.Temperature = common.GetPointer[float64](1.0)
+	}
+	relaycommon.NormalizeKimiFixedSamplingParams(upstreamModel, request.TopP, request.PresencePenalty, request.FrequencyPenalty)
 	return request, nil
 }
 
@@ -361,17 +361,16 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	// 与 chat 路径一致：Kimi K2.6/K3 系列只接受 temperature=1，
-	// Responses 请求同样需要归一化，否则上游报 InvalidParameter。
-	if request.Temperature != nil && *request.Temperature != 1.0 {
-		upstreamModel := info.UpstreamModelName
-		if upstreamModel == "" {
-			upstreamModel = request.Model
-		}
-		if relaycommon.IsTemperatureOneOnlyModel(upstreamModel) {
-			request.Temperature = common.GetPointer[float64](1.0)
-		}
+	// 与 chat 路径一致：Kimi K2.6/K3 系列 temperature 只接受 1、top_p 只接受
+	// 0.95，Responses 请求同样需要归一化，否则上游报 InvalidParameter。
+	upstreamModel := info.UpstreamModelName
+	if upstreamModel == "" {
+		upstreamModel = request.Model
 	}
+	if request.Temperature != nil && *request.Temperature != 1.0 && relaycommon.IsTemperatureOneOnlyModel(upstreamModel) {
+		request.Temperature = common.GetPointer[float64](1.0)
+	}
+	relaycommon.NormalizeKimiFixedSamplingParams(upstreamModel, request.TopP, nil, nil)
 	return request, nil
 }
 

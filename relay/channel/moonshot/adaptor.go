@@ -80,9 +80,11 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
-	if request.Temperature != nil && relaycommon.IsTemperatureOneOnlyModel(getUpstreamModelName(info, request.Model)) && *request.Temperature != 1.0 {
+	upstreamModel := getUpstreamModelName(info, request.Model)
+	if request.Temperature != nil && relaycommon.IsTemperatureOneOnlyModel(upstreamModel) && *request.Temperature != 1.0 {
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
+	relaycommon.NormalizeKimiFixedSamplingParams(upstreamModel, request.TopP, request.PresencePenalty, request.FrequencyPenalty)
 	return request, nil
 }
 
