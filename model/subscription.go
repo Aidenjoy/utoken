@@ -204,6 +204,9 @@ func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
 }
 
 func (p *SubscriptionPlan) NormalizeDefaults() {
+	if p.MeterType == SubscriptionMeterChannel {
+		p.AllowWalletOverflow = common.GetPointer(false)
+	}
 	if p.AllowBalancePay == nil {
 		p.AllowBalancePay = common.GetPointer(true)
 	}
@@ -1031,6 +1034,9 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
+		if sub.MeterType == SubscriptionMeterChannel {
+			return errors.New("membership ledger must be retained; invalidate the subscription instead")
+		}
 		userId = sub.UserId
 		target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
 		if err != nil {
@@ -1485,7 +1491,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	}
 	now := GetDBTimestamp()
 	var subs []UserSubscription
-	if err := DB.Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
+	if err := DB.Where("(meter_type IS NULL OR meter_type = ? OR meter_type = ?)", "", SubscriptionMeterQuota).Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
 		Order("next_reset_time asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {

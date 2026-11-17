@@ -238,6 +238,22 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
+	var current model.SubscriptionPlan
+	if err := model.DB.First(&current, id).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	// Older admin clients do not send these fields; preserve the metering contract.
+	if req.Plan.MeterType == "" {
+		req.Plan.MeterType = current.MeterType
+	}
+	if req.Plan.MeterType != current.MeterType && !(model.IsQuotaSubscription(req.Plan.MeterType) && model.IsQuotaSubscription(current.MeterType)) {
+		common.ApiErrorMsg(c, "create a new plan to change its metering type")
+		return
+	}
+	if req.Plan.ChannelQuotas == nil {
+		req.Plan.ChannelQuotas = current.ChannelQuotas
+	}
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorMsg(c, "套餐标题不能为空")
 		return

@@ -346,6 +346,10 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 }
 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
+	if ctx.GetInt("membership_subscription_id") > 0 {
+		logger.LogError(ctx, "membership request reached legacy text billing; refusing wallet debit")
+		return
+	}
 	originUsage := usage
 	if usage == nil {
 		extraContent = append(extraContent, "上游无计费信息")

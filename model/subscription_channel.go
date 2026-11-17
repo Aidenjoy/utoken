@@ -53,21 +53,35 @@ type SubscriptionChannelQuota struct {
 // SubscriptionChannelRequest persists the request state independently of HTTP lifetime.
 // prepared -> dispatched -> settled/pending; prepared alone may be released without usage.
 type SubscriptionChannelRequest struct {
-	Id                 int    `json:"id"`
-	RequestId          string `json:"request_id" gorm:"type:varchar(128);uniqueIndex"`
-	UserId             int    `json:"user_id"`
-	TokenId            int    `json:"token_id"`
-	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
-	ChannelId          int    `json:"channel_id"`
-	Model              string `json:"model" gorm:"type:varchar(255)"`
-	InputReserved      int64  `json:"input_reserved"`
-	OutputReserved     int64  `json:"output_reserved"`
-	InputUsed          int64  `json:"input_used"`
-	OutputUsed         int64  `json:"output_used"`
-	Status             string `json:"status" gorm:"type:varchar(32);index"`
-	Reason             string `json:"reason" gorm:"type:varchar(255)"`
-	CreatedAt          int64  `json:"created_at"`
-	UpdatedAt          int64  `json:"updated_at"`
+	Id                 int       `json:"id"`
+	RequestId          string    `json:"request_id" gorm:"type:varchar(128);uniqueIndex"`
+	UserId             int       `json:"user_id"`
+	TokenId            int       `json:"token_id"`
+	UserSubscriptionId int       `json:"user_subscription_id" gorm:"index"`
+	ChannelId          int       `json:"channel_id"`
+	Model              string    `json:"model" gorm:"type:varchar(255)"`
+	InputReserved      int64     `json:"input_reserved"`
+	OutputReserved     int64     `json:"output_reserved"`
+	InputUsed          int64     `json:"input_used"`
+	OutputUsed         int64     `json:"output_used"`
+	Status             string    `json:"status" gorm:"type:varchar(32);index"`
+	Reason             string    `json:"reason" gorm:"type:varchar(255)"`
+	ProviderUsage      JSONValue `json:"provider_usage,omitempty" gorm:"type:text"`
+	CreatedAt          int64     `json:"created_at"`
+	UpdatedAt          int64     `json:"updated_at"`
+}
+
+// SaveMembershipUsageReceipt stores provider evidence separately from settled accounting counters.
+// Pending records can therefore be reconciled without treating estimates as real token usage.
+func SaveMembershipUsageReceipt(requestId string, receipt []byte) error {
+	result := DB.Model(&SubscriptionChannelRequest{}).Where("request_id = ? AND status IN ?", requestId, []string{"dispatched", "pending"}).Update("provider_usage", JSONValue(receipt))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("membership receipt has no dispatched request")
+	}
+	return nil
 }
 
 // IsQuotaSubscription preserves the empty discriminator of legacy records.

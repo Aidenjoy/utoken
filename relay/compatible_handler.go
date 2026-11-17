@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -70,6 +71,23 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	}
 	adaptor.Init(info)
 
+	var membership *service.MembershipTextSession
+	if c.GetInt("membership_subscription_id") > 0 {
+		if info.ChannelType != constant.ChannelTypeOpenAI || info.RelayMode != relayconstant.RelayModeChatCompletions || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+			return types.NewErrorWithStatusCode(fmt.Errorf("membership channel or protocol conversion is not supported"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		if info.IsStream {
+			if !info.SupportStreamOptions {
+				return types.NewErrorWithStatusCode(fmt.Errorf("membership requires stream usage support"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			request.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
+		}
+		defer func() {
+			if membership != nil {
+				service.FinishMembershipText(c, info, membership, newAPIError == nil)
+			}
+		}()
+	}
 	passThroughGlobal := model_setting.GetGlobalSettings().PassThroughRequestEnabled
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
 		!passThroughGlobal &&
@@ -173,6 +191,12 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			}
 		}
 
+		if c.GetInt("membership_subscription_id") > 0 {
+			membership, err = service.PrepareMembershipText(c, info, jsonData, uint(helper.MaxTokensLimit))
+			if err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+			}
+		}
 		logger.LogDebugJSON(c, "text request body: %s", jsonData)
 
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
@@ -186,6 +210,12 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	}
 
 	var httpResp *http.Response
+	if membership != nil {
+		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
+		}
+		membership.Dispatched = true
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
@@ -211,6 +241,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		return newApiErr
 	}
 
+	if membership != nil {
+		return nil
+	} // The deferred membership settlement owns this request.
 	var containAudioTokens = usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0
 	var containsAudioRatios = ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)
 

@@ -139,3 +139,24 @@ func TestMembershipPaymentCallbackUsesSnapshotAndGrantsOnce(t *testing.T) {
 	assert.EqualValues(t, 2, count)
 	require.Error(t, CompleteSubscriptionOrder(order.TradeNo, "wrong gateway", "stripe", ""))
 }
+
+func TestMembershipRejectsUnsupportedMeteringAndRetainsLedger(t *testing.T) {
+	plan, sub := membershipFixture(t)
+	var configs []SubscriptionChannelConfig
+	require.NoError(t, common.Unmarshal(plan.ChannelQuotas, &configs))
+	for _, unit := range []string{"total_tokens", "seconds", "points", "requests"} {
+		copyPlan := *plan
+		config := configs[0]
+		config.Unit = unit
+		data, err := common.Marshal([]SubscriptionChannelConfig{config})
+		require.NoError(t, err)
+		copyPlan.ChannelQuotas = JSONValue(data)
+		_, err = ValidateSubscriptionChannels(DB, &copyPlan)
+		require.Error(t, err, unit)
+	}
+	_, err := AdminDeleteUserSubscription(sub.Id)
+	require.Error(t, err)
+	var retained UserSubscription
+	require.NoError(t, DB.First(&retained, sub.Id).Error)
+	assert.Equal(t, SubscriptionMeterChannel, retained.MeterType)
+}

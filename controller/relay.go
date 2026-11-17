@@ -158,7 +158,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
-	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
+	tokens := 0
+	if c.GetInt("membership_subscription_id") == 0 {
+		tokens, err = service.EstimateRequestToken(c, meta, relayInfo)
+	}
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeCountTokenFailed)
 		return
@@ -166,7 +169,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	relayInfo.SetEstimatePromptTokens(tokens)
 
-	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+	var priceData types.PriceData
+	if c.GetInt("membership_subscription_id") == 0 {
+		priceData, err = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+	}
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
@@ -176,7 +182,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	// 响应缓存命中直返：必须放在预扣费之前，命中时本次请求既不打上游也不产生任何扣费。
 	// 仍走 PostTextConsumeQuota 记一条 quota=0 的日志，命中率与节省额度才有数据可算。
-	if service.PrepareResponseCache(relayInfo, request) {
+	if c.GetInt("membership_subscription_id") == 0 && service.PrepareResponseCache(relayInfo, request) {
 		if cached := service.GetResponseCache(relayInfo.ResponseCacheKey); cached != nil {
 			relayInfo.CacheHit = true
 			relayInfo.IsStream = cached.IsStream
@@ -186,7 +192,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
-	if priceData.FreeModel {
+	if c.GetInt("membership_subscription_id") > 0 {
+		// Membership is reserved against the final outbound body in TextHelper.
+	} else if priceData.FreeModel {
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
 	} else {
 		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
@@ -202,7 +210,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if relayInfo.Billing != nil {
 				relayInfo.Billing.Refund(c)
 			}
-			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
+			if c.GetInt("membership_subscription_id") == 0 {
+				service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
+			}
 		}
 	}()
 
@@ -368,6 +378,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+	if c.GetInt("membership_subscription_id") > 0 {
+		return false
+	}
 	if openaiErr == nil {
 		return false
 	}

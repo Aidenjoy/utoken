@@ -135,6 +135,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 				secondLastStreamData = lastStreamData
 			}
 
+			service.ObserveMembershipUsage(c, []byte(data))
 			lastStreamData = data
 			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
 				logger.LogError(c, "error processing stream token data: "+err.Error())
@@ -227,6 +228,7 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		}
 	}
 
+	service.ObserveMembershipUsage(c, responseBody)
 	forceFormat := false
 	if info.ChannelSetting.ForceFormat {
 		forceFormat = true
