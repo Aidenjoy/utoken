@@ -28,7 +28,13 @@ func membershipAudioFixture(t *testing.T, modelName, profile, unit string, limit
 	var text model.Channel
 	require.NoError(t, db.First(&text, 8102).Error)
 	require.NoError(t, db.Create(&model.Channel{Id: 8120, Name: "mock-audio", Type: constant.ChannelTypeOpenAI, Key: "mock-only", BaseURL: text.BaseURL, Models: modelName, Group: "default", Status: common.ChannelStatusEnabled}).Error)
-	config, err := common.Marshal([]model.SubscriptionChannelConfig{{ChannelId: 8120, Profile: profile, Unit: unit, Models: []string{modelName}, QuantityLimit: limit}})
+	configValue := model.SubscriptionChannelConfig{ChannelId: 8120, Profile: profile, Unit: unit, Models: []string{modelName}, QuantityLimit: limit}
+	if profile == model.MembershipRealtimeProfile {
+		configValue.QuantityLimit = 0
+		configValue.InputLimit = 10000
+		configValue.OutputLimit = limit
+	}
+	config, err := common.Marshal([]model.SubscriptionChannelConfig{configValue})
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&model.SubscriptionPlan{Id: 8121, Title: "mock audio", MeterType: model.SubscriptionMeterChannel, ChannelQuotas: model.JSONValue(config), PriceAmount: 1, DurationUnit: model.SubscriptionDurationDay, DurationValue: 1, Enabled: true}).Error)
 	paid := membershipHTTPRequest(r, "/api/subscription/balance/pay", "", `{"plan_id":8121}`)

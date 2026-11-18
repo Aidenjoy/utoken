@@ -30,6 +30,7 @@ export const channelQuotaConfigSchema = z.object({
     'sora_completed_video_v1',
     'openai_whisper_duration_v1',
     'openai_tts_characters_v1',
+    'openai_realtime_bounded_v1',
   ]),
   unit: z.enum([
     'input_output_tokens',

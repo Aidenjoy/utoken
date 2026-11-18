@@ -219,3 +219,17 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - mock HTTP 闭环包含两个 TTS 模型、Unicode 字符、转写真实 duration、差额释放、损坏 WAV 上游零调用、缺失 duration 待核对、耗尽零上游新增调用、错误协议拒绝及钱包不变。
 - 命令：`GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s`，通过；日志 `/private/tmp/yun-token-short-audio-race.log`。前端类型检查、构建和改动文件 lint 通过，日志 `/private/tmp/yun-token-short-audio-build.log`。
 - 本机在售路由清单没有这些语音模型，因此本条是通用语音合同 mock 通过，不能标记任一实际在售实例真实通过。前端外部仍不展示数量，后台可配置毫秒/字符额度。
+
+
+## 受限实时语音合同（2026-11-18）
+
+- `openai_realtime_bounded_v1`，仅 OpenAI 类型 `gpt-4o-realtime-preview`、`GET /v1/realtime`，语言 Key，输入/输出 Token 分开计量。真实实例未验收。
+- 建立上游连接前，原子预留该渠道剩余额度的一段会话预算（输入最多 2Mi Token、输出最多4096 Token）；可用输入不足4097或输出不足1时不上游。每次生成输出最多256 Token且不超过本会话剩余输出额度，单会话最多2分钟。
+- 网关先配置空 instructions、无工具、无输入转写、无 VAD 自动生成、PCM16 输入/输出；必须收到包含这些字段的原始 `session.updated` 确认后，才开始接收和转发用户数据。不确认就断开并 pending。
+- 只接受 PCM16 append/commit、用户纯文本 message 和 response.create。拒绝客户端 session 修改、工具、并发 response；网关重建允许的事件，丢弃客户端输出上限和 instructions 覆盖。单个 response.create 再查订阅有效期。
+- 输入准入按文本字节/PCM字节、已确认上下文 Token 和格式余量构造保守上界；这不是实际用量。实际扣减只来自每个原始 response.done 的 input_tokens/output_tokens/total_tokens，检查一致性、生成上限、幂等 response_id 和累计预算。
+- 响应完成且额度耗尽则关闭会话，安静关闭时按已确认用量结算并释放差额。断开时尚有输入或生成在途、缺失用量、冲突/超界用量均保留整段预留及已确认回执，待核对；不能把未知残留自动退款。后续可继续细化逐轮账本，以减少异常会话占用预留。
+- 完全绕过旧实时钱包估算与 PostWssConsumeQuota；旧实时预扣/后结算函数仍拒绝会员作为第二层保护。普通 Key 保留原路径。
+- 本地双 WebSocket mock 验证：客户端把输出上限改成99999仍只发送预算1；PCM输入+commit+response.create；真实分项用量结算、耗尽关闭、缺失用量和上游在途断开 pending、钱包不变。服务层验证重复回执不重复计量、冲突回执和 session/system 输入拒绝。
+- `go test -race ./model ./controller ./service -run '^TestMembership'` 通过，日志 `/private/tmp/yun-token-realtime-race.log`；新增断开场景聚焦 `go test -race ./controller ./service -run '^TestMembership.*Realtime'`，日志 `/private/tmp/yun-token-realtime-focused.log`。前端类型检查、构建、改动文件 lint 通过。
+- 这不是任意实时协议支持：服务器 VAD、自动转写、工具、可变采样格式、多个并发 response、其他实时模型和新版本事件形状均未实现，不可售；服务器必须手工验收输出上限和确认事件，不能把 mock 当真实支持。

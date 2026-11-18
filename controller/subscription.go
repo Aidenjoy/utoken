@@ -38,6 +38,7 @@ func AdminMembershipChannels(c *gin.Context) {
 		videoModels := make([]string, 0)
 		transcriptionModels := make([]string, 0)
 		speechModels := make([]string, 0)
+		realtimeModels := make([]string, 0)
 		var mapping map[string]string
 		if channel.ModelMapping != nil && *channel.ModelMapping != "" {
 			if common.UnmarshalJsonStr(*channel.ModelMapping, &mapping) != nil {
@@ -48,6 +49,9 @@ func AdminMembershipChannels(c *gin.Context) {
 			upstream := name
 			if mapped := mapping[name]; mapped != "" {
 				upstream = mapped
+			}
+			if channel.Type == constant.ChannelTypeOpenAI && upstream == "gpt-4o-realtime-preview" {
+				realtimeModels = append(realtimeModels, name)
 			}
 			if channel.Type == constant.ChannelTypeOpenAI && upstream == "whisper-1" {
 				transcriptionModels = append(transcriptionModels, name)
@@ -67,6 +71,9 @@ func AdminMembershipChannels(c *gin.Context) {
 		}
 		if len(models) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: models, Profile: model.MembershipTextProfile, Unit: model.MembershipUnitTokens})
+		}
+		if len(realtimeModels) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: realtimeModels, Profile: model.MembershipRealtimeProfile, Unit: model.MembershipUnitTokens})
 		}
 		if len(transcriptionModels) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: transcriptionModels, Profile: model.MembershipTranscriptionProfile, Unit: model.MembershipUnitAudioMillis})
