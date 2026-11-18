@@ -277,3 +277,11 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - Claude/Gemini Chat 复用各自原生最终请求预留与原始用量采集；Claude空工具数组可用，实际工具不允许。Chat仅字符串文本、单输出、明确输出上限，系统提示先进入转换。Gemini显式关闭思考，参数覆盖后再次校验。Claude流式须message_stop，Gemini须终态候选和原始分项，缺少证据不释放预留、不扣钱包。
 - `GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s` 通过；model 2.735s、controller 33.635s、service 1.880s。日志 `/private/tmp/yun-token-text-bridges-race.log`。
 - 当前实际目录合同14/30 mock通过，16项缺功能；具体协议/适配器/入口及首发影响见 `channel-membership-remaining-20.md`。所有真实调用和支付仍由用户手工执行。
+
+## Gemini 原生文生图（2026-11-18）
+
+- 新增 `gemini_native_bounded_image_v1`，图像 Key，后台分别配置输入/输出额度，用户仍仅见权益状态。目录 `gemini-3-pro-image` / `gemini-3.1-flash-image`，原生 generateContent 和 streamGenerateContent；仅文本输入、单候选、显式 responseModalities 含 IMAGE、maxOutputTokens。参考图/媒体输入、远程缓存、工具仍上游前拒绝。
+- 结算输入取原始 promptTokenCount；输出为原始 candidatesTokenCount + thoughtsTokenCount，核对 totalTokenCount 一致性。思考属于上游明确报告的输出类别，不是总量反推。缺分项或不一致时 pending 保留额度；不会使用图片张数×1400占位值。
+- API字段依据：[Gemini GenerateContent](https://ai.google.dev/api/generate-content?hl=en)；输出上限含思考/图片的边界依据：[Google官方开发者论坛](https://discuss.ai.google.dev/t/gemini-3-1-flash-image-generatecontent-enforceable-billing-bounds-for-six-inline-images/187561)。实际中转实例仍需用户确认严格执行上限，否则禁止售卖。
+- `GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service ./middleware -run '^(TestMembership|TestEnforceTokenKeyType)' -count=1 -timeout=120s` 通过：model 2.850s、controller 34.706s、service 1.925s、middleware 1.808s。新增缺用量/总量错误聚焦测试另通过（`^TestMembershipHTTPGeminiImageMissingUsage`）。日志 `/private/tmp/yun-token-gemini-image-race.log`、`/private/tmp/yun-token-gemini-image-pending.log`。
+- 前端 `bun run build:check`、变更文件 oxlint 通过。全矩阵15/30合同 mock通过；真实通过仍为0。

@@ -53,7 +53,12 @@ export function MembershipKeyDialog(props: {
     mutationFn: async () => {
       let keyType: 'video' | 'image' | 'language' = 'language'
       if (video) keyType = 'video'
-      else if (props.grant.unit === 'images') keyType = 'image'
+      else if (
+        props.grant.unit === 'images' ||
+        props.grant.profile === 'gemini_native_bounded_image_v1'
+      ) {
+        keyType = 'image'
+      }
       const result = await createApiKey({
         name: name.trim(),
         user_subscription_id: props.grant.user_subscription_id,

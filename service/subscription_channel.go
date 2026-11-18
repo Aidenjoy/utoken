@@ -15,6 +15,7 @@ import (
 // MembershipSession owns one reservation and its provider usage receipt.
 // It deliberately does not implement wallet billing or use normalized quota usage.
 type MembershipSession struct {
+	GeminiImage        bool
 	ClaudeInputReceipt []byte
 	TransportComplete  bool
 	ClaudeInputSeen    bool

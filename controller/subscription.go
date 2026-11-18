@@ -41,6 +41,7 @@ func AdminMembershipChannels(c *gin.Context) {
 		realtimeModels := make([]string, 0)
 		claudeModels := make([]string, 0)
 		geminiModels := make([]string, 0)
+		geminiImageModels := make([]string, 0)
 		var mapping map[string]string
 		if channel.ModelMapping != nil && *channel.ModelMapping != "" {
 			if common.UnmarshalJsonStr(*channel.ModelMapping, &mapping) != nil {
@@ -54,6 +55,9 @@ func AdminMembershipChannels(c *gin.Context) {
 			}
 			if channel.Type == constant.ChannelTypeGemini && upstream == "gemini-3.8-flash" {
 				geminiModels = append(geminiModels, name)
+			}
+			if channel.Type == constant.ChannelTypeGemini && model.MembershipGeminiImageModelSupported(upstream) {
+				geminiImageModels = append(geminiImageModels, name)
 			}
 			if channel.Type == constant.ChannelTypeAnthropic && model.MembershipClaudeModelSupported(upstream) {
 				claudeModels = append(claudeModels, name)
@@ -79,6 +83,9 @@ func AdminMembershipChannels(c *gin.Context) {
 		}
 		if len(models) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: models, Profile: model.MembershipTextProfile, Unit: model.MembershipUnitTokens})
+		}
+		if len(geminiImageModels) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: geminiImageModels, Profile: model.MembershipGeminiImageProfile, Unit: model.MembershipUnitTokens})
 		}
 		if len(geminiModels) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: geminiModels, Profile: model.MembershipGeminiProfile, Unit: model.MembershipUnitTokens})

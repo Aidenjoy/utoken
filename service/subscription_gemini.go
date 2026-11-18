@@ -34,6 +34,7 @@ func membershipGeminiTextBound(content membershipGeminiContent) (int64, error) {
 // PrepareMembershipGemini admits a single text candidate with an explicit cap
 // and disabled thinking, after mapping/system instructions/overrides are final.
 func PrepareMembershipGemini(c *gin.Context, info *relaycommon.RelayInfo, body []byte, maxLimit uint) (*MembershipSession, error) {
+	image := model.MembershipGeminiImageModelSupported(info.UpstreamModelName)
 	var fields map[string]json.RawMessage
 	if err := common.Unmarshal(body, &fields); err != nil {
 		return nil, err
@@ -49,9 +50,10 @@ func PrepareMembershipGemini(c *gin.Context, info *relaycommon.RelayInfo, body [
 		Contents []membershipGeminiContent `json:"contents"`
 		System   *membershipGeminiContent  `json:"systemInstruction"`
 		Config   struct {
-			Max      *uint `json:"maxOutputTokens"`
-			Count    *int  `json:"candidateCount"`
-			Thinking *struct {
+			Modalities []string `json:"responseModalities"`
+			Max        *uint    `json:"maxOutputTokens"`
+			Count      *int     `json:"candidateCount"`
+			Thinking   *struct {
 				Budget  *int   `json:"thinkingBudget"`
 				Level   string `json:"thinkingLevel"`
 				Include bool   `json:"includeThoughts"`
@@ -68,13 +70,29 @@ func PrepareMembershipGemini(c *gin.Context, info *relaycommon.RelayInfo, body [
 	for key := range configFields {
 		switch key {
 		case "maxOutputTokens", "candidateCount", "thinkingConfig", "temperature", "topP", "topK", "stopSequences":
+		case "responseModalities", "imageConfig":
+			if !image {
+				return nil, errors.New("image output requires an image membership")
+			}
 		default:
 			return nil, errors.New("unsupported Gemini generation option")
 		}
 	}
 	cfg := req.Config
-	if info.UpstreamModelName != "gemini-3.8-flash" || len(req.Contents) == 0 || cfg.Max == nil || *cfg.Max == 0 || *cfg.Max > maxLimit || (cfg.Count != nil && *cfg.Count != 1) || cfg.Thinking == nil || cfg.Thinking.Budget == nil || *cfg.Thinking.Budget != 0 || cfg.Thinking.Include || cfg.Thinking.Level != "" {
+	if (!image && info.UpstreamModelName != "gemini-3.8-flash") || len(req.Contents) == 0 || cfg.Max == nil || *cfg.Max == 0 || *cfg.Max > maxLimit || (cfg.Count != nil && *cfg.Count != 1) || (!image && (cfg.Thinking == nil || cfg.Thinking.Budget == nil || *cfg.Thinking.Budget != 0 || cfg.Thinking.Include || cfg.Thinking.Level != "")) {
 		return nil, errors.New("membership Gemini requires one bounded non-thinking text candidate")
+	}
+	if image {
+		hasImage := false
+		for _, modality := range cfg.Modalities {
+			if modality != "IMAGE" && modality != "TEXT" {
+				return nil, errors.New("unsupported image response modality")
+			}
+			hasImage = hasImage || modality == "IMAGE"
+		}
+		if !hasImage {
+			return nil, errors.New("image membership requires explicit IMAGE output")
+		}
 	}
 	bound := int64(3)
 	if req.System != nil {
@@ -97,7 +115,7 @@ func PrepareMembershipGemini(c *gin.Context, info *relaycommon.RelayInfo, body [
 			return nil, errors.New("Gemini input too large")
 		}
 	}
-	session := &MembershipSession{Request: model.SubscriptionChannelRequest{RequestId: common.GetUUID(), UserId: info.UserId, TokenId: info.TokenId, UserSubscriptionId: c.GetInt("membership_subscription_id"), ChannelId: info.ChannelId, Model: info.OriginModelName, InputReserved: bound, OutputReserved: int64(*cfg.Max)}}
+	session := &MembershipSession{GeminiImage: image, Request: model.SubscriptionChannelRequest{RequestId: common.GetUUID(), UserId: info.UserId, TokenId: info.TokenId, UserSubscriptionId: c.GetInt("membership_subscription_id"), ChannelId: info.ChannelId, Model: info.OriginModelName, InputReserved: bound, OutputReserved: int64(*cfg.Max)}}
 	if err := model.ReserveMembership(&session.Request); err != nil {
 		return nil, err
 	}
@@ -137,16 +155,21 @@ func ObserveMembershipGemini(c *gin.Context, body []byte) {
 		return
 	}
 	u := response.Usage
-	if u.Input == nil || u.Output == nil || u.Total == nil || *u.Input < 0 || *u.Output < 0 || *u.Input > model.MembershipMaxTokens || *u.Output > model.MembershipMaxTokens || *u.Total != *u.Input+*u.Output || (u.Thoughts != nil && *u.Thoughts != 0) || (u.Tool != nil && *u.Tool != 0) || (u.Cached != nil && (*u.Cached < 0 || *u.Cached > *u.Input)) {
+	var thoughts int64
+	if u.Thoughts != nil {
+		thoughts = *u.Thoughts
+	}
+	if u.Input == nil || u.Output == nil || u.Total == nil || *u.Input < 0 || *u.Output < 0 || *u.Input > model.MembershipMaxTokens || *u.Output > model.MembershipMaxTokens || *u.Total != *u.Input+*u.Output+thoughts || thoughts < 0 || thoughts > model.MembershipMaxTokens || (!session.GeminiImage && thoughts != 0) || (u.Tool != nil && *u.Tool != 0) || (u.Cached != nil && (*u.Cached < 0 || *u.Cached > *u.Input)) {
 		session.InvalidUsage = true
 		return
 	}
-	if session.HasUsage && (session.Input != *u.Input || session.Output != *u.Output) {
+	if session.HasUsage && (session.Input != *u.Input || session.Output != *u.Output+thoughts) {
 		session.InvalidUsage = true
 		return
 	}
 	session.Input = *u.Input
-	session.Output = *u.Output
+	// Thinking is a provider-reported output category, never total-minus-input.
+	session.Output = *u.Output + thoughts
 	session.HasUsage = true
 	session.TransportComplete = true
 	session.UsageReceipt, _ = common.Marshal(u)

@@ -61,6 +61,11 @@ func enforceTokenKeyType(c *gin.Context) {
 		return
 	}
 	required := requiredKeyType(c.Request.Method, c.Request.URL.Path)
+	if c.GetBool("membership_gemini_image") {
+		// TokenAuth already verified this image membership and its native endpoint.
+		// Ordinary keys retain their existing Gemini protocol classification.
+		required = model.TokenKeyTypeImage
+	}
 	if required == "" || required == keyType {
 		return
 	}

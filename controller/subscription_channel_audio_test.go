@@ -31,12 +31,12 @@ func membershipAudioFixture(t *testing.T, modelName, profile, unit string, limit
 	if profile == model.MembershipClaudeProfile {
 		channelKind = constant.ChannelTypeAnthropic
 	}
-	if profile == model.MembershipGeminiProfile {
+	if profile == model.MembershipGeminiProfile || profile == model.MembershipGeminiImageProfile {
 		channelKind = constant.ChannelTypeGemini
 	}
 	require.NoError(t, db.Create(&model.Channel{Id: 8120, Name: "mock-audio", Type: channelKind, Key: "mock-only", BaseURL: text.BaseURL, Models: modelName, Group: "default", Status: common.ChannelStatusEnabled}).Error)
 	configValue := model.SubscriptionChannelConfig{ChannelId: 8120, Profile: profile, Unit: unit, Models: []string{modelName}, QuantityLimit: limit}
-	if profile == model.MembershipClaudeProfile || profile == model.MembershipGeminiProfile {
+	if profile == model.MembershipClaudeProfile || profile == model.MembershipGeminiProfile || profile == model.MembershipGeminiImageProfile {
 		configValue.QuantityLimit = 0
 		configValue.InputLimit = 2000
 		configValue.OutputLimit = 30
@@ -57,7 +57,11 @@ func membershipAudioFixture(t *testing.T, modelName, profile, unit string, limit
 	require.True(t, result.Success, paid.Body.String())
 	var sub model.UserSubscription
 	require.NoError(t, db.Where("plan_id = ?", 8121).First(&sub).Error)
-	created := membershipHTTPRequest(r, "/api/token", "", fmt.Sprintf(`{"name":"mock-member-audio","key_type":"language","user_subscription_id":%d,"channel_id":8120,"expired_time":-1}`, sub.Id))
+	keyType := "language"
+	if profile == model.MembershipGeminiImageProfile {
+		keyType = "image"
+	}
+	created := membershipHTTPRequest(r, "/api/token", "", fmt.Sprintf(`{"name":"mock-member-audio","key_type":%q,"user_subscription_id":%d,"channel_id":8120,"expired_time":-1}`, keyType, sub.Id))
 	require.NoError(t, common.Unmarshal(created.Body.Bytes(), &result))
 	require.True(t, result.Success, created.Body.String())
 	var key model.Token
