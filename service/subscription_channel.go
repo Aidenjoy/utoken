@@ -15,15 +15,18 @@ import (
 // MembershipSession owns one reservation and its provider usage receipt.
 // It deliberately does not implement wallet billing or use normalized quota usage.
 type MembershipSession struct {
-	TransportComplete bool
-	Quantity          int64
-	Request           model.SubscriptionChannelRequest
-	Input             int64
-	Output            int64
-	HasUsage          bool
-	InvalidUsage      bool
-	Dispatched        bool
-	UsageReceipt      []byte
+	ClaudeInputReceipt []byte
+	TransportComplete  bool
+	ClaudeInputSeen    bool
+	ClaudeOutputSeen   bool
+	Quantity           int64
+	Request            model.SubscriptionChannelRequest
+	Input              int64
+	Output             int64
+	HasUsage           bool
+	InvalidUsage       bool
+	Dispatched         bool
+	UsageReceipt       []byte
 }
 
 // PrepareMembershipText validates the final outbound body and reserves both token dimensions.
@@ -124,7 +127,7 @@ func FinishMembershipRequest(c *gin.Context, info *relaycommon.RelayInfo, sessio
 	input, output, quantity := int64(0), int64(0), int64(0)
 	if !session.Dispatched {
 		outcome, reason = "released", "request was not dispatched"
-	} else if succeeded && c.Request.Context().Err() == nil && session.HasUsage && !session.InvalidUsage && (session.TransportComplete || !info.IsStream || (info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone && !info.StreamStatus.HasErrors())) {
+	} else if succeeded && c.Request.Context().Err() == nil && session.HasUsage && !session.InvalidUsage && ((session.TransportComplete && (info.StreamStatus == nil || !info.StreamStatus.HasErrors())) || !info.IsStream || (info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone && !info.StreamStatus.HasErrors())) {
 		outcome, reason = "settled", "raw provider usage receipt"
 		input, output, quantity = session.Input, session.Output, session.Quantity
 	}

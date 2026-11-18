@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -24,6 +25,21 @@ import (
 func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 
 	info.InitChannelMeta(c)
+
+	var membership *service.MembershipSession
+	if c.GetInt("membership_subscription_id") > 0 {
+		if info.ChannelType != constant.ChannelTypeAnthropic || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+			return types.NewError(fmt.Errorf("membership Claude conversion unsupported"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		defer func() {
+			if membership != nil {
+				if info.IsStream && !membership.TransportComplete {
+					membership.InvalidUsage = true
+				}
+				service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
+			}
+		}()
+	}
 
 	claudeReq, ok := info.Request.(*dto.ClaudeRequest)
 
@@ -190,6 +206,12 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
+		if c.GetInt("membership_subscription_id") > 0 {
+			membership, err = service.PrepareMembershipClaude(c, info, jsonData, helper.MaxTokensLimit)
+			if err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+			}
+		}
 		logger.LogDebugJSON(c, "requestBody: %s", jsonData)
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {
@@ -203,6 +225,12 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 	var httpResp *http.Response
+	if membership != nil {
+		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
+			return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		membership.Dispatched = true
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
@@ -226,6 +254,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return newAPIError
 	}
 
+	if membership != nil {
+		return nil
+	}
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
 	return nil
 }

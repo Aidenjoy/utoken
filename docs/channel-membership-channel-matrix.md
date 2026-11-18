@@ -19,7 +19,7 @@
 | 19 / kuantum | gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra, gpt-6-luna, gpt-6-sol | `POST /v1/responses` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 20 / xixiapi | gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra, gpt-6-luna, gpt-6-sol, gpt-6.1-sol | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 逐模型名已验证普通/流式、原始分项、耗尽零调用、钱包不变；必须再手工验证该上游输出上限与真实用量 |
 | 20 / xixiapi | gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra, gpt-6-luna, gpt-6-sol, gpt-6.1-sol | `POST /v1/responses` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
-| 21 / xixiapi | claude-fable-5, claude-fable-5-1, claude-opus-5, claude-opus-5-5, claude-sonnet-5, claude-sonnet-5-5 | `POST /v1/messages` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
+| 21 / xixiapi | claude-fable-5, claude-fable-5-1, claude-opus-5, claude-opus-5-5, claude-sonnet-5, claude-sonnet-5-5 | `POST /v1/messages` | mock 通过；待用户手工实测该实例 | 原生纯文本、真实缓存输入相加、输出上限、message_stop；工具/图片/缓存注解仍不支持 |
 | 21 / xixiapi | claude-fable-5, claude-fable-5-1, claude-opus-5, claude-opus-5-5, claude-sonnet-5, claude-sonnet-5-5 | `POST /v1/chat/completions` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 23 / gemini-nanobanana | gemini-3-pro-image, gemini-3.1-flash-image | `POST /v1beta/models/*:generateContent（含 stream）` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 23 / gemini-nanobanana | gemini-3-pro-image, gemini-3.1-flash-image | `POST /v1/images/generations` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |

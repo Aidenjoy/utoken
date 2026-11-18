@@ -241,3 +241,14 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - xAI 在原始响应/原始 SSE 数据进入旧归一化之前捕获真实字段；旧适配器 total-minus-input 仍仅供旧路径使用。专项测试证明 raw completion_tokens 缺失时为 pending，而不是把推算输出扣给会员。
 - 命令：`GOCACHE=/private/tmp/yun-token-go-cache go test ./controller -run '^TestMembershipHTTP(Catalog|Xai)' -count=1 -timeout=120s`，通过，日志 `/private/tmp/yun-token-catalog-text.log`。所有请求到 loopback，不使用真实渠道地址或 Key。
 - 对应本机渠道19/20/39的 chat、渠道25的 chat 标记为 mock 通过/待用户手工实例验收；相同渠道的 Responses 仍未实现并在会员鉴权前置拒绝。真实可售清单仍为空。
+
+
+## 原生 Claude Messages（2026-11-18）
+
+- `anthropic_messages_text_v1`，只允许 Anthropic 类型及本机目录六个明确模型名，原生 `/v1/messages`。普通/流式纯文本均 mock 通过；模型映射、系统提示及参数覆盖之后预留，最终 max_tokens 为可执行输出上限。
+- 输入使用原始 input_tokens + cache_creation_input_tokens + cache_read_input_tokens，三者均为输入；输出只取原始 output_tokens，不做比例或总量拆分。禁用请求缓存注解、工具、媒体、扩展思考和 Responses 转换。provider_usage 保存最初原始输入/缓存证据和最新原始输出证据。
+- 流式必须收到原生 message_stop、明确输入和最终输出字段且无扫描错误；单独 OpenAI [DONE] 不能替代终态。截断或缺失字段保留 pending，不走钱包。
+- 六个实际模型名各跑普通/流式、真实缓存输入字段、耗尽零调用、钱包不变；另测缓存注解上游前拒绝、缺失 message_stop 即使有 [DONE] 也 pending。
+- 全会员 `go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s` 已通过（controller16.956s），日志 `/private/tmp/yun-token-claude-race.log`。
+- 扩大 race 发现 WebSocket 夹具在处理器尾部统计尚未结束时重置全局开关；已单独修复处理器结束同步和重复写相同开关的竞态。该问题属于新增夹具收尾，修复后的通过结果取代之前受影响的 race 结果，不归入素材库既有失败。
+- 渠道21原生 Messages 为 mock 通过/待用户手工实测；同渠道的 Chat Completions 转换仍拒绝会员，不能由原生协议通过推断转换协议通过。

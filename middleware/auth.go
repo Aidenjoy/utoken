@@ -547,8 +547,9 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			image := grant.Profile == model.MembershipImageProfile && token.KeyType == model.TokenKeyTypeImage && c.Request.URL.Path == "/v1/images/generations"
 			video := grant.Profile == model.MembershipVideoProfile && token.KeyType == model.TokenKeyTypeVideo && c.Request.URL.Path == "/v1/videos"
 			audio := token.KeyType == model.TokenKeyTypeLanguage && ((grant.Profile == model.MembershipTranscriptionProfile && c.Request.URL.Path == "/v1/audio/transcriptions") || (grant.Profile == model.MembershipSpeechProfile && c.Request.URL.Path == "/v1/audio/speech"))
+			claude := grant.Profile == model.MembershipClaudeProfile && token.KeyType == model.TokenKeyTypeLanguage && c.Request.URL.Path == "/v1/messages"
 			realtime := grant.Profile == model.MembershipRealtimeProfile && token.KeyType == model.TokenKeyTypeLanguage && c.Request.Method == http.MethodGet && c.Request.URL.Path == "/v1/realtime"
-			if !realtime && (c.Request.Method != http.MethodPost || (!text && !image && !video && !audio)) {
+			if !realtime && (c.Request.Method != http.MethodPost || (!text && !image && !video && !audio && !claude)) {
 				err := fmt.Errorf("membership endpoint is not supported")
 				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 				return err
