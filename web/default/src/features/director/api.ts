@@ -68,16 +68,20 @@ export async function updateDirectorSettings(params: {
 }
 
 // 用户已有令牌列表（供模型设定页按能力选择模型 Key）
+export interface DirectorTokenOption {
+  id: number
+  name: string
+  key: string
+  status: number
+  key_type: string
+  video_model: string
+  model_limits_enabled: boolean
+  model_limits: string
+}
+
 export async function getDirectorTokenOptions(): Promise<
   ApiResponse<{
-    items: {
-      id: number
-      name: string
-      key: string
-      status: number
-      key_type: string
-      video_model: string
-    }[]
+    items: DirectorTokenOption[]
     total: number
   }>
 > {
