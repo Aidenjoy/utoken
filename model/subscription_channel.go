@@ -23,7 +23,7 @@ const (
 	MembershipMaxTokens      int64 = 2147483647
 )
 
-var ErrMembershipQuota = errors.New("membership channel quota insufficient")
+var ErrMembershipQuota = errors.New("套餐额度不足")
 
 // SubscriptionChannelConfig defines a channel's sellable, versioned metering contract.
 // Models are public model names; the text profile additionally checks the final upstream model.

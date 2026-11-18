@@ -100,6 +100,12 @@ func GetSubscriptionPlans(c *gin.Context) {
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
 		p.NormalizeDefaults()
+		publicPlan, viewErr := publicMembershipPlan(p)
+		if viewErr != nil {
+			common.ApiError(c, viewErr)
+			return
+		}
+		p = publicPlan
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -124,10 +130,21 @@ func GetSubscriptionSelf(c *gin.Context) {
 		activeSubscriptions = []model.SubscriptionSummary{}
 	}
 
+	publicActive, err := publicSubscriptionSummaries(activeSubscriptions)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	publicAll, err := publicSubscriptionSummaries(allSubscriptions)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
 	common.ApiSuccess(c, gin.H{
 		"billing_preference": pref,
-		"subscriptions":      activeSubscriptions, // all active subscriptions
-		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"subscriptions":      publicActive, // all active subscriptions
+		"all_subscriptions":  publicAll,    // all subscriptions including expired
 	})
 }
 

@@ -408,3 +408,48 @@ func TestMembershipHTTPUnimplementedProtocolsNeverReachWalletOrUpstream(t *testi
 	require.NoError(t, db.First(&wallet, 8101).Error)
 	assert.Equal(t, before, wallet.Quota)
 }
+
+// TestMembershipPublicViewsHideAmounts keeps internal allowance configuration out
+// of user responses without changing the grant or the admin configuration contract.
+func TestMembershipPublicViewsHideAmounts(t *testing.T) {
+	r, db, _, subID := membershipHTTPFixture(t, func(w http.ResponseWriter, req *http.Request) { t.Error("public views must never call an upstream") })
+	r.GET("/api/subscription/plans", GetSubscriptionPlans)
+	r.GET("/api/subscription/self", func(c *gin.Context) { c.Set("id", 8101); GetSubscriptionSelf(c) })
+	r.GET("/api/subscription/admin/plans", AdminListSubscriptionPlans)
+	var before model.SubscriptionChannelQuota
+	require.NoError(t, db.Where("user_subscription_id = ?", subID).First(&before).Error)
+	for _, path := range []string{"/api/subscription/plans", "/api/subscription/self"} {
+		response := httptest.NewRecorder()
+		r.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusOK, response.Code)
+		require.Contains(t, response.Body.String(), `"success":true`)
+		require.Contains(t, response.Body.String(), `"channel_id":8102`)
+		for _, field := range []string{"input_limit", "output_limit", "input_used", "output_used", "input_reserved", "output_reserved", "quantity_limit", "quantity_used", "quantity_reserved"} {
+			assert.NotContains(t, response.Body.String(), `"`+field+`"`, path)
+		}
+		if path == "/api/subscription/self" {
+			require.Contains(t, response.Body.String(), `"available":true`)
+			var result struct {
+				Data struct {
+					Subscriptions []PublicSubscriptionSummary `json:"subscriptions"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+			require.Len(t, result.Data.Subscriptions, 1)
+			require.Len(t, result.Data.Subscriptions[0].ChannelQuotas, 1)
+			assert.Equal(t, subID, result.Data.Subscriptions[0].ChannelQuotas[0].UserSubscriptionId)
+		}
+	}
+	admin := httptest.NewRecorder()
+	r.ServeHTTP(admin, httptest.NewRequest(http.MethodGet, "/api/subscription/admin/plans", nil))
+	require.Contains(t, admin.Body.String(), `"input_limit":2000`)
+	require.Contains(t, admin.Body.String(), `"output_limit":30`)
+	var after model.SubscriptionChannelQuota
+	require.NoError(t, db.First(&after, before.Id).Error)
+	assert.Equal(t, before, after)
+	require.NoError(t, db.Model(&model.SubscriptionChannelQuota{}).Where("id = ?", before.Id).Update("output_used", before.OutputLimit).Error)
+	exhausted := httptest.NewRecorder()
+	r.ServeHTTP(exhausted, httptest.NewRequest(http.MethodGet, "/api/subscription/self", nil))
+	assert.Contains(t, exhausted.Body.String(), `"available":false`)
+	assert.NotContains(t, exhausted.Body.String(), `"output_used"`)
+}
