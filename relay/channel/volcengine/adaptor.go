@@ -331,7 +331,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		return nil, errors.New("request is nil")
 	}
 
-	if c.GetInt("membership_subscription_id") > 0 && request.MaxCompletionTokens == nil {
+	if c != nil && c.GetInt("membership_subscription_id") > 0 && request.MaxCompletionTokens == nil {
 		// Ark max_tokens can exclude thinking. The membership reservation bounds
 		// all output, so send the total completion cap instead.
 		request.MaxCompletionTokens = request.MaxTokens
