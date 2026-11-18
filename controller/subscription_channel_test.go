@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,19 +20,89 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+// setupMembershipHTTPTestDB keeps the default isolated SQLite fixture and adds an
+// opt-in independent MySQL/PostgreSQL database per test via MEMBERSHIP_TEST_DSN.
+// It creates a fresh loopback-only database for every test, retains it afterwards,
+// and never drops a database or reads the application's SQL_DSN/.env.
+func setupMembershipHTTPTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	dsn := os.Getenv("MEMBERSHIP_TEST_DSN")
+	if dsn == "" {
+		return setupModelListControllerTestDB(t)
+	}
+	gin.SetMode(gin.TestMode)
+	if common.RedisEnabled {
+		common.RedisEnabled = false
+	}
+	dialect := os.Getenv("MEMBERSHIP_TEST_DIALECT")
+	name := fmt.Sprintf("membership_http_%d", time.Now().UnixNano())
+	previousMain, previousLog := common.MainDatabaseType(), common.LogDatabaseType()
+	var db *gorm.DB
+	switch dialect {
+	case "mysql":
+		cfg, parseErr := mysqldriver.ParseDSN(dsn)
+		require.NoError(t, parseErr)
+		require.True(t, strings.HasPrefix(cfg.Addr, "127.0.0.1:"), "external membership tests require a loopback-only disposable instance")
+		admin, openErr := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		require.NoError(t, openErr)
+		require.NoError(t, admin.Exec("CREATE DATABASE `"+name+"` CHARACTER SET utf8mb4").Error)
+		connection, connErr := admin.DB()
+		require.NoError(t, connErr)
+		require.NoError(t, connection.Close())
+		cfg.DBName = name
+		var openErr2 error
+		db, openErr2 = gorm.Open(mysql.Open(cfg.FormatDSN()), &gorm.Config{})
+		require.NoError(t, openErr2)
+		common.SetDatabaseTypes(common.DatabaseTypeMySQL, common.DatabaseTypeMySQL)
+	case "postgres":
+		require.Contains(t, dsn, "host=127.0.0.1 ")
+		admin, openErr := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		require.NoError(t, openErr)
+		require.NoError(t, admin.Exec(`CREATE DATABASE "`+name+`"`).Error)
+		connection, connErr := admin.DB()
+		require.NoError(t, connErr)
+		require.NoError(t, connection.Close())
+		var openErr2 error
+		db, openErr2 = gorm.Open(postgres.Open(dsn+" dbname="+name), &gorm.Config{})
+		require.NoError(t, openErr2)
+		common.SetDatabaseTypes(common.DatabaseTypePostgreSQL, common.DatabaseTypePostgreSQL)
+	default:
+		t.Fatalf("unsupported MEMBERSHIP_TEST_DIALECT %q", dialect)
+	}
+	model.InitCol()
+	model.DB, model.LOG_DB = db, db
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	t.Cleanup(func() {
+		common.SetDatabaseTypes(previousMain, previousLog)
+		model.InitCol()
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	t.Logf("independent %s http database retained: %s", dialect, name)
+	return db
+}
 
 // membershipHTTPFixture exercises real purchase, key issuance, authentication, distribution and relay.
 func membershipHTTPFixture(t *testing.T, upstream http.HandlerFunc) (*gin.Engine, *gorm.DB, *model.Token, int) {
 	t.Helper()
-	db := setupModelListControllerTestDB(t)
+	db := setupMembershipHTTPTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.Token{}, &model.Log{}, &model.LogBody{}, &model.TopUp{}, &model.Task{}, &model.Agent{}, &model.OrgMember{}, &model.SubscriptionPlan{}, &model.SubscriptionOrder{}, &model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}, &model.SubscriptionChannelQuota{}, &model.SubscriptionChannelRequest{}))
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
+	if os.Getenv("MEMBERSHIP_TEST_DSN") != "" {
+		sqlDB.SetMaxOpenConns(10)
+	}
 	previousMemory, previousBatch, previousLogs := common.MemoryCacheEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled
 	common.MemoryCacheEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled = false, false, true
 	t.Cleanup(func() {
