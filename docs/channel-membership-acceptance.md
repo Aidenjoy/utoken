@@ -1,5 +1,13 @@
 # 按渠道额度会员：阶段一至三验收
 
+## 当前产品口径（2026-11-18，覆盖此前的用户展示要求）
+
+- 对外仍是一个会员套餐，仅展示名称、价格、有效期、渠道/模型和可用状态，不展示内部 Token 上限、已用、预留或剩余量；其他会员计量额度也统一保留在后台。
+- 后台输入/输出 Token 额度继续独立配置和查看，实际调用仍按可信输入/输出用量分别扣减；未修改预留、结算、购买权益快照或任何存量数据。
+- `/api/subscription/plans` 与 `/api/subscription/self` 对会员权益做响应投影，不返回具体额度字段；保留创建 Key 所需订阅/渠道绑定，并提供 `available` 状态。管理员接口继续返回完整配置与台账。
+- 普通 quota 套餐保持原展示及接口行为。模型调用本身的标准 usage 响应和历史请求用量日志不属于套餐额度展示，本次未更改。
+- 额度不足对用户提示“套餐额度不足”。本次验证全部使用本地 mock；不连接真实模型、不执行真实资金操作、不迁移或删除业务数据。
+
 ## 本轮交付边界
 
 - 复用套餐、余额购买、订单、用户订阅、Key 和消费日志；阶段三新增个人菜单“渠道会员” `/memberships`，复用后台订阅管理和 Key 管理。
@@ -34,7 +42,7 @@
 价格、有效期、启用状态等沿用原字段。渠道必须启用、类型为 OpenAI（文本也可 Azure）、声明配置中的公开模型，映射后的模型必须属于本轮支持清单。其他模型或计量单位不能加入此版本可售配置。修改套餐不改变已开通快照；套餐不能原地切换计量类型。
 
 1. 登录后 `POST /api/subscription/balance/pay`，请求 `{"plan_id":123}`。
-2. `GET /api/subscription/self` 获取订阅 ID 和 `channel_quotas`：上限、已用、预留；可用量为 `limit-used-reserved`，有效期取订阅 `end_time`。
+2. `GET /api/subscription/self` 获取订阅 ID、渠道/模型和 `available` 状态；具体额度仅后台可见，有效期取订阅 `end_time`。
 3. `POST /api/token/` 创建 Key，保留既有 `name`、模型权限、IP 等字段，并提供 `key_type=language`、`user_subscription_id`、`channel_id`、`expired_time=-1`。使用既有 Key 查询接口取得密钥。
 4. 调 `/v1/chat/completions`，例如文本消息和 `max_tokens=128`。多个绑定同一订阅及渠道的 Key 共用快照，不能改绑，也不扣钱包、旧订阅或企业池。
 
@@ -60,7 +68,7 @@
 | 同模型流式 | 同上 | 同上，强制请求上游 usage | 原始用量 + 完整 `[DONE]` 后 | 完整结束及截断测试通过 | 真实代理断连测试待补 |
 | Claude `/v1/messages`、Gemini `models/*` | 待逐适配器核对缓存与分项语义 | 阶段三 | 阶段三 | 会员拒绝；普通 Key 保持原逻辑 | 分项归一、缓存与计量真实性 |
 | `/v1/completions`、Responses/compact、聊天转 Responses | 待核对 | 阶段三 | 阶段三 | 会员拒绝 | 输出边界及转换路径 |
-| `/v1/videos`、remix、Kling、Ark `/api/v3/contents/generations/tasks` | 待核对总 Token、点数、秒或次数 | `relay/relay_task.go` 提交前，需关联任务及原订阅 | `service/task_polling.go` 统一终态处理 | 会员拒绝，未声明支持 | 取消/失败/补录/重复轮询/到期后查询与结算 |
+| remix、Kling、Ark `/api/v3/contents/generations/tasks` | 待核对总 Token、点数、秒或次数 | `relay/relay_task.go` 提交前，需关联任务及原订阅 | `service/task_polling.go` 统一终态处理 | 会员拒绝，未声明支持 | 取消/失败/补录/重复轮询/到期后查询与结算 |
 | `/v1/audio/transcriptions`、`translations` | 待核对真实音频用量/时长 | `relay/audio_handler.go` 最终请求前 | 音频适配器及 `service/quota.go` | 会员拒绝 | 排除音频文件时长推算 Token 的伪分项 |
 | `/v1/audio/speech` | 待核对真实输出用量/时长 | 同上 | 同上 | 会员拒绝 | TTS 计量合同及可靠终态 |
 | `/v1/realtime` | 待核对会话输入/输出 | 会话前及会话中 | 实时 usage 事件 | 会员拒绝 | 替换原钱包检查、会话中耗尽处理 |
@@ -138,9 +146,66 @@ node web/default/scripts/preview-channel-membership-mock.mjs
 |---|---|---|
 | OpenAI / Azure 文本 | 两种适配器普通/流式 mock、GPT-4.1 mini 映射、额度不足零调用 | 其他白名单模型逐项 mock、真实渠道会员用量与输出边界验收 |
 | DALL-E 图片 | DALL-E 2 / 3 张数边界及结算；DALL-E 2 差额释放/缺失结果/耗尽拦截 | 各真实图片渠道验收 |
-| 视频 | 查明 `RelayTaskSubmit` 预扣与 `ApplyUpstreamTaskResult` 终态路径，会员目前拒绝 | 任务绑定原订阅、异步预留、成功/失败/取消、重复轮询、补录、到期查询；Kling 点数不得使用旧转换 Token，Ark 总量不得拆成输入/输出 |
+| Sora 视频 | `sora-2` / `sora-2-pro` 共用成功视频次数合同，提交预留、终态原子结算、失败/取消回执返还预留、到期查询、未知结果 pending 已通过 mock | 真实渠道未验收；其他平台的原始用量合同与接入仍待完成 |
 | 转写/合成/实时语音 | 未支持接口鉴权拒绝；实时计费边界额外拒绝钱包回退 | 可信单位、可执行预留上限、实时会话中预算与耗尽处理 |
 | Claude/Gemini/Responses/其他接口 | 未支持路径拒绝并保持普通 Key 原逻辑 | 按适配器核对真实用量、最终请求预留和结算 |
 | 正式支付 | Epay 签名与订单事务 mock | 实际启用状态及真实沙箱未验证；按用户限制不进行真实资金操作 |
 
 截至周五 **2026-11-20**，当前可确认开放售卖的真实渠道清单为 **空**。mock 通过的候选仅为上述文本与图片合同；不能把 mock 结果或普通 Key 可用替代真实会员验收。阶段三仍在进行，未完成视频、语音及全部在售接口覆盖。
+
+
+## 视频增量验收（2026-11-17）
+
+### 共用机制与计量边界
+
+- 新合同 `sora_completed_video_v1`，单位 `completed_videos`。每个成功的单视频资源扣一次；失败或取消的可信终态回执结算为零并返还预留。时长、金额、点数不换算成 Token。
+- 共用原有渠道额度账本；适配器通过 `MembershipTaskMeter` 只提供原始终态判定。不同渠道不会复制购买、预留、并发控制和结算逻辑。
+- 当前实现覆盖 OpenAI / Sora 类型的 Sora 适配器，模型 `sora-2` / `sora-2-pro`。只接受 JSON 文生视频 `POST /v1/videos`，最终请求只允许 model/prompt/seconds/size；时长限定 4/8/12 秒。不包含 remix、图片输入、批量任务、Ark、Kling 等其他协议。
+- 公共 task_id 在发送前生成并作为会员请求幂等 ID。提交前原子预留一次；上游接受后，任务保存原会员请求绑定和上游 ID。会员视频跳过钱包价格预扣、提交即扣费和旧轮询 Token 换算。
+- 终态处理入口复用 `ApplyUpstreamTaskResult`。适配器核对回执中的任务 ID 和可选模型，再由数据库事务同时更新任务终态、真实回执和会员账本。重复轮询/补录不重复扣；冲突终态拒绝覆盖。
+- 失败 HTTP、断连、未知状态、任务 ID 不匹配均不能证明视频失败，保留预留并记录 pending。不得按超时自动退款，提交失败不重试生成。
+- 订阅到期或渠道停用后，绑定该订阅的 Key 仍能查询已受理任务；新提交拒绝。其他订阅即使属于同一用户、同一渠道也无权读该任务。
+- 已有内容代理入口的会员鉴权允许到期后读取自身任务；本轮仅验证内容路由鉴权，用固定 mock 字节响应替代下载，没有真实下载模型产物。
+- 没有新增取消 API。上游 `cancelled` 终态回执通过统一终态入口返还预留；旧的本地取消和钱包退款函数拒绝会员任务，避免未经上游确认就释放额度。
+- 界面沿用“渠道会员”入口，后台可配置成功视频次数，用户可看上限/已用/预留/可用并选择模型创建视频会员 Key。普通视频 Key 仍保留创建时自动匹配渠道，会员 Key 固定权益渠道。
+
+### 实测与复现
+
+```bash
+GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s
+GOCACHE=/private/tmp/yun-token-go-cache go test ./controller ./relay/channel/task/sora -run '^(TestMembershipHTTPVideo|TestRelayTaskBoundVideoKeyRetriesSameChannel|TestLockTokenBoundVideoChannelScope|TestShouldRetryTaskRelay|TestAddVideoToken|TestParseTaskResultStatusMapping)' -count=1 -timeout=120s
+# 同前文独立本地数据库环境变量，追加的新视频事务测试也纳入 ^TestMembership。
+cd web/default
+bun run typecheck
+bun run build
+NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-channel-membership-ui.mjs
+```
+
+- mock HTTP：购买 → 视频 Key → 提交 → 预留 → 余额耗尽上游零新增调用 → 到期/渠道停用后查询 → completed/failed/cancelled 回执 → 结算 → 重复回报。另含 Sora Pro、错误任务 ID、未知 HTTP 结果不重试、跨订阅拒绝和钱包不变。
+- model：终态任务与账本事务失败回滚、两个并发终态回放只扣一次、到期后结算和终态冲突拒绝。SQLite / MySQL / PostgreSQL 共用同一个测试；没有删库删表或清理测试数据。
+- 本地 MySQL 8.0 全会员模型测试通过（9.493s），PostgreSQL 15 通过（8.050s）；日志 `/private/tmp/yun-token-video-mysql.log`、`/private/tmp/yun-token-video-postgres.log`。
+- 会员 model/controller/service `-race` 通过；日志 `/private/tmp/yun-token-video-race.log`。普通视频 Key 相关路由/重试和 Sora 解析聚焦回归通过，日志 `/private/tmp/yun-token-video-regression.log`。
+- 前端类型检查及构建通过，改动文件 lint 通过。隔离浏览器 `MOCK_UI_PASS` 新增 `videoCreated=true`，模型选择正确，手机无横向溢出，`realApiCalls=0`；日志 `/private/tmp/yun-token-video-ui.log`。
+
+### 本轮后仍未完成
+
+- Sora 适配器的 OpenAI 类型渠道实例尚需独立场景验收；Sora 类型已完成 mock，不代表任何真实实例可售。
+- 其他视频平台应提供其真实总量/点数/时长/次数合同，再复用任务账本；不使用旧适配器的伪分项 Token。
+- 主动取消 API、异常任务管理对账页面、语音各接口、其他文本协议、其他图片接口仍待开发。既有素材库失败依旧与会员回归分开记录。
+- 按用户强制边界，本轮及后续均不真实请求任何模型，不执行真实充值、支付或余额扣款；真实验收未执行，可宣布真实售卖的渠道清单仍为空。
+
+### 当前收尾状态
+
+- 本轮视频增量保留在工作区，尚未提交；不会覆盖前两笔阶段三提交。
+- 最后一次执行受限操作时，自动审批服务因使用额度限制无法完成审核；最终复验、独立 mock 预览重启及 git 提交尚未执行，不能当作通过或已提交。
+- 已通过的 race、数据库及浏览器证据为上文实际日志。最后将模型层纯账本夹具的示例模型统一为 Sora 2 后未再次执行后端测试；最终交付前仍需复验。
+- OpenAI 类型渠道的独立 Sora 任务场景仍待增加；当前 Sora 2 / Pro HTTP mock 均使用 Sora 类型。
+- 模型真实调用和真实资金操作持续禁止；没有任何真实验收结果。
+
+### 2026-11-18 展示调整验证
+
+- `GOCACHE=/private/tmp/yun-token-go-cache go test ./controller ./model -run '^TestMembership' -count=1 -timeout=120s` 通过（controller 3.343s、model 2.919s）；日志 `/private/tmp/yun-token-membership-public-tests.log`。
+- 新增公开视图 HTTP 回归确认：套餐和我的订阅均不含具体额度字段、订阅/渠道绑定完整、后台仍有输入/输出额度、读取不改变原额度、耗尽仅返回 `available=false`。
+- `bun run typecheck`、`bun run build`、改动前端文件 oxlint 和 `git diff --check` 通过。
+- 隔离浏览器 mock 验证套餐及我的会员不显示 Token 数值，购买后仍能创建文本/图片/视频会员 Key，后台仍可配置输入/输出额度；`MOCK_UI_PASS` 且 `realApiCalls=0`。日志 `/private/tmp/yun-token-membership-public-ui.log`。
+- 没有运行真实模型、支付、充值或业务数据库操作；没有重启业务服务。本轮与已有视频增量一起保留在工作区，未自动提交其他已有改动。
