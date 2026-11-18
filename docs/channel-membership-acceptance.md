@@ -300,3 +300,38 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - 聚焦命令 `GOCACHE=/private/tmp/yun-token-go-cache go test ./controller -run '^TestMembershipHTTPVolcCatalogueText$' -count=1 -timeout=120s` 通过，日志 `/private/tmp/yun-token-volc-total-cap.log`。
 - 完整命令 `GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service ./middleware -run '^(TestMembership|TestEnforceTokenKeyType)' -count=1 -timeout=120s` 通过：model3.134s/controller37.582s/service1.835s/middleware1.730s，日志 `/private/tmp/yun-token-volc-total-cap-race.log`。
 - 用户要求完成本渠道后暂停，接续提示词在 `channel-membership-handoff.md`。当前16/30受限合同mock通过，剩余14项；本次没有调用真实上游/支付、没有删除数据或修改.env。
+
+## Seedream 按张计数合同（2026-11-18，接续开发）
+
+- 新增 `ark_seedream_image_count_v1`，仅火山图像类型（类型60）、目录 `doubao-seedream-5-0` / `doubao-seedream-5-0-pro`（及官方日期 ID `doubao-seedream-5-0-260128` / `doubao-seedream-5-0-pro-260628`），非流式 `POST /v1/images/generations`，图像 Key，复用既有 quantity 台账（单位 `images`），无新表/新列。
+- **计量单位依据（官方）**：Ark 图像[计费](https://www.volcengine.com/docs/82379/1544106)按张计费，原文「单次请求费用 = Σ（每张输入图片 × 输入图单价）+ Σ（每张输出图片 × 对应档位的输出图单价）」「仅对成功生成图片按张数进行计费」。[API 参考](https://www.volcengine.com/docs/82379/1541523)的 `usage.generated_images` 是「模型成功生成的图片张数，不包含生成失败的图片」，即原始可信计费回执；`usage.output_tokens` 官方定义为 `sum(图片长×图片宽)/256` 取整，是像素推导的**参考量**而非计费依据；`usage.total_tokens`「当前不计算输入 token，故与 output_tokens 值一致」；**任何型号都不存在 `input_tokens` 字段**（pro/flash 仅有 `input_images` 张数）。因此真实支持单位是张数，不是输入/输出 Token。
+- **对接手提示词的更正**：交接 R13 假设「按输入/输出或总量 Token 计量、某些型号有 input_tokens」。官方文档证实该假设不成立——没有 input_tokens、没有可执行输出 Token 上限参数（Ark 图像 API 参数清单无 `max_tokens`、无 `n`），且计费按张。故本合同按张计量，**不是**「按返回张数把真实 Token 抹掉」：结算严格取原始 `usage.generated_images`（不是 `len(data)`），并把原始 `output_tokens/total_tokens/generated_images/input_images/tool_usage` 完整保存为 `provider_usage` 证据，Token 参考量未被丢弃。
+- **受限合同（发送上游前强制）**：最终 Ark payload（模型映射与参数覆盖之后）只允许 `model/prompt/n/size/response_format/watermark` 六个键；`n` 必须为 1（缺省经请求校验归一为 1）；拒绝 `sequential_image_generation`/`sequential_image_generation_options`/`layer_decomposition`/`tools`/`image`/`stream`/`max_tokens` 等任何其它键。依据官方：`sequential_image_generation` 默认 disabled「模型只会生成一张图」，5.0 pro「不支持配置 sequential_image_generation、暂不支持组图/联网搜索/流式」，pro 图层拆分单次最多 1+16=17 张——这些多张路径全部在上游前拒绝，保证单请求最多 1 张可计费图片，预留 1 张即为可靠上界。
+- **结算与待核对**：只取原始 `usage.generated_images`，校验 `0≤generated_images≤预留`、`total_tokens==output_tokens`、`generated_images==0 ⇔ output_tokens==0`、`len(data)==generated_images`、每个 data 有 url/b64、`input_images==0`、`tool_usage.web_search==0`；任一缺失或不一致保留 pending，不回退占位张数。可信零回执（审核失败 0 张）结算 0 并释放预留。重复结算幂等，耗尽上游零新增调用，钱包不变。
+- **mock 证据**：新增 `controller/subscription_channel_seedream_test.go`（原始张数结算+证据保留+幂等+耗尽零调用+钱包不变、缺用量 pending、零张结算、10 项越界上游前拒绝、5 项不一致用量 pending）。聚焦 `GOCACHE=/private/tmp/yun-token-go-cache go test ./controller -run '^TestMembershipHTTPSeedream' -count=1 -timeout=120s` 通过；完整 `GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service ./middleware -run '^(TestMembership|TestEnforceTokenKeyType)' -count=1 -timeout=120s` 通过：model2.760s/controller36.388s/service1.881s/middleware1.776s，日志 `/private/tmp/yun-token-seedream-race.log`。前端 `bun run typecheck`、改动文件 oxlint、`bun run build:check` 通过，日志 `/private/tmp/yun-token-seedream-build.log`。
+- **仍须手工验收**：实际转售实例是否严格执行 disabled 单图、是否真实返回 `usage.generated_images`、参数覆盖后是否仍守边界，必须由用户实测；mock 通过不代表真实通过。官方[模型列表](https://www.volcengine.com/docs/82379/1330310)已对 `doubao-seedream-5-0-260128` 标注「即将下线」，售卖前需确认在售型号。普通 Key 的 Ark 图像逻辑（含 sequential 多张按返回张数计费）保持原样。
+- 全矩阵更新为 **17/30 受限合同 mock 通过，13 项缺功能，真实通过 0**。
+
+## 既有火山适配器测试空指针修复（2026-11-18）
+
+- 接手复现时发现 `relay/channel/volcengine` 包 `TestConvertRequestKimiTemperatureOneOnly` 在 HEAD `8af1b799` 即 panic：该提交在 `ConvertOpenAIRequest` 加入 `c.GetInt("membership_subscription_id")`，而既有测试以 `c=nil` 调用。属上一客户端火山总上限提交引入的既有测试失败，非本次新增；上一客户端聚焦 `^TestMembership` 未覆盖该包。
+- 最小修复：会员判断改为 `c != nil && c.GetInt(...) > 0`。生产 relay 的 `c` 恒非空，行为不变；仅消除测试空指针。修复后 `go test ./relay/channel/volcengine` 通过（0.887s），聚焦 `^TestMembershipHTTPVolcCatalogueText$` 仍通过（1.225s）。未改动 Kimi 温度归一化或火山总上限语义。
+
+## Ark/Seedance 视频会员阻塞证据（R01—R12，2026-11-18）
+
+结论：**保持禁售**。官方文档证实不存在可执行的单请求 Token 硬上限，无法构造可靠预留边界；不伪造 mock 上限字段。
+
+- [创建视频任务 API](https://www.volcengine.com/docs/82379/1520757) 完整 Body 参数为 model/content[]/omni_reference_task_type/resolution/ratio/duration/frames/generate_audio/watermark/output_format/seed/camera_fixed/return_last_frame/draft/service_tier/callback_url/execution_expires_after/priority/safety_identifier/tools[]，**无 max_tokens 或任何输出用量上限字段**。`frames` 精确控帧「Seedance 2.0 系列、1.5 Pro 暂不支持」；2.5 编辑/延长任务强制 `ratio=adaptive`、`duration=-1`，输出规格完全由上游决定。
+- [定价](https://www.volcengine.com/docs/82379/1544106)原文「token 用量估算公式：(输入视频时长+输出视频时长)×输出宽×输出高×帧率/1024，**该计算结果为估算值**，准确 token 用量以调用 API 后返回的 usage.completion_tokens 字段为准」。估算不能充当不超扣保证。
+- [查询任务 API](https://www.volcengine.com/docs/82379/1521309)：`usage.completion_tokens`「可作为计费对账依据」，但「Seedance 2.5/2.0 系列存在**最低 token 用量限制**，实际用量低于最低值时返回最低值并按最低值计费」；`total_tokens`「视频生成模型不统计输入 token，输入 token 为 0，故 total_tokens=completion_tokens」——无输入分项，total−completion 恒 0 不能当输入。
+- [用量上限设置](https://ark.volcengine.com/region:cn-beijing/docs/activation-management)是账号/模型/接入点级（达上限暂停服务、按预估用量拦截），**非单请求/单终端用户级**，不能充当会员单请求硬上限。
+- 因此：终态对账可行（completion_tokens 为真实计费值），但发送前无可执行硬上限、规格上界为估算且 duration=-1/adaptive 场景更不确定，无法保证预留≥真实用量。按交接约束禁止加入可售套餐。OpenAI 兼容 `/v1/videos` 未找到官方参数文档，按未证实处理。`doubao-seedance-2.0-test` 未出现在现行官方模型列表。
+
+## GPT Image 会员阻塞证据（R16，2026-11-18）
+
+结论：**保持禁售**。原始用量分项可得，但无可执行输出上限、无官方 2.5 输出 Token 数值表，无法构造可靠预留边界。
+
+- 型号存在：[官方公告](https://openai.com/index/introducing-chatgpt-images-2-5/)（2026-09-08）与官方 SDK（OpenAPI 规范生成）`image_generate_params.py` 列出 `gpt-image-2.5-flare`/`gpt-image-2.5-sunburst` 及快照；`gpt-image-1` 已于 2026-10-23 关停。
+- [官方 SDK 请求参数](https://github.com/openai/openai-python/blob/main/src/openai/types/image_generate_params.py)（generations/edits 同）：prompt/model/n/size/quality/background/output_format/output_compression/partial_images/moderation/complexity/stream/safety_identifier/svg/frame_count 等，**无 max_tokens/max_output_tokens 或任何输出 Token 上限字段**。输出 Token 由 size×quality 决定，官方仅提供**估算计算器**且「GPT Image 2 计算器不能估算 2.5 的用量」，2.5 专属数值表未获官方原文（定价页/指南对本环境 403）。
+- [响应 usage](https://github.com/openai/openai-python/blob/main/src/openai/types/images_response.py)：input_tokens/output_tokens/total_tokens 及 input_tokens_details{text,image}；流式终态 `image_generation.completed`/`image_edit.completed` 事件 usage 必填。edits 最多 16 张参考图、n≤10。
+- 因此：usage 分项与流式终态证据满足，但「请求级硬上限」不达标，size×quality→Token 为估算且 2.5 无官方表，预留无法保证≥真实用量。按交接约束不得用占位值/费率/未知型号硬编码上限，保持禁售。Responses 外层 max_output_tokens 只约束外层文本，不约束图像工具 Token。

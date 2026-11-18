@@ -12,7 +12,7 @@
 | 5 / qd2 | doubao-seedance-2.0, doubao-seedance-2.0-fast, doubao-seedance-2.0-mini, doubao-seedance-2.5 | `POST /v1/videos、GET 单任务` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 9 / qd5 | doubao-seedance-2.0 | `POST /api/v3/contents/generations/tasks、GET 单任务` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 9 / qd5 | doubao-seedance-2.0 | `POST /v1/videos、GET 单任务` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
-| 11 / hs | doubao-seedream-5-0, doubao-seedream-5-0-pro | `POST /v1/images/generations` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
+| 11 / hs | doubao-seedream-5-0, doubao-seedream-5-0-pro | `POST /v1/images/generations` | mock 通过；待用户手工实测该实例 | 受限单张文生图计数合同 `ark_seedream_image_count_v1`：最终 payload 仅 model/prompt/n/size/response_format/watermark，n=1，拒绝组图/图层拆分/参考图/工具/流式；按原始 usage.generated_images 结算并保留 output_tokens 证据，缺用量 pending。官方按张计费、无 input_tokens、无输出 Token 硬上限；实际实例严格执行待手工验收 |
 | 14 / qd8 | doubao-seedance-2.0 | `POST /api/v3/contents/generations/tasks、GET 单任务` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 14 / qd8 | doubao-seedance-2.0 | `POST /v1/videos、GET 单任务` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 19 / kuantum | gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra, gpt-6-luna, gpt-6-sol | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 逐模型名已验证普通/流式、原始分项、耗尽零调用、钱包不变；必须再手工验证该上游输出上限与真实用量 |
@@ -49,7 +49,7 @@
 
 ## 路径拒绝证据
 
-剩余20项的缺口、适配器、会员结算入口及首发影响详见 [专项分类](channel-membership-remaining-20.md)。火山2项补最小准入验证后，当前全矩阵为16项合同 mock通过、14项缺功能。
+剩余20项的缺口、适配器、会员结算入口及首发影响详见 [专项分类](channel-membership-remaining-20.md)。火山2项补最小准入验证、Seedream 图像补按张计数合同后，当前全矩阵为17项合同 mock通过、13项缺功能（R01—R12 Ark视频与 R16 GPT Image 因无可执行输出硬上限保持禁售，证据见主验收文档）。
 
 `TestMembershipHTTPUnimplementedProtocolsNeverReachWalletOrUpstream` 使用真实 TokenAuth 和本地处理器计数：文本会员 Key 对 audio 转写/翻译/合成、realtime、video、Ark、Claude、Responses compact、图片 edits 均在处理器前 403，钱包不变。其他会员 profile 只放行各自精确路径；通用 `PreConsumeBilling` / `SettleBilling`、实时预扣和后结算额外拒绝会员进入旧钱包路径。后续新增 profile 后应保留跨协议拒绝回归。
 

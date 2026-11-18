@@ -51,9 +51,10 @@
 
 ## 最新候选增量（2026-11-18）
 
-- 最新代码和接续状态以 `channel-membership-handoff.md` 与主验收文档末尾为准。实际目录16/30受限合同mock通过，真实通过0；不能据此直接公开售卖。
+- 最新代码和接续状态以 `channel-membership-handoff.md` 与主验收文档末尾为准。实际目录17/30受限合同mock通过，真实通过0；不能据此直接公开售卖。
 - 火山Chat：核对最终上游字段为max_completion_tokens，严格涵盖思考与回答；只支持max_tokens或忽略硬上限的实例不得通过。Responses单独核对max_output_tokens，不用Chat成功代替。
 - ClaudeChat/原生：核对缓存读/写输入分别原始采集再汇总输入，流式完整message_stop；工具/媒体仍拒绝。
 - Gemini文本及Chat：仅单候选显式关闭思考的合同；不接受该参数的实例不得通过。
 - Gemini原生图片/Images兼容：原生maxOutputTokens；Images兼容需显式max_tokens，非流式、单张文生图。核对输入prompt、候选输出和思考原始用量，输出为候选+思考；参考图输入仍拒绝。缺用量不得以1400 Token/图占位结算。
-- Ark视频、Seedream、GPT-image实际目录合同仍缺功能，禁止把普通Key成功或DALL-E/Sora合同通过当成它们的会员通过。
+- Seedream图片（渠道11/类型60，`ark_seedream_image_count_v1`）：仅非流式单张文生图，n=1，最终上游报文不得含 sequential_image_generation/layer_decomposition/tools/image/stream/max_tokens。核对上游真实返回 `usage.generated_images`（官方按张计费依据），后台已用张数增量与之一致；`output_tokens/total_tokens` 应相等且作为证据保留（不是计费单位）。组图、图层拆分、参考图、联网搜索、流式必须在上游前拒绝。缺 usage 或不一致须 pending，不得按返回 data 张数或占位结算。官方已标注 doubao-seedream-5-0-260128「即将下线」，先确认在售型号；实际实例不严格执行单图或不返回 generated_images 则标为不通过。
+- Ark视频（R01—R12）、GPT Image（R16）经官方文档核实无可执行单请求输出硬上限，**保持禁售**，不要尝试售卖或用普通Key成功/DALL-E/Sora合同通过冒充其会员通过。证据见主验收文档两节阻塞证据。
