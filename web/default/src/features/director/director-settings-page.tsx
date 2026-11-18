@@ -105,71 +105,117 @@ export function DirectorSettingsPage() {
     }
   }, [modelsQuery.data])
 
-  // 先选 Key 再选模型：模型候选随所选 Key 收窄（视频 Key 锁定单一模型，限制模型的 Key 只列其允许模型）
+  // Key 按能力过滤：已分类 Key 只出现在对应能力下；存量空类型 Key 三项能力通用
+  const textTokens = React.useMemo(
+    () =>
+      enabledTokens.filter(
+        (token) => !token.key_type || token.key_type === 'language'
+      ),
+    [enabledTokens]
+  )
+  const imageTokens = React.useMemo(
+    () =>
+      enabledTokens.filter(
+        (token) => !token.key_type || token.key_type === 'image'
+      ),
+    [enabledTokens]
+  )
+  const videoTokens = React.useMemo(
+    () =>
+      enabledTokens.filter(
+        (token) => !token.key_type || token.key_type === 'video'
+      ),
+    [enabledTokens]
+  )
+
+  const textTokenOptions = React.useMemo(
+    () =>
+      textTokens.map((token) => ({
+        value: String(token.id),
+        label: `${token.name} sk-${token.key}`,
+      })),
+    [textTokens]
+  )
+  const imageTokenOptions = React.useMemo(
+    () =>
+      imageTokens.map((token) => ({
+        value: String(token.id),
+        label: `${token.name} sk-${token.key}`,
+      })),
+    [imageTokens]
+  )
+  // 视频 Key 锁定单一视频模型，选项标注绑定模型便于核对
+  const videoTokenOptions = React.useMemo(
+    () =>
+      videoTokens.map((token) => ({
+        value: String(token.id),
+        label: token.video_model
+          ? `${token.name} (${token.video_model}) sk-${token.key}`
+          : `${token.name} sk-${token.key}`,
+      })),
+    [videoTokens]
+  )
+
+  // 先选 Key 再选模型：模型候选随所选 Key 收窄（视频 Key 锁定单一模型，限制模型的 Key 只列其允许模型）；
+  // 只在本能力候选内解析 Key，避免跨能力误命中导致模型列表被错误收窄
   const textModelOptions = React.useMemo(
     () =>
       getKeyModelOptions(
         modelsByCategory.text,
-        enabledTokens.find((token) => String(token.id) === textTokenId)
+        textTokens.find((token) => String(token.id) === textTokenId)
       ),
-    [modelsByCategory, enabledTokens, textTokenId]
+    [modelsByCategory, textTokens, textTokenId]
   )
   const imageModelOptions = React.useMemo(
     () =>
       getKeyModelOptions(
         modelsByCategory.image,
-        enabledTokens.find((token) => String(token.id) === imageTokenId)
+        imageTokens.find((token) => String(token.id) === imageTokenId)
       ),
-    [modelsByCategory, enabledTokens, imageTokenId]
+    [modelsByCategory, imageTokens, imageTokenId]
   )
   const videoModelOptions = React.useMemo(
     () =>
       getKeyModelOptions(
         modelsByCategory.video,
-        enabledTokens.find((token) => String(token.id) === videoTokenId)
+        videoTokens.find((token) => String(token.id) === videoTokenId)
       ),
-    [modelsByCategory, enabledTokens, videoTokenId]
+    [modelsByCategory, videoTokens, videoTokenId]
   )
 
-  // Key 按能力过滤：已分类 Key 只出现在对应能力下；存量空类型 Key 三项能力通用
-  const textTokenOptions = React.useMemo(
-    () =>
-      enabledTokens
-        .filter((token) => !token.key_type || token.key_type === 'language')
-        .map((token) => ({
-          value: String(token.id),
-          label: `${token.name} sk-${token.key}`,
-        })),
-    [enabledTokens]
-  )
-  const imageTokenOptions = React.useMemo(
-    () =>
-      enabledTokens
-        .filter((token) => !token.key_type || token.key_type === 'image')
-        .map((token) => ({
-          value: String(token.id),
-          label: `${token.name} sk-${token.key}`,
-        })),
-    [enabledTokens]
-  )
-  // 视频 Key 锁定单一视频模型，选项标注绑定模型便于核对
-  const videoTokenOptions = React.useMemo(
-    () =>
-      enabledTokens
-        .filter((token) => !token.key_type || token.key_type === 'video')
-        .map((token) => ({
-          value: String(token.id),
-          label: token.video_model
-            ? `${token.name} (${token.video_model}) sk-${token.key}`
-            : `${token.name} sk-${token.key}`,
-        })),
-    [enabledTokens]
-  )
+  // 存量设定可能绑定已删除/禁用/类型不符的 Key：不在本能力候选内即视为未选择，
+  // 避免回显裸 ID、错误收窄模型列表，以及保存时把失效绑定原样写回
+  React.useEffect(() => {
+    if (!tokensQuery.data) return
+    if (textTokenId && !textTokenOptions.some((o) => o.value === textTokenId)) {
+      setTextTokenId('')
+    }
+    if (
+      imageTokenId &&
+      !imageTokenOptions.some((o) => o.value === imageTokenId)
+    ) {
+      setImageTokenId('')
+    }
+    if (
+      videoTokenId &&
+      !videoTokenOptions.some((o) => o.value === videoTokenId)
+    ) {
+      setVideoTokenId('')
+    }
+  }, [
+    tokensQuery.data,
+    textTokenOptions,
+    imageTokenOptions,
+    videoTokenOptions,
+    textTokenId,
+    imageTokenId,
+    videoTokenId,
+  ])
 
   // 切换 Key 后，若当前模型不在新 Key 的允许列表内，自动落到首个候选；未限制模型的 Key 不改写已选模型
   const handleTextTokenChange = (value: string) => {
     setTextTokenId(value)
-    const token = enabledTokens.find((item) => String(item.id) === value)
+    const token = textTokens.find((item) => String(item.id) === value)
     if (!token?.model_limits_enabled) return
     const options = getKeyModelOptions(modelsByCategory.text, token)
     if (options.length > 0 && !options.some((o) => o.value === textModel)) {
@@ -178,7 +224,7 @@ export function DirectorSettingsPage() {
   }
   const handleImageTokenChange = (value: string) => {
     setImageTokenId(value)
-    const token = enabledTokens.find((item) => String(item.id) === value)
+    const token = imageTokens.find((item) => String(item.id) === value)
     if (!token?.model_limits_enabled) return
     const options = getKeyModelOptions(modelsByCategory.image, token)
     if (options.length > 0 && !options.some((o) => o.value === imageModel)) {
@@ -189,7 +235,7 @@ export function DirectorSettingsPage() {
   // 视频 Key 与模型强绑定：选中 Key 后自动填入其绑定模型，避免模型/Key 不一致
   const handleVideoTokenChange = (value: string) => {
     setVideoTokenId(value)
-    const token = enabledTokens.find((item) => String(item.id) === value)
+    const token = videoTokens.find((item) => String(item.id) === value)
     if (token?.video_model) {
       setVideoModel(token.video_model)
     }
@@ -265,9 +311,13 @@ export function DirectorSettingsPage() {
                       id='director-text-token'
                       label={t('Language Model Key')}
                       options={textTokenOptions}
-                      value={textTokenId}
+                      value={
+                        textTokenOptions.some((o) => o.value === textTokenId)
+                          ? textTokenId
+                          : ''
+                      }
                       onValueChange={handleTextTokenChange}
-                      placeholder={t('Select a language model key...')}
+                      placeholder={t('Not selected')}
                       emptyText={t('No available key.')}
                     />
                     <ComboboxField
@@ -279,7 +329,7 @@ export function DirectorSettingsPage() {
                       options={textModelOptions}
                       value={textModel}
                       onValueChange={setTextModel}
-                      placeholder={t('Select or type a model name...')}
+                      placeholder={t('Not selected')}
                       emptyText={t('No model found.')}
                       allowCustomValue
                     />
@@ -299,9 +349,13 @@ export function DirectorSettingsPage() {
                       id='director-image-token'
                       label={t('Image Model Key')}
                       options={imageTokenOptions}
-                      value={imageTokenId}
+                      value={
+                        imageTokenOptions.some((o) => o.value === imageTokenId)
+                          ? imageTokenId
+                          : ''
+                      }
                       onValueChange={handleImageTokenChange}
-                      placeholder={t('Select an image model key...')}
+                      placeholder={t('Not selected')}
                       emptyText={t('No available key.')}
                     />
                     <ComboboxField
@@ -313,7 +367,7 @@ export function DirectorSettingsPage() {
                       options={imageModelOptions}
                       value={imageModel}
                       onValueChange={setImageModel}
-                      placeholder={t('Select or type a model name...')}
+                      placeholder={t('Not selected')}
                       emptyText={t('No model found.')}
                       allowCustomValue
                     />
@@ -334,9 +388,13 @@ export function DirectorSettingsPage() {
                         'A video key is bound to a single video model. Selecting a key fills in its model automatically.'
                       )}
                       options={videoTokenOptions}
-                      value={videoTokenId}
+                      value={
+                        videoTokenOptions.some((o) => o.value === videoTokenId)
+                          ? videoTokenId
+                          : ''
+                      }
                       onValueChange={handleVideoTokenChange}
-                      placeholder={t('Select a video model key...')}
+                      placeholder={t('Not selected')}
                       emptyText={t('No available key.')}
                     />
                     <ComboboxField
@@ -345,7 +403,7 @@ export function DirectorSettingsPage() {
                       options={videoModelOptions}
                       value={videoModel}
                       onValueChange={setVideoModel}
-                      placeholder={t('Select or type a model name...')}
+                      placeholder={t('Not selected')}
                       emptyText={t('No model found.')}
                       allowCustomValue
                     />
