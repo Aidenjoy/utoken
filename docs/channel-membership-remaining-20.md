@@ -6,7 +6,7 @@
 
 分类依据：**缺功能**＝会员入口或计量合同尚未完整接通；**已有实现待验收**＝该协议会员实现完整，仍需明确 mock/真实证据状态；**与已测项共用链路**＝不需要新扣减算法，补准入和独立验证即可。普通 Key 的既有实现不算会员实现。
 
-初次分类为18项缺功能、2项共用链路。追加桥接后当前为：**15项缺功能、3项已有实现待手工验收（mock通过）、2项与已测项共用链路**。全矩阵30项中15项合同 mock通过，15项缺功能；真实通过数为0。
+初次分类为18项缺功能、2项共用链路。追加桥接后当前为：**14项缺功能、4项已有实现待手工验收（mock通过）、2项与已测项共用链路**。全矩阵30项中16项合同 mock通过，14项缺功能；真实通过数为0。
 
 ## 先判断火山文本
 
@@ -48,7 +48,7 @@ GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./ser
 | R12 | 38 / qd17 | `POST /v1/videos；GET /v1/videos/:task_id（含统一视频别名）` | `arknative.TaskAdaptor`；`RelayTaskSubmit` → `ParseVolcTaskResult` → `ApplyUpstreamTaskResult` | 缺功能 | 无会员入口；需原始可空 usage 总量合同、可执行的预留上限、任务原订阅绑定及终态结算/取消。已有 `CompleteMembershipTask` 只接受成功视频次数，不能把价格换算或总量拆成输入/输出。 | 视频会员首发阻断；纯文本候选可不包含它，后续再接入 |
 | R13 | 11 / hs | `POST /v1/images/generations` | `volcengine.Adaptor.ConvertImageRequest` → `ImageHelper` → `OpenaiImageHandler` | 缺功能 | 无 Seedream 会员合同。现有 `PrepareMembershipImages` 仅 DALL-E 张数；需核对原始单位、组图/顺序生成实际最大数量、预留及真实响应。`n` 不能覆盖额外 sequential 配置。 | Seedream 图片会员首发阻断；纯文本可后补 |
 | R14 | 23 / gemini-nanobanana | `POST /v1beta/models/*:generateContent` / `streamGenerateContent` | `gemini.Adaptor` → `GeminiTextGenerationHandler/StreamHandler` | 已有实现待手工验收（mock通过） | `GeminiHelper` → `PrepareMembershipGemini` → `ObserveMembershipGemini` → `FinishMembershipRequest`；受限文生图，输入/候选输出/思考原始分项，输出总上限；参考图仍拒绝。 | Gemini 图片会员首发阻断；纯文本可后补 |
-| R15 | 23 / gemini-nanobanana | `POST /v1/images/generations` | `gemini.Adaptor.ConvertImageRequest` → `GeminiNanoBananaImageHandler` | 缺功能 | 无会员预留/结算桥接。旧处理器在输出Token缺失时可按图片数×1400回填，此值明确禁止用于会员；需原始图片/Token合同和输入输出预留。可复用台账，不能直接复用旧归一化结果。 | 同 R14；协议转换还需独立 mock |
+| R15 | 23 / gemini-nanobanana | `POST /v1/images/generations` | `gemini.Adaptor.ConvertImageRequest` → `GeminiNanoBananaImageHandler` | 已有实现待手工验收（mock通过） | `ImageHelper` → `PrepareMembershipGemini` → `GeminiNanoBananaImageHandler` 原始 `ObserveMembershipGemini` → `FinishMembershipRequest`；显式 max_tokens、非流式单张文生图；缺分项 pending，不用1400占位值。 | 同 R14；协议转换还需独立 mock |
 | R16 | 24 / gpt-image2 | `POST /v1/images/generations`、`POST /v1/images/edits` | `openai.Adaptor` → `ImageHelper` → `OpenaiImageHandler` / stream / JSON-as-stream | 缺功能 | DALL-E计次已测，但新 GPT Image 模型尚无会员合同；需原始 input/output usage、可执行输出上限、图像输入边界以及编辑/流式终态。`normalizeOpenAIUsage` 的回填不作为证据。 | GPT Image 会员首发阻断；不得用普通 Key 调通替代 |
 | R17 | 21 / xixiapi | `POST /v1/chat/completions` → 原生 Messages | `claude.Adaptor.ConvertOpenAIRequest` → `ClaudeHandler/StreamHandler` | 已有实现待手工验收（mock通过） | `TextHelper` 最终转换请求 → `PrepareMembershipClaude` → `ObserveMembershipClaude` → `FinishMembershipRequest`；6模型普通/流式、缓存输入、耗尽零调用、钱包隔离和不完整终态待核对已通过。 | 若首发使用原生 Messages，可后补；若客户端只会 Chat，则阻断该客户端的 Claude 首发 |
 | R18 | 26 / xixiapi | `POST /v1/chat/completions` → Gemini generateContent | `gemini.Adaptor.ConvertOpenAIRequest` → `GeminiChatHandler/StreamHandler` | 已有实现待手工验收（mock通过） | `TextHelper` 最终转换请求 → `PrepareMembershipGemini` → `ObserveMembershipGemini` → `FinishMembershipRequest`；显式关闭思考、原始输入/输出、普通/流式、耗尽零调用和钱包隔离已通过。 | 若首发使用原生 Gemini，可后补；只会 Chat 的客户端则阻断 |

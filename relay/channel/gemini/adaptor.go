@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -61,7 +62,33 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	if model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) {
+	if model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) || (c.GetInt("membership_subscription_id") > 0 && model.MembershipGeminiImageModelSupported(info.UpstreamModelName)) {
+
+		if c.GetInt("membership_subscription_id") > 0 {
+			// Reject references before their converter can fetch remote media.
+			if !model.MembershipGeminiImageModelSupported(info.UpstreamModelName) || (request.N != nil && *request.N != 1) || len(request.Image) > 0 || len(request.Images) > 0 || len(request.Mask) > 0 || len(request.ExtraFields) > 0 {
+				return nil, errors.New("membership Gemini Images supports single text-to-image output only")
+			}
+			for key := range request.Extra {
+				if key != "max_tokens" {
+					return nil, errors.New("unsupported membership image option")
+				}
+			}
+			var limit uint
+			if common.Unmarshal(request.Extra["max_tokens"], &limit) != nil || limit == 0 {
+				return nil, errors.New("membership Gemini Images requires explicit max_tokens")
+			}
+			converted, err := convertImageRequestToNanoBanana(c, info, request)
+			if err != nil {
+				return nil, err
+			}
+			native, ok := converted.(dto.GeminiChatRequest)
+			if !ok {
+				return nil, errors.New("unexpected Gemini image conversion")
+			}
+			native.GenerationConfig.MaxOutputTokens = &limit
+			return native, nil
+		}
 		return convertImageRequestToNanoBanana(c, info, request)
 	}
 
@@ -398,7 +425,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 
 	// Images API with nanobanana models: extract inline images from generateContent response
 	if info.RelayMode == constant.RelayModeImagesGenerations &&
-		model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) {
+		(model_setting.IsGeminiModelSupportImagine(info.UpstreamModelName) || (c.GetInt("membership_subscription_id") > 0 && model.MembershipGeminiImageModelSupported(info.UpstreamModelName))) {
 		return GeminiNanoBananaImageHandler(c, info, resp)
 	}
 

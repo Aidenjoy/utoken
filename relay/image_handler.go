@@ -48,11 +48,14 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	var membership *service.MembershipSession
 	if c.GetInt("membership_subscription_id") > 0 {
-		if info.ChannelType != constant.ChannelTypeOpenAI || info.RelayMode != relayconstant.RelayModeImagesGenerations || info.IsStream || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+		if (info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeGemini) || info.RelayMode != relayconstant.RelayModeImagesGenerations || info.IsStream || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
 			return types.NewErrorWithStatusCode(fmt.Errorf("unsupported membership image path"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		defer func() {
 			if membership != nil {
+				if info.ChannelType == constant.ChannelTypeGemini && !membership.TransportComplete {
+					membership.InvalidUsage = true
+				}
 				service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
 			}
 		}()
@@ -68,6 +71,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	} else {
 		convertedRequest, err := adaptor.ConvertImageRequest(c, info, *request)
 		if err != nil {
+			if c.GetInt("membership_subscription_id") > 0 {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed)
 		}
 		relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
@@ -93,7 +99,11 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 			}
 
 			if c.GetInt("membership_subscription_id") > 0 {
-				membership, err = service.PrepareMembershipImages(c, info, jsonData)
+				if info.ChannelType == constant.ChannelTypeGemini {
+					membership, err = service.PrepareMembershipGemini(c, info, jsonData, helper.MaxTokensLimit)
+				} else {
+					membership, err = service.PrepareMembershipImages(c, info, jsonData)
+				}
 				if err != nil {
 					return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 				}

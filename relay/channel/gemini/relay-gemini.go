@@ -1690,6 +1690,7 @@ func GeminiNanoBananaImageHandler(c *gin.Context, info *relaycommon.RelayInfo, r
 	if readErr != nil {
 		return nil, types.NewOpenAIError(readErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	service.ObserveMembershipGemini(c, responseBody)
 	_ = resp.Body.Close()
 
 	logger.LogDebugJSON(c, "Gemini nanobanana image response body: %s", responseBody)

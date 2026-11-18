@@ -285,3 +285,10 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - API字段依据：[Gemini GenerateContent](https://ai.google.dev/api/generate-content?hl=en)；输出上限含思考/图片的边界依据：[Google官方开发者论坛](https://discuss.ai.google.dev/t/gemini-3-1-flash-image-generatecontent-enforceable-billing-bounds-for-six-inline-images/187561)。实际中转实例仍需用户确认严格执行上限，否则禁止售卖。
 - `GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service ./middleware -run '^(TestMembership|TestEnforceTokenKeyType)' -count=1 -timeout=120s` 通过：model 2.850s、controller 34.706s、service 1.925s、middleware 1.808s。新增缺用量/总量错误聚焦测试另通过（`^TestMembershipHTTPGeminiImageMissingUsage`）。日志 `/private/tmp/yun-token-gemini-image-race.log`、`/private/tmp/yun-token-gemini-image-pending.log`。
 - 前端 `bun run build:check`、变更文件 oxlint 通过。全矩阵15/30合同 mock通过；真实通过仍为0。
+
+## Gemini Images 兼容入口（2026-11-18）
+
+- `/v1/images/generations` 与原生图片共用 `gemini_native_bounded_image_v1`，非流式单张文生图；客户端须传 `max_tokens`，转换成最终原生 `generationConfig.maxOutputTokens` 后再校验与预留。不会因 Images DTO 丢弃额外参数而失去上限。
+- 引用图在转换器下载远程文件前拒绝；多张、无上限和未知扩展参数拒绝。会员目录模型有精确转换/响应路径识别，不扩大普通 Key 的既有语义。
+- 原始用量采集位于 `GeminiNanoBananaImageHandler` 旧占位算法之前，会员不会走旧1400 Token/图估算；缺原始输出或总量不一致均 pending。
+- 完整 mock race 命令同原生图片节，日志 `/private/tmp/yun-token-gemini-image-bridge-race.log`：model 2.715s、controller 35.191s、service 1.765s、middleware 1.762s，通过。当前16/30合同 mock通过，14项缺功能；真实通过0。
