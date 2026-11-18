@@ -17,7 +17,7 @@ import (
 // AdminMembershipChannels exposes eligible model names without returning provider credentials.
 func AdminMembershipChannels(c *gin.Context) {
 	var channels []model.Channel
-	if err := model.DB.Select("id", "name", "type", "status", "models", "model_mapping", "setting").Where("status = ? AND type IN ?", common.ChannelStatusEnabled, []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAzure, constant.ChannelTypeSora}).Order("id asc").Find(&channels).Error; err != nil {
+	if err := model.DB.Select("id", "name", "type", "status", "models", "model_mapping", "setting").Where("status = ? AND type IN ?", common.ChannelStatusEnabled, []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAzure, constant.ChannelTypeSora, constant.ChannelTypeXai}).Order("id asc").Find(&channels).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}

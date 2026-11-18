@@ -188,9 +188,12 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 	return configs, nil
 }
 
-// MembershipTextModelSupported limits the first profile to known text tokenizer/output contracts.
+// MembershipTextModelSupported limits admission to mock-verified OpenAI chat wire contracts.
+// A real channel still requires manual output-limit and raw-usage acceptance.
 func MembershipTextModelSupported(name string) bool {
 	switch name {
+	case "grok-4.6-latest", "grok-4.7-latest", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol", "kimi-k3.1-pro":
+		return true
 	case "gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-4o", "gpt-4o-2024-05-13", "gpt-4o-2024-08-06", "gpt-4o-2024-11-20", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14":
 		return true
 	default:
@@ -203,7 +206,7 @@ func MembershipImageModelSupported(name string) bool { return name == "dall-e-2"
 
 // MembershipTextChannelSupported shares the raw OpenAI usage contract across vetted adapters.
 func MembershipTextChannelSupported(channelType int) bool {
-	return channelType == constant.ChannelTypeOpenAI || channelType == constant.ChannelTypeAzure
+	return channelType == constant.ChannelTypeOpenAI || channelType == constant.ChannelTypeAzure || channelType == constant.ChannelTypeXai
 }
 
 // GetMembershipGrant verifies ownership and lifetime using the database, never an auth cache.

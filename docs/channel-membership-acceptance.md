@@ -233,3 +233,11 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - 本地双 WebSocket mock 验证：客户端把输出上限改成99999仍只发送预算1；PCM输入+commit+response.create；真实分项用量结算、耗尽关闭、缺失用量和上游在途断开 pending、钱包不变。服务层验证重复回执不重复计量、冲突回执和 session/system 输入拒绝。
 - `go test -race ./model ./controller ./service -run '^TestMembership'` 通过，日志 `/private/tmp/yun-token-realtime-race.log`；新增断开场景聚焦 `go test -race ./controller ./service -run '^TestMembership.*Realtime'`，日志 `/private/tmp/yun-token-realtime-focused.log`。前端类型检查、构建、改动文件 lint 通过。
 - 这不是任意实时协议支持：服务器 VAD、自动转写、工具、可变采样格式、多个并发 response、其他实时模型和新版本事件形状均未实现，不可售；服务器必须手工验收输出上限和确认事件，不能把 mock 当真实支持。
+
+
+## 实际文本模型名合同（2026-11-18）
+
+- 启用库清单中的 OpenAI 类型 GPT-5.6 / GPT-6 / Kimi 模型名、xAI Grok-4.6 / 4.7 模型名已分别完成普通和流式本地 mock。只增加明确模型名，不放宽任意前缀、不允许搜索/工具/多模态，不绕过最终输出上限检查。
+- xAI 在原始响应/原始 SSE 数据进入旧归一化之前捕获真实字段；旧适配器 total-minus-input 仍仅供旧路径使用。专项测试证明 raw completion_tokens 缺失时为 pending，而不是把推算输出扣给会员。
+- 命令：`GOCACHE=/private/tmp/yun-token-go-cache go test ./controller -run '^TestMembershipHTTP(Catalog|Xai)' -count=1 -timeout=120s`，通过，日志 `/private/tmp/yun-token-catalog-text.log`。所有请求到 loopback，不使用真实渠道地址或 Key。
+- 对应本机渠道19/20/39的 chat、渠道25的 chat 标记为 mock 通过/待用户手工实例验收；相同渠道的 Responses 仍未实现并在会员鉴权前置拒绝。真实可售清单仍为空。
