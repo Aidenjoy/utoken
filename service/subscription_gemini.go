@@ -40,7 +40,7 @@ func PrepareMembershipGemini(c *gin.Context, info *relaycommon.RelayInfo, body [
 	}
 	for key := range fields {
 		switch key {
-		case "contents", "systemInstruction", "generationConfig":
+		case "contents", "systemInstruction", "generationConfig", "safetySettings":
 		default:
 			return nil, errors.New("membership Gemini does not support cached context, tools or media")
 		}

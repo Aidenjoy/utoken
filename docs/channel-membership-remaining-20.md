@@ -4,9 +4,9 @@
 
 这里固定沿用上轮报告的20个“渠道 × 协议”条目，不因同适配器共用实现而重复计为20套开发，也不临时拆分原来合并的图片 generations/edits 条目。实际模型/别名见主矩阵；协议来自项目路由和适配器映射，不代表真实上游已经验收。
 
-分类依据：**缺功能**＝会员入口或计量合同尚未完整接通；**已有实现待验收**＝该协议会员实现完整但缺通过证据；**与已测项共用链路**＝不需要新扣减算法，补准入和独立验证即可。普通 Key 的既有实现不算会员实现。
+分类依据：**缺功能**＝会员入口或计量合同尚未完整接通；**已有实现待验收**＝该协议会员实现完整，仍需明确 mock/真实证据状态；**与已测项共用链路**＝不需要新扣减算法，补准入和独立验证即可。普通 Key 的既有实现不算会员实现。
 
-本批结论：**18项缺功能，2项与已测项共用链路，0项仅有完整代码却完全没有测试证据**。火山文本2项的最小 mock 已通过，因此当前全矩阵为30项中12项合同 mock通过、18项仍缺功能。全部真实实例仍由用户手工验收，真实通过数为0。
+初次分类为18项缺功能、2项共用链路。追加桥接后当前为：**16项缺功能、2项已有实现待手工验收（mock通过）、2项与已测项共用链路**。全矩阵30项中14项合同 mock通过，16项缺功能；真实通过数为0。
 
 ## 先判断火山文本
 
@@ -50,8 +50,8 @@ GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./ser
 | R14 | 23 / gemini-nanobanana | `POST /v1beta/models/*:generateContent` / `streamGenerateContent` | `gemini.Adaptor` → `GeminiTextGenerationHandler/StreamHandler` | 缺功能 | 无图片会员合同。已测 `PrepareMembershipGemini` 只接受 gemini-3.8-flash 纯文本；需图片输入/输出真实计量及上限，不可把该纯文本结果套给图片模型。 | Gemini 图片会员首发阻断；纯文本可后补 |
 | R15 | 23 / gemini-nanobanana | `POST /v1/images/generations` | `gemini.Adaptor.ConvertImageRequest` → `GeminiNanoBananaImageHandler` | 缺功能 | 无会员预留/结算桥接。旧处理器在输出Token缺失时可按图片数×1400回填，此值明确禁止用于会员；需原始图片/Token合同和输入输出预留。可复用台账，不能直接复用旧归一化结果。 | 同 R14；协议转换还需独立 mock |
 | R16 | 24 / gpt-image2 | `POST /v1/images/generations`、`POST /v1/images/edits` | `openai.Adaptor` → `ImageHelper` → `OpenaiImageHandler` / stream / JSON-as-stream | 缺功能 | DALL-E计次已测，但新 GPT Image 模型尚无会员合同；需原始 input/output usage、可执行输出上限、图像输入边界以及编辑/流式终态。`normalizeOpenAIUsage` 的回填不作为证据。 | GPT Image 会员首发阻断；不得用普通 Key 调通替代 |
-| R17 | 21 / xixiapi | `POST /v1/chat/completions` → 原生 Messages | `claude.Adaptor.ConvertOpenAIRequest` → `ClaudeHandler/StreamHandler` | 缺功能（共用原生底层） | 原生已测 `PrepareMembershipClaude` → `FinishMembershipRequest`；此转换路径的会员鉴权和 `TextHelper` 计量选择尚未接通，当前拒绝。需在最终 Claude 请求上预留并复用原始缓存计量，不是放开 URL 就完成。 | 若首发使用原生 Messages，可后补；若客户端只会 Chat，则阻断该客户端的 Claude 首发 |
-| R18 | 26 / xixiapi | `POST /v1/chat/completions` → Gemini generateContent | `gemini.Adaptor.ConvertOpenAIRequest` → `GeminiChatHandler/StreamHandler` | 缺功能（共用原生底层） | 原生已测 `PrepareMembershipGemini` → `FinishMembershipRequest`；Chat 转换的模型/候选/关闭思考配置、预留点及原始用量钩子尚未桥接，当前拒绝。不能假设普通转换日志就是会员真实用量。 | 若首发使用原生 Gemini，可后补；只会 Chat 的客户端则阻断 |
+| R17 | 21 / xixiapi | `POST /v1/chat/completions` → 原生 Messages | `claude.Adaptor.ConvertOpenAIRequest` → `ClaudeHandler/StreamHandler` | 已有实现待手工验收（mock通过） | `TextHelper` 最终转换请求 → `PrepareMembershipClaude` → `ObserveMembershipClaude` → `FinishMembershipRequest`；6模型普通/流式、缓存输入、耗尽零调用、钱包隔离和不完整终态待核对已通过。 | 若首发使用原生 Messages，可后补；若客户端只会 Chat，则阻断该客户端的 Claude 首发 |
+| R18 | 26 / xixiapi | `POST /v1/chat/completions` → Gemini generateContent | `gemini.Adaptor.ConvertOpenAIRequest` → `GeminiChatHandler/StreamHandler` | 已有实现待手工验收（mock通过） | `TextHelper` 最终转换请求 → `PrepareMembershipGemini` → `ObserveMembershipGemini` → `FinishMembershipRequest`；显式关闭思考、原始输入/输出、普通/流式、耗尽零调用和钱包隔离已通过。 | 若首发使用原生 Gemini，可后补；只会 Chat 的客户端则阻断 |
 | R19 | 32 / 火山方舟-codingplan | `POST /v1/chat/completions` | `volcengine.Adaptor` → `openai.Adaptor` → `OpenaiHandler/OaiStreamHandler` | 与已测项共用链路 | 已接通：`PrepareMembershipText` → 原始 `ObserveMembershipUsage` → `FinishMembershipRequest` → `FinishMembership`；最小准入修改及9模型普通/流式 mock通过。 | 代码不再阻断；进入周五候选仍需你实测输出上限、真实扣减、耗尽和普通 Key |
 | R20 | 32 / 火山方舟-codingplan | `POST /v1/responses` | `volcengine.Adaptor` → `OaiResponsesHandler/StreamHandler` | 与已测项共用链路 | 已接通：`PrepareMembershipResponses` → 原始 `ObserveMembershipResponses` → `FinishMembershipRequest` → `FinishMembership`；无远程上下文/工具，9模型普通/流式 mock通过。 | 同 R19；Chat 实测不能代替 Responses 实测 |
 
@@ -63,3 +63,11 @@ GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./ser
 - R17/R18 可以在原生客户端可用时随后补；若产品前端/客户 SDK 只支持 OpenAI Chat，则不能以原生接口已通过为由宣称该客户端可用。
 - Epay、真实模型及实际配置只由用户手动验收，采用 `channel-membership-manual-acceptance.md`。本轮没有真实支付、充值、模型调用，也未删除任何数据。
 - 会员未知路径目前均前置拒绝；旧计费入口有第二层拒绝，AK/SK 的 `ValidateTokenByAccessKey` 也拒绝会员。当前分类不代表放开任何尚未完成的路径。
+
+## 文本桥接复现与证据
+
+```bash
+GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s
+```
+
+2026-11-18：model/controller/service 全部通过，日志 `/private/tmp/yun-token-text-bridges-race.log`。R17/R18 现在代码不再阻断对应受限 Chat 合同；真实输出上限、原始用量与客户端兼容性仍需用户手工验收。

@@ -270,3 +270,10 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - 只读取原始 promptTokenCount / candidatesTokenCount / totalTokenCount；缓存输入是 prompt 子集，不重复相加。若原始 thoughts/tool Token 非零、字段缺失、总量不一致则 pending，不以总量拆分输出。
 - 普通/流式必须有终态候选 STOP/MAX_TOKENS 和同批原始用量；模型会员检查、候选数2上游前拒绝、真实缓存子集、耗尽零新增调用、钱包不变、缺失用量/意外思考待核对的 mock 已通过。日志 `/private/tmp/yun-token-gemini-tests.log`，完整会员 race 日志 `/private/tmp/yun-token-gemini-race.log`。
 - 此处证明的是请求合同 mock；该实际未来模型是否接受 thinkingBudget=0、是否严格执行输出总上限，必须由用户真实手工确认，拒绝该参数或出现额外思考时不得公开售卖。渠道26原生协议标为 mock 通过/待手工实测；其 Chat 转换、渠道23图片仍未实现。
+
+## 火山文本与 Claude/Gemini Chat 桥接（2026-11-18）
+
+- 火山最小准入提交 `2b2abec4`：9模型 × Chat/Responses × 普通/流式 mock；全会员 race通过。
+- Claude/Gemini Chat 复用各自原生最终请求预留与原始用量采集；Claude空工具数组可用，实际工具不允许。Chat仅字符串文本、单输出、明确输出上限，系统提示先进入转换。Gemini显式关闭思考，参数覆盖后再次校验。Claude流式须message_stop，Gemini须终态候选和原始分项，缺少证据不释放预留、不扣钱包。
+- `GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s` 通过；model 2.735s、controller 33.635s、service 1.880s。日志 `/private/tmp/yun-token-text-bridges-race.log`。
+- 当前实际目录合同14/30 mock通过，16项缺功能；具体协议/适配器/入口及首发影响见 `channel-membership-remaining-20.md`。所有真实调用和支付仍由用户手工执行。

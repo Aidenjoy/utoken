@@ -73,10 +73,20 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 	var membership *service.MembershipSession
 	if c.GetInt("membership_subscription_id") > 0 {
-		if !model.MembershipTextChannelSupported(info.ChannelType) || info.RelayMode != relayconstant.RelayModeChatCompletions || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		if (!model.MembershipTextChannelSupported(info.ChannelType) && info.ChannelType != constant.ChannelTypeAnthropic && info.ChannelType != constant.ChannelTypeGemini) || info.RelayMode != relayconstant.RelayModeChatCompletions || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
 			return types.NewErrorWithStatusCode(fmt.Errorf("membership channel or protocol conversion is not supported"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		if info.IsStream {
+		if (request.MaxTokens == nil && request.MaxCompletionTokens == nil) || (request.MaxTokens != nil && request.MaxCompletionTokens != nil) || (request.N != nil && *request.N != 1) || len(request.Tools) > 0 || len(request.Functions) > 0 || request.ToolChoice != nil || len(request.FunctionCall) > 0 {
+			return types.NewErrorWithStatusCode(fmt.Errorf("membership requires one explicit output limit and a single plain text result"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		if info.ChannelType == constant.ChannelTypeAnthropic || info.ChannelType == constant.ChannelTypeGemini {
+			for _, message := range request.Messages {
+				if !message.IsStringContent() || (message.Role != "user" && message.Role != "assistant" && message.Role != "system") {
+					return types.NewErrorWithStatusCode(fmt.Errorf("membership Chat conversion supports string text messages only"), types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+				}
+			}
+		}
+		if info.IsStream && info.ChannelType != constant.ChannelTypeAnthropic && info.ChannelType != constant.ChannelTypeGemini {
 			if !info.SupportStreamOptions {
 				return types.NewErrorWithStatusCode(fmt.Errorf("membership requires stream usage support"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
@@ -84,6 +94,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 		defer func() {
 			if membership != nil {
+				if (info.ChannelType == constant.ChannelTypeAnthropic && info.IsStream || info.ChannelType == constant.ChannelTypeGemini) && !membership.TransportComplete {
+					membership.InvalidUsage = true
+				}
 				service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
 			}
 		}()
@@ -124,6 +137,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
+		if c.GetInt("membership_subscription_id") > 0 && (info.ChannelType == constant.ChannelTypeAnthropic || info.ChannelType == constant.ChannelTypeGemini) {
+			applySystemPromptIfNeeded(c, info, request)
+		}
 		convertedRequest, err := adaptor.ConvertOpenAIRequest(c, info, request)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
@@ -192,7 +208,14 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 
 		if c.GetInt("membership_subscription_id") > 0 {
-			membership, err = service.PrepareMembershipText(c, info, jsonData, uint(helper.MaxTokensLimit))
+			// Reserve the converted provider body, including its actual output cap.
+			if info.ChannelType == constant.ChannelTypeAnthropic {
+				membership, err = service.PrepareMembershipClaude(c, info, jsonData, uint(helper.MaxTokensLimit))
+			} else if info.ChannelType == constant.ChannelTypeGemini {
+				membership, err = service.PrepareMembershipGemini(c, info, jsonData, uint(helper.MaxTokensLimit))
+			} else {
+				membership, err = service.PrepareMembershipText(c, info, jsonData, uint(helper.MaxTokensLimit))
+			}
 			if err != nil {
 				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 			}

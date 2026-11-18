@@ -20,14 +20,14 @@
 | 20 / xixiapi | gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra, gpt-6-luna, gpt-6-sol, gpt-6.1-sol | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 逐模型名已验证普通/流式、原始分项、耗尽零调用、钱包不变；必须再手工验证该上游输出上限与真实用量 |
 | 20 / xixiapi | gpt-5.6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-6-astra, gpt-6-luna, gpt-6-sol, gpt-6.1-sol | `POST /v1/responses` | mock 通过；待用户手工实测该实例 | 无工具自包含短文本、显式 max_output_tokens；拒绝远程上下文、compact、工具和转换路径 |
 | 21 / xixiapi | claude-fable-5, claude-fable-5-1, claude-opus-5, claude-opus-5-5, claude-sonnet-5, claude-sonnet-5-5 | `POST /v1/messages` | mock 通过；待用户手工实测该实例 | 原生纯文本、真实缓存输入相加、输出上限、message_stop；工具/图片/缓存注解仍不支持 |
-| 21 / xixiapi | claude-fable-5, claude-fable-5-1, claude-opus-5, claude-opus-5-5, claude-sonnet-5, claude-sonnet-5-5 | `POST /v1/chat/completions` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
+| 21 / xixiapi | claude-fable-5, claude-fable-5-1, claude-opus-5, claude-opus-5-5, claude-sonnet-5, claude-sonnet-5-5 | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 复用原生计量，最终转换请求预留；仅字符串文本、单输出、明确输出上限，缺失终态或用量保留待核对 |
 | 23 / gemini-nanobanana | gemini-3-pro-image, gemini-3.1-flash-image | `POST /v1beta/models/*:generateContent（含 stream）` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 23 / gemini-nanobanana | gemini-3-pro-image, gemini-3.1-flash-image | `POST /v1/images/generations` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 24 / gpt-image2 | gpt-image-2.5-flare, gpt-image-2.5-sunburst | `POST /v1/images/generations、/v1/images/edits` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 25 / xixiapi | grok-4.6, grok-4.7 | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 原始输入/输出缺一则 pending；旧 xAI 总量拆分不可用作真实输出 |
 | 25 / xixiapi | grok-4.6, grok-4.7 | `POST /v1/responses` | mock 通过；待用户手工实测该实例 | 无工具自包含短文本、显式 max_output_tokens；拒绝远程上下文、compact、工具和转换路径 |
 | 26 / xixiapi | gemini-3.8-flash, gemini-4-argon | `POST /v1beta/models/*:generateContent（含 stream）` | mock 通过；待用户手工实测该实例 | 单文本候选、显式输出上限与 thinkingBudget=0；不接受关闭思考参数的上游不得售卖 |
-| 26 / xixiapi | gemini-3.8-flash, gemini-4-argon | `POST /v1/chat/completions` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
+| 26 / xixiapi | gemini-3.8-flash, gemini-4-argon | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 复用原生计量，最终转换请求预留；仅字符串文本、单输出、明确输出上限，缺失终态或用量保留待核对 |
 | 32 / 火山方舟-codingplan | deepseek-v4-flash, deepseek-v4-pro, deepseek-v4.1-flash, doubao-seed-2.1-lite, doubao-seed-2.1-pro, glm-5.3, glm-5.3-flash, kimi-k3, kimi-k3.1-pro | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 共用已测 OpenAI 计量；补类型/模型准入和独立9模型验证，无新扣减算法 |
 | 32 / 火山方舟-codingplan | deepseek-v4-flash, deepseek-v4-pro, deepseek-v4.1-flash, doubao-seed-2.1-lite, doubao-seed-2.1-pro, glm-5.3, glm-5.3-flash, kimi-k3, kimi-k3.1-pro | `POST /v1/responses` | mock 通过；待用户手工实测该实例 | 共用已测 OpenAI 计量；补类型/模型准入和独立9模型验证，无新扣减算法 |
 | 33 / qd13 | doubao-seedance-2.5 | `POST /api/v3/contents/generations/tasks、GET 单任务` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
@@ -49,7 +49,7 @@
 
 ## 路径拒绝证据
 
-剩余20项的缺口、适配器、会员结算入口及首发影响详见 [专项分类](channel-membership-remaining-20.md)。火山2项补最小准入验证后，当前全矩阵为12项合同 mock通过、18项缺功能。
+剩余20项的缺口、适配器、会员结算入口及首发影响详见 [专项分类](channel-membership-remaining-20.md)。火山2项补最小准入验证后，当前全矩阵为14项合同 mock通过、16项缺功能。
 
 `TestMembershipHTTPUnimplementedProtocolsNeverReachWalletOrUpstream` 使用真实 TokenAuth 和本地处理器计数：文本会员 Key 对 audio 转写/翻译/合成、realtime、video、Ark、Claude、Responses compact、图片 edits 均在处理器前 403，钱包不变。其他会员 profile 只放行各自精确路径；通用 `PreConsumeBilling` / `SettleBilling`、实时预扣和后结算额外拒绝会员进入旧钱包路径。后续新增 profile 后应保留跨协议拒绝回归。
 

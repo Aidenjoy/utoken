@@ -48,6 +48,11 @@ func PrepareMembershipClaude(c *gin.Context, info *relaycommon.RelayInfo, body [
 	}
 	for key := range fields {
 		switch key {
+		case "tools":
+			var tools []json.RawMessage
+			if common.Unmarshal(fields[key], &tools) != nil || len(tools) != 0 {
+				return nil, errors.New("membership Claude tools are unsupported")
+			}
 		case "model", "messages", "system", "max_tokens", "stream", "temperature", "top_p", "top_k", "stop_sequences":
 		default:
 			return nil, errors.New("membership Claude supports plain text Messages only")

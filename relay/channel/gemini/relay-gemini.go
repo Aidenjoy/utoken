@@ -364,6 +364,11 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 		})
 	}
 	geminiRequest.SafetySettings = safetySettings
+	if c.GetInt("membership_subscription_id") > 0 {
+		// Membership admits only bounded non-thinking text; final-body validation
+		// below the adapter still rejects overridden thinking or media options.
+		geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{ThinkingBudget: common.GetPointer(0)}
+	}
 
 	// openaiContent.FuncToToolCalls()
 	if textRequest.Tools != nil {
@@ -1507,6 +1512,7 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	service.ObserveMembershipGemini(c, responseBody)
 	service.CloseResponseBodyGracefully(resp)
 	logger.LogDebugJSON(c, "Gemini response body: %s", responseBody)
 	var geminiResponse dto.GeminiChatResponse
