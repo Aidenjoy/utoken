@@ -177,71 +177,93 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		info.PublicTaskID = model.GenerateTaskID()
 	}
 
-	// 4. 价格计算：基础模型价格
-	info.OriginModelName = modelName
-	priceData, err := helper.ModelPriceHelperPerCall(c, info)
-	if err != nil {
-		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
-	}
-	info.PriceData = priceData
-
-	// 任务的模型名可能到提交阶段才确定（由 action 推导），因此重新解析用户折扣，
-	// 避免沿用 NewRelayInfo 时（模型名可能为空）的结果。
-	info.UserModelDiscount = common.ResolveUserModelDiscount(info.ModelDiscounts, modelName)
-
-	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
-	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
-	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
-		for k, v := range estimatedRatios {
-			info.PriceData.AddOtherRatio(k, v)
+	if c.GetInt("membership_subscription_id") == 0 {
+		// 4. 价格计算：基础模型价格
+		info.OriginModelName = modelName
+		priceData, err := helper.ModelPriceHelperPerCall(c, info)
+		if err != nil {
+			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 		}
-	}
+		info.PriceData = priceData
 
-	// 5.5 用户按模型折扣：作为 OtherRatio 参与预扣，并随 BillingContext 快照落库，
-	//     结算侧经 OtherRatioMultiplier 生效，保证预扣与结算同比例。
-	//     remix 沿用原任务 OtherRatios 时不会泄露折扣：PriceData 已在上方重建。
-	if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
-		info.PriceData.AddOtherRatio(relaycommon.OtherRatioUserDiscount, discount)
-	}
+		// 任务的模型名可能到提交阶段才确定（由 action 推导），因此重新解析用户折扣，
+		// 避免沿用 NewRelayInfo 时（模型名可能为空）的结果。
+		info.UserModelDiscount = common.ResolveUserModelDiscount(info.ModelDiscounts, modelName)
 
-	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
-		baseQuota := info.PriceData.Quota
-		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(baseQuota))
-		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
-		info.PriceData.Quota = quota
-		noteTaskQuotaClamp(info, clamp)
-		// 折前额度：剔除用户折扣这一乘数（时长/分辨率仍计入原价），供日志「原价」列展示。
-		if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
-			multiplier := 1.0
-			for key, ratio := range info.PriceData.OtherRatios() {
-				if key == relaycommon.OtherRatioUserDiscount {
-					continue
-				}
-				multiplier *= ratio
+		// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
+		//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
+		//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
+		if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+			for k, v := range estimatedRatios {
+				info.PriceData.AddOtherRatio(k, v)
 			}
-			info.QuotaBeforeUserDiscount = common.QuotaRound(float64(baseQuota) * multiplier)
 		}
-	} else if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
-		// 按次计费模型不套用时长/分辨率乘数，但折扣仍需生效，
-		// 且必须与结算侧（OtherRatios 快照）保持一致。
-		info.QuotaBeforeUserDiscount = info.PriceData.Quota
-		info.PriceData.Quota = common.ApplyModelDiscount(info.PriceData.Quota, discount)
-	}
 
-	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
-	if info.Billing == nil && !info.PriceData.FreeModel {
-		info.ForcePreConsume = true
-		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
-			return nil, service.TaskErrorFromAPIError(apiErr)
+		// 5.5 用户按模型折扣：作为 OtherRatio 参与预扣，并随 BillingContext 快照落库，
+		//     结算侧经 OtherRatioMultiplier 生效，保证预扣与结算同比例。
+		//     remix 沿用原任务 OtherRatios 时不会泄露折扣：PriceData 已在上方重建。
+		if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
+			info.PriceData.AddOtherRatio(relaycommon.OtherRatioUserDiscount, discount)
 		}
+
+		// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
+		if !common.StringsContains(constant.TaskPricePatches, modelName) {
+			baseQuota := info.PriceData.Quota
+			quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(baseQuota))
+			quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
+			info.PriceData.Quota = quota
+			noteTaskQuotaClamp(info, clamp)
+			// 折前额度：剔除用户折扣这一乘数（时长/分辨率仍计入原价），供日志「原价」列展示。
+			if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
+				multiplier := 1.0
+				for key, ratio := range info.PriceData.OtherRatios() {
+					if key == relaycommon.OtherRatioUserDiscount {
+						continue
+					}
+					multiplier *= ratio
+				}
+				info.QuotaBeforeUserDiscount = common.QuotaRound(float64(baseQuota) * multiplier)
+			}
+		} else if discount := info.ModelDiscountRatio(); discount != common.NoModelDiscount {
+			// 按次计费模型不套用时长/分辨率乘数，但折扣仍需生效，
+			// 且必须与结算侧（OtherRatios 快照）保持一致。
+			info.QuotaBeforeUserDiscount = info.PriceData.Quota
+			info.PriceData.Quota = common.ApplyModelDiscount(info.PriceData.Quota, discount)
+		}
+
+		// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
+		if info.Billing == nil && !info.PriceData.FreeModel {
+			info.ForcePreConsume = true
+			if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
+				return nil, service.TaskErrorFromAPIError(apiErr)
+			}
+		}
+
 	}
 
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
+	}
+
+	if c.GetInt("membership_subscription_id") > 0 {
+		if !service.IsMembershipVideoPlatform(platform) || !strings.HasPrefix(c.GetHeader("Content-Type"), "application/json") {
+			return nil, service.TaskErrorWrapperLocal(errors.New("membership task contract unsupported"), "invalid_request", http.StatusForbidden)
+		}
+		finalBody, readErr := io.ReadAll(requestBody)
+		if readErr != nil {
+			return nil, service.TaskErrorWrapperLocal(readErr, "invalid_request", http.StatusBadRequest)
+		}
+		membership, reserveErr := service.PrepareMembershipTask(c, info, finalBody)
+		if reserveErr != nil {
+			return nil, service.TaskErrorWrapperLocal(reserveErr, "membership_quota", http.StatusForbidden)
+		}
+		requestBody = bytes.NewReader(finalBody)
+		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "membership_dispatch_failed", http.StatusInternalServerError)
+		}
+		membership.Dispatched = true
 	}
 
 	// 9. 发送请求
@@ -260,9 +282,15 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, taskErr
 	}
 
+	if c.GetInt("membership_subscription_id") > 0 {
+		if err := model.SaveMembershipUsageReceipt(info.PublicTaskID, taskData); err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "membership_receipt_failed", http.StatusInternalServerError)
+		}
+	}
+
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios
 	finalQuota := info.PriceData.Quota
-	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); len(adjustedRatios) > 0 {
+	if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, taskData); c.GetInt("membership_subscription_id") == 0 && len(adjustedRatios) > 0 {
 		if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
 			// 基于调整后的 ratios 重新计算 quota
 			finalQuota = adjustedQuota

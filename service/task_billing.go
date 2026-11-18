@@ -264,6 +264,10 @@ func attachTaskLogDiscountOriginal(other map[string]interface{}, logQuota int) {
 // usage 可选传入上游真实 token 用量（prompt, completion）：整单退款日志据此
 // 负向冲销预扣回填行，上游对账才能把失败任务净额归零；调用点无用量时省略。
 func RefundTaskQuota(ctx context.Context, task *model.Task, reason string, usage ...int) {
+	if task.PrivateData.MembershipRequestId != "" {
+		logger.LogError(ctx, "membership task cannot use legacy refund")
+		return
+	}
 	quota, err := task.ClaimRefundQuota()
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("认领退款额度失败 task %s: %s", task.TaskID, err.Error()))
@@ -327,6 +331,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string, usage
 // 返回任务当前状态：CANCELLED 表示本次取消生效；SUCCESS/FAILURE 等表示取消到达前
 // 任务已被轮询/实时查询推进到终态（计费已按该终态处理），调用方应据此如实展示。
 func CancelVideoTask(ctx context.Context, task *model.Task) (model.TaskStatus, error) {
+	if task.PrivateData.MembershipRequestId != "" {
+		return task.Status, fmt.Errorf("membership cancellation requires a verified upstream terminal receipt")
+	}
 	switch task.Status {
 	case model.TaskStatusSuccess, model.TaskStatusFailure, model.TaskStatusCancelled, model.TaskStatusTimeoutUnresolved:
 		return task.Status, nil
@@ -359,6 +366,10 @@ func CancelVideoTask(ctx context.Context, task *model.Task) (model.TaskStatus, e
 // 随差额结算日志落库，使日志页 Tokens 列能展示任务真实消耗。
 // clamps 可选：若计算 actualQuota 时发生额度饱和，将其记入日志 admin_info（仅管理员可见）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string, promptTokens, completionTokens int, clamps ...*common.QuotaClamp) {
+	if task.PrivateData.MembershipRequestId != "" {
+		logger.LogError(ctx, "membership task cannot use legacy quota recalculation")
+		return
+	}
 	if actualQuota <= 0 {
 		return
 	}

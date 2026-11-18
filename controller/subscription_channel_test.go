@@ -73,6 +73,8 @@ func membershipHTTPFixture(t *testing.T, upstream http.HandlerFunc) (*gin.Engine
 	account.POST("/subscription/balance/pay", SubscriptionRequestBalancePay)
 	account.POST("/token", AddToken)
 	r.POST("/v1/chat/completions", middleware.TokenAuth(), middleware.Distribute(), func(c *gin.Context) { Relay(c, types.RelayFormatOpenAI) })
+	r.GET("/v1/videos/:task_id", middleware.TokenAuth(), middleware.Distribute(), RelayTaskFetch)
+	r.GET("/v1/videos/:task_id/content", middleware.TokenAuth(), func(c *gin.Context) { c.String(http.StatusOK, "mock video bytes") })
 	paid := membershipHTTPRequest(r, "/api/subscription/balance/pay", "", `{"plan_id":8103}`)
 	require.Equal(t, http.StatusOK, paid.Code, paid.Body.String())
 	var response struct {

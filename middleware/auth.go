@@ -516,20 +516,49 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		return fmt.Errorf("token is nil")
 	}
 	if token.UserSubscriptionId > 0 {
-		grant, err := model.GetMembershipGrant(model.DB, token.UserId, token.UserSubscriptionId, token.ChannelId)
-		if err != nil {
-			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
-			return err
+		// Task reads are scoped to the immutable original reservation and remain
+		// available after membership expiry or channel disablement.
+		query := c.Request.Method == http.MethodGet && c.Param("task_id") != "" && (c.Request.URL.Path == "/v1/videos/"+c.Param("task_id") || c.Request.URL.Path == "/v1/videos/"+c.Param("task_id")+"/content") && token.KeyType == model.TokenKeyTypeVideo
+		if query {
+			task, exists, err := model.GetByTaskId(token.UserId, c.Param("task_id"))
+			if err != nil || !exists || task == nil || task.PrivateData.MembershipRequestId == "" || task.ChannelId != token.ChannelId {
+				err := fmt.Errorf("membership task unavailable")
+				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+				return err
+			}
+			if token.ModelLimitsEnabled && !token.GetModelLimitsMap()[ratio_setting.FormatMatchingModelName(task.Properties.OriginModelName)] {
+				err := fmt.Errorf("membership key model forbidden")
+				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+				return err
+			}
+			var record model.SubscriptionChannelRequest
+			if err := model.DB.Where("request_id = ? AND user_subscription_id = ? AND user_id = ? AND channel_id = ?", task.PrivateData.MembershipRequestId, token.UserSubscriptionId, token.UserId, token.ChannelId).Where("unit = ?", model.MembershipUnitVideos).First(&record).Error; err != nil {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "membership task binding mismatch")
+				return err
+			}
+			c.Set("membership_task_query", true)
+		} else {
+			grant, err := model.GetMembershipGrant(model.DB, token.UserId, token.UserSubscriptionId, token.ChannelId)
+			if err != nil {
+				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+				return err
+			}
+			text := grant.Profile == model.MembershipTextProfile && token.KeyType == model.TokenKeyTypeLanguage && c.Request.URL.Path == "/v1/chat/completions"
+			image := grant.Profile == model.MembershipImageProfile && token.KeyType == model.TokenKeyTypeImage && c.Request.URL.Path == "/v1/images/generations"
+			video := grant.Profile == model.MembershipVideoProfile && token.KeyType == model.TokenKeyTypeVideo && c.Request.URL.Path == "/v1/videos"
+			if c.Request.Method != http.MethodPost || (!text && !image && !video) {
+				err := fmt.Errorf("membership endpoint is not supported")
+				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+				return err
+			}
+			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(token.ChannelId))
 		}
-		text := grant.Profile == model.MembershipTextProfile && token.KeyType == model.TokenKeyTypeLanguage && c.Request.URL.Path == "/v1/chat/completions"
-		image := grant.Profile == model.MembershipImageProfile && token.KeyType == model.TokenKeyTypeImage && c.Request.URL.Path == "/v1/images/generations"
-		if len(parts) > 1 || c.Request.Method != http.MethodPost || (!text && !image) {
-			err := fmt.Errorf("membership endpoint is not supported")
+		if len(parts) > 1 {
+			err := fmt.Errorf("membership channel override forbidden")
 			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 			return err
 		}
 		c.Set("membership_subscription_id", token.UserSubscriptionId)
-		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(token.ChannelId))
 	}
 
 	c.Set("id", token.UserId)

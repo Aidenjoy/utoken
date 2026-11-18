@@ -596,6 +596,13 @@ func RelayTask(c *gin.Context) {
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
 	defer func() {
+		if taskErr != nil && c.GetInt("membership_subscription_id") > 0 {
+			if value, ok := c.Get("membership_session"); ok {
+				if session, valid := value.(*service.MembershipSession); valid {
+					service.FinishMembershipRequest(c, relayInfo, session, false)
+				}
+			}
+		}
 		if taskErr != nil && relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)
 		}
@@ -668,12 +675,17 @@ func RelayTask(c *gin.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
-		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
-			common.SysError("settle task billing error: " + settleErr.Error())
+		if c.GetInt("membership_subscription_id") == 0 {
+			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+				common.SysError("settle task billing error: " + settleErr.Error())
+			}
 		}
 
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+		if c.GetInt("membership_subscription_id") > 0 {
+			task.PrivateData.MembershipRequestId = relayInfo.PublicTaskID
+		}
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.OrgId = relayInfo.OrgId
@@ -697,9 +709,14 @@ func RelayTask(c *gin.Context) {
 			common.SysError("record asset inference error: " + err.Error())
 		}
 		// 消费日志带 task_id，计费视图据此折叠后续结算/退款
-		service.LogTaskConsumption(c, relayInfo, task.TaskID)
+		if c.GetInt("membership_subscription_id") == 0 {
+			service.LogTaskConsumption(c, relayInfo, task.TaskID)
+		}
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			if task.PrivateData.MembershipRequestId != "" {
+				_ = model.FinishMembershipQuantity(task.PrivateData.MembershipRequestId, 0, "pending", "accepted upstream task could not be persisted")
+			}
 		}
 	}
 
@@ -929,6 +946,9 @@ func taskErrorAsChannelError(taskErr *dto.TaskError) *types.NewAPIError {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
+	if c.GetInt("membership_subscription_id") > 0 {
+		return false
+	}
 	if taskErr == nil {
 		return false
 	}

@@ -639,6 +639,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 // 推进到终态谁负责结算，另一方 CAS 失败即跳过，保证计费恰好执行一次。
 // responseBody 为上游原始查询响应，用于 task.Data 快照与空状态错误探测。
 func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo, responseBody []byte) error {
+	if task.PrivateData.MembershipRequestId != "" {
+		return ApplyMembershipTaskResult(ctx, adaptor, task, taskResult, responseBody)
+	}
 	snap := task.Snapshot()
 
 	// 用户取消是计费终态（预扣已全额退还）：上游稍后报成功也不得再结算，否则同一

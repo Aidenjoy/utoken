@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -412,7 +413,7 @@ func AddToken(c *gin.Context) {
 	}
 	// 视频 Key 仅在创建时匹配一次最高优先级渠道；存量类型保留管理员手动绑定能力。
 	bindChannelId := 0
-	if token.KeyType == model.TokenKeyTypeVideo {
+	if token.KeyType == model.TokenKeyTypeVideo && token.UserSubscriptionId == 0 {
 		channel, matchErr := service.MatchVideoKeyChannel(ownerId, token.Group, token.VideoModel, token.Video4K)
 		if matchErr != nil {
 			common.ApiError(c, matchErr)
@@ -436,12 +437,19 @@ func AddToken(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		if (grant.Profile == model.MembershipTextProfile && token.KeyType != model.TokenKeyTypeLanguage) || (grant.Profile == model.MembershipImageProfile && token.KeyType != model.TokenKeyTypeImage) {
+		if (grant.Profile == model.MembershipTextProfile && token.KeyType != model.TokenKeyTypeLanguage) || (grant.Profile == model.MembershipImageProfile && token.KeyType != model.TokenKeyTypeImage) || (grant.Profile == model.MembershipVideoProfile && token.KeyType != model.TokenKeyTypeVideo) {
 			common.ApiErrorMsg(c, "membership key type does not match its metering profile")
 			return
 		}
+		if token.KeyType == model.TokenKeyTypeVideo {
+			var models []string
+			if common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, token.VideoModel) || token.Video4K {
+				common.ApiErrorMsg(c, "membership video model or resolution unavailable")
+				return
+			}
+		}
 		channel, err := model.GetChannelById(token.ChannelId, false)
-		if err != nil || channel.Status != common.ChannelStatusEnabled || !model.MembershipTextChannelSupported(channel.Type) || (grant.Profile == model.MembershipImageProfile && channel.Type != 1) {
+		if err != nil || channel.Status != common.ChannelStatusEnabled || (grant.Profile == model.MembershipTextProfile && !model.MembershipTextChannelSupported(channel.Type)) || (grant.Profile == model.MembershipImageProfile && channel.Type != 1) || (grant.Profile == model.MembershipVideoProfile && !model.MembershipVideoChannelSupported(channel.Type)) {
 			common.ApiErrorMsg(c, "membership channel unavailable")
 			return
 		}

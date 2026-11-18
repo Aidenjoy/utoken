@@ -330,3 +330,33 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// MembershipTaskOutcome interprets the original single-video resource, never inferred tokens.
+// Only the exact accepted resource ID may complete its reservation. Generic HTTP errors
+// and missing statuses are deliberately not proof of a failed, unconsumed task.
+func (a *TaskAdaptor) MembershipTaskOutcome(task *model.Task, body []byte) (int64, bool, error) {
+	var receipt responseTask
+	if err := common.Unmarshal(body, &receipt); err != nil {
+		return 0, false, err
+	}
+	id := receipt.ID
+	if id == "" {
+		id = receipt.TaskID
+	}
+	if id == "" || id != task.GetUpstreamTaskID() {
+		return 0, false, fmt.Errorf("membership video receipt task ID mismatch")
+	}
+	if receipt.Model != "" && receipt.Model != task.Properties.UpstreamModelName {
+		return 0, false, fmt.Errorf("membership video receipt model mismatch")
+	}
+	switch receipt.Status {
+	case "completed":
+		return 1, true, nil
+	case "failed", "cancelled":
+		return 0, true, nil
+	case "queued", "pending", "processing", "in_progress":
+		return 0, false, nil
+	default:
+		return 0, false, fmt.Errorf("membership video receipt status unknown")
+	}
+}

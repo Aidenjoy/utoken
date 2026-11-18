@@ -17,7 +17,7 @@ import (
 // AdminMembershipChannels exposes eligible model names without returning provider credentials.
 func AdminMembershipChannels(c *gin.Context) {
 	var channels []model.Channel
-	if err := model.DB.Select("id", "name", "type", "status", "models", "model_mapping", "setting").Where("status = ? AND type IN ?", common.ChannelStatusEnabled, []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAzure}).Order("id asc").Find(&channels).Error; err != nil {
+	if err := model.DB.Select("id", "name", "type", "status", "models", "model_mapping", "setting").Where("status = ? AND type IN ?", common.ChannelStatusEnabled, []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAzure, constant.ChannelTypeSora}).Order("id asc").Find(&channels).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -35,6 +35,7 @@ func AdminMembershipChannels(c *gin.Context) {
 		}
 		models := make([]string, 0)
 		imageModels := make([]string, 0)
+		videoModels := make([]string, 0)
 		var mapping map[string]string
 		if channel.ModelMapping != nil && *channel.ModelMapping != "" {
 			if common.UnmarshalJsonStr(*channel.ModelMapping, &mapping) != nil {
@@ -49,12 +50,18 @@ func AdminMembershipChannels(c *gin.Context) {
 			if channel.Type == constant.ChannelTypeOpenAI && model.MembershipImageModelSupported(upstream) {
 				imageModels = append(imageModels, name)
 			}
-			if model.MembershipTextModelSupported(upstream) {
+			if model.MembershipVideoChannelSupported(channel.Type) && model.MembershipVideoModelSupported(upstream) {
+				videoModels = append(videoModels, name)
+			}
+			if model.MembershipTextChannelSupported(channel.Type) && model.MembershipTextModelSupported(upstream) {
 				models = append(models, name)
 			}
 		}
 		if len(models) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: models, Profile: model.MembershipTextProfile, Unit: model.MembershipUnitTokens})
+		}
+		if len(videoModels) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: videoModels, Profile: model.MembershipVideoProfile, Unit: model.MembershipUnitVideos})
 		}
 		if len(imageModels) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: imageModels, Profile: model.MembershipImageProfile, Unit: model.MembershipUnitImages})
