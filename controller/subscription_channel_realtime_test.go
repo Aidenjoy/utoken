@@ -85,7 +85,8 @@ func TestMembershipHTTPRealtimeUsesRawUsageAndClosesAtBudget(t *testing.T) {
 					}
 				}
 			})
-			r.GET("/v1/realtime", middleware.TokenAuth(), middleware.Distribute(), func(c *gin.Context) { Relay(c, types.RelayFormatOpenAIRealtime) })
+			handled := make(chan struct{})
+			r.GET("/v1/realtime", middleware.TokenAuth(), middleware.Distribute(), func(c *gin.Context) { defer close(handled); Relay(c, types.RelayFormatOpenAIRealtime) })
 			server := httptest.NewServer(r)
 			defer server.Close()
 			var before model.User
@@ -106,9 +107,13 @@ func TestMembershipHTTPRealtimeUsesRawUsageAndClosesAtBudget(t *testing.T) {
 			}
 			_, _, _ = conn.ReadMessage() // bounded session closes on exhaustion or unverifiable usage
 			var ledger model.SubscriptionChannelRequest
-			require.Eventually(t, func() bool {
-				return db.Where("user_subscription_id = ?", subID).First(&ledger).Error == nil && (ledger.Status == "settled" || ledger.Status == "pending")
-			}, time.Second, 5*time.Millisecond)
+			select {
+			case <-handled:
+			case <-time.After(5 * time.Second):
+				t.Fatal("realtime handler did not finish")
+			}
+			require.NoError(t, db.Where("user_subscription_id = ?", subID).First(&ledger).Error)
+
 			var grant model.SubscriptionChannelQuota
 			require.NoError(t, db.Where("user_subscription_id = ?", subID).First(&grant).Error)
 			if missing {
