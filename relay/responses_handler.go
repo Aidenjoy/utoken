@@ -10,6 +10,7 @@ import (
 	appconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -22,6 +23,21 @@ import (
 
 func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
+	var membership *service.MembershipSession
+	if c.GetInt("membership_subscription_id") > 0 {
+		if !model.MembershipTextChannelSupported(info.ChannelType) || info.RelayMode != relayconstant.RelayModeResponses || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+			return types.NewError(fmt.Errorf("membership Responses adapter or mode unsupported"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		defer func() {
+			if membership != nil {
+				if info.IsStream && !membership.TransportComplete {
+					membership.InvalidUsage = true
+				}
+				service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
+			}
+		}()
+	}
+
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact {
 		switch info.ApiType {
 		case appconstant.APITypeOpenAI, appconstant.APITypeCodex:
@@ -65,6 +81,20 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
 
+	if c.GetInt("membership_subscription_id") > 0 && info.ChannelSetting.SystemPrompt != "" {
+		var instructions string
+		if len(request.Instructions) > 0 {
+			if err := common.Unmarshal(request.Instructions, &instructions); err != nil {
+				return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+			}
+		}
+		if instructions == "" {
+			instructions = info.ChannelSetting.SystemPrompt
+		} else if info.ChannelSetting.SystemPromptOverride {
+			instructions = info.ChannelSetting.SystemPrompt + "\n" + instructions
+		}
+		request.Instructions, _ = common.Marshal(instructions)
+	}
 	adaptor := GetAdaptor(info.ApiType)
 	if adaptor == nil {
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
@@ -102,6 +132,12 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			}
 		}
 
+		if c.GetInt("membership_subscription_id") > 0 {
+			membership, err = service.PrepareMembershipResponses(c, info, jsonData, helper.MaxTokensLimit)
+			if err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+			}
+		}
 		logger.LogDebugJSON(c, "requestBody: %s", jsonData)
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {
@@ -114,6 +150,12 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	}
 
 	var httpResp *http.Response
+	if membership != nil {
+		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
+			return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		membership.Dispatched = true
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
@@ -139,6 +181,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return newAPIError
 	}
 
+	if membership != nil {
+		return nil
+	}
 	usageDto := usage.(*dto.Usage)
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact {
 		originModelName := info.OriginModelName

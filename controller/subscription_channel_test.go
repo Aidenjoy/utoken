@@ -393,7 +393,7 @@ func TestMembershipHTTPUnimplementedProtocolsNeverReachWalletOrUpstream(t *testi
 		{http.MethodPost, "/v1/videos"},
 		{http.MethodPost, "/api/v3/contents/generations/tasks"},
 		{http.MethodPost, "/v1/messages"},
-		{http.MethodPost, "/v1/responses"},
+		{http.MethodPost, "/v1/responses/compact"},
 		{http.MethodPost, "/v1/images/edits"},
 	} {
 		r.Handle(endpoint.method, endpoint.path, middleware.TokenAuth(), func(c *gin.Context) { accepted.Add(1); c.Status(http.StatusOK) })

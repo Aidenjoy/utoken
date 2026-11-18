@@ -252,3 +252,12 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - 全会员 `go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s` 已通过（controller16.956s），日志 `/private/tmp/yun-token-claude-race.log`。
 - 扩大 race 发现 WebSocket 夹具在处理器尾部统计尚未结束时重置全局开关；已单独修复处理器结束同步和重复写相同开关的竞态。该问题属于新增夹具收尾，修复后的通过结果取代之前受影响的 race 结果，不归入素材库既有失败。
 - 渠道21原生 Messages 为 mock 通过/待用户手工实测；同渠道的 Chat Completions 转换仍拒绝会员，不能由原生协议通过推断转换协议通过。
+
+
+## 原生 Responses 短文本（2026-11-18）
+
+- 沿用 `openai_chat_text_v1` 的同一渠道双 Token 台账，让同一会员 Key 在已验收的 Chat/Responses 短文本路径共享额度，而不是再买一份协议额度。
+- 只接受 `/v1/responses`，自包含字符串 input 和 instructions、显式 max_output_tokens，store=false/省略。拒绝数组、多模态、工具、previous_response_id、conversation、compact、background 等无法在本合同内计算完整输入边界的路径。会员系统提示在转换前处理，最终参数覆盖后预留。
+- 只取原生 input_tokens、output_tokens、total_tokens，检查一致性；流式必须有 response.completed 的完整原始用量且无扫描错误。单独 [DONE] 不是原生终态。Incomplete/failed 等未知结算条件保留 pending。
+- 实际 OpenAI/xAI 目录十个模型名分别验证普通和流式、最终输出上限、远程上下文上游前拒绝、原始分项、耗尽上游零新增调用、钱包不变；日志 `/private/tmp/yun-token-responses-tests.log`。
+- 本机渠道19/20/25/39的 Responses 现在是 mock 通过、实际实例待用户手工验收；没有执行任何真实请求。此前文档中“所有 Responses 未实现”的描述由本节限定范围取代，其他 Responses 能力仍拒绝。
