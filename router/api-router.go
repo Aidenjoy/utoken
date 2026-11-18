@@ -56,6 +56,14 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
+		desktopAuth := apiRouter.Group("/desktop-auth")
+		desktopAuth.GET("/authorize", controller.DesktopAuthorize)
+		desktopAuth.POST("/authorize", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DesktopAuthorizeDecision)
+		desktopAuth.POST("/token", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DesktopExchange)
+		desktopAuth.GET("/me", controller.DesktopProfile)
+		desktopAuth.POST("/session", middleware.CriticalRateLimit(), controller.DesktopCreateDashboardSession)
+		desktopAuth.POST("/revoke", middleware.CriticalRateLimit(), controller.DesktopRevoke)
+
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", anonymousRequestBodyLimit, controller.WaffoWebhook)
