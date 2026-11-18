@@ -28,6 +28,7 @@ import (
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	canvasService "github.com/QuantumNous/new-api/service/canvas"
 	directorService "github.com/QuantumNous/new-api/service/director"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -171,6 +172,10 @@ func main() {
 
 	// 云导演：恢复进程重启前未完成的视频生成任务轮询（异步探测，不阻塞启动）
 	go (&directorService.VideoGenerationService{}).ResumeDirectorPolling()
+
+	// 智能画布：收敛重启前的未完成任务（未派发的重放；已派发的转待核对，
+	// 既不重复提交也不退款，避免重复计费）
+	go canvasService.RecoverTasks()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true

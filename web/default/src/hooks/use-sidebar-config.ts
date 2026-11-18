@@ -133,6 +133,9 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/subscriptions': { section: 'admin', module: 'subscription' },
   '/system-settings': { section: 'admin', module: 'setting' },
   '/system-settings/site': { section: 'admin', module: 'setting' },
+  // '/canvas'（智能画布）暂不映射到既有开关：它与素材库/调试台是并列入口，
+  // 挂到任一既有模块都会造成「关掉 A 却连带关掉画布」的误解；
+  // 未映射的入口默认可见（与其他新增入口一致），管理员可通过代理商菜单开关控制。
 }
 
 /**

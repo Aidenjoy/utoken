@@ -332,6 +332,10 @@ func migrateDB() error {
 		&Agent{},
 		&InviteCode{},
 		&PromptTemplate{},
+		// 智能画布：项目（图层文档 + revision）、任务、计费流水
+		&CanvasProject{},
+		&CanvasTask{},
+		&CanvasLedger{},
 	)
 	if err != nil {
 		return err

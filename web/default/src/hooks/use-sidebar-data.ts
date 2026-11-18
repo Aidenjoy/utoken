@@ -224,6 +224,11 @@ export function useSidebarData(): SidebarData {
           icon: Images,
         },
         {
+          title: t('Smart Canvas'),
+          url: '/canvas',
+          icon: Layers,
+        },
+        {
           title: t('Chat'),
           icon: MessageSquare,
           type: 'chat-presets',

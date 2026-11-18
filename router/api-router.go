@@ -355,6 +355,7 @@ func SetApiRouter(router *gin.Engine) {
 		registerOrgRoutes(apiRouter)
 		registerPromptRoutes(apiRouter)
 		registerDirectorRoutes(apiRouter)
+		registerCanvasRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{
