@@ -52,6 +52,13 @@ const channels = [
     unit: 'images',
     models: ['dall-e-2'],
   },
+  {
+    id: 9,
+    name: 'Mock video channel',
+    profile: 'sora_completed_video_v1',
+    unit: 'completed_videos',
+    models: ['sora-2', 'sora-2-pro'],
+  },
 ]
 const plan = {
   id: 101,
@@ -75,6 +82,15 @@ const plan = {
       input_limit: 0,
       output_limit: 0,
       quantity_limit: 100,
+    },
+    {
+      channel_id: 9,
+      profile: channels[2].profile,
+      unit: channels[2].unit,
+      models: channels[2].models,
+      input_limit: 0,
+      output_limit: 0,
+      quantity_limit: 5,
     },
   ],
   price_amount: 1,
@@ -105,8 +121,9 @@ function applyEvent(event) {
 try {
   for (const line of (await fs.readFile(journal, 'utf8'))
     .split('\n')
-    .filter(Boolean))
-    {applyEvent(JSON.parse(line))}
+    .filter(Boolean)) {
+    applyEvent(JSON.parse(line))
+  }
 } catch (error) {
   if (error.code !== 'ENOENT') throw error
 }
@@ -127,6 +144,28 @@ const mime = {
   '.woff': 'font/woff',
   '.ico': 'image/x-icon',
   '.ttf': 'font/ttf',
+}
+// Mirror the user-facing API projection while retaining full synthetic admin rights.
+function publicBenefit(grant) {
+  const benefit = {
+    id: grant.id,
+    user_subscription_id: grant.user_subscription_id,
+    channel_id: grant.channel_id,
+    profile: grant.profile,
+    unit: grant.unit,
+    models: grant.models,
+  }
+  if (grant.user_subscription_id) {
+    benefit.available =
+      grant.unit === 'input_output_tokens'
+        ? grant.input_limit > grant.input_used + grant.input_reserved &&
+          grant.output_limit > grant.output_used + grant.output_reserved
+        : grant.quantity_limit > grant.quantity_used + grant.quantity_reserved
+  }
+  return benefit
+}
+function publicSubscription(record) {
+  return { ...record, channel_quotas: record.channel_quotas.map(publicBenefit) }
 }
 const server = http.createServer(async (request, response) => {
   try {
@@ -152,35 +191,36 @@ const server = http.createServer(async (request, response) => {
         success = false
         message = 'Mock preview never deletes data'
       } else if (endpoint === '/api/setup') data = { status: true }
-      else if (endpoint === '/api/status')
-        {data = {
+      else if (endpoint === '/api/status') {
+        data = {
           setup: true,
           system_name: 'new-api',
           version: 'mock-only',
           start_time: 1,
-        }}
-      else if (endpoint === '/api/notice') data = ''
+        }
+      } else if (endpoint === '/api/notice') data = ''
       else if (endpoint === '/api/user/self') data = user
       else if (endpoint === '/api/group') data = ['default']
-      else if (endpoint === '/api/option')
-        {data = [
+      else if (endpoint === '/api/option') {
+        data = [
           { key: 'payment_setting.compliance_confirmed', value: 'true' },
           { key: 'payment_setting.compliance_terms_version', value: 'v1' },
-        ]}
-      else if (endpoint === '/api/subscription/admin/channels') data = channels
-      else if (endpoint === '/api/subscription/self')
-        {data = {
+        ]
+      } else if (endpoint === '/api/subscription/admin/channels') {
+        data = channels
+      } else if (endpoint === '/api/subscription/self') {
+        data = {
           billing_preference: 'wallet_first',
-          subscriptions,
-          all_subscriptions: subscriptions,
-        }}
-      else if (endpoint === '/api/user/topup/info')
-        {data = {
+          subscriptions: subscriptions.map(publicSubscription),
+          all_subscriptions: subscriptions.map(publicSubscription),
+        }
+      } else if (endpoint === '/api/user/topup/info') {
+        data = {
           enable_online_topup: false,
           enable_stripe_topup: false,
           pay_methods: [],
-        }}
-      else if (
+        }
+      } else if (
         endpoint === '/api/subscription/balance/pay' &&
         request.method === 'POST'
       ) {
@@ -240,15 +280,15 @@ const server = http.createServer(async (request, response) => {
           await saveEvent({ kind: 'key', key })
           data = key
         }
-      } else if (endpoint === '/api/token')
-        {data = { items: keys, total: keys.length, page: 1, page_size: 10 }}
-      else if (/^\/api\/token\/\d+\/key$/.test(endpoint))
-        {data = {
+      } else if (endpoint === '/api/token') {
+        data = { items: keys, total: keys.length, page: 1, page_size: 10 }
+      } else if (/^\/api\/token\/\d+\/key$/.test(endpoint)) {
+        data = {
           key:
             keys.find((key) => key.id === Number(endpoint.split('/')[3]))
               ?.key ?? 'mock-key',
-        }}
-      else if (
+        }
+      } else if (
         endpoint === '/api/subscription/admin/plans' &&
         request.method === 'POST'
       ) {
@@ -258,9 +298,17 @@ const server = http.createServer(async (request, response) => {
       } else if (
         endpoint === '/api/subscription/plans' ||
         endpoint === '/api/subscription/admin/plans'
-      )
-        {data = plans.map((item) => ({ plan: item }))}
-      else if (request.method !== 'GET') {
+      ) {
+        data = plans.map((item) => ({
+          plan:
+            endpoint === '/api/subscription/plans'
+              ? {
+                  ...item,
+                  channel_quotas: item.channel_quotas.map(publicBenefit),
+                }
+              : item,
+        }))
+      } else if (request.method !== 'GET') {
         success = false
         message = 'This operation is not implemented in the mock preview'
       }

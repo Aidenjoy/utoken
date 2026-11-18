@@ -150,9 +150,7 @@ export function ChannelMemberships() {
             </div>
           </section>
           <section className='space-y-3'>
-            <h2 className='text-lg font-semibold'>
-              {t('My channel balances')}
-            </h2>
+            <h2 className='text-lg font-semibold'>{t('My memberships')}</h2>
             {!subscriptions.isPending && !failed && rights.length === 0 && (
               <p className='text-muted-foreground'>
                 {t('No channel memberships yet')}
@@ -182,16 +180,7 @@ export function ChannelMemberships() {
                         <ChannelQuotaSummary quotas={[grant]} />
                         <Button
                           variant='outline'
-                          disabled={
-                            !active ||
-                            (grant.unit === 'images'
-                              ? (grant.quantity_limit ?? 0) <=
-                                grant.quantity_used + grant.quantity_reserved
-                              : grant.input_limit <=
-                                  grant.input_used + grant.input_reserved ||
-                                grant.output_limit <=
-                                  grant.output_used + grant.output_reserved)
-                          }
+                          disabled={!active || grant.available === false}
                           onClick={() => setSelectedGrant(grant)}
                         >
                           {t('Create membership Key')}

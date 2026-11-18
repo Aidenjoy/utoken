@@ -463,7 +463,10 @@ export function SubscriptionPlansCard({
                         </div>
                       )}
                       <div className='text-muted-foreground mt-1'>
-                        {t('Total Quota')}:{' '}
+                        {subscription?.meter_type === 'channel'
+                          ? t('Membership benefits')
+                          : t('Total Quota')}
+                        :{' '}
                         {subscription?.meter_type === 'channel' && (
                           <ChannelQuotaSummary
                             quotas={sub.channel_quotas ?? []}

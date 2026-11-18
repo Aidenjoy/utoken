@@ -26,6 +26,14 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { createApiKey } from '@/features/keys/api'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -38,19 +46,25 @@ export function MembershipKeyDialog(props: {
 }) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
+  const [videoModel, setVideoModel] = useState(props.grant.models[0] ?? '')
+  const video = props.grant.unit === 'completed_videos'
   const queryClient = useQueryClient()
   const create = useMutation({
     mutationFn: async () => {
+      let keyType: 'video' | 'image' | 'language' = 'language'
+      if (video) keyType = 'video'
+      else if (props.grant.unit === 'images') keyType = 'image'
       const result = await createApiKey({
         name: name.trim(),
         user_subscription_id: props.grant.user_subscription_id,
         channel_id: props.grant.channel_id,
-        key_type: props.grant.unit === 'images' ? 'image' : 'language',
+        key_type: keyType,
+        video_model: video ? videoModel : '',
         expired_time: -1,
         remain_quota: 0,
         unlimited_quota: true,
         model_limits_enabled: true,
-        model_limits: props.grant.models.join(','),
+        model_limits: video ? videoModel : props.grant.models.join(','),
         allow_ips: '',
         group: '',
         cross_group_retry: false,
@@ -87,6 +101,34 @@ export function MembershipKeyDialog(props: {
           {t('Channel {{id}}', { id: props.grant.channel_id })} ·{' '}
           {props.grant.models.join(', ')}
         </p>
+        {video && (
+          <div className='space-y-2'>
+            <Label>{t('Model')}</Label>
+            <Select
+              value={videoModel}
+              onValueChange={(value) => {
+                if (value) setVideoModel(value)
+              }}
+              items={props.grant.models.map((model) => ({
+                value: model,
+                label: model,
+              }))}
+            >
+              <SelectTrigger aria-label={t('Model')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {props.grant.models.map((model) => (
+                    <SelectItem key={model} value={model}>
+                      {model}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <Label htmlFor='membership-key-name'>{t('Name')}</Label>
         <Input
           id='membership-key-name'

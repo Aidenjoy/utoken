@@ -32,20 +32,24 @@ import {
 } from '@/components/ui/select'
 
 import { getMembershipChannels } from '../api'
-import type { ChannelQuotaConfig, MembershipChannelOption } from '../types'
+import {
+  channelQuotaUnitLabels,
+  type ChannelQuotaConfig,
+  type MembershipChannelOption,
+} from '../types'
 
 function quotaFromChannel(
   channel: MembershipChannelOption
 ): ChannelQuotaConfig {
-  const images = channel.unit === 'images'
+  const count = channel.unit !== 'input_output_tokens'
   return {
     channel_id: channel.id,
     profile: channel.profile,
     unit: channel.unit,
     models: channel.models,
-    input_limit: images ? 0 : 1000000,
-    output_limit: images ? 0 : 200000,
-    quantity_limit: images ? 100 : 0,
+    input_limit: count ? 0 : 1000000,
+    output_limit: count ? 0 : 200000,
+    quantity_limit: count ? 100 : 0,
   }
 }
 
@@ -73,7 +77,7 @@ export function ChannelQuotaEditor(props: {
             value={`${quota.channel_id}:${quota.profile}`}
             items={options.map((item) => ({
               value: `${item.id}:${item.profile}`,
-              label: `#${item.id} ${item.name} · ${item.unit === 'images' ? t('Image count') : t('Input / output tokens')}`,
+              label: `#${item.id} ${item.name} · ${t(channelQuotaUnitLabels[item.unit])}`,
             }))}
             onValueChange={(value) => {
               const channel = options.find(
@@ -105,9 +109,7 @@ export function ChannelQuotaEditor(props: {
                       value={`${item.id}:${item.profile}`}
                     >
                       #{item.id} {item.name} ·{' '}
-                      {item.unit === 'images'
-                        ? t('Image count')
-                        : t('Input / output tokens')}
+                      {t(channelQuotaUnitLabels[item.unit])}
                     </SelectItem>
                   ))}
               </SelectGroup>
@@ -116,10 +118,12 @@ export function ChannelQuotaEditor(props: {
           <p className='text-muted-foreground text-xs'>
             {quota.models.join(', ')}
           </p>
-          {quota.unit === 'images' ? (
+          {quota.unit !== 'input_output_tokens' ? (
             <div className='space-y-1'>
               <Label htmlFor={`membership-${index}-quantity`}>
-                {t('Image count')}
+                {quota.unit === 'completed_videos'
+                  ? t('Completed videos')
+                  : t('Image count')}
               </Label>
               <Input
                 id={`membership-${index}-quantity`}

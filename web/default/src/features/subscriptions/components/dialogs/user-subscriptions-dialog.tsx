@@ -349,6 +349,7 @@ export function UserSubscriptionsDialog(props: Props) {
                     if (sub.meter_type === 'channel') {
                       return (
                         <ChannelQuotaSummary
+                          showAmounts
                           quotas={record.channel_quotas ?? []}
                         />
                       )

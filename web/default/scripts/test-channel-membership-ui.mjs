@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,8 +18,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createRequire } from 'node:module'
-
-import fs from 'node:fs/promises'
 
 const { chromium } = createRequire(import.meta.url)('playwright-core')
 
@@ -49,6 +48,7 @@ await context.addInitScript((user) => {
 let purchased = false,
   created = false,
   imageCreated = false,
+  videoCreated = false,
   adminSaved = false
 const operations = []
 const quota = {
@@ -80,6 +80,17 @@ const imageQuota = {
   output_reserved: 0,
   quantity_limit: 10,
   quantity_used: 2,
+  quantity_reserved: 1,
+}
+const videoQuota = {
+  ...imageQuota,
+  id: 3,
+  channel_id: 9,
+  profile: 'sora_completed_video_v1',
+  unit: 'completed_videos',
+  models: ['sora-2', 'sora-2-pro'],
+  quantity_limit: 5,
+  quantity_used: 1,
   quantity_reserved: 1,
 }
 const plan = {
@@ -130,7 +141,27 @@ const record = {
     amount_total: 0,
     amount_used: 0,
   },
-  channel_quotas: [quota, imageQuota],
+  channel_quotas: [quota, imageQuota, videoQuota],
+}
+// Match the user API contract: no internal allowance figures reach the page.
+function publicBenefit(grant) {
+  return {
+    id: grant.id,
+    user_subscription_id: grant.user_subscription_id,
+    channel_id: grant.channel_id,
+    profile: grant.profile,
+    unit: grant.unit,
+    models: grant.models,
+    available: true,
+  }
+}
+const publicPlan = {
+  ...plan,
+  channel_quotas: plan.channel_quotas.map(publicBenefit),
+}
+const publicRecord = {
+  ...record,
+  channel_quotas: record.channel_quotas.map(publicBenefit),
 }
 await context.route('**/*', async (route) => {
   const req = route.request()
@@ -164,12 +195,16 @@ await context.route('**/*', async (route) => {
       url.pathname === '/api/subscription/plans' ||
       url.pathname === '/api/subscription/admin/plans'
     ) {
-      data = [{ plan }]
+      data = [
+        {
+          plan: url.pathname === '/api/subscription/plans' ? publicPlan : plan,
+        },
+      ]
     } else if (url.pathname === '/api/subscription/self') {
       data = {
         billing_preference: 'wallet_first',
-        subscriptions: purchased ? [record] : [],
-        all_subscriptions: purchased ? [record] : [],
+        subscriptions: purchased ? [publicRecord] : [],
+        all_subscriptions: purchased ? [publicRecord] : [],
       }
     } else if (url.pathname === '/api/user/topup/info') {
       data = {
@@ -184,11 +219,16 @@ await context.route('**/*', async (route) => {
       const body = req.postDataJSON()
       if (
         body.user_subscription_id !== 501 ||
-        ![7, 8].includes(body.channel_id)
+        ![7, 8, 9].includes(body.channel_id)
       ) {
         throw new Error('wrong membership key binding')
       }
-      if (body.channel_id === 8) {
+      if (body.channel_id === 9) {
+        if (body.key_type !== 'video' || body.video_model !== 'sora-2-pro') {
+          throw new Error('wrong video key type or model')
+        }
+        videoCreated = true
+      } else if (body.channel_id === 8) {
         if (body.key_type !== 'image') throw new Error('wrong image key type')
         imageCreated = true
       } else {
@@ -246,6 +286,9 @@ try {
   await page
     .getByRole('heading', { name: 'Membership plans', exact: true })
     .waitFor({ timeout: 5000 })
+  const publicCopy = await page.locator('body').innerText()
+  if (/Input tokens|Output tokens|1,000,000|200,000/.test(publicCopy))
+    {throw new Error('public plan exposes internal token amounts')}
   await page.getByRole('button', { name: 'Subscribe Now', exact: true }).click()
   await page.screenshot({
     path: '/private/tmp/yun-token-membership-checkout.png',
@@ -281,9 +324,23 @@ try {
     .fill('Mock image membership Key')
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await page.getByRole('dialog').waitFor({ state: 'hidden' })
-  if (!purchased || !created || !imageCreated) {
+  await page
+    .getByRole('button', { name: 'Create membership Key', exact: true })
+    .nth(2)
+    .click()
+  await page
+    .getByLabel('Name', { exact: true })
+    .fill('Mock video membership Key')
+  await page.getByRole('combobox', { name: 'Model', exact: true }).click()
+  await page.getByRole('option', { name: 'sora-2-pro', exact: true }).click()
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await page.getByRole('dialog').waitFor({ state: 'hidden' })
+  if (!purchased || !created || !imageCreated || !videoCreated) {
     throw new Error('mock purchase/key flow incomplete')
   }
+  const membershipCopy = await page.locator('body').innerText()
+  if (/Input tokens|Output tokens|1,000,000|200,000/.test(membershipCopy))
+    {throw new Error('public membership exposes internal token amounts')}
   await page.getByText('Subscription Management', { exact: true }).click()
   await page.getByRole('button', { name: 'Create Plan', exact: true }).click()
   await page
@@ -331,6 +388,7 @@ try {
       purchased,
       created,
       imageCreated,
+      videoCreated,
       adminSaved,
       mobileOverflow: false,
       realApiCalls: 0,

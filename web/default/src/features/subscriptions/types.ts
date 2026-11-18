@@ -24,24 +24,43 @@ import { z } from 'zod'
 
 export const channelQuotaConfigSchema = z.object({
   channel_id: z.number().int().positive(),
-  profile: z.enum(['openai_chat_text_v1', 'openai_images_count_v1']),
-  unit: z.enum(['input_output_tokens', 'images']),
+  profile: z.enum([
+    'openai_chat_text_v1',
+    'openai_images_count_v1',
+    'sora_completed_video_v1',
+  ]),
+  unit: z.enum(['input_output_tokens', 'images', 'completed_videos']),
   models: z.array(z.string()).min(1),
   quantity_limit: z.number().int().min(0).max(2147483647).optional(),
   input_limit: z.number().int().min(0).max(2147483647),
   output_limit: z.number().int().min(0).max(2147483647),
 })
 export type ChannelQuotaConfig = z.infer<typeof channelQuotaConfigSchema>
-export interface ChannelQuota extends ChannelQuotaConfig {
+
+export const channelQuotaUnitLabels: Record<
+  ChannelQuotaConfig['unit'],
+  string
+> = {
+  input_output_tokens: 'Input / output tokens',
+  images: 'Image count',
+  completed_videos: 'Completed videos',
+}
+
+export interface ChannelQuota extends Partial<ChannelQuotaConfig> {
+  channel_id: number
+  profile: ChannelQuotaConfig['profile']
+  unit: ChannelQuotaConfig['unit']
+  models: string[]
+  available?: boolean
   id: number
   user_subscription_id: number
-  quantity_used: number
-  quantity_reserved: number
+  quantity_used?: number
+  quantity_reserved?: number
   channel_name?: string
-  input_used: number
-  output_used: number
-  input_reserved: number
-  output_reserved: number
+  input_used?: number
+  output_used?: number
+  input_reserved?: number
+  output_reserved?: number
 }
 export interface MembershipChannelOption {
   profile: ChannelQuotaConfig['profile']

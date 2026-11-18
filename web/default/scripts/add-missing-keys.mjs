@@ -179,6 +179,42 @@ newKeys.fr['Image count'] = 'Nombre d’images'
 newKeys.ja['Image count'] = '画像枚数'
 newKeys.ru['Image count'] = 'Количество изображений'
 newKeys.vi['Image count'] = 'Số lượng ảnh'
+newKeys.en['Completed videos'] = 'Completed videos'
+newKeys.zh['Completed videos'] = '成功生成视频次数'
+newKeys.fr['Completed videos'] = 'Vidéos terminées'
+newKeys.ja['Completed videos'] = '生成完了した動画数'
+newKeys.ru['Completed videos'] = 'Готовые видео'
+newKeys.vi['Completed videos'] = 'Số video tạo thành công'
+Object.assign(newKeys.en, {
+  'My memberships': 'My memberships',
+  'Membership benefits': 'Membership benefits',
+  'Plan allowance exhausted': 'Plan allowance exhausted',
+})
+Object.assign(newKeys.zh, {
+  'My memberships': '我的会员',
+  'Membership benefits': '会员权益',
+  'Plan allowance exhausted': '套餐额度不足',
+})
+Object.assign(newKeys.fr, {
+  'My memberships': 'Mes abonnements',
+  'Membership benefits': 'Avantages inclus',
+  'Plan allowance exhausted': 'Quota du forfait épuisé',
+})
+Object.assign(newKeys.ja, {
+  'My memberships': '加入中のプラン',
+  'Membership benefits': '会員特典',
+  'Plan allowance exhausted': 'プランの利用枠が不足しています',
+})
+Object.assign(newKeys.ru, {
+  'My memberships': 'Мои подписки',
+  'Membership benefits': 'Возможности подписки',
+  'Plan allowance exhausted': 'Лимит подписки исчерпан',
+})
+Object.assign(newKeys.vi, {
+  'My memberships': 'Gói thành viên của tôi',
+  'Membership benefits': 'Quyền lợi thành viên',
+  'Plan allowance exhausted': 'Đã hết hạn mức gói',
+})
 async function main() {
   for (const [locale, trans] of Object.entries(newKeys)) {
     const filePath = path.join(LOCALES_DIR, `${locale}.json`)
