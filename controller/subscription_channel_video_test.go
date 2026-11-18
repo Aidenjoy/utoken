@@ -177,3 +177,35 @@ func TestMembershipHTTPVideoProSharesTheTaskContract(t *testing.T) {
 	assert.EqualValues(t, 1, grant.QuantityUsed)
 	assert.Zero(t, grant.QuantityReserved)
 }
+
+// TestMembershipHTTPVideoKeyCannotSubmitArkNativeOrSeedance pins the R01—R12
+// sale ban at the HTTP boundary: a valid Sora video membership key is rejected
+// before any upstream call on the Ark native task protocol, and Seedance models
+// never enter the bounded Sora contract. This is a rejection guard, not a video
+// metering implementation for Ark channels.
+func TestMembershipHTTPVideoKeyCannotSubmitArkNativeOrSeedance(t *testing.T) {
+	var calls atomic.Int32
+	r, db, key, subID := membershipVideoFixture(t, "sora-2", func(w http.ResponseWriter, req *http.Request) {
+		calls.Add(1)
+		t.Error("blocked video protocol reached upstream")
+	})
+	r.POST("/api/v3/contents/generations/tasks", middleware.TokenAuth(), middleware.Distribute(), RelayTask)
+	var wallet model.User
+	require.NoError(t, db.First(&wallet, 8101).Error)
+	before := wallet.Quota
+	for _, body := range []string{
+		`{"model":"sora-2","prompt":"membership ark guard"}`,
+		`{"model":"doubao-seedance-2.5","content":[{"type":"text","text":"membership ark guard"}]}`,
+	} {
+		response := membershipHTTPRequest(r, "/api/v3/contents/generations/tasks", key.Key, body)
+		assert.Equal(t, http.StatusForbidden, response.Code, body)
+	}
+	response := membershipHTTPRequest(r, "/v1/videos", key.Key, `{"model":"doubao-seedance-2.5","prompt":"membership ark guard"}`)
+	assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+	assert.Zero(t, calls.Load())
+	var count int64
+	require.NoError(t, db.Model(&model.SubscriptionChannelRequest{}).Where("user_subscription_id = ?", subID).Count(&count).Error)
+	assert.Zero(t, count)
+	require.NoError(t, db.First(&wallet, 8101).Error)
+	assert.Equal(t, before, wallet.Quota)
+}
