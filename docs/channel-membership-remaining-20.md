@@ -57,8 +57,9 @@ GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./ser
 
 ## 工程缺口与周五范围
 
-- R01—R12 是同一个 Ark/Seedance 会员任务合同缺口在6个实际渠道、2种外部协议上的展开，不是12套重复开发。官方文档证实创建 API 无单请求 Token 硬上限、定价公式为估算、usage 无输入分项且有最低用量兜底，账号/接入点级上限非单请求级——**无可执行预留边界，保持禁售**（证据见主验收文档「Ark/Seedance 视频会员阻塞证据」）。终态对账可行但不足以支撑可售预留。
-- R13 已补按张计数合同（mock通过，待手工验收）；R14—R15 为 Gemini 图片合同（mock通过）；R16 GPT Image 经官方 OpenAPI 规范证实无输出上限参数、2.5 无官方输出 Token 数值表，**保持禁售**（证据见主验收文档「GPT Image 会员阻塞证据」）。R17、R18 是2类转换桥接（mock通过）。不能因同适配器跳过每个实际实例/外部协议的验收。
+- R01—R12 是同一个 Ark/Seedance 会员任务合同缺口在6个实际渠道、2种外部协议上的展开，不是12套重复开发。官方文档证实创建 API 无单请求 Token 硬上限、定价公式为估算、usage 无输入分项且有最低用量兜底，账号/接入点级上限非单请求级——**无可执行预留边界，保持禁售**（证据见主验收文档「Ark/Seedance 视频会员阻塞证据」）。2026-11-18 重新核查最新官方创建 API 补充：`frames` 精确控帧仅 1.0 系列支持（本机渠道均为 2.0/2.5），查询返回 duration 为实际帧数/24 向下取整的约数，固定时长也不保证确定性用量；最低用量表本身标注估算值。终态对账可行但不足以支撑可售预留。
+- R13 已补按张计数合同（mock通过，待手工验收）；R14—R15 为 Gemini 图片合同（mock通过）；R16 GPT Image 经官方 OpenAPI 规范证实无输出上限参数、2.5 无官方输出 Token 数值表，**保持禁售**（证据见主验收文档「GPT Image 会员阻塞证据」）。2026-11-18 重新核查最新官方 SDK：新增 complexity/xhigh/max/SVG/GIF 均不构成 Token 上限；usage 原始分项（含 input/output details）可得，阻塞点仍是无请求级上限与无确定性用量表。R17、R18 是2类转换桥接（mock通过）。不能因同适配器跳过每个实际实例/外部协议的验收。
+- 2026-11-18 新增禁售守卫回归（非功能完成）：`TestMembershipBlockedArkVideoAndGPTImageStayUnsellable`（10 profile 配置拒绝＋购买回滚）与 `TestMembershipHTTPVideoKeyCannotSubmitArkNativeOrSeedance`（视频 Key 在 Ark 原生协议上游前 403、零预留、钱包不变），SQLite/MySQL/PostgreSQL 均通过。详见主验收文档「剩余13项重新核查与禁售守卫」。
 - 建议周五 2026-11-20 的候选先限定为已 mock 通过并由用户真实验收通过的文本协议；火山文本可进入此候选。Seedream 图片可作为图片候选，但须先手工验收单图边界与真实 usage。若首发承诺会员视频（R01—R12）或 GPT Image（R16），这些禁售条目均是硬阻断，不能延后验收后仍对外声称已支持。
 - R17/R18 可以在原生客户端可用时随后补；若产品前端/客户 SDK 只支持 OpenAI Chat，则不能以原生接口已通过为由宣称该客户端可用。
 - Epay、真实模型及实际配置只由用户手动验收，采用 `channel-membership-manual-acceptance.md`。本轮没有真实支付、充值、模型调用，也未删除任何数据。

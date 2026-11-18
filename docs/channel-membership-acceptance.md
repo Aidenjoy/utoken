@@ -353,3 +353,32 @@ MEMBERSHIP_TEST_DIALECT=postgres MEMBERSHIP_TEST_DSN='<local independent postgre
 ```
 
 - 口径不变：SQL 回归通过仍属 **mock 证据**，全矩阵 17/30 mock 通过、13 缺功能、**真实通过 0**；R13—R15/R17/R18 与 R19/R20 的真实验收仍由用户按手工验收文档执行。
+
+## 剩余13项重新核查与禁售守卫（2026-11-18，接续开发）
+
+按用户要求对 R01—R12（Ark/Seedance 视频）与 R16（GPT Image 2.5）重新核查源码与**最新官方一手协议**，不沿用旧结论。结论：**13 项全部仍为「未完成/禁售」**，本轮未发现可执行的可靠预留边界；新增两项禁售守卫回归（属安全拒绝固化，**不是计量合同实现，不计入功能完成**）。全程本地 mock，无真实模型/支付调用。
+
+### Ark 视频（R01—R12）重新核查
+
+- **源码链路（拒绝点）**：`router/video-router.go:55-63`（Ark 原生路由）→ `middleware/distributor.go:127`（会员渠道/模型准入）→ `relay/relay_task.go:250-267`（会员任务仅放行 Sora/OpenAI 平台）→ `service/subscription_task.go:25-69`（仅 `/v1/videos`、仅 sora-2/sora-2-pro）→ `service/task_polling.go:642-643` 终态结算。类型 59（`constant/channel.go:59`）不在任何 profile 的渠道白名单（`model/subscription_channel.go:177,191,370-375`）。
+- **最新官方创建 API**（2026-11-18 抓取 volcengine.com/docs/82379/1520757）：Body 参数全集 model/content[]/omni_reference_task_type/resolution/ratio/duration/frames/generate_audio/watermark/output_format/seed/camera_fixed/return_last_frame/draft/service_tier/callback_url/execution_expires_after/priority/safety_identifier/tools[]，**仍无任何 Token 上限字段**。`frames` 精确控帧**仅 Seedance 1.0 pro/pro fast 支持**——本机 6 个渠道的实际模型（2.0/2.0-fast/2.0-mini/2.5/2.0-test）均不能用；2.0/2.5 系列 `duration` 默认 `-1`（模型自主选时长）；2.5 编辑任务强制 `ratio=adaptive`、`duration=-1`。
+- **新增关键证据**：创建 API 文档明确查询返回的 `duration` = 实际总帧数/24 向下取整，是**约数**，「与实际的视频时长可能不同」。即使固定 `duration`，实际帧数（从而 Token 用量）也不保证确定——堵死了「固定规格→确定性用量」的预留路径。
+- **定价页复核**（volcengine.com/docs/82379/1544106）：仍只有估算公式 `(输入视频时长+输出视频时长)×宽×高×帧率/1024` 且原文标注「该计算结果为估算值」；分辨率×时长表是「基于 token 用量公式估算的视频单价」，**不是固定 token 数值表**；最低 token 用量表格本身也标注「估算值」（飞书外链）。权威数值仅事后 `usage.completion_tokens`（查询 API 1521309：无 input_tokens，total=completion，最低用量兜底）。
+- **缺少的能力**：请求级输出 Token 硬上限参数，或官方确定性用量表（二者皆无）。
+- **最小可行替代方案**：① 维持禁售，等待官方提供请求级上限或确定性用量表；② 若用户明确授权口径变更为「估算预留＋终态对账、超额风险由平台承担」，可实施终态对账合同，但这违反当前「预留≥真实用量、不超扣」约束，**不擅自实施**；③ 后付费对账（非预付会员）属旧计费/新业务范围，需用户决策。按视频次数计量不是 Ark 真实计费单位，不能充当可靠合同（与 Sora 按次计费本质不同）。
+
+### GPT Image 2.5（R16）重新核查
+
+- **源码链路（拒绝点）**：`relay/image_handler.go` → `relay/channel/openai/relay_image.go`；模型白名单 `model/subscription_channel.go:213` 仅 dall-e-2/3。渠道 24 虽为 OpenAI 类型，gpt-image-2.5-flare/sunburst 不在白名单，配置期即拒绝。
+- **最新官方 SDK**（OpenAPI 规范生成，2026-11-18 经 fastly.jsdelivr 镜像抓取 openai-python main）：`image_generate_params.py`（251 行）与 `image_edit_params.py` 参数全集**无 max_tokens/max_output_tokens 或任何输出用量上限字段**。新增 `complexity`（low/medium/high，官方定义为「planning 计算量，独立于渲染质量」，**不是 Token 上限**）、quality 扩至 xhigh/max/auto、SVG/GIF 输出路径。
+- **原始用量分项可得**：`images_response.py` 的 Usage 含 input_tokens、input_tokens_details{image_tokens,text_tokens}、output_tokens、output_tokens_details{image_tokens,text_tokens}、total_tokens；SVG 另有 SvgUsage（含 reasoning_tokens）。证据采集不是阻塞点。
+- **阻塞点不变**：官方模型页与 API reference 对本环境 403；多个独立第三方来源（2026-09）一致确认 2.5 **未公开每张图 Token 消耗**，费率卡与 GPT Image 2 相同（文本输入 $5/1M、图像输入 $8/1M、图像输出 $30/1M）。无官方确定性输出 Token 表、无请求级上限 → 无法计算可靠预留。
+- **附带发现**：SDK 注释标明 dall-e-2/3 已于 2026-05-12 退役。DALL-E 计数合同仍是 mock 候选；手工验收须先确认实例仍在售（本机当前在售清单无 DALL-E，见矩阵）。
+- **最小可行替代方案**：① 维持禁售；② 若官方后续公布 size×quality 确定性 Token 表或请求级上限参数，可实施受限合同（固定 size/quality、n=1、prompt 长度上限、参考图数量/尺寸上限 → 可计算预留，原始分项结算，流式终态证据）；③ 普通 Key 旧计费不受影响。不得用占位值/费率/估算器硬编码上限。
+
+### 禁售守卫回归（新增，非功能完成）
+
+- `model/subscription_channel_blocked_test.go` `TestMembershipBlockedArkVideoAndGPTImageStayUnsellable`：类型 59＋seedance 模型在**全部 10 个 profile** 下配置拒绝；video profile 即使挂 sora-2 模型条目也不能打开 Ark 渠道类型；gpt-image-2.5-flare/sunburst 在 image profile 拒绝；购买尝试原子回滚，钱包与账本不变。
+- `controller/subscription_channel_video_test.go` `TestMembershipHTTPVideoKeyCannotSubmitArkNativeOrSeedance`：合法 Sora 视频会员 Key 在 Ark 原生协议（sora-2 与 seedance 模型两种请求）上游前 403；`/v1/videos` 提交 seedance 模型 403；上游零调用、零预留、钱包不变。
+- 证据：SQLite 聚焦通过；独立 MySQL8/PostgreSQL15 聚焦均 PASS（`/private/tmp/yun-token-blocked-guard-mysql.log`、`/private/tmp/yun-token-blocked-guard-postgres.log`）；完整 race `/private/tmp/yun-token-blocked-guard-race.log`。
+- 口径不变：**17/30 mock 通过、13 缺功能、真实通过 0**。R01—R12 与 R16 明确记为**未完成**；守卫测试只证明拒绝不被绕过，不证明任何会员计量能力。

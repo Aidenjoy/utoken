@@ -31,7 +31,7 @@
 1. 购买一期，记录 user_subscription_id；在后台记录该渠道 input/output 或 quantity 的上限、已用、预留。
 2. 用户创建会员 Key：绑定该期订阅和该渠道，多个 Key 必须共用一份权益。创建普通 Key 作为对照。
 3. 文本：用会员 Key 发短文本 `/v1/chat/completions`，显式设置输出上限；再跑一次带 usage 的完整流式请求。分别记录原始上游输入/输出用量、请求账本、后台已用量增量，三者一致；预留差额归还，钱包不变。
-4. 图片：DALL-E 单张调用，确认按真实返回张数扣减而非占位 Token。视频：提交时只预留，终态后才扣；任务绑定原订阅，重复查询/补录不重复扣，到期后仍可查询原任务并结算。
+4. 图片：DALL-E 单张调用，确认按真实返回张数扣减而非占位 Token。注意：官方 SDK 已标注 dall-e-2/3 于 2026-05-12 退役，本机当前在售清单也无 DALL-E；该合同验收须先确认实例仍在售，否则记为「无实例可验」，不得用其他图片模型冒充。视频：提交时只预留，终态后才扣；任务绑定原订阅，重复查询/补录不重复扣，到期后仍可查询原任务并结算。
 5. 断流、缺失 usage、网络结果不明：预留不得无条件清零，必须有 pending 及证据。不要靠超时或直接改数据库退款。
 6. 若上游不支持严格输出上限、用量缺失或只给总量，停止该合同验收，标为未通过，改用明确的实际单位合同后再验。
 
@@ -57,4 +57,4 @@
 - Gemini文本及Chat：仅单候选显式关闭思考的合同；不接受该参数的实例不得通过。
 - Gemini原生图片/Images兼容：原生maxOutputTokens；Images兼容需显式max_tokens，非流式、单张文生图。核对输入prompt、候选输出和思考原始用量，输出为候选+思考；参考图输入仍拒绝。缺用量不得以1400 Token/图占位结算。
 - Seedream图片（渠道11/类型60，`ark_seedream_image_count_v1`）：仅非流式单张文生图，n=1，最终上游报文不得含 sequential_image_generation/layer_decomposition/tools/image/stream/max_tokens。核对上游真实返回 `usage.generated_images`（官方按张计费依据），后台已用张数增量与之一致；`output_tokens/total_tokens` 应相等且作为证据保留（不是计费单位）。组图、图层拆分、参考图、联网搜索、流式必须在上游前拒绝。缺 usage 或不一致须 pending，不得按返回 data 张数或占位结算。官方已标注 doubao-seedream-5-0-260128「即将下线」，先确认在售型号；实际实例不严格执行单图或不返回 generated_images 则标为不通过。
-- Ark视频（R01—R12）、GPT Image（R16）经官方文档核实无可执行单请求输出硬上限，**保持禁售**，不要尝试售卖或用普通Key成功/DALL-E/Sora合同通过冒充其会员通过。证据见主验收文档两节阻塞证据。
+- Ark视频（R01—R12）、GPT Image（R16）经官方文档核实无可执行单请求输出硬上限，**保持禁售**，不要尝试售卖或用普通Key成功/DALL-E/Sora合同通过冒充其会员通过。2026-11-18 已按最新官方创建 API/定价页/官方 SDK 重新核查，结论不变（Ark 新增证据：frames 仅 1.0 系列、返回 duration 为约数、最低用量表亦为估算；GPT Image 新增 complexity/xhigh/max/SVG/GIF 均非 Token 上限）。禁售守卫回归 `TestMembershipBlockedArkVideoAndGPTImageStayUnsellable`、`TestMembershipHTTPVideoKeyCannotSubmitArkNativeOrSeedance` 已在 SQLite/MySQL/PostgreSQL 通过。证据与最小可行替代方案见主验收文档「剩余13项重新核查与禁售守卫」及两节阻塞证据。

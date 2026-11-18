@@ -53,6 +53,8 @@
 
 `TestMembershipHTTPUnimplementedProtocolsNeverReachWalletOrUpstream` 使用真实 TokenAuth 和本地处理器计数：文本会员 Key 对 audio 转写/翻译/合成、realtime、video、Ark、Claude、Responses compact、图片 edits 均在处理器前 403，钱包不变。其他会员 profile 只放行各自精确路径；通用 `PreConsumeBilling` / `SettleBilling`、实时预扣和后结算额外拒绝会员进入旧钱包路径。后续新增 profile 后应保留跨协议拒绝回归。
 
+2026-11-18 补充禁售守卫（非功能完成）：`TestMembershipBlockedArkVideoAndGPTImageStayUnsellable` 固化类型59＋seedance 模型在全部10个 profile 的配置拒绝与购买回滚；`TestMembershipHTTPVideoKeyCannotSubmitArkNativeOrSeedance` 固化 Sora 视频 Key 在 Ark 原生协议上游前 403、零预留、钱包不变。R01—R12/R16 经最新官方协议重新核查仍无可执行预留边界，保持禁售，详见主验收文档「剩余13项重新核查与禁售守卫」。
+
 复现：`GOCACHE=/private/tmp/yun-token-go-cache go test ./controller ./service -run "^TestMembership" -count=1 -timeout=120s`。只运行隔离 mock，不启动读取 `.env` 的应用主程序。
 
 重新导出：`GOCACHE=/private/tmp/yun-token-go-cache go run ./tools/membership-inventory`。该命令只读、限制回环 MySQL、拒绝远程地址，不迁移数据。
