@@ -215,6 +215,30 @@ Object.assign(newKeys.vi, {
   'Membership benefits': 'Quyền lợi thành viên',
   'Plan allowance exhausted': 'Đã hết hạn mức gói',
 })
+Object.assign(newKeys.en, {
+  'Audio duration (ms)': 'Audio duration (ms)',
+  'Input characters': 'Input characters',
+})
+Object.assign(newKeys.zh, {
+  'Audio duration (ms)': '音频时长（毫秒）',
+  'Input characters': '输入字符数',
+})
+Object.assign(newKeys.fr, {
+  'Audio duration (ms)': 'Durée audio (ms)',
+  'Input characters': 'Caractères en entrée',
+})
+Object.assign(newKeys.ja, {
+  'Audio duration (ms)': '音声時間（ミリ秒）',
+  'Input characters': '入力文字数',
+})
+Object.assign(newKeys.ru, {
+  'Audio duration (ms)': 'Длительность аудио (мс)',
+  'Input characters': 'Входные символы',
+})
+Object.assign(newKeys.vi, {
+  'Audio duration (ms)': 'Thời lượng âm thanh (ms)',
+  'Input characters': 'Số ký tự đầu vào',
+})
 async function main() {
   for (const [locale, trans] of Object.entries(newKeys)) {
     const filePath = path.join(LOCALES_DIR, `${locale}.json`)

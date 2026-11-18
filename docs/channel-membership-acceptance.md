@@ -209,3 +209,13 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - `bun run typecheck`、`bun run build`、改动前端文件 oxlint 和 `git diff --check` 通过。
 - 隔离浏览器 mock 验证套餐及我的会员不显示 Token 数值，购买后仍能创建文本/图片/视频会员 Key，后台仍可配置输入/输出额度；`MOCK_UI_PASS` 且 `realApiCalls=0`。日志 `/private/tmp/yun-token-membership-public-ui.log`。
 - 没有运行真实模型、支付、充值或业务数据库操作；没有重启业务服务。本轮与已有视频增量一起保留在工作区，未自动提交其他已有改动。
+
+
+## 短语音增量（2026-11-18）
+
+- `openai_whisper_duration_v1`：仅 OpenAI 类型、whisper-1、`POST /v1/audio/transcriptions`，canonical mono PCM16 WAV（16/24/48kHz、最长60秒）、`verbose_json`。最终 multipart 构造后验证实际 PCM 字节和全部 WAV 头，按保守毫秒上界预留；只以原始响应 duration 结算，缺失 duration 保留 pending。预留不是实际用量。
+- `openai_tts_characters_v1`：仅 OpenAI 类型、tts-1/tts-1-hd、`POST /v1/audio/speech`，1—1024 Unicode 字符、非流式 PCM、限定声音及速度。按最终输入字符数预留；完整非空 PCM 响应才结算，不使用旧适配器的估算 Token/时长换算。
+- 两类都复用 quantity 台账，无新表/新列；多个 Key 共享额度，成功返回前绕开旧音频/文本计费，不回退钱包。翻译、非规范音频、流式 TTS、其他音频模型仍拒绝。
+- mock HTTP 闭环包含两个 TTS 模型、Unicode 字符、转写真实 duration、差额释放、损坏 WAV 上游零调用、缺失 duration 待核对、耗尽零上游新增调用、错误协议拒绝及钱包不变。
+- 命令：`GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service -run '^TestMembership' -count=1 -timeout=120s`，通过；日志 `/private/tmp/yun-token-short-audio-race.log`。前端类型检查、构建和改动文件 lint 通过，日志 `/private/tmp/yun-token-short-audio-build.log`。
+- 本机在售路由清单没有这些语音模型，因此本条是通用语音合同 mock 通过，不能标记任一实际在售实例真实通过。前端外部仍不展示数量，后台可配置毫秒/字符额度。

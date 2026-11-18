@@ -12,15 +12,19 @@ import (
 )
 
 const (
-	MembershipVideoProfile         = "sora_completed_video_v1"
-	MembershipUnitVideos           = "completed_videos"
-	MembershipImageProfile         = "openai_images_count_v1"
-	MembershipUnitImages           = "images"
-	SubscriptionMeterQuota         = "quota"
-	SubscriptionMeterChannel       = "channel"
-	MembershipTextProfile          = "openai_chat_text_v1"
-	MembershipUnitTokens           = "input_output_tokens"
-	MembershipMaxTokens      int64 = 2147483647
+	MembershipTranscriptionProfile       = "openai_whisper_duration_v1"
+	MembershipSpeechProfile              = "openai_tts_characters_v1"
+	MembershipUnitAudioMillis            = "audio_milliseconds"
+	MembershipUnitCharacters             = "input_characters"
+	MembershipVideoProfile               = "sora_completed_video_v1"
+	MembershipUnitVideos                 = "completed_videos"
+	MembershipImageProfile               = "openai_images_count_v1"
+	MembershipUnitImages                 = "images"
+	SubscriptionMeterQuota               = "quota"
+	SubscriptionMeterChannel             = "channel"
+	MembershipTextProfile                = "openai_chat_text_v1"
+	MembershipUnitTokens                 = "input_output_tokens"
+	MembershipMaxTokens            int64 = 2147483647
 )
 
 var ErrMembershipQuota = errors.New("套餐额度不足")
@@ -137,10 +141,16 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 			if cfg.Unit != MembershipUnitTokens || cfg.InputLimit <= 0 || cfg.OutputLimit <= 0 || cfg.InputLimit > MembershipMaxTokens || cfg.OutputLimit > MembershipMaxTokens || cfg.QuantityLimit != 0 {
 				return nil, errors.New("invalid text token limits")
 			}
-		case MembershipImageProfile, MembershipVideoProfile:
+		case MembershipImageProfile, MembershipVideoProfile, MembershipTranscriptionProfile, MembershipSpeechProfile:
 			unit := MembershipUnitImages
 			if cfg.Profile == MembershipVideoProfile {
 				unit = MembershipUnitVideos
+			}
+			if cfg.Profile == MembershipTranscriptionProfile {
+				unit = MembershipUnitAudioMillis
+			}
+			if cfg.Profile == MembershipSpeechProfile {
+				unit = MembershipUnitCharacters
 			}
 			if cfg.Unit != unit || cfg.QuantityLimit <= 0 || cfg.QuantityLimit > MembershipMaxTokens || cfg.InputLimit != 0 || cfg.OutputLimit != 0 {
 				return nil, errors.New("invalid image count limit")
@@ -155,7 +165,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 		if err := tx.First(&channel, cfg.ChannelId).Error; err != nil {
 			return nil, err
 		}
-		if ((cfg.Profile == MembershipTextProfile && !MembershipTextChannelSupported(channel.Type)) || (cfg.Profile == MembershipImageProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoChannelSupported(channel.Type))) || channel.Status != common.ChannelStatusEnabled || channel.GetSetting().PassThroughBodyEnabled {
+		if ((cfg.Profile == MembershipTextProfile && !MembershipTextChannelSupported(channel.Type)) || (cfg.Profile == MembershipImageProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoChannelSupported(channel.Type)) || ((cfg.Profile == MembershipTranscriptionProfile || cfg.Profile == MembershipSpeechProfile) && channel.Type != constant.ChannelTypeOpenAI)) || channel.Status != common.ChannelStatusEnabled || channel.GetSetting().PassThroughBodyEnabled {
 			return nil, errors.New("channel does not support membership text metering")
 		}
 		var mapping map[string]string
@@ -169,7 +179,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 			if mapped := mapping[name]; mapped != "" {
 				upstream = mapped
 			}
-			if !slices.Contains(channel.GetModels(), name) || (cfg.Profile == MembershipTextProfile && !MembershipTextModelSupported(upstream)) || (cfg.Profile == MembershipImageProfile && !MembershipImageModelSupported(upstream)) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoModelSupported(upstream)) {
+			if !slices.Contains(channel.GetModels(), name) || (cfg.Profile == MembershipTextProfile && !MembershipTextModelSupported(upstream)) || (cfg.Profile == MembershipImageProfile && !MembershipImageModelSupported(upstream)) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoModelSupported(upstream)) || (cfg.Profile == MembershipTranscriptionProfile && upstream != "whisper-1") || (cfg.Profile == MembershipSpeechProfile && upstream != "tts-1" && upstream != "tts-1-hd") {
 				return nil, fmt.Errorf("model %s has no supported membership text contract", name)
 			}
 		}
@@ -219,7 +229,7 @@ func ReserveMembership(record *SubscriptionChannelRequest) error {
 		if err != nil {
 			return err
 		}
-		if (grant.Unit == MembershipUnitTokens && (record.InputReserved <= 0 || record.OutputReserved <= 0 || record.QuantityReserved != 0)) || ((grant.Unit == MembershipUnitImages || grant.Unit == MembershipUnitVideos) && (record.QuantityReserved <= 0 || record.InputReserved != 0 || record.OutputReserved != 0)) || (grant.Unit != MembershipUnitTokens && grant.Unit != MembershipUnitImages && grant.Unit != MembershipUnitVideos) {
+		if (grant.Unit == MembershipUnitTokens && (record.InputReserved <= 0 || record.OutputReserved <= 0 || record.QuantityReserved != 0)) || ((grant.Unit == MembershipUnitImages || grant.Unit == MembershipUnitVideos || grant.Unit == MembershipUnitAudioMillis || grant.Unit == MembershipUnitCharacters) && (record.QuantityReserved <= 0 || record.InputReserved != 0 || record.OutputReserved != 0)) || (grant.Unit != MembershipUnitTokens && grant.Unit != MembershipUnitImages && grant.Unit != MembershipUnitVideos && grant.Unit != MembershipUnitAudioMillis && grant.Unit != MembershipUnitCharacters) {
 			return errors.New("reservation does not match membership unit")
 		}
 		record.Unit = grant.Unit

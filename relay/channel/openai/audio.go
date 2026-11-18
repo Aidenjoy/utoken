@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -57,13 +58,29 @@ func OpenaiTTSHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 	} else {
 		common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
 		// 读取响应体到缓冲区
-		bodyBytes, err := io.ReadAll(resp.Body)
+		var audioReader io.Reader = resp.Body
+		if c.GetInt("membership_subscription_id") > 0 {
+			audioReader = io.LimitReader(resp.Body, service.MembershipMaxShortAudioBytes+1)
+		}
+		bodyBytes, err := io.ReadAll(audioReader)
 		if err != nil {
 			logger.LogError(c, fmt.Sprintf("failed to read TTS response body: %v", err))
 			c.Writer.WriteHeaderNow()
 			return usage
 		}
 
+		if c.GetInt("membership_subscription_id") > 0 {
+			if strings.HasPrefix(resp.Header.Get("Content-Type"), "audio/") || strings.HasPrefix(resp.Header.Get("Content-Type"), "application/octet-stream") {
+				service.ObserveMembershipAudio(c, bodyBytes)
+			}
+			c.Writer.WriteHeaderNow()
+			if _, err := c.Writer.Write(bodyBytes); err != nil {
+				if value, ok := c.Get("membership_session"); ok {
+					value.(*service.MembershipSession).InvalidUsage = true
+				}
+			}
+			return usage
+		}
 		// 写入响应到客户端
 		c.Writer.WriteHeaderNow()
 		_, err = c.Writer.Write(bodyBytes)
@@ -122,6 +139,7 @@ func OpenaiSTTHandler(c *gin.Context, resp *http.Response, info *relaycommon.Rel
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil
 	}
+	service.ObserveMembershipAudio(c, responseBody)
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 

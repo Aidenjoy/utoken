@@ -1,12 +1,15 @@
 package relay
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -44,6 +47,23 @@ func AudioHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
+	var membership *service.MembershipSession
+	if c.GetInt("membership_subscription_id") > 0 {
+		finalBody, readErr := io.ReadAll(io.LimitReader(ioReader, service.MembershipMaxShortAudioBytes+1))
+		if readErr != nil {
+			return types.NewError(readErr, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		membership, err = service.PrepareMembershipAudio(c, info, finalBody)
+		if err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		}
+		defer func() { service.FinishMembershipRequest(c, info, membership, newAPIError == nil) }()
+		ioReader = bytes.NewReader(finalBody)
+		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
+			return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		membership.Dispatched = true
+	}
 	resp, err := adaptor.DoRequest(c, info, ioReader)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
@@ -66,6 +86,9 @@ func AudioHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
+	}
+	if membership != nil {
+		return nil
 	}
 	if usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0 {
 		service.PostAudioConsumeQuota(c, info, usage.(*dto.Usage), "")

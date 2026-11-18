@@ -121,9 +121,7 @@ export function ChannelQuotaEditor(props: {
           {quota.unit !== 'input_output_tokens' ? (
             <div className='space-y-1'>
               <Label htmlFor={`membership-${index}-quantity`}>
-                {quota.unit === 'completed_videos'
-                  ? t('Completed videos')
-                  : t('Image count')}
+                {t(channelQuotaUnitLabels[quota.unit])}
               </Label>
               <Input
                 id={`membership-${index}-quantity`}

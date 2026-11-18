@@ -28,8 +28,16 @@ export const channelQuotaConfigSchema = z.object({
     'openai_chat_text_v1',
     'openai_images_count_v1',
     'sora_completed_video_v1',
+    'openai_whisper_duration_v1',
+    'openai_tts_characters_v1',
   ]),
-  unit: z.enum(['input_output_tokens', 'images', 'completed_videos']),
+  unit: z.enum([
+    'input_output_tokens',
+    'images',
+    'completed_videos',
+    'audio_milliseconds',
+    'input_characters',
+  ]),
   models: z.array(z.string()).min(1),
   quantity_limit: z.number().int().min(0).max(2147483647).optional(),
   input_limit: z.number().int().min(0).max(2147483647),
@@ -44,6 +52,8 @@ export const channelQuotaUnitLabels: Record<
   input_output_tokens: 'Input / output tokens',
   images: 'Image count',
   completed_videos: 'Completed videos',
+  audio_milliseconds: 'Audio duration (ms)',
+  input_characters: 'Input characters',
 }
 
 export interface ChannelQuota extends Partial<ChannelQuotaConfig> {

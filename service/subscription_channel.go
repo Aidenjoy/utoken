@@ -128,7 +128,7 @@ func FinishMembershipRequest(c *gin.Context, info *relaycommon.RelayInfo, sessio
 		input, output, quantity = session.Input, session.Output, session.Quantity
 	}
 	var err error
-	if session.Request.Unit == model.MembershipUnitImages {
+	if session.Request.Unit != model.MembershipUnitTokens {
 		err = model.FinishMembershipQuantity(session.Request.RequestId, quantity, outcome, reason)
 	} else {
 		err = model.FinishMembership(session.Request.RequestId, input, output, outcome, reason)

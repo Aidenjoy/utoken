@@ -546,7 +546,8 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			text := grant.Profile == model.MembershipTextProfile && token.KeyType == model.TokenKeyTypeLanguage && c.Request.URL.Path == "/v1/chat/completions"
 			image := grant.Profile == model.MembershipImageProfile && token.KeyType == model.TokenKeyTypeImage && c.Request.URL.Path == "/v1/images/generations"
 			video := grant.Profile == model.MembershipVideoProfile && token.KeyType == model.TokenKeyTypeVideo && c.Request.URL.Path == "/v1/videos"
-			if c.Request.Method != http.MethodPost || (!text && !image && !video) {
+			audio := token.KeyType == model.TokenKeyTypeLanguage && ((grant.Profile == model.MembershipTranscriptionProfile && c.Request.URL.Path == "/v1/audio/transcriptions") || (grant.Profile == model.MembershipSpeechProfile && c.Request.URL.Path == "/v1/audio/speech"))
+			if c.Request.Method != http.MethodPost || (!text && !image && !video && !audio) {
 				err := fmt.Errorf("membership endpoint is not supported")
 				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 				return err

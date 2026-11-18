@@ -54,3 +54,6 @@
 复现：`GOCACHE=/private/tmp/yun-token-go-cache go test ./controller ./service -run "^TestMembership" -count=1 -timeout=120s`。只运行隔离 mock，不启动读取 `.env` 的应用主程序。
 
 重新导出：`GOCACHE=/private/tmp/yun-token-go-cache go run ./tools/membership-inventory`。该命令只读、限制回环 MySQL、拒绝远程地址，不迁移数据。
+
+
+短语音候选合同新增：Whisper-1 转写（PCM WAV/verbose_json，原始毫秒时长）与 tts-1/tts-1-hd 合成（短文本/PCM，输入字符数）均 mock 通过、待用户手工实例验收；本机当前在售清单未配置这些模型。其他语音路径仍未实现并拒绝会员请求。

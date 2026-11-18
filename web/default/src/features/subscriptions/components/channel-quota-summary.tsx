@@ -18,7 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import type { ChannelQuotaConfig, ChannelQuota } from '../types'
+import {
+  channelQuotaUnitLabels,
+  type ChannelQuotaConfig,
+  type ChannelQuota,
+} from '../types'
 
 /** Displays real token dimensions without converting them to wallet currency. */
 export function ChannelQuotaSummary(props: {
@@ -49,9 +53,7 @@ export function ChannelQuotaSummary(props: {
             (quota.unit !== 'input_output_tokens' ? (
               <div className='mt-2 space-y-1'>
                 <p className='font-medium'>
-                  {quota.unit === 'completed_videos'
-                    ? t('Completed videos')
-                    : t('Image count')}
+                  {t(channelQuotaUnitLabels[quota.unit])}
                 </p>
                 <p>
                   {t('Limit')}: {(quota.quantity_limit ?? 0).toLocaleString()}

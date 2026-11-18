@@ -36,6 +36,8 @@ func AdminMembershipChannels(c *gin.Context) {
 		models := make([]string, 0)
 		imageModels := make([]string, 0)
 		videoModels := make([]string, 0)
+		transcriptionModels := make([]string, 0)
+		speechModels := make([]string, 0)
 		var mapping map[string]string
 		if channel.ModelMapping != nil && *channel.ModelMapping != "" {
 			if common.UnmarshalJsonStr(*channel.ModelMapping, &mapping) != nil {
@@ -46,6 +48,12 @@ func AdminMembershipChannels(c *gin.Context) {
 			upstream := name
 			if mapped := mapping[name]; mapped != "" {
 				upstream = mapped
+			}
+			if channel.Type == constant.ChannelTypeOpenAI && upstream == "whisper-1" {
+				transcriptionModels = append(transcriptionModels, name)
+			}
+			if channel.Type == constant.ChannelTypeOpenAI && (upstream == "tts-1" || upstream == "tts-1-hd") {
+				speechModels = append(speechModels, name)
 			}
 			if channel.Type == constant.ChannelTypeOpenAI && model.MembershipImageModelSupported(upstream) {
 				imageModels = append(imageModels, name)
@@ -59,6 +67,12 @@ func AdminMembershipChannels(c *gin.Context) {
 		}
 		if len(models) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: models, Profile: model.MembershipTextProfile, Unit: model.MembershipUnitTokens})
+		}
+		if len(transcriptionModels) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: transcriptionModels, Profile: model.MembershipTranscriptionProfile, Unit: model.MembershipUnitAudioMillis})
+		}
+		if len(speechModels) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: speechModels, Profile: model.MembershipSpeechProfile, Unit: model.MembershipUnitCharacters})
 		}
 		if len(videoModels) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: videoModels, Profile: model.MembershipVideoProfile, Unit: model.MembershipUnitVideos})
