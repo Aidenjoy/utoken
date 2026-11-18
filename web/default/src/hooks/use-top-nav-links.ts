@@ -32,6 +32,7 @@ import {
   UserRound,
   Users,
   Utensils,
+  Workflow,
   ZoomIn,
 } from 'lucide-react'
 import { useMemo } from 'react'
@@ -93,6 +94,12 @@ export function useTopNavLinks(): TopNavLink[] {
     title: t('Video Factory'),
     href: '/director',
     children: [
+      {
+        title: t('Smart Canvas'),
+        href: '/canvas',
+        requiresAuth: !isAuthed,
+        icon: Workflow,
+      },
       {
         title: t('Short Drama'),
         href: '/director/drama',

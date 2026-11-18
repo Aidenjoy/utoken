@@ -445,3 +445,9 @@ const (
 	MsgPromptUpdateFailed         = "prompt.update_failed"
 	MsgPromptDeleteFailed         = "prompt.delete_failed"
 )
+
+// Smart canvas related messages
+const (
+	MsgCanvasUntitledTitle = "canvas.untitled_title"
+	MsgCanvasCopySuffix    = "canvas.copy_suffix"
+)

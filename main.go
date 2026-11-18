@@ -171,6 +171,8 @@ func main() {
 
 	// 云导演：恢复进程重启前未完成的视频生成任务轮询（异步探测，不阻塞启动）
 	go (&directorService.VideoGenerationService{}).ResumeDirectorPolling()
+	// 智能画布：同样恢复重启前未完成的画布视频任务轮询
+	go directorService.ResumeCanvasPolling()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true

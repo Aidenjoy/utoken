@@ -58,6 +58,7 @@ import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedCostCalculatorIndexRouteImport } from './routes/_authenticated/cost-calculator/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChannelBillingIndexRouteImport } from './routes/_authenticated/channel-billing/index'
+import { Route as AuthenticatedCanvasIndexRouteImport } from './routes/_authenticated/canvas/index'
 import { Route as AuthenticatedBillingIndexRouteImport } from './routes/_authenticated/billing/index'
 import { Route as AuthenticatedAssetSyncIndexRouteImport } from './routes/_authenticated/asset-sync/index'
 import { Route as AuthenticatedAssetLibraryIndexRouteImport } from './routes/_authenticated/asset-library/index'
@@ -83,6 +84,7 @@ import { Route as AuthenticatedDirectorAssetsRouteImport } from './routes/_authe
 import { Route as AuthenticatedDirectorCategoryRouteImport } from './routes/_authenticated/director/$category'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
+import { Route as AuthenticatedCanvasIdRouteImport } from './routes/_authenticated/canvas/$id'
 import { Route as AuthenticatedAgentRechargeRouteImport } from './routes/_authenticated/agent/recharge'
 import { Route as AuthenticatedAgentMembersRouteImport } from './routes/_authenticated/agent/members'
 import { Route as AuthenticatedAgentEnterprisesRouteImport } from './routes/_authenticated/agent/enterprises'
@@ -369,6 +371,12 @@ const AuthenticatedChannelBillingIndexRoute =
     path: '/channel-billing/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedCanvasIndexRoute =
+  AuthenticatedCanvasIndexRouteImport.update({
+    id: '/canvas/',
+    path: '/canvas/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedBillingIndexRoute =
   AuthenticatedBillingIndexRouteImport.update({
     id: '/billing/',
@@ -513,6 +521,11 @@ const AuthenticatedDashboardSectionRoute =
 const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   id: '/chat/$chatId',
   path: '/chat/$chatId',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCanvasIdRoute = AuthenticatedCanvasIdRouteImport.update({
+  id: '/canvas/$id',
+  path: '/canvas/$id',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAgentRechargeRoute =
@@ -684,6 +697,7 @@ export interface FileRoutesByFullPath {
   '/agent/enterprises': typeof AuthenticatedAgentEnterprisesRoute
   '/agent/members': typeof AuthenticatedAgentMembersRoute
   '/agent/recharge': typeof AuthenticatedAgentRechargeRoute
+  '/canvas/$id': typeof AuthenticatedCanvasIdRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/director/$category': typeof AuthenticatedDirectorCategoryRouteWithChildren
@@ -709,6 +723,7 @@ export interface FileRoutesByFullPath {
   '/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/billing/': typeof AuthenticatedBillingIndexRoute
+  '/canvas/': typeof AuthenticatedCanvasIndexRoute
   '/channel-billing/': typeof AuthenticatedChannelBillingIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
@@ -780,6 +795,7 @@ export interface FileRoutesByTo {
   '/agent/enterprises': typeof AuthenticatedAgentEnterprisesRoute
   '/agent/members': typeof AuthenticatedAgentMembersRoute
   '/agent/recharge': typeof AuthenticatedAgentRechargeRoute
+  '/canvas/$id': typeof AuthenticatedCanvasIdRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/director/assets': typeof AuthenticatedDirectorAssetsRoute
@@ -804,6 +820,7 @@ export interface FileRoutesByTo {
   '/asset-library': typeof AuthenticatedAssetLibraryIndexRoute
   '/asset-sync': typeof AuthenticatedAssetSyncIndexRoute
   '/billing': typeof AuthenticatedBillingIndexRoute
+  '/canvas': typeof AuthenticatedCanvasIndexRoute
   '/channel-billing': typeof AuthenticatedChannelBillingIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/cost-calculator': typeof AuthenticatedCostCalculatorIndexRoute
@@ -878,6 +895,7 @@ export interface FileRoutesById {
   '/_authenticated/agent/enterprises': typeof AuthenticatedAgentEnterprisesRoute
   '/_authenticated/agent/members': typeof AuthenticatedAgentMembersRoute
   '/_authenticated/agent/recharge': typeof AuthenticatedAgentRechargeRoute
+  '/_authenticated/canvas/$id': typeof AuthenticatedCanvasIdRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/director/$category': typeof AuthenticatedDirectorCategoryRouteWithChildren
@@ -903,6 +921,7 @@ export interface FileRoutesById {
   '/_authenticated/asset-library/': typeof AuthenticatedAssetLibraryIndexRoute
   '/_authenticated/asset-sync/': typeof AuthenticatedAssetSyncIndexRoute
   '/_authenticated/billing/': typeof AuthenticatedBillingIndexRoute
+  '/_authenticated/canvas/': typeof AuthenticatedCanvasIndexRoute
   '/_authenticated/channel-billing/': typeof AuthenticatedChannelBillingIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/cost-calculator/': typeof AuthenticatedCostCalculatorIndexRoute
@@ -977,6 +996,7 @@ export interface FileRouteTypes {
     | '/agent/enterprises'
     | '/agent/members'
     | '/agent/recharge'
+    | '/canvas/$id'
     | '/chat/$chatId'
     | '/dashboard/$section'
     | '/director/$category'
@@ -1002,6 +1022,7 @@ export interface FileRouteTypes {
     | '/asset-library/'
     | '/asset-sync/'
     | '/billing/'
+    | '/canvas/'
     | '/channel-billing/'
     | '/channels/'
     | '/cost-calculator/'
@@ -1073,6 +1094,7 @@ export interface FileRouteTypes {
     | '/agent/enterprises'
     | '/agent/members'
     | '/agent/recharge'
+    | '/canvas/$id'
     | '/chat/$chatId'
     | '/dashboard/$section'
     | '/director/assets'
@@ -1097,6 +1119,7 @@ export interface FileRouteTypes {
     | '/asset-library'
     | '/asset-sync'
     | '/billing'
+    | '/canvas'
     | '/channel-billing'
     | '/channels'
     | '/cost-calculator'
@@ -1170,6 +1193,7 @@ export interface FileRouteTypes {
     | '/_authenticated/agent/enterprises'
     | '/_authenticated/agent/members'
     | '/_authenticated/agent/recharge'
+    | '/_authenticated/canvas/$id'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/director/$category'
@@ -1195,6 +1219,7 @@ export interface FileRouteTypes {
     | '/_authenticated/asset-library/'
     | '/_authenticated/asset-sync/'
     | '/_authenticated/billing/'
+    | '/_authenticated/canvas/'
     | '/_authenticated/channel-billing/'
     | '/_authenticated/channels/'
     | '/_authenticated/cost-calculator/'
@@ -1604,6 +1629,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedChannelBillingIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/canvas/': {
+      id: '/_authenticated/canvas/'
+      path: '/canvas'
+      fullPath: '/canvas/'
+      preLoaderRoute: typeof AuthenticatedCanvasIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/billing/': {
       id: '/_authenticated/billing/'
       path: '/billing'
@@ -1777,6 +1809,13 @@ declare module '@tanstack/react-router' {
       path: '/chat/$chatId'
       fullPath: '/chat/$chatId'
       preLoaderRoute: typeof AuthenticatedChatChatIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/canvas/$id': {
+      id: '/_authenticated/canvas/$id'
+      path: '/canvas/$id'
+      fullPath: '/canvas/$id'
+      preLoaderRoute: typeof AuthenticatedCanvasIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/agent/recharge': {
@@ -2069,6 +2108,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAgentEnterprisesRoute: typeof AuthenticatedAgentEnterprisesRoute
   AuthenticatedAgentMembersRoute: typeof AuthenticatedAgentMembersRoute
   AuthenticatedAgentRechargeRoute: typeof AuthenticatedAgentRechargeRoute
+  AuthenticatedCanvasIdRoute: typeof AuthenticatedCanvasIdRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedDirectorCategoryRoute: typeof AuthenticatedDirectorCategoryRouteWithChildren
@@ -2094,6 +2134,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAssetLibraryIndexRoute: typeof AuthenticatedAssetLibraryIndexRoute
   AuthenticatedAssetSyncIndexRoute: typeof AuthenticatedAssetSyncIndexRoute
   AuthenticatedBillingIndexRoute: typeof AuthenticatedBillingIndexRoute
+  AuthenticatedCanvasIndexRoute: typeof AuthenticatedCanvasIndexRoute
   AuthenticatedChannelBillingIndexRoute: typeof AuthenticatedChannelBillingIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedCostCalculatorIndexRoute: typeof AuthenticatedCostCalculatorIndexRoute
@@ -2123,6 +2164,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAgentEnterprisesRoute: AuthenticatedAgentEnterprisesRoute,
   AuthenticatedAgentMembersRoute: AuthenticatedAgentMembersRoute,
   AuthenticatedAgentRechargeRoute: AuthenticatedAgentRechargeRoute,
+  AuthenticatedCanvasIdRoute: AuthenticatedCanvasIdRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedDirectorCategoryRoute:
@@ -2152,6 +2194,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAssetLibraryIndexRoute: AuthenticatedAssetLibraryIndexRoute,
   AuthenticatedAssetSyncIndexRoute: AuthenticatedAssetSyncIndexRoute,
   AuthenticatedBillingIndexRoute: AuthenticatedBillingIndexRoute,
+  AuthenticatedCanvasIndexRoute: AuthenticatedCanvasIndexRoute,
   AuthenticatedChannelBillingIndexRoute: AuthenticatedChannelBillingIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedCostCalculatorIndexRoute: AuthenticatedCostCalculatorIndexRoute,

@@ -380,3 +380,7 @@ prompt.tags_too_many: "標籤最多 20 個"
 prompt.create_failed: "建立 Prompt 範本失敗"
 prompt.update_failed: "更新 Prompt 範本失敗"
 prompt.delete_failed: "刪除 Prompt 範本失敗"
+
+# Smart canvas messages
+canvas.untitled_title: "未命名畫布"
+canvas.copy_suffix: " 副本"

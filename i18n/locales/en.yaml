@@ -379,3 +379,7 @@ prompt.tags_too_many: "At most 20 tags are allowed"
 prompt.create_failed: "Failed to create prompt template"
 prompt.update_failed: "Failed to update prompt template"
 prompt.delete_failed: "Failed to delete prompt template"
+
+# Smart canvas messages
+canvas.untitled_title: "Untitled canvas"
+canvas.copy_suffix: " copy"

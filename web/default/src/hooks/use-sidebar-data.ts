@@ -56,6 +56,7 @@ import {
   Users,
   Utensils,
   Wallet,
+  Workflow,
   ZoomIn,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -234,6 +235,11 @@ export function useSidebarData(): SidebarData {
       id: 'director',
       title: t('Video Factory'),
       items: [
+        {
+          title: t('Smart Canvas'),
+          url: '/canvas',
+          icon: Workflow,
+        },
         {
           title: t('Short Drama'),
           url: '/director/drama',
