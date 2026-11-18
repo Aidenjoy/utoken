@@ -335,3 +335,21 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - [官方 SDK 请求参数](https://github.com/openai/openai-python/blob/main/src/openai/types/image_generate_params.py)（generations/edits 同）：prompt/model/n/size/quality/background/output_format/output_compression/partial_images/moderation/complexity/stream/safety_identifier/svg/frame_count 等，**无 max_tokens/max_output_tokens 或任何输出 Token 上限字段**。输出 Token 由 size×quality 决定，官方仅提供**估算计算器**且「GPT Image 2 计算器不能估算 2.5 的用量」，2.5 专属数值表未获官方原文（定价页/指南对本环境 403）。
 - [响应 usage](https://github.com/openai/openai-python/blob/main/src/openai/types/images_response.py)：input_tokens/output_tokens/total_tokens 及 input_tokens_details{text,image}；流式终态 `image_generation.completed`/`image_edit.completed` 事件 usage 必填。edits 最多 16 张参考图、n≤10。
 - 因此：usage 分项与流式终态证据满足，但「请求级硬上限」不达标，size×quality→Token 为估算且 2.5 无官方表，预留无法保证≥真实用量。按交接约束不得用占位值/费率/未知型号硬编码上限，保持禁售。Responses 外层 max_output_tokens 只约束外层文本，不约束图像工具 Token。
+
+## 独立 MySQL/PostgreSQL 全量会员回归与 UI 复跑（2026-11-18，接续开发）
+
+补齐交接遗留缺口：此前新增合同（Seedream、Gemini 图片、文本桥接、火山文本等）仅有 SQLite mock 证据，本轮在既有独立测试容器上完成真实 SQL 方言回归。**仍全部为本地 mock，无真实模型/支付调用，未删除任何数据，未改 .env。**
+
+- **fixture 扩展（仅测试代码）**：`controller/subscription_channel_test.go` 新增 `setupMembershipHTTPTestDB`。未设 `MEMBERSHIP_TEST_DSN` 时走原 SQLite 路径，行为不变；设置后按 `MEMBERSHIP_TEST_DIALECT`（mysql/postgres）为**每个测试新建独立 loopback 库并保留**，强制 127.0.0.1 校验，绝不 DROP、绝不读应用 `SQL_DSN`/.env；外部库连接池放宽到 10 以支持并发预留测试。13 个会员 HTTP 测试文件全部汇聚 `membershipHTTPFixture`，单点接入即全覆盖。
+- **model 层**（`^TestMembership`，含购买/迁移/并发预留/幂等结算/计数列/任务合同）：MySQL8 与 PostgreSQL15 各 9 个独立库真实执行（-v 日志含 retained 标记），9 个顶层测试全过，`TestMembershipSQLLegacyMigrationPreservesData`、`TestMembershipSQLCountColumnsPreserveExistingTokenGrants` 均 PASS 非 skip。日志 `/private/tmp/yun-token-sql-mysql-model.log`、`/private/tmp/yun-token-sql-postgres-model.log`。
+- **controller HTTP 全量**（`^TestMembership`，覆盖文本/Responses/Claude/Gemini/Gemini图片/Seedream/DALL-E/火山目录/视频/音频/realtime/支付 13 个合同文件）：MySQL8 171 个独立库、38 个顶层测试全过、0 失败/跳过（108.047s）；PostgreSQL15 171 个独立库、38 个顶层测试全过、0 失败/跳过（90.123s）。日志 `/private/tmp/yun-token-sql-mysql-http.log`、`/private/tmp/yun-token-sql-postgres-http.log`。未发现方言相关生产缺陷，无需改生产代码。
+- **外部 SQL 未加 -race**：race 证据仍以 SQLite 为准；fixture 改动后完整 `go test -race ./model ./controller ./service ./middleware -run '^(TestMembership|TestEnforceTokenKeyType)'` 复跑全绿（model3.513s/controller41.684s/service1.983s/middleware1.867s），日志 `/private/tmp/yun-token-sql-fixture-final-race.log`。
+- **前端浏览器 mock UI 复跑**：`node scripts/test-channel-membership-ui.mjs`（playwright-core 取自 `/private/tmp/yun-token-membership-ui/node_modules`，对既有 loopback 5188 mock 预览服务运行，该服务按请求读取当前 dist）输出 `MOCK_UI_PASS {"purchased":true,"created":true,"imageCreated":true,"videoCreated":true,"adminSaved":true,"mobileOverflow":false,"realApiCalls":0}`，日志 `/private/tmp/yun-token-membership-ui-rerun.log`。Seedream 与 DALL-E 共用 `images` 计数编辑/Key 路径，该路径已被 imageCreated/adminSaved 断言覆盖。
+- 复现（DSN 只指向独立一次性容器，凭证留在本地，不写入文档）：
+
+```bash
+MEMBERSHIP_TEST_DIALECT=mysql MEMBERSHIP_TEST_DSN='<local independent mysql DSN>' GOCACHE=/private/tmp/yun-token-go-cache go test ./model ./controller -run '^TestMembership' -count=1 -timeout=600s -v
+MEMBERSHIP_TEST_DIALECT=postgres MEMBERSHIP_TEST_DSN='<local independent postgres DSN>' GOCACHE=/private/tmp/yun-token-go-cache go test ./model ./controller -run '^TestMembership' -count=1 -timeout=600s -v
+```
+
+- 口径不变：SQL 回归通过仍属 **mock 证据**，全矩阵 17/30 mock 通过、13 缺功能、**真实通过 0**；R13—R15/R17/R18 与 R19/R20 的真实验收仍由用户按手工验收文档执行。

@@ -80,3 +80,7 @@ GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./ser
 ```
 
 2026-11-18：聚焦与完整 race 均通过（model2.760s/controller36.388s/service1.881s/middleware1.776s），日志 `/private/tmp/yun-token-seedream-race.log`；前端 typecheck/oxlint/build:check 通过，日志 `/private/tmp/yun-token-seedream-build.log`。R13 代码不再阻断受限单张文生图计数合同；官方按张计费、无 input_tokens、无输出 Token 硬上限，实际实例单图边界与真实 usage.generated_images 仍需用户手工验收。
+
+## 独立 SQL 回归与 UI 复跑（2026-11-18）
+
+此前「新增合同主要 SQLite mock」的缺口已补齐：会员 HTTP fixture 增加可选 `MEMBERSHIP_TEST_DSN` 分支（仅测试代码，默认 SQLite 不变，每测试新建独立 loopback 库并保留、不 DROP）。model 层与 controller 全量 `^TestMembership` 在独立 MySQL8/PostgreSQL15 上均全过（各 38 个 HTTP 顶层测试、171 个独立库，0 失败/跳过），未发现方言缺陷；fixture 改动后 SQLite 完整 race 复跑全绿；浏览器 mock UI 复跑 `MOCK_UI_PASS`、realApiCalls=0。证据与复现命令见主验收文档「独立 MySQL/PostgreSQL 全量会员回归与 UI 复跑」节。SQL 通过仍属 mock 证据，真实通过数保持 0，分类与周五候选范围不变。
