@@ -292,3 +292,11 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - 引用图在转换器下载远程文件前拒绝；多张、无上限和未知扩展参数拒绝。会员目录模型有精确转换/响应路径识别，不扩大普通 Key 的既有语义。
 - 原始用量采集位于 `GeminiNanoBananaImageHandler` 旧占位算法之前，会员不会走旧1400 Token/图估算；缺原始输出或总量不一致均 pending。
 - 完整 mock race 命令同原生图片节，日志 `/private/tmp/yun-token-gemini-image-bridge-race.log`：model 2.715s、controller 35.191s、service 1.765s、middleware 1.762s，通过。当前16/30合同 mock通过，14项缺功能；真实通过0。
+
+## 火山总输出上限修正及暂停交接（2026-11-18）
+
+- 官方[上下文管理](https://docs.volcengine.com/docs/ark/context-management?lang=zh)区分 `max_tokens`（可见回答）和 `max_completion_tokens`（回答及思考总量）。会员火山 Chat 在现有适配器中将前者转为后者；最终请求校验禁止被参数覆盖退回仅回答上限。普通 Key 逻辑保持原样。
+- 9模型×Chat/Responses×普通/流式的本地mock核对最终报文；Chat不再发送max_tokens，发送max_completion_tokens；Responses保持max_output_tokens。实际转售渠道若不支持该硬上限，必须手工标为不通过，不开放售卖。
+- 聚焦命令 `GOCACHE=/private/tmp/yun-token-go-cache go test ./controller -run '^TestMembershipHTTPVolcCatalogueText$' -count=1 -timeout=120s` 通过，日志 `/private/tmp/yun-token-volc-total-cap.log`。
+- 完整命令 `GOCACHE=/private/tmp/yun-token-go-cache go test -race ./model ./controller ./service ./middleware -run '^(TestMembership|TestEnforceTokenKeyType)' -count=1 -timeout=120s` 通过：model3.134s/controller37.582s/service1.835s/middleware1.730s，日志 `/private/tmp/yun-token-volc-total-cap-race.log`。
+- 用户要求完成本渠道后暂停，接续提示词在 `channel-membership-handoff.md`。当前16/30受限合同mock通过，剩余14项；本次没有调用真实上游/支付、没有删除数据或修改.env。

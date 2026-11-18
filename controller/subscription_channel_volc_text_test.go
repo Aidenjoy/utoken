@@ -28,10 +28,11 @@ func TestMembershipHTTPVolcCatalogueText(t *testing.T) {
 					r, db, key, subID := membershipHTTPFixture(t, func(w http.ResponseWriter, req *http.Request) {
 						calls.Add(1)
 						var sent struct {
-							Model       string   `json:"model"`
-							Max         *uint    `json:"max_tokens"`
-							MaxOutput   *uint    `json:"max_output_tokens"`
-							Temperature *float64 `json:"temperature"`
+							Model         string   `json:"model"`
+							Max           *uint    `json:"max_tokens"`
+							MaxCompletion *uint    `json:"max_completion_tokens"`
+							MaxOutput     *uint    `json:"max_output_tokens"`
+							Temperature   *float64 `json:"temperature"`
 						}
 						if !assert.NoError(t, common.DecodeJson(req.Body, &sent)) {
 							return
@@ -47,8 +48,9 @@ func TestMembershipHTTPVolcCatalogueText(t *testing.T) {
 							assert.EqualValues(t, 20, *sent.MaxOutput)
 						} else {
 							assert.Equal(t, "/api/v3/chat/completions", req.URL.Path)
-							require.NotNil(t, sent.Max)
-							assert.EqualValues(t, 20, *sent.Max)
+							assert.Nil(t, sent.Max)
+							require.NotNil(t, sent.MaxCompletion)
+							assert.EqualValues(t, 20, *sent.MaxCompletion)
 						}
 						raw := `{"id":"mock","choices":[{"message":{"role":"assistant","content":"mock"}}],"usage":{"prompt_tokens":12,"completion_tokens":15,"total_tokens":27}}`
 						if responses {

@@ -48,3 +48,12 @@
 2. 用户接口 `/api/subscription/plans`、`/api/subscription/self` 不包含会员具体额度字段；后台仍可配置并查看输入、输出明细，用户创建会员 Key 正常。
 3. 为每条填写：版本、渠道 ID、分组、公开/上游模型、协议、计量单位、普通/流式、预留/真实用量/结算、耗尽上游零调用证据、并发、到期、普通 Key、支付方式、结论及阻塞。
 4. 真实可售清单只收录所有必测项通过的实例。开发者不会替你执行真实测试；目前没有真实通过的实例。
+
+## 最新候选增量（2026-11-18）
+
+- 最新代码和接续状态以 `channel-membership-handoff.md` 与主验收文档末尾为准。实际目录16/30受限合同mock通过，真实通过0；不能据此直接公开售卖。
+- 火山Chat：核对最终上游字段为max_completion_tokens，严格涵盖思考与回答；只支持max_tokens或忽略硬上限的实例不得通过。Responses单独核对max_output_tokens，不用Chat成功代替。
+- ClaudeChat/原生：核对缓存读/写输入分别原始采集再汇总输入，流式完整message_stop；工具/媒体仍拒绝。
+- Gemini文本及Chat：仅单候选显式关闭思考的合同；不接受该参数的实例不得通过。
+- Gemini原生图片/Images兼容：原生maxOutputTokens；Images兼容需显式max_tokens，非流式、单张文生图。核对输入prompt、候选输出和思考原始用量，输出为候选+思考；参考图输入仍拒绝。缺用量不得以1400 Token/图占位结算。
+- Ark视频、Seedream、GPT-image实际目录合同仍缺功能，禁止把普通Key成功或DALL-E/Sora合同通过当成它们的会员通过。

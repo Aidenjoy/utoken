@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -40,6 +41,9 @@ func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []b
 	}
 	if !model.MembershipTextModelSupported(req.Model) || req.Model != info.UpstreamModelName || len(req.Messages) == 0 || len(req.Tools) > 0 || len(req.Functions) > 0 || len(req.Audio) > 0 || len(req.Modalities) > 0 || len(req.ExtraBody) > 0 || req.WebSearchOptions != nil || req.Prompt != nil || req.Input != nil || req.ResponseFormat != nil || req.ToolChoice != nil || len(req.FunctionCall) > 0 || (req.N != nil && *req.N != 1) {
 		return nil, errors.New("membership profile supports plain text chat with one output only")
+	}
+	if info.ChannelType == constant.ChannelTypeVolcEngine && (req.MaxTokens != nil || req.MaxCompletionTokens == nil) {
+		return nil, errors.New("Ark membership requires a total completion token cap including thinking")
 	}
 	if req.MaxTokens != nil && req.MaxCompletionTokens != nil {
 		return nil, errors.New("membership requires one unambiguous output limit")
