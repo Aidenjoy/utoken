@@ -26,6 +26,7 @@ func GeminiTextGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
+	service.ObserveMembershipGemini(c, responseBody)
 	logger.LogDebugJSON(c, "Gemini native response body: %s", responseBody)
 
 	// 解析为 Gemini 原生响应格式

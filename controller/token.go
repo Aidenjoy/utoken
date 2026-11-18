@@ -437,7 +437,7 @@ func AddToken(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		if (grant.Profile == model.MembershipTextProfile && token.KeyType != model.TokenKeyTypeLanguage) || (grant.Profile == model.MembershipImageProfile && token.KeyType != model.TokenKeyTypeImage) || (grant.Profile == model.MembershipVideoProfile && token.KeyType != model.TokenKeyTypeVideo) || ((grant.Profile == model.MembershipTranscriptionProfile || grant.Profile == model.MembershipSpeechProfile || grant.Profile == model.MembershipRealtimeProfile || grant.Profile == model.MembershipClaudeProfile) && token.KeyType != model.TokenKeyTypeLanguage) {
+		if (grant.Profile == model.MembershipTextProfile && token.KeyType != model.TokenKeyTypeLanguage) || (grant.Profile == model.MembershipImageProfile && token.KeyType != model.TokenKeyTypeImage) || (grant.Profile == model.MembershipVideoProfile && token.KeyType != model.TokenKeyTypeVideo) || ((grant.Profile == model.MembershipTranscriptionProfile || grant.Profile == model.MembershipSpeechProfile || grant.Profile == model.MembershipRealtimeProfile || grant.Profile == model.MembershipClaudeProfile || grant.Profile == model.MembershipGeminiProfile) && token.KeyType != model.TokenKeyTypeLanguage) {
 			common.ApiErrorMsg(c, "membership key type does not match its metering profile")
 			return
 		}
@@ -449,7 +449,7 @@ func AddToken(c *gin.Context) {
 			}
 		}
 		channel, err := model.GetChannelById(token.ChannelId, false)
-		if err != nil || channel.Status != common.ChannelStatusEnabled || (grant.Profile == model.MembershipTextProfile && !model.MembershipTextChannelSupported(channel.Type)) || (grant.Profile == model.MembershipClaudeProfile && channel.Type != 14) || (grant.Profile == model.MembershipImageProfile && channel.Type != 1) || (grant.Profile == model.MembershipVideoProfile && !model.MembershipVideoChannelSupported(channel.Type)) || ((grant.Profile == model.MembershipTranscriptionProfile || grant.Profile == model.MembershipSpeechProfile || grant.Profile == model.MembershipRealtimeProfile) && channel.Type != 1) {
+		if err != nil || channel.Status != common.ChannelStatusEnabled || (grant.Profile == model.MembershipTextProfile && !model.MembershipTextChannelSupported(channel.Type)) || (grant.Profile == model.MembershipClaudeProfile && channel.Type != 14) || (grant.Profile == model.MembershipGeminiProfile && channel.Type != 24) || (grant.Profile == model.MembershipImageProfile && channel.Type != 1) || (grant.Profile == model.MembershipVideoProfile && !model.MembershipVideoChannelSupported(channel.Type)) || ((grant.Profile == model.MembershipTranscriptionProfile || grant.Profile == model.MembershipSpeechProfile || grant.Profile == model.MembershipRealtimeProfile) && channel.Type != 1) {
 			common.ApiErrorMsg(c, "membership channel unavailable")
 			return
 		}

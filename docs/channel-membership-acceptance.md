@@ -261,3 +261,12 @@ NODE_PATH=/private/tmp/yun-token-membership-ui/node_modules node scripts/test-ch
 - 只取原生 input_tokens、output_tokens、total_tokens，检查一致性；流式必须有 response.completed 的完整原始用量且无扫描错误。单独 [DONE] 不是原生终态。Incomplete/failed 等未知结算条件保留 pending。
 - 实际 OpenAI/xAI 目录十个模型名分别验证普通和流式、最终输出上限、远程上下文上游前拒绝、原始分项、耗尽上游零新增调用、钱包不变；日志 `/private/tmp/yun-token-responses-tests.log`。
 - 本机渠道19/20/25/39的 Responses 现在是 mock 通过、实际实例待用户手工验收；没有执行任何真实请求。此前文档中“所有 Responses 未实现”的描述由本节限定范围取代，其他 Responses 能力仍拒绝。
+
+
+## Gemini 原生纯文本（2026-11-18）
+
+- `gemini_native_plain_text_v1`，Gemini类型，目录 `gemini-3.8-flash` 的 generateContent / streamGenerateContent。仅纯文本、单候选、显式 maxOutputTokens 与 thinkingBudget=0；没有缓存远程上下文、工具、文件或媒体，也不进行 Chat/Responses 转换。
+- 系统指令及覆盖完成后的最终 JSON 原子预留输入/输出；跳过为旧价格选择的 thinking 模型别名逻辑，避免计量模型被价格后缀重写。要求最终配置仍为关闭思考，否则上游前拒绝。
+- 只读取原始 promptTokenCount / candidatesTokenCount / totalTokenCount；缓存输入是 prompt 子集，不重复相加。若原始 thoughts/tool Token 非零、字段缺失、总量不一致则 pending，不以总量拆分输出。
+- 普通/流式必须有终态候选 STOP/MAX_TOKENS 和同批原始用量；模型会员检查、候选数2上游前拒绝、真实缓存子集、耗尽零新增调用、钱包不变、缺失用量/意外思考待核对的 mock 已通过。日志 `/private/tmp/yun-token-gemini-tests.log`，完整会员 race 日志 `/private/tmp/yun-token-gemini-race.log`。
+- 此处证明的是请求合同 mock；该实际未来模型是否接受 thinkingBudget=0、是否严格执行输出总上限，必须由用户真实手工确认，拒绝该参数或出现额外思考时不得公开售卖。渠道26原生协议标为 mock 通过/待手工实测；其 Chat 转换、渠道23图片仍未实现。

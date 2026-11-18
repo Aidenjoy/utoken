@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	MembershipGeminiProfile              = "gemini_native_plain_text_v1"
 	MembershipClaudeProfile              = "anthropic_messages_text_v1"
 	MembershipRealtimeProfile            = "openai_realtime_bounded_v1"
 	MembershipTranscriptionProfile       = "openai_whisper_duration_v1"
@@ -139,7 +140,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 		}
 		seen[cfg.ChannelId] = true
 		switch cfg.Profile {
-		case MembershipTextProfile, MembershipRealtimeProfile, MembershipClaudeProfile:
+		case MembershipTextProfile, MembershipRealtimeProfile, MembershipClaudeProfile, MembershipGeminiProfile:
 			if cfg.Unit != MembershipUnitTokens || cfg.InputLimit <= 0 || cfg.OutputLimit <= 0 || cfg.InputLimit > MembershipMaxTokens || cfg.OutputLimit > MembershipMaxTokens || cfg.QuantityLimit != 0 {
 				return nil, errors.New("invalid text token limits")
 			}
@@ -167,7 +168,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 		if err := tx.First(&channel, cfg.ChannelId).Error; err != nil {
 			return nil, err
 		}
-		if ((cfg.Profile == MembershipTextProfile && !MembershipTextChannelSupported(channel.Type)) || (cfg.Profile == MembershipRealtimeProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipClaudeProfile && channel.Type != constant.ChannelTypeAnthropic) || (cfg.Profile == MembershipImageProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoChannelSupported(channel.Type)) || ((cfg.Profile == MembershipTranscriptionProfile || cfg.Profile == MembershipSpeechProfile) && channel.Type != constant.ChannelTypeOpenAI)) || channel.Status != common.ChannelStatusEnabled || channel.GetSetting().PassThroughBodyEnabled {
+		if ((cfg.Profile == MembershipTextProfile && !MembershipTextChannelSupported(channel.Type)) || (cfg.Profile == MembershipRealtimeProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipClaudeProfile && channel.Type != constant.ChannelTypeAnthropic) || (cfg.Profile == MembershipGeminiProfile && channel.Type != constant.ChannelTypeGemini) || (cfg.Profile == MembershipImageProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoChannelSupported(channel.Type)) || ((cfg.Profile == MembershipTranscriptionProfile || cfg.Profile == MembershipSpeechProfile) && channel.Type != constant.ChannelTypeOpenAI)) || channel.Status != common.ChannelStatusEnabled || channel.GetSetting().PassThroughBodyEnabled {
 			return nil, errors.New("channel does not support membership text metering")
 		}
 		var mapping map[string]string
@@ -181,7 +182,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 			if mapped := mapping[name]; mapped != "" {
 				upstream = mapped
 			}
-			if !slices.Contains(channel.GetModels(), name) || (cfg.Profile == MembershipTextProfile && !MembershipTextModelSupported(upstream)) || (cfg.Profile == MembershipRealtimeProfile && upstream != "gpt-4o-realtime-preview") || (cfg.Profile == MembershipClaudeProfile && !MembershipClaudeModelSupported(upstream)) || (cfg.Profile == MembershipImageProfile && !MembershipImageModelSupported(upstream)) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoModelSupported(upstream)) || (cfg.Profile == MembershipTranscriptionProfile && upstream != "whisper-1") || (cfg.Profile == MembershipSpeechProfile && upstream != "tts-1" && upstream != "tts-1-hd") {
+			if !slices.Contains(channel.GetModels(), name) || (cfg.Profile == MembershipTextProfile && !MembershipTextModelSupported(upstream)) || (cfg.Profile == MembershipRealtimeProfile && upstream != "gpt-4o-realtime-preview") || (cfg.Profile == MembershipClaudeProfile && !MembershipClaudeModelSupported(upstream)) || (cfg.Profile == MembershipGeminiProfile && upstream != "gemini-3.8-flash") || (cfg.Profile == MembershipImageProfile && !MembershipImageModelSupported(upstream)) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoModelSupported(upstream)) || (cfg.Profile == MembershipTranscriptionProfile && upstream != "whisper-1") || (cfg.Profile == MembershipSpeechProfile && upstream != "tts-1" && upstream != "tts-1-hd") {
 				return nil, fmt.Errorf("model %s has no supported membership text contract", name)
 			}
 		}

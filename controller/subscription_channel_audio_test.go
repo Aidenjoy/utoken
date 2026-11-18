@@ -31,9 +31,12 @@ func membershipAudioFixture(t *testing.T, modelName, profile, unit string, limit
 	if profile == model.MembershipClaudeProfile {
 		channelKind = constant.ChannelTypeAnthropic
 	}
+	if profile == model.MembershipGeminiProfile {
+		channelKind = constant.ChannelTypeGemini
+	}
 	require.NoError(t, db.Create(&model.Channel{Id: 8120, Name: "mock-audio", Type: channelKind, Key: "mock-only", BaseURL: text.BaseURL, Models: modelName, Group: "default", Status: common.ChannelStatusEnabled}).Error)
 	configValue := model.SubscriptionChannelConfig{ChannelId: 8120, Profile: profile, Unit: unit, Models: []string{modelName}, QuantityLimit: limit}
-	if profile == model.MembershipClaudeProfile {
+	if profile == model.MembershipClaudeProfile || profile == model.MembershipGeminiProfile {
 		configValue.QuantityLimit = 0
 		configValue.InputLimit = 2000
 		configValue.OutputLimit = 30

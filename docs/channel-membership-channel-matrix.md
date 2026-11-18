@@ -26,7 +26,7 @@
 | 24 / gpt-image2 | gpt-image-2.5-flare, gpt-image-2.5-sunburst | `POST /v1/images/generations、/v1/images/edits` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 25 / xixiapi | grok-4.6, grok-4.7 | `POST /v1/chat/completions` | mock 通过；待用户手工实测该实例 | 原始输入/输出缺一则 pending；旧 xAI 总量拆分不可用作真实输出 |
 | 25 / xixiapi | grok-4.6, grok-4.7 | `POST /v1/responses` | mock 通过；待用户手工实测该实例 | 无工具自包含短文本、显式 max_output_tokens；拒绝远程上下文、compact、工具和转换路径 |
-| 26 / xixiapi | gemini-3.8-flash, gemini-4-argon | `POST /v1beta/models/*:generateContent（含 stream）` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
+| 26 / xixiapi | gemini-3.8-flash, gemini-4-argon | `POST /v1beta/models/*:generateContent（含 stream）` | mock 通过；待用户手工实测该实例 | 单文本候选、显式输出上限与 thinkingBudget=0；不接受关闭思考参数的上游不得售卖 |
 | 26 / xixiapi | gemini-3.8-flash, gemini-4-argon | `POST /v1/chat/completions` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 32 / 火山方舟-codingplan | deepseek-v4-flash, deepseek-v4-pro, deepseek-v4.1-flash, doubao-seed-2.1-lite, doubao-seed-2.1-pro, glm-5.3, glm-5.3-flash, kimi-k3, kimi-k3.1-pro | `POST /v1/chat/completions` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |
 | 32 / 火山方舟-codingplan | deepseek-v4-flash, deepseek-v4-pro, deepseek-v4.1-flash, doubao-seed-2.1-lite, doubao-seed-2.1-pro, glm-5.3, glm-5.3-flash, kimi-k3, kimi-k3.1-pro | `POST /v1/responses` | 未实现（这些实际模型尚未进入已验收合同） | 不可加入当前可售会员配置；不支持路径由会员鉴权拒绝，不回退钱包 |

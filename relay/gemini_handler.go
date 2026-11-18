@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -54,6 +55,21 @@ func trimModelThinking(modelName string) string {
 func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 
+	var membership *service.MembershipSession
+	if c.GetInt("membership_subscription_id") > 0 {
+		if info.ChannelType != constant.ChannelTypeGemini || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+			return types.NewError(fmt.Errorf("membership Gemini adapter unsupported"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		defer func() {
+			if membership != nil {
+				if !membership.TransportComplete {
+					membership.InvalidUsage = true
+				}
+				service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
+			}
+		}()
+	}
+
 	geminiReq, ok := info.Request.(*dto.GeminiChatRequest)
 	if !ok {
 		return types.NewErrorWithStatusCode(fmt.Errorf("invalid request type, expected *dto.GeminiChatRequest, got %T", info.Request), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -70,7 +86,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
 
-	if model_setting.GetGeminiSettings().ThinkingAdapterEnabled {
+	if c.GetInt("membership_subscription_id") == 0 && model_setting.GetGeminiSettings().ThinkingAdapterEnabled {
 		if isNoThinkingRequest(request) {
 			// check is thinking
 			if !strings.Contains(info.OriginModelName, "-nothinking") {
@@ -162,6 +178,12 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
+		if c.GetInt("membership_subscription_id") > 0 {
+			membership, err = service.PrepareMembershipGemini(c, info, jsonData, helper.MaxTokensLimit)
+			if err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+			}
+		}
 		logger.LogDebugJSON(c, "Gemini request body: %s", jsonData)
 
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
@@ -174,6 +196,12 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		requestBody = body
 	}
 
+	if membership != nil {
+		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
+			return types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		}
+		membership.Dispatched = true
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		logger.LogError(c, "Do gemini request failed: "+err.Error())
@@ -200,6 +228,9 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return openaiErr
 	}
 
+	if membership != nil {
+		return nil
+	}
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
 	return nil
 }
