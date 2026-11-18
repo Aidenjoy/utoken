@@ -82,8 +82,8 @@ func SetRelayRouter(router *gin.Engine) {
 		// 取消在途视频任务：不依赖转发渠道，只改本地任务状态并退预扣，
 		// 与素材管理同组（不挂 Distribute）。
 		playgroundUploadRouter.POST("/video/generations/:task_id/cancel", controller.PlaygroundTaskCancel)
-		// 渠道选择器候选列表：不依赖转发渠道，不挂 Distribute。
-		playgroundUploadRouter.GET("/video/channels", controller.ListVideoChannels)
+		// 渠道选择器候选列表（仅超管）：不依赖转发渠道，不挂 Distribute。
+		playgroundUploadRouter.GET("/channels", controller.ListPlaygroundChannels)
 
 		// 虚拟人像素材库：素材管理不依赖转发渠道，同样不挂 Distribute
 		playgroundUploadRouter.GET("/assets/providers", controller.GetAssetProviders)

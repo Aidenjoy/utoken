@@ -31,7 +31,9 @@ import type {
   ImageMode,
   ImageOutputFormat,
   ModelOption,
+  PlaygroundChannel,
 } from '../../types'
+import { PlaygroundChannelSelector } from '../input/playground-channel-selector'
 
 interface PlaygroundImageInputProps {
   config: ImageConfig
@@ -51,6 +53,9 @@ interface PlaygroundImageInputProps {
    * nothing is sent until the user submits.
    */
   initialText?: string
+  showChannelSelector?: boolean
+  channels?: PlaygroundChannel[]
+  onChannelChange?: (value: number) => void
 }
 
 export function PlaygroundImageInput({
@@ -67,6 +72,9 @@ export function PlaygroundImageInput({
   onClearTasks,
   hasTasks,
   initialText,
+  showChannelSelector = false,
+  channels = [],
+  onChannelChange,
 }: PlaygroundImageInputProps) {
   const { t } = useTranslation()
   const [prompt, setPrompt] = useState(initialText ?? '')
@@ -336,15 +344,24 @@ export function PlaygroundImageInput({
 
         {/* Footer with model selector and submit */}
         <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex items-center justify-between gap-2 border-t px-3 py-2.5 backdrop-blur'>
-          <ModelGroupSelector
-            selectedModel={config.model}
-            models={models}
-            onModelChange={onModelChange}
-            selectedGroup={config.group}
-            groups={groups}
-            onGroupChange={onGroupChange}
-            categorizeModel={getModelCategory}
-          />
+          <div className='flex min-w-0 items-center gap-2'>
+            {showChannelSelector && onChannelChange && (
+              <PlaygroundChannelSelector
+                value={config.channelId}
+                channels={channels}
+                onChange={onChannelChange}
+              />
+            )}
+            <ModelGroupSelector
+              selectedModel={config.model}
+              models={models}
+              onModelChange={onModelChange}
+              selectedGroup={config.group}
+              groups={groups}
+              onGroupChange={onGroupChange}
+              categorizeModel={getModelCategory}
+            />
+          </div>
 
           {isGenerating ? (
             <Button

@@ -68,6 +68,8 @@ export interface ContentPart {
 export interface ChatCompletionRequest {
   model: string
   group?: string
+  /** Super-admin explicit channel pin (0/absent = auto routing) */
+  channel_id?: number
   messages: ChatCompletionMessage[]
   stream: boolean
   temperature?: number
@@ -119,6 +121,8 @@ export interface ChatCompletionResponse {
 export interface PlaygroundConfig {
   model: string
   group: string
+  /** 显式指定渠道（0=自动，走渠道优先级选路；仅超管可见选择器） */
+  channelId: number
   temperature: number
   top_p: number
   max_tokens: number
@@ -217,10 +221,11 @@ export interface AssetProvider {
   protocol: string
 }
 
-/** 视频渠道选择器候选渠道（仅 id/name，不暴露 key） */
-export interface VideoChannel {
+/** 体验页渠道选择器候选渠道（仅超管可见；id/name/models，不暴露 key） */
+export interface PlaygroundChannel {
   id: number
   name: string
+  models: string[]
 }
 
 export interface VideoConfig {
@@ -330,6 +335,8 @@ export interface ImageItem {
 export interface ImageConfig {
   model: string
   group: string
+  /** 显式指定渠道（0=自动，走渠道优先级选路；仅超管可见选择器） */
+  channelId: number
   mode: ImageMode
   /** Ark preset (2K/4K) or explicit WxH; OpenAI-compatible providers only take WxH */
   size: string
@@ -364,6 +371,8 @@ export interface ImageGenerationRequest {
   model: string
   prompt: string
   group?: string
+  /** Super-admin explicit channel pin (0/absent = auto routing) */
+  channel_id?: number
   n?: number
   size?: string
   output_format?: string

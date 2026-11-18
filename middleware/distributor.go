@@ -128,7 +128,8 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-				// playground 渠道选择器：用户显式指定的渠道（0=自动走优先级），仅视频提交生效。
+				// playground 渠道选择器：仅超级管理员可显式指定渠道（0=自动走优先级），
+				// 对话/视频/图片三条生成路径生效；普通用户忽略该字段，沿用自动选路。
 				playgroundChannelId := 0
 				// playground 的生成类接口把 group 放在 body 里：对话、视频、图片
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") ||
@@ -148,7 +149,7 @@ func Distribute() func(c *gin.Context) {
 						usingGroup = playgroundRequest.Group
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 					}
-					if isVideoSubmitPath(c.Request.URL.Path) {
+					if c.GetInt("role") >= common.RoleRootUser {
 						playgroundChannelId = playgroundRequest.ChannelId
 					}
 				} else if strings.HasPrefix(c.Request.URL.Path, "/pg/files/upload") {
@@ -234,6 +235,21 @@ func Distribute() func(c *gin.Context) {
 								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 						}
 					}
+				}
+
+				// 对话/图片路径的超管渠道锁定（视频路径在上面的素材锁分支里已处理）：
+				// 指定渠道不可用时明确报错，不静默降级到别的渠道。
+				if channel == nil && playgroundChannelId > 0 {
+					var lockErr error
+					channel, selectGroup, lockErr = selectAssetLockedChannel(c, playgroundChannelId, modelRequest.Model, usingGroup)
+					if lockErr != nil {
+						abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorUserChannelUnavailable, map[string]any{
+							"Channel": playgroundChannelId, "Model": modelRequest.Model,
+						}))
+						return
+					}
+					common.SysLog(fmt.Sprintf("[Playground] request pinned to channel %d (group=%s, model=%s, user=%d)",
+						channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 				}
 
 				if channel == nil {

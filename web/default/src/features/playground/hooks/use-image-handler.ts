@@ -33,6 +33,10 @@ function buildImagePayload(
     // explicitly false, so it is always sent: the playground offers no toggle.
     watermark: false,
   }
+  // 超管显式锁定渠道；Auto（0）不带字段，与普通用户一致。
+  if (config.channelId > 0) {
+    payload.channel_id = config.channelId
+  }
   // Seedream 4.x has no output_format parameter at all and answers it with a
   // 400; an empty format list in the profile means "omit the field".
   if (getImageModelProfile(config.model).outputFormats.length > 0) {

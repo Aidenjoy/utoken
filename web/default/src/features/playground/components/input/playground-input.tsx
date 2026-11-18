@@ -27,7 +27,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 
 import { getSubmittableInputText } from '../../lib'
-import type { ModelOption, GroupOption } from '../../types'
+import type { ModelOption, GroupOption, PlaygroundChannel } from '../../types'
 import { PlaygroundInputControls } from './playground-input-controls'
 import { PlaygroundInputTools } from './playground-input-tools'
 
@@ -45,6 +45,11 @@ interface PlaygroundInputProps {
   onGroupChange: (value: string) => void
   hasMessages?: boolean
   onClearMessages?: () => void
+  /** 渠道选择器仅超管可见；默认 Auto 与普通用户一致 */
+  showChannelSelector?: boolean
+  channels?: PlaygroundChannel[]
+  channelValue?: number
+  onChannelChange?: (value: number) => void
   /**
    * Text pre-filled into the composer, e.g. a template picked from the Prompt
    * Library. It only seeds the draft — nothing is sent until the user submits.
@@ -67,6 +72,10 @@ export function PlaygroundInput({
   hasMessages = false,
   onClearMessages,
   initialText,
+  showChannelSelector = false,
+  channels = [],
+  channelValue = 0,
+  onChannelChange,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState(initialText ?? '')
@@ -117,6 +126,10 @@ export function PlaygroundInput({
             onGroupChange={onGroupChange}
             onModelChange={onModelChange}
             onStop={onStop}
+            showChannelSelector={showChannelSelector}
+            channels={channels}
+            channelValue={channelValue}
+            onChannelChange={onChannelChange}
             text={text}
             tools={
               <PlaygroundInputTools

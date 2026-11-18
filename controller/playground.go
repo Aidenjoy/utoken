@@ -336,10 +336,17 @@ func PlaygroundTaskCancel(c *gin.Context) {
 	})
 }
 
-// ListVideoChannels 体验页渠道选择器：返回当前分组下可服务指定模型的启用渠道
-// （仅 id/name，不暴露 key）。?model= 按模型过滤，空则返回全部启用渠道（先选渠道再选模型）；
-// ?group= 指定分组（须在用户可用分组内），auto 展开自动分组，缺省取可用分组并集。
-func ListVideoChannels(c *gin.Context) {
+// ListPlaygroundChannels 体验页渠道选择器（仅超级管理员）：返回启用渠道的
+// id/name/models（不暴露 key），供先选渠道再选模型。?model= 按模型过滤（保留兼容），
+// 空则返回全部启用渠道；?group= 指定分组（须在用户可用分组内），auto 展开自动分组，
+// 缺省取可用分组并集。普通用户不展示选择器，走自动选路。
+func ListPlaygroundChannels(c *gin.Context) {
+	if c.GetInt("role") < common.RoleRootUser {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{"message": "only super admin can list playground channels", "type": "access_denied"},
+		})
+		return
+	}
 	userId := c.GetInt("id")
 	modelName := strings.TrimSpace(c.Query("model"))
 	group := strings.TrimSpace(c.Query("group"))
@@ -376,7 +383,13 @@ func ListVideoChannels(c *gin.Context) {
 				continue
 			}
 		}
-		list = append(list, gin.H{"id": ch.Id, "name": ch.Name})
+		models := make([]string, 0)
+		for _, name := range strings.Split(ch.Models, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				models = append(models, name)
+			}
+		}
+		list = append(list, gin.H{"id": ch.Id, "name": ch.Name, "models": models})
 	}
 	c.JSON(http.StatusOK, gin.H{"channels": list})
 }

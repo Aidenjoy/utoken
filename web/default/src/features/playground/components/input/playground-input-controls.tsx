@@ -25,7 +25,8 @@ import { ModelGroupSelector } from '@/components/model-group-selector'
 import { getModelCategory } from '@/lib/model-category'
 
 import { getInputControlState } from '../../lib'
-import type { GroupOption, ModelOption } from '../../types'
+import type { GroupOption, ModelOption, PlaygroundChannel } from '../../types'
+import { PlaygroundChannelSelector } from './playground-channel-selector'
 
 type PlaygroundInputControlsProps = {
   disabled?: boolean
@@ -40,6 +41,10 @@ type PlaygroundInputControlsProps = {
   onStop?: () => void
   text: string
   tools: ReactNode
+  showChannelSelector?: boolean
+  channels?: PlaygroundChannel[]
+  channelValue?: number
+  onChannelChange?: (value: number) => void
 }
 
 export function PlaygroundInputControls({
@@ -55,6 +60,10 @@ export function PlaygroundInputControls({
   onStop,
   text,
   tools,
+  showChannelSelector = false,
+  channels = [],
+  channelValue = 0,
+  onChannelChange,
 }: PlaygroundInputControlsProps) {
   const { t } = useTranslation()
   const { canSubmit, isSelectorDisabled, shouldShowStop } =
@@ -69,16 +78,25 @@ export function PlaygroundInputControls({
     })
 
   const renderSelector = () => (
-    <ModelGroupSelector
-      selectedModel={modelValue}
-      models={models}
-      onModelChange={onModelChange}
-      selectedGroup={groupValue}
-      groups={groups}
-      onGroupChange={onGroupChange}
-      categorizeModel={getModelCategory}
-      disabled={isSelectorDisabled}
-    />
+    <div className='flex min-w-0 items-center gap-2'>
+      {showChannelSelector && onChannelChange && (
+        <PlaygroundChannelSelector
+          value={channelValue}
+          channels={channels}
+          onChange={onChannelChange}
+        />
+      )}
+      <ModelGroupSelector
+        selectedModel={modelValue}
+        models={models}
+        onModelChange={onModelChange}
+        selectedGroup={groupValue}
+        groups={groups}
+        onGroupChange={onGroupChange}
+        categorizeModel={getModelCategory}
+        disabled={isSelectorDisabled}
+      />
+    </div>
   )
 
   const renderSubmitButton = () =>

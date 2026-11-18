@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { useVideoHandler } from '../hooks/use-video-handler'
+import { getChannelModelOptions } from '../lib/options/playground-option-utils'
 import {
   getInitialVideoConfig,
   saveVideoConfig,
 } from '../lib/storage/video-storage'
-import type { GroupOption, ModelOption, VideoConfig } from '../types'
+import type {
+  GroupOption,
+  ModelOption,
+  PlaygroundChannel,
+  VideoConfig,
+} from '../types'
 import { PlaygroundVideoChat } from './video/playground-video-chat'
 import { PlaygroundVideoInput } from './video/playground-video-input'
 
@@ -16,6 +22,11 @@ interface PlaygroundVideoModeProps {
   groups: GroupOption[]
   onModelChange: (model: string) => void
   onGroupChange: (group: string) => void
+  /** 渠道选择器状态由父级统一持有（三模式共享，避免模式切换时互相纠正模型） */
+  channels: PlaygroundChannel[]
+  showChannelSelector: boolean
+  channelValue: number
+  onChannelChange: (value: number) => void
   /** Prompt Library template text seeded into the composer. */
   initialText?: string
 }
@@ -28,27 +39,46 @@ export function PlaygroundVideoMode({
   onModelChange,
   onGroupChange,
   initialText,
+  channels,
+  showChannelSelector,
+  channelValue,
+  onChannelChange,
 }: PlaygroundVideoModeProps) {
   const [videoConfig, setVideoConfig] = useState<VideoConfig>(() => {
     const initial = getInitialVideoConfig()
     return { ...initial, model, group }
   })
 
-  // Sync model/group from parent (shared with chat mode)
+  // Sync model/group/channel from parent (shared with chat and image modes)
   useEffect(() => {
     setVideoConfig((prev) => {
-      const next = { ...prev, model, group }
-      if (prev.model !== model || prev.group !== group) {
+      const next = { ...prev, model, group, channelId: channelValue }
+      if (
+        prev.model !== model ||
+        prev.group !== group ||
+        prev.channelId !== channelValue
+      ) {
         saveVideoConfig(next)
       }
       return next
     })
-  }, [model, group])
+  }, [model, group, channelValue])
 
   const handleConfigChange = useCallback((next: VideoConfig) => {
     setVideoConfig(next)
     saveVideoConfig(next)
   }, [])
+
+  // 渠道选择器仅超管可见；默认 Auto 时与普通用户完全一致。
+  const channelModels = getChannelModelOptions(models, channels, channelValue)
+
+  // 先选渠道后选模型：锁定渠道后当前模型不在候选里时自动落到首个候选。
+  useEffect(() => {
+    if (channelModels.length === 0) return
+    if (!channelModels.some((m) => m.value === model)) {
+      onModelChange(channelModels[0].value)
+    }
+  }, [channelModels, model, onModelChange])
 
   const {
     videoTasks,
@@ -74,7 +104,7 @@ export function PlaygroundVideoMode({
           hasTasks={videoTasks.length > 0}
           initialText={initialText}
           isGenerating={isGenerating}
-          models={models}
+          models={channelModels}
           onClearTasks={clearTasks}
           onConfigChange={handleConfigChange}
           onGroupChange={onGroupChange}
@@ -83,6 +113,9 @@ export function PlaygroundVideoMode({
           onSubmit={submitVideo}
           onUploadMediaItem={uploadMediaItem}
           uploadProgress={uploadProgress}
+          showChannelSelector={showChannelSelector}
+          channels={channels}
+          onChannelChange={onChannelChange}
         />
       </div>
     </div>

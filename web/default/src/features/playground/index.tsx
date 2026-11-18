@@ -16,17 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useEffect, useMemo } from 'react'
+
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
 import { PlaygroundImageMode } from './components/playground-image-mode'
 import { PlaygroundVideoMode } from './components/playground-video-mode'
 import {
   useChatHandler,
+  usePlaygroundChannels,
   usePlaygroundConversation,
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
-import { getModelType } from './lib'
+import { getChannelModelOptions, getModelType } from './lib'
 
 export function Playground({ initialPrompt }: { initialPrompt?: string }) {
   const {
@@ -76,6 +79,22 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
     updateConfig,
   })
 
+  // 渠道选择器仅超管可见；默认 Auto 时与普通用户完全一致。
+  const { isRoot, channels } = usePlaygroundChannels(config.group)
+  const channelModels = useMemo(
+    () => getChannelModelOptions(models, channels, config.channelId),
+    [models, channels, config.channelId]
+  )
+
+  // 先选渠道后选模型：锁定渠道后当前模型不在候选里时自动落到首个候选，
+  // 避免超管为了测试一个渠道反复手动切换模型。
+  useEffect(() => {
+    if (channelModels.length === 0) return
+    if (!channelModels.some((m) => m.value === config.model)) {
+      updateConfig('model', channelModels[0].value)
+    }
+  }, [channelModels, config.model, updateConfig])
+
   // Detect model type to switch between chat, video and image UI
   const modelType = getModelType(config.model)
 
@@ -92,6 +111,10 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
         models={models}
         onGroupChange={(value) => updateConfig('group', value)}
         onModelChange={(value) => updateConfig('model', value)}
+        channels={channels}
+        showChannelSelector={isRoot}
+        channelValue={config.channelId}
+        onChannelChange={(value) => updateConfig('channelId', value)}
       />
     )
   }
@@ -106,6 +129,10 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
         models={models}
         onGroupChange={(value) => updateConfig('group', value)}
         onModelChange={(value) => updateConfig('model', value)}
+        channels={channels}
+        showChannelSelector={isRoot}
+        channelValue={config.channelId}
+        onChannelChange={(value) => updateConfig('channelId', value)}
       />
     )
   }
@@ -139,13 +166,17 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
           isGenerating={isGenerating}
           isModelLoading={isLoadingModels}
           modelValue={config.model}
-          models={models}
+          models={channelModels}
           onGroupChange={(value) => updateConfig('group', value)}
           onClearMessages={handleClearMessages}
           onModelChange={(value) => updateConfig('model', value)}
           onStop={stopGeneration}
           onSubmit={handleSendMessage}
           hasMessages={messages.length > 0}
+          showChannelSelector={isRoot}
+          channels={channels}
+          channelValue={config.channelId}
+          onChannelChange={(value) => updateConfig('channelId', value)}
         />
       </div>
     </div>

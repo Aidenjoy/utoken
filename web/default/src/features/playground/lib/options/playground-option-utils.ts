@@ -16,7 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { GroupOption, ModelOption } from '../../types'
+import type { GroupOption, ModelOption, PlaygroundChannel } from '../../types'
+
+/**
+ * 先选渠道再选模型：锁定渠道后模型列表只保留该渠道服务的模型
+ * （与分组可用列表取交集；交集为空时展示渠道自身模型列表，
+ * 便于超管查看渠道下都有什么模型）。Auto（0）保持常规分组列表。
+ */
+export function getChannelModelOptions(
+  models: ModelOption[],
+  channels: PlaygroundChannel[],
+  channelId: number
+): ModelOption[] {
+  if (channelId <= 0) return models
+  const channel = channels.find((ch) => ch.id === channelId)
+  if (!channel) return models
+  const served = new Set(channel.models)
+  const intersection = models.filter((model) => served.has(model.value))
+  if (intersection.length > 0) return intersection
+  return channel.models.map((name) => ({ label: name, value: name }))
+}
 
 export function getModelFallback(
   models: ModelOption[],

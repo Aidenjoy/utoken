@@ -56,6 +56,7 @@ export const DEFAULT_GROUP = 'default' as const
 export const DEFAULT_CONFIG: PlaygroundConfig = {
   model: 'gpt-4o',
   group: DEFAULT_GROUP,
+  channelId: 0,
   temperature: 0.7,
   top_p: 1,
   max_tokens: 4096,
@@ -104,7 +105,7 @@ export const VIDEO_API_ENDPOINTS = {
   FETCH: (taskId: string) => `/pg/video/generations/${taskId}`,
   CANCEL: (taskId: string) => `/pg/video/generations/${taskId}/cancel`,
   FILE_UPLOAD: '/pg/files/upload',
-  CHANNELS: '/pg/video/channels',
+  CHANNELS: '/pg/channels',
 } as const
 
 // Asset library (virtual portrait library) endpoints
@@ -203,6 +204,7 @@ export const IMAGE_MODES: {
 export const DEFAULT_IMAGE_CONFIG: ImageConfig = {
   model: '',
   group: DEFAULT_GROUP,
+  channelId: 0,
   mode: 'text_to_image',
   size: '2K',
   count: 1,

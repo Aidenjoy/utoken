@@ -44,6 +44,11 @@ export function buildChatCompletionPayload(
     stream: config.stream,
   }
 
+  // 超管显式锁定渠道；Auto（0）不带字段，与普通用户一致。
+  if (config.channelId > 0) {
+    payload.channel_id = config.channelId
+  }
+
   if (parameterEnabled.temperature) {
     payload.temperature = config.temperature
   }

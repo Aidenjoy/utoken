@@ -1,10 +1,7 @@
 import {
-  Check,
-  ChevronsUpDown,
   FilmIcon,
   ImageIcon,
   MusicIcon,
-  NetworkIcon,
   SendIcon,
   SquareIcon,
   Trash2Icon,
@@ -30,7 +27,7 @@ import {
 import { getModelCategory } from '@/lib/model-category'
 import { cn } from '@/lib/utils'
 
-import { getVideoChannels, listAssets } from '../../api'
+import { listAssets } from '../../api'
 import {
   ASPECT_RATIOS,
   DEFAULT_VIDEO_CONFIG,
@@ -51,10 +48,11 @@ import type {
   MediaItem,
   ModelOption,
   Resolution,
-  VideoChannel,
+  PlaygroundChannel,
   VideoConfig,
   VideoMode,
 } from '../../types'
+import { PlaygroundChannelSelector } from '../input/playground-channel-selector'
 
 interface PlaygroundVideoInputProps {
   config: VideoConfig
@@ -80,6 +78,9 @@ interface PlaygroundVideoInputProps {
     existingItems: MediaItem[]
   ) => Promise<MediaItem>
   uploadProgress?: Record<string, number>
+  showChannelSelector?: boolean
+  channels?: PlaygroundChannel[]
+  onChannelChange?: (value: number) => void
 }
 
 function getMediaDisplayName(
@@ -116,6 +117,9 @@ export function PlaygroundVideoInput({
   initialText,
   onUploadMediaItem,
   uploadProgress,
+  showChannelSelector = false,
+  channels = [],
+  onChannelChange,
 }: PlaygroundVideoInputProps) {
   const { t } = useTranslation()
   const [prompt, setPrompt] = useState(initialText ?? '')
@@ -160,23 +164,7 @@ export function PlaygroundVideoInput({
   const configRef = useRef(config)
   configRef.current = config
 
-  // --- 渠道选择器：候选按当前模型 × 分组过滤，切换后不在候选的选中渠道回落自动 ---
-  const [videoChannels, setVideoChannels] = useState<VideoChannel[]>([])
-  useEffect(() => {
-    let cancelled = false
-    void getVideoChannels(config.model, config.group).then((list) => {
-      if (cancelled) return
-      setVideoChannels(list)
-      const selected = configRef.current.channelId
-      if (selected > 0 && !list.some((ch) => ch.id === selected)) {
-        onConfigChange({ ...configRef.current, channelId: 0 })
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.model, config.group])
+  // --- 渠道选择器候选由父级注入（仅超管可见，先选渠道再选模型） ---
 
   // --- helpers for contentEditable ---
 
@@ -1138,11 +1126,13 @@ export function PlaygroundVideoInput({
           {/* Footer with model selector and submit */}
           <div className='border-border/60 bg-muted/20 dark:bg-muted/10 flex items-center justify-between gap-2 border-t px-3 py-2.5 backdrop-blur'>
             <div className='flex min-w-0 items-center gap-2'>
-              <VideoChannelSelector
-                value={config.channelId}
-                channels={videoChannels}
-                onChange={(v) => updateField('channelId', v)}
-              />
+              {showChannelSelector && onChannelChange && (
+                <PlaygroundChannelSelector
+                  value={config.channelId}
+                  channels={channels}
+                  onChange={onChannelChange}
+                />
+              )}
               <ModelGroupSelector
                 selectedModel={config.model}
                 models={models}
@@ -1535,79 +1525,3 @@ function ConfigDurationGrid({
   )
 }
 
-// VideoChannelSelector 渠道选择器：默认 Auto（走渠道优先级选路），
-// 选中特定渠道后提交带 channel_id，后端锁定到该渠道。
-function VideoChannelSelector({
-  value,
-  channels,
-  onChange,
-}: {
-  value: number
-  channels: VideoChannel[]
-  onChange: (value: number) => void
-}) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  const current = channels.find((ch) => ch.id === value)
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <button
-            type='button'
-            className='bg-background/80 hover:bg-accent/70 text-foreground flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors'
-            title={t('Channel')}
-            aria-label={t('Channel')}
-          >
-            <NetworkIcon className='text-muted-foreground size-3.5 shrink-0' />
-            <span className='hidden max-w-24 truncate sm:inline'>
-              {current ? current.name : t('Auto')}
-            </span>
-            <ChevronsUpDown className='text-muted-foreground size-3.5 shrink-0 opacity-60' />
-          </button>
-        }
-      />
-      <PopoverContent side='top' align='start' className='w-56 p-1'>
-        <button
-          type='button'
-          className={cn(
-            'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
-            value === 0 ? 'bg-accent' : 'hover:bg-accent'
-          )}
-          onClick={() => {
-            onChange(0)
-            setOpen(false)
-          }}
-        >
-          <span>{t('Auto')}</span>
-          <Check
-            className={cn('size-3.5', value === 0 ? 'opacity-100' : 'opacity-0')}
-          />
-        </button>
-        {channels.map((ch) => (
-          <button
-            type='button'
-            key={ch.id}
-            className={cn(
-              'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
-              value === ch.id ? 'bg-accent' : 'hover:bg-accent'
-            )}
-            onClick={() => {
-              onChange(ch.id)
-              setOpen(false)
-            }}
-          >
-            <span className='truncate'>{ch.name}</span>
-            <Check
-              className={cn(
-                'size-3.5 shrink-0',
-                value === ch.id ? 'opacity-100' : 'opacity-0'
-              )}
-            />
-          </button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  )
-}
