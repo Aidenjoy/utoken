@@ -5629,6 +5629,7 @@
     "Select a color": "选择颜色",
     "Select a group": "选择一个分组",
     "Select a group type": "选择分组类型",
+    "Select a key first, then choose a model allowed by that key.": "请先选择 Key，再选择该 Key 可用的模型。",
     "Select a language model key...": "选择语言模型 Key...",
     "Select a model": "选择模型",
     "Select a model to edit pricing": "选择一个模型编辑定价",

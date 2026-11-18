@@ -43,6 +43,7 @@ import {
   getDirectorSettings,
   getDirectorTokenOptions,
   updateDirectorSettings,
+  type DirectorTokenOption,
 } from './api'
 
 export function DirectorSettingsPage() {
@@ -85,29 +86,6 @@ export function DirectorSettingsPage() {
     setVideoTokenId(data.tokens?.video ? String(data.tokens.video.tokenId) : '')
   }, [settingsQuery.data])
 
-  // 下拉选项按能力分类过滤：语言/图片/视频模型各自只展示同类模型
-  const textModelOptions = React.useMemo(
-    () =>
-      (modelsQuery.data?.data ?? [])
-        .filter((model) => getModelCategory(model) === 'text')
-        .map((model) => ({ value: model, label: model })),
-    [modelsQuery.data]
-  )
-  const imageModelOptions = React.useMemo(
-    () =>
-      (modelsQuery.data?.data ?? [])
-        .filter((model) => getModelCategory(model) === 'image')
-        .map((model) => ({ value: model, label: model })),
-    [modelsQuery.data]
-  )
-  const videoModelOptions = React.useMemo(
-    () =>
-      (modelsQuery.data?.data ?? [])
-        .filter((model) => getModelCategory(model) === 'video')
-        .map((model) => ({ value: model, label: model })),
-    [modelsQuery.data]
-  )
-
   // 仅展示启用中的令牌（后端拒绝绑定已禁用令牌）
   const enabledTokens = React.useMemo(
     () =>
@@ -115,6 +93,42 @@ export function DirectorSettingsPage() {
         (token) => token.status === 1
       ),
     [tokensQuery.data]
+  )
+
+  // 下拉选项按能力分类过滤：语言/图片/视频模型各自只展示同类模型
+  const modelsByCategory = React.useMemo(() => {
+    const models = modelsQuery.data?.data ?? []
+    return {
+      text: models.filter((model) => getModelCategory(model) === 'text'),
+      image: models.filter((model) => getModelCategory(model) === 'image'),
+      video: models.filter((model) => getModelCategory(model) === 'video'),
+    }
+  }, [modelsQuery.data])
+
+  // 先选 Key 再选模型：模型候选随所选 Key 收窄（视频 Key 锁定单一模型，限制模型的 Key 只列其允许模型）
+  const textModelOptions = React.useMemo(
+    () =>
+      getKeyModelOptions(
+        modelsByCategory.text,
+        enabledTokens.find((token) => String(token.id) === textTokenId)
+      ),
+    [modelsByCategory, enabledTokens, textTokenId]
+  )
+  const imageModelOptions = React.useMemo(
+    () =>
+      getKeyModelOptions(
+        modelsByCategory.image,
+        enabledTokens.find((token) => String(token.id) === imageTokenId)
+      ),
+    [modelsByCategory, enabledTokens, imageTokenId]
+  )
+  const videoModelOptions = React.useMemo(
+    () =>
+      getKeyModelOptions(
+        modelsByCategory.video,
+        enabledTokens.find((token) => String(token.id) === videoTokenId)
+      ),
+    [modelsByCategory, enabledTokens, videoTokenId]
   )
 
   // Key 按能力过滤：已分类 Key 只出现在对应能力下；存量空类型 Key 三项能力通用
@@ -151,6 +165,26 @@ export function DirectorSettingsPage() {
         })),
     [enabledTokens]
   )
+
+  // 切换 Key 后，若当前模型不在新 Key 的允许列表内，自动落到首个候选；未限制模型的 Key 不改写已选模型
+  const handleTextTokenChange = (value: string) => {
+    setTextTokenId(value)
+    const token = enabledTokens.find((item) => String(item.id) === value)
+    if (!token?.model_limits_enabled) return
+    const options = getKeyModelOptions(modelsByCategory.text, token)
+    if (options.length > 0 && !options.some((o) => o.value === textModel)) {
+      setTextModel(options[0].value)
+    }
+  }
+  const handleImageTokenChange = (value: string) => {
+    setImageTokenId(value)
+    const token = enabledTokens.find((item) => String(item.id) === value)
+    if (!token?.model_limits_enabled) return
+    const options = getKeyModelOptions(modelsByCategory.image, token)
+    if (options.length > 0 && !options.some((o) => o.value === imageModel)) {
+      setImageModel(options[0].value)
+    }
+  }
 
   // 视频 Key 与模型强绑定：选中 Key 后自动填入其绑定模型，避免模型/Key 不一致
   const handleVideoTokenChange = (value: string) => {
@@ -216,12 +250,31 @@ export function DirectorSettingsPage() {
                 </div>
               ) : (
                 <>
-                  <div className='grid gap-4 sm:grid-cols-2'>
+                  <div className='space-y-4'>
+                    <div className='space-y-1'>
+                      <h3 className='text-sm font-semibold'>
+                        {t('Text Model')}
+                      </h3>
+                      <p className='text-muted-foreground text-xs'>
+                        {t(
+                          'Used for rewriting, extraction and storyboard splitting'
+                        )}
+                      </p>
+                    </div>
+                    <ComboboxField
+                      id='director-text-token'
+                      label={t('Language Model Key')}
+                      options={textTokenOptions}
+                      value={textTokenId}
+                      onValueChange={handleTextTokenChange}
+                      placeholder={t('Select a language model key...')}
+                      emptyText={t('No available key.')}
+                    />
                     <ComboboxField
                       id='director-text-model'
-                      label={t('Text Model')}
+                      label={t('Model')}
                       description={t(
-                        'Used for rewriting, extraction and storyboard splitting'
+                        'Select a key first, then choose a model allowed by that key.'
                       )}
                       options={textModelOptions}
                       value={textModel}
@@ -230,22 +283,32 @@ export function DirectorSettingsPage() {
                       emptyText={t('No model found.')}
                       allowCustomValue
                     />
+                  </div>
+                  <div className='space-y-4 border-t pt-5'>
+                    <div className='space-y-1'>
+                      <h3 className='text-sm font-semibold'>
+                        {t('Image Model')}
+                      </h3>
+                      <p className='text-muted-foreground text-xs'>
+                        {t(
+                          'Used for character, scene, prop and storyboard images'
+                        )}
+                      </p>
+                    </div>
                     <ComboboxField
-                      id='director-text-token'
-                      label={t('Language Model Key')}
-                      options={textTokenOptions}
-                      value={textTokenId}
-                      onValueChange={setTextTokenId}
-                      placeholder={t('Select a language model key...')}
+                      id='director-image-token'
+                      label={t('Image Model Key')}
+                      options={imageTokenOptions}
+                      value={imageTokenId}
+                      onValueChange={handleImageTokenChange}
+                      placeholder={t('Select an image model key...')}
                       emptyText={t('No available key.')}
                     />
-                  </div>
-                  <div className='grid gap-4 border-t pt-5 sm:grid-cols-2'>
                     <ComboboxField
                       id='director-image-model'
-                      label={t('Image Model')}
+                      label={t('Model')}
                       description={t(
-                        'Used for character, scene, prop and storyboard images'
+                        'Select a key first, then choose a model allowed by that key.'
                       )}
                       options={imageModelOptions}
                       value={imageModel}
@@ -254,28 +317,16 @@ export function DirectorSettingsPage() {
                       emptyText={t('No model found.')}
                       allowCustomValue
                     />
-                    <ComboboxField
-                      id='director-image-token'
-                      label={t('Image Model Key')}
-                      options={imageTokenOptions}
-                      value={imageTokenId}
-                      onValueChange={setImageTokenId}
-                      placeholder={t('Select an image model key...')}
-                      emptyText={t('No available key.')}
-                    />
                   </div>
-                  <div className='grid gap-4 border-t pt-5 sm:grid-cols-2'>
-                    <ComboboxField
-                      id='director-video-model'
-                      label={t('Video Model')}
-                      description={t('Used for shot video generation')}
-                      options={videoModelOptions}
-                      value={videoModel}
-                      onValueChange={setVideoModel}
-                      placeholder={t('Select or type a model name...')}
-                      emptyText={t('No model found.')}
-                      allowCustomValue
-                    />
+                  <div className='space-y-4 border-t pt-5'>
+                    <div className='space-y-1'>
+                      <h3 className='text-sm font-semibold'>
+                        {t('Video Model')}
+                      </h3>
+                      <p className='text-muted-foreground text-xs'>
+                        {t('Used for shot video generation')}
+                      </p>
+                    </div>
                     <ComboboxField
                       id='director-video-token'
                       label={t('Video Model Key')}
@@ -287,6 +338,16 @@ export function DirectorSettingsPage() {
                       onValueChange={handleVideoTokenChange}
                       placeholder={t('Select a video model key...')}
                       emptyText={t('No available key.')}
+                    />
+                    <ComboboxField
+                      id='director-video-model'
+                      label={t('Model')}
+                      options={videoModelOptions}
+                      value={videoModel}
+                      onValueChange={setVideoModel}
+                      placeholder={t('Select or type a model name...')}
+                      emptyText={t('No model found.')}
+                      allowCustomValue
                     />
                   </div>
                   <p className='text-muted-foreground text-xs'>
@@ -308,6 +369,31 @@ export function DirectorSettingsPage() {
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
+}
+
+// Key 约束下的模型候选：视频 Key 锁定其绑定的单一模型；启用模型限制的 Key
+// 与能力列表取交集（交集为空时展示 Key 允许列表）；未限制的 Key 展示该能力全部模型
+function getKeyModelOptions(
+  baseModels: string[],
+  token: DirectorTokenOption | undefined
+): { value: string; label: string }[] {
+  if (token?.video_model) {
+    return [{ value: token.video_model, label: token.video_model }]
+  }
+  let candidates = baseModels
+  if (token?.model_limits_enabled && token.model_limits) {
+    const limits = token.model_limits
+      .split(',')
+      .map((model) => model.trim())
+      .filter(Boolean)
+    if (limits.length > 0) {
+      const intersection = baseModels.filter((model) =>
+        limits.includes(model)
+      )
+      candidates = intersection.length > 0 ? intersection : limits
+    }
+  }
+  return candidates.map((model) => ({ value: model, label: model }))
 }
 
 interface ComboboxFieldProps {

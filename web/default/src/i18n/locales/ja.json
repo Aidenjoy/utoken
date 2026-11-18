@@ -5629,6 +5629,7 @@
     "Select a color": "色を選択",
     "Select a group": "グループを選択",
     "Select a group type": "グループタイプを選択",
+    "Select a key first, then choose a model allowed by that key.": "先に Key を選択し、その Key で利用可能なモデルを選んでください。",
     "Select a language model key...": "言語モデル Key を選択...",
     "Select a model": "モデルを選択",
     "Select a model to edit pricing": "料金を編集するモデルを選択",
