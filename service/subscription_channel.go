@@ -17,6 +17,7 @@ import (
 // It deliberately does not implement wallet billing or use normalized quota usage.
 type MembershipSession struct {
 	GeminiImage        bool
+	SeedreamImage      bool
 	ClaudeInputReceipt []byte
 	TransportComplete  bool
 	ClaudeInputSeen    bool

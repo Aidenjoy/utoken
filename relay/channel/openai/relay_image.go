@@ -40,6 +40,7 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	}
 
 	service.ObserveMembershipImages(c, responseBody)
+	service.ObserveMembershipSeedream(c, responseBody)
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 

@@ -48,7 +48,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	var membership *service.MembershipSession
 	if c.GetInt("membership_subscription_id") > 0 {
-		if (info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeGemini) || info.RelayMode != relayconstant.RelayModeImagesGenerations || info.IsStream || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
+		if (info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeGemini && info.ChannelType != constant.ChannelTypeVolcEngineImage) || info.RelayMode != relayconstant.RelayModeImagesGenerations || info.IsStream || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
 			return types.NewErrorWithStatusCode(fmt.Errorf("unsupported membership image path"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		defer func() {
@@ -101,6 +101,8 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 			if c.GetInt("membership_subscription_id") > 0 {
 				if info.ChannelType == constant.ChannelTypeGemini {
 					membership, err = service.PrepareMembershipGemini(c, info, jsonData, helper.MaxTokensLimit)
+				} else if info.ChannelType == constant.ChannelTypeVolcEngineImage {
+					membership, err = service.PrepareMembershipSeedream(c, info, jsonData)
 				} else {
 					membership, err = service.PrepareMembershipImages(c, info, jsonData)
 				}

@@ -42,7 +42,7 @@ func PrepareMembershipImages(c *gin.Context, info *relaycommon.RelayInfo, body [
 func ObserveMembershipImages(c *gin.Context, body []byte) {
 	value, ok := c.Get("membership_session")
 	session, valid := value.(*MembershipSession)
-	if !ok || !valid || session.Request.Unit != model.MembershipUnitImages {
+	if !ok || !valid || session.SeedreamImage || session.Request.Unit != model.MembershipUnitImages {
 		return
 	}
 	var response dto.ImageResponse

@@ -12,18 +12,23 @@ import (
 )
 
 const (
-	MembershipGeminiImageProfile         = "gemini_native_bounded_image_v1"
-	MembershipGeminiProfile              = "gemini_native_plain_text_v1"
-	MembershipClaudeProfile              = "anthropic_messages_text_v1"
-	MembershipRealtimeProfile            = "openai_realtime_bounded_v1"
-	MembershipTranscriptionProfile       = "openai_whisper_duration_v1"
-	MembershipSpeechProfile              = "openai_tts_characters_v1"
-	MembershipUnitAudioMillis            = "audio_milliseconds"
-	MembershipUnitCharacters             = "input_characters"
-	MembershipVideoProfile               = "sora_completed_video_v1"
-	MembershipUnitVideos                 = "completed_videos"
-	MembershipImageProfile               = "openai_images_count_v1"
-	MembershipUnitImages                 = "images"
+	MembershipGeminiImageProfile   = "gemini_native_bounded_image_v1"
+	MembershipGeminiProfile        = "gemini_native_plain_text_v1"
+	MembershipClaudeProfile        = "anthropic_messages_text_v1"
+	MembershipRealtimeProfile      = "openai_realtime_bounded_v1"
+	MembershipTranscriptionProfile = "openai_whisper_duration_v1"
+	MembershipSpeechProfile        = "openai_tts_characters_v1"
+	MembershipUnitAudioMillis      = "audio_milliseconds"
+	MembershipUnitCharacters       = "input_characters"
+	MembershipVideoProfile         = "sora_completed_video_v1"
+	MembershipUnitVideos           = "completed_videos"
+	MembershipImageProfile         = "openai_images_count_v1"
+	MembershipUnitImages           = "images"
+	// MembershipSeedreamImageProfile meters Ark Seedream by the raw usage.generated_images
+	// receipt. Official Ark billing is per successfully generated image (output_tokens is a
+	// pixel-derived reference quantity and no input_tokens field exists), so the faithful
+	// unit is image count, not tokens. See docs/channel-membership-acceptance.md.
+	MembershipSeedreamImageProfile       = "ark_seedream_image_count_v1"
 	SubscriptionMeterQuota               = "quota"
 	SubscriptionMeterChannel             = "channel"
 	MembershipTextProfile                = "openai_chat_text_v1"
@@ -145,7 +150,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 			if cfg.Unit != MembershipUnitTokens || cfg.InputLimit <= 0 || cfg.OutputLimit <= 0 || cfg.InputLimit > MembershipMaxTokens || cfg.OutputLimit > MembershipMaxTokens || cfg.QuantityLimit != 0 {
 				return nil, errors.New("invalid text token limits")
 			}
-		case MembershipImageProfile, MembershipVideoProfile, MembershipTranscriptionProfile, MembershipSpeechProfile:
+		case MembershipImageProfile, MembershipSeedreamImageProfile, MembershipVideoProfile, MembershipTranscriptionProfile, MembershipSpeechProfile:
 			unit := MembershipUnitImages
 			if cfg.Profile == MembershipVideoProfile {
 				unit = MembershipUnitVideos
@@ -169,7 +174,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 		if err := tx.First(&channel, cfg.ChannelId).Error; err != nil {
 			return nil, err
 		}
-		if ((cfg.Profile == MembershipTextProfile && !MembershipTextChannelSupported(channel.Type)) || (cfg.Profile == MembershipRealtimeProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipClaudeProfile && channel.Type != constant.ChannelTypeAnthropic) || ((cfg.Profile == MembershipGeminiProfile || cfg.Profile == MembershipGeminiImageProfile) && channel.Type != constant.ChannelTypeGemini) || (cfg.Profile == MembershipImageProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoChannelSupported(channel.Type)) || ((cfg.Profile == MembershipTranscriptionProfile || cfg.Profile == MembershipSpeechProfile) && channel.Type != constant.ChannelTypeOpenAI)) || channel.Status != common.ChannelStatusEnabled || channel.GetSetting().PassThroughBodyEnabled {
+		if ((cfg.Profile == MembershipTextProfile && !MembershipTextChannelSupported(channel.Type)) || (cfg.Profile == MembershipRealtimeProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipClaudeProfile && channel.Type != constant.ChannelTypeAnthropic) || ((cfg.Profile == MembershipGeminiProfile || cfg.Profile == MembershipGeminiImageProfile) && channel.Type != constant.ChannelTypeGemini) || (cfg.Profile == MembershipImageProfile && channel.Type != constant.ChannelTypeOpenAI) || (cfg.Profile == MembershipSeedreamImageProfile && channel.Type != constant.ChannelTypeVolcEngineImage) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoChannelSupported(channel.Type)) || ((cfg.Profile == MembershipTranscriptionProfile || cfg.Profile == MembershipSpeechProfile) && channel.Type != constant.ChannelTypeOpenAI)) || channel.Status != common.ChannelStatusEnabled || channel.GetSetting().PassThroughBodyEnabled {
 			return nil, errors.New("channel does not support membership text metering")
 		}
 		var mapping map[string]string
@@ -183,7 +188,7 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 			if mapped := mapping[name]; mapped != "" {
 				upstream = mapped
 			}
-			if !slices.Contains(channel.GetModels(), name) || (cfg.Profile == MembershipTextProfile && !MembershipTextModelSupported(upstream)) || (cfg.Profile == MembershipRealtimeProfile && upstream != "gpt-4o-realtime-preview") || (cfg.Profile == MembershipClaudeProfile && !MembershipClaudeModelSupported(upstream)) || (cfg.Profile == MembershipGeminiProfile && upstream != "gemini-3.8-flash") || (cfg.Profile == MembershipGeminiImageProfile && !MembershipGeminiImageModelSupported(upstream)) || (cfg.Profile == MembershipImageProfile && !MembershipImageModelSupported(upstream)) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoModelSupported(upstream)) || (cfg.Profile == MembershipTranscriptionProfile && upstream != "whisper-1") || (cfg.Profile == MembershipSpeechProfile && upstream != "tts-1" && upstream != "tts-1-hd") {
+			if !slices.Contains(channel.GetModels(), name) || (cfg.Profile == MembershipTextProfile && !MembershipTextModelSupported(upstream)) || (cfg.Profile == MembershipRealtimeProfile && upstream != "gpt-4o-realtime-preview") || (cfg.Profile == MembershipClaudeProfile && !MembershipClaudeModelSupported(upstream)) || (cfg.Profile == MembershipGeminiProfile && upstream != "gemini-3.8-flash") || (cfg.Profile == MembershipGeminiImageProfile && !MembershipGeminiImageModelSupported(upstream)) || (cfg.Profile == MembershipImageProfile && !MembershipImageModelSupported(upstream)) || (cfg.Profile == MembershipSeedreamImageProfile && !MembershipSeedreamImageModelSupported(upstream)) || (cfg.Profile == MembershipVideoProfile && !MembershipVideoModelSupported(upstream)) || (cfg.Profile == MembershipTranscriptionProfile && upstream != "whisper-1") || (cfg.Profile == MembershipSpeechProfile && upstream != "tts-1" && upstream != "tts-1-hd") {
 				return nil, fmt.Errorf("model %s has no supported membership text contract", name)
 			}
 		}
@@ -206,6 +211,18 @@ func MembershipTextModelSupported(name string) bool {
 
 // MembershipImageModelSupported limits image-count metering to bounded non-streaming DALL-E requests.
 func MembershipImageModelSupported(name string) bool { return name == "dall-e-2" || name == "dall-e-3" }
+
+// MembershipSeedreamImageModelSupported admits the local catalogue Seedream names and their
+// official dated Ark model IDs. The bounded contract is single-image text-to-image only;
+// sequential group generation, layer decomposition, reference images and tools are rejected
+// before dispatch so the raw usage.generated_images receipt can never exceed the reservation.
+func MembershipSeedreamImageModelSupported(name string) bool {
+	switch name {
+	case "doubao-seedream-5-0", "doubao-seedream-5-0-pro", "doubao-seedream-5-0-260128", "doubao-seedream-5-0-pro-260628":
+		return true
+	}
+	return false
+}
 
 // MembershipTextChannelSupported shares the raw OpenAI usage contract across vetted adapters.
 func MembershipTextChannelSupported(channelType int) bool {

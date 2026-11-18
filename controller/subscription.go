@@ -17,7 +17,7 @@ import (
 // AdminMembershipChannels exposes eligible model names without returning provider credentials.
 func AdminMembershipChannels(c *gin.Context) {
 	var channels []model.Channel
-	if err := model.DB.Select("id", "name", "type", "status", "models", "model_mapping", "setting").Where("status = ? AND type IN ?", common.ChannelStatusEnabled, []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAzure, constant.ChannelTypeSora, constant.ChannelTypeXai, constant.ChannelTypeAnthropic, constant.ChannelTypeGemini, constant.ChannelTypeVolcEngine}).Order("id asc").Find(&channels).Error; err != nil {
+	if err := model.DB.Select("id", "name", "type", "status", "models", "model_mapping", "setting").Where("status = ? AND type IN ?", common.ChannelStatusEnabled, []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAzure, constant.ChannelTypeSora, constant.ChannelTypeXai, constant.ChannelTypeAnthropic, constant.ChannelTypeGemini, constant.ChannelTypeVolcEngine, constant.ChannelTypeVolcEngineImage}).Order("id asc").Find(&channels).Error; err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -42,6 +42,7 @@ func AdminMembershipChannels(c *gin.Context) {
 		claudeModels := make([]string, 0)
 		geminiModels := make([]string, 0)
 		geminiImageModels := make([]string, 0)
+		seedreamImageModels := make([]string, 0)
 		var mapping map[string]string
 		if channel.ModelMapping != nil && *channel.ModelMapping != "" {
 			if common.UnmarshalJsonStr(*channel.ModelMapping, &mapping) != nil {
@@ -58,6 +59,9 @@ func AdminMembershipChannels(c *gin.Context) {
 			}
 			if channel.Type == constant.ChannelTypeGemini && model.MembershipGeminiImageModelSupported(upstream) {
 				geminiImageModels = append(geminiImageModels, name)
+			}
+			if channel.Type == constant.ChannelTypeVolcEngineImage && model.MembershipSeedreamImageModelSupported(upstream) {
+				seedreamImageModels = append(seedreamImageModels, name)
 			}
 			if channel.Type == constant.ChannelTypeAnthropic && model.MembershipClaudeModelSupported(upstream) {
 				claudeModels = append(claudeModels, name)
@@ -107,6 +111,9 @@ func AdminMembershipChannels(c *gin.Context) {
 		}
 		if len(imageModels) > 0 {
 			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: imageModels, Profile: model.MembershipImageProfile, Unit: model.MembershipUnitImages})
+		}
+		if len(seedreamImageModels) > 0 {
+			options = append(options, option{Id: channel.Id, Name: channel.Name, Models: seedreamImageModels, Profile: model.MembershipSeedreamImageProfile, Unit: model.MembershipUnitImages})
 		}
 	}
 	common.ApiSuccess(c, options)

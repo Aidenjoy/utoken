@@ -34,6 +34,7 @@ export const channelQuotaConfigSchema = z.object({
     'anthropic_messages_text_v1',
     'gemini_native_plain_text_v1',
     'gemini_native_bounded_image_v1',
+    'ark_seedream_image_count_v1',
   ]),
   unit: z.enum([
     'input_output_tokens',
