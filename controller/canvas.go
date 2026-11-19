@@ -3,12 +3,14 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -38,21 +40,24 @@ func canvasOwnedProject(c *gin.Context, id int) (*model.CanvasProject, bool) {
 	return p, true
 }
 
-// canvasDocumentSummary 从画布文档提取节点数与封面（首个有产出的图片/视频节点）
+// canvasDocumentSummary 从画布文档提取节点数与封面（首个有产出的图片/视频节点）。
+// 兼容单画布（v1：顶层 nodes）与多画布（v2：canvases[].nodes）两种文档结构。
 func canvasDocumentSummary(document string) (nodeCount int, coverURL string) {
 	var doc struct {
-		Nodes []struct {
-			Type     string `json:"type"`
-			Metadata struct {
-				URL string `json:"url"`
-			} `json:"metadata"`
-		} `json:"nodes"`
+		Nodes    []canvasSummaryNode `json:"nodes"`
+		Canvases []struct {
+			Nodes []canvasSummaryNode `json:"nodes"`
+		} `json:"canvases"`
 	}
 	if err := common.UnmarshalJsonStr(document, &doc); err != nil {
 		return 0, ""
 	}
+	nodes := doc.Nodes
+	for _, cv := range doc.Canvases {
+		nodes = append(nodes, cv.Nodes...)
+	}
 	videoCover := ""
-	for _, n := range doc.Nodes {
+	for _, n := range nodes {
 		if n.Metadata.URL == "" {
 			continue
 		}
@@ -66,7 +71,14 @@ func canvasDocumentSummary(document string) (nodeCount int, coverURL string) {
 	if coverURL == "" {
 		coverURL = videoCover
 	}
-	return len(doc.Nodes), coverURL
+	return len(nodes), coverURL
+}
+
+type canvasSummaryNode struct {
+	Type     string `json:"type"`
+	Metadata struct {
+		URL string `json:"url"`
+	} `json:"metadata"`
 }
 
 // CanvasCreateProject 创建画布项目（空文档，进入编辑器后由前端初始化并保存）
@@ -187,8 +199,71 @@ func CanvasDeleteProject(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	model.DB.Where("project_id = ?", p.ID).Delete(&model.CanvasGeneration{})
 	common.ApiSuccess(c, nil)
+}
+
+// CanvasRecycleBinList 回收站列表（已软删除的画布项目）
+func CanvasRecycleBinList(c *gin.Context) {
+	list, err := model.ListDeletedCanvasProjects(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"list": list, "total": len(list)})
+}
+
+// CanvasRestoreProject 从回收站恢复画布项目
+func CanvasRestoreProject(c *gin.Context) {
+	id, err := directorIDParam(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err = model.RestoreCanvasProject(id, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// CanvasPermanentDeleteProject 彻底删除回收站中的画布项目及其生成记录
+func CanvasPermanentDeleteProject(c *gin.Context) {
+	id, err := directorIDParam(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	userID := c.GetInt("id")
+	var count int64
+	model.DB.Unscoped().Model(&model.CanvasProject{}).
+		Where("id = ? AND user_id = ? AND deleted_at IS NOT NULL", id, userID).Count(&count)
+	if count == 0 {
+		common.ApiErrorMsg(c, "project not in recycle bin")
+		return
+	}
+	if err = model.PermanentDeleteCanvasProject(id, userID); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.DB.Where("project_id = ?", id).Delete(&model.CanvasGeneration{})
+	common.ApiSuccess(c, nil)
+}
+
+// CanvasOptimizePrompt 提示词优化：文本模型改写提示词，返回改写结果
+func CanvasOptimizePrompt(c *gin.Context) {
+	var body struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	optimized, err := directorService.SubmitCanvasPromptOptimize(c.GetInt("id"), body.Prompt)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"prompt": optimized})
 }
 
 // CanvasDuplicateProject 创建画布项目副本
@@ -233,6 +308,27 @@ func CanvasUpload(c *gin.Context) {
 		common.ApiErrorMsg(c, "文件不能超过 32MB")
 		return
 	}
+	// 未配置 TOS 时回退本地磁盘存储（自托管部署无对象存储也能用画布上传）
+	if _, ok := common.GetTOSUploadConfig(); !ok {
+		lf, lErr := header.Open()
+		if lErr != nil {
+			common.ApiError(c, lErr)
+			return
+		}
+		defer lf.Close()
+		content, rErr := io.ReadAll(lf)
+		if rErr != nil {
+			common.ApiError(c, rErr)
+			return
+		}
+		localURL, sErr := common.SaveUploadLocal(content, header.Filename, userID)
+		if sErr != nil {
+			common.ApiError(c, sErr)
+			return
+		}
+		common.ApiSuccess(c, gin.H{"url": localURL})
+		return
+	}
 	f, err := header.Open()
 	if err != nil {
 		common.ApiError(c, err)
@@ -251,12 +347,16 @@ func CanvasUpload(c *gin.Context) {
 type canvasGenerateRequest struct {
 	ProjectID       int      `json:"projectId"`
 	NodeID          string   `json:"nodeId"`
-	Kind            string   `json:"kind"` // image/video
+	Kind            string   `json:"kind"` // image/video/text/audio
 	Prompt          string   `json:"prompt"`
 	Size            string   `json:"size"`        // 图片尺寸（如 2048x2048）
 	AspectRatio     string   `json:"aspectRatio"` // 视频画幅
 	Resolution      string   `json:"resolution"`  // 视频分辨率
 	Duration        int      `json:"duration"`    // 视频时长（秒）
+	Count           int      `json:"count"`       // 产出数量（图片张数/文本段数）
+	Voice           string   `json:"voice"`       // 音频音色
+	AudioFormat     string   `json:"audioFormat"` // 音频格式
+	Speed           float64  `json:"speed"`       // 音频语速倍率
 	ReferenceImages []string `json:"referenceImages"`
 }
 
@@ -282,6 +382,9 @@ func (r *canvasGenerateRequest) validate() error {
 	}
 	switch r.Kind {
 	case "image":
+		if r.Count < 0 || r.Count > dto.MaxImageN {
+			return fmt.Errorf("图片数量需在 1~%d 之间", dto.MaxImageN)
+		}
 		if r.Size != "" {
 			if !canvasImageSizePattern.MatchString(r.Size) {
 				return errors.New("图片尺寸格式无效")
@@ -306,6 +409,24 @@ func (r *canvasGenerateRequest) validate() error {
 		case "", "480p", "720p", "1080p":
 		default:
 			return errors.New("视频分辨率无效")
+		}
+	case "text":
+		if r.Count < 0 || r.Count > 4 {
+			return errors.New("文本数量需在 1~4 之间")
+		}
+	case "audio":
+		switch r.Voice {
+		case "", "alloy", "echo", "fable", "onyx", "nova", "shimmer":
+		default:
+			return errors.New("音频音色无效")
+		}
+		switch r.AudioFormat {
+		case "", "mp3", "opus", "aac", "flac", "wav":
+		default:
+			return errors.New("音频格式无效")
+		}
+		if r.Speed < 0 || r.Speed > 4 {
+			return errors.New("语速倍率需在 0.25~4 之间")
 		}
 	default:
 		return errors.New("生成类型无效")
@@ -336,13 +457,22 @@ func CanvasGenerate(c *gin.Context) {
 		AspectRatio:     req.AspectRatio,
 		Resolution:      req.Resolution,
 		Duration:        req.Duration,
+		Count:           req.Count,
+		Voice:           req.Voice,
+		AudioFormat:     req.AudioFormat,
+		Speed:           req.Speed,
 		ReferenceImages: req.ReferenceImages,
 	}
 	var genID int
 	var err error
-	if req.Kind == "image" {
+	switch req.Kind {
+	case "image":
 		genID, err = directorService.SubmitCanvasImage(userID, genReq)
-	} else {
+	case "text":
+		genID, err = directorService.SubmitCanvasText(userID, genReq)
+	case "audio":
+		genID, err = directorService.SubmitCanvasAudio(userID, genReq)
+	default:
 		genID, err = directorService.SubmitCanvasVideo(userID, genReq)
 	}
 	if err != nil {
@@ -365,4 +495,86 @@ func CanvasGetGeneration(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, g)
+}
+
+// CanvasCancelGeneration 取消进行中的画布生成任务（停止后台轮询，迟到结果不再覆盖取消状态）
+func CanvasCancelGeneration(c *gin.Context) {
+	id, err := directorIDParam(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	cancelled, err := model.CancelCanvasGeneration(id, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !cancelled {
+		common.ApiErrorMsg(c, "任务不存在或已结束")
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// CanvasGetGenerationList 画布生成历史（projectId 缺省表示当前用户全部画布）
+func CanvasGetGenerationList(c *gin.Context) {
+	userID := c.GetInt("id")
+	page, pageSize := directorPage(c)
+	projectID, _ := strconv.Atoi(c.Query("projectId"))
+	list, total, err := model.ListCanvasGenerations(userID, projectID, page, pageSize)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, directorPageResult(list, total, page, pageSize))
+}
+
+// CanvasAgentDraft Agent 草案：文本模型按创作需求产出节点画布草案（前端预览后应用）
+func CanvasAgentDraft(c *gin.Context) {
+	userID := c.GetInt("id")
+	var body struct {
+		ProjectID int    `json:"projectId"`
+		Prompt    string `json:"prompt"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if _, ok := canvasOwnedProject(c, body.ProjectID); !ok {
+		return
+	}
+	draft, err := directorService.SubmitCanvasAgentDraft(userID, body.Prompt)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, draft)
+}
+
+// CanvasScriptSplit 分镜脚本 AI 拆分：文本模型把剧本拆为镜头列表（同步返回）
+func CanvasScriptSplit(c *gin.Context) {
+	userID := c.GetInt("id")
+	var body struct {
+		Script          string `json:"script"`
+		TotalDuration   int    `json:"totalDuration"`
+		PerShotDuration int    `json:"perShotDuration"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if body.TotalDuration < 0 || body.TotalDuration > 3600 {
+		common.ApiErrorMsg(c, "总时长无效")
+		return
+	}
+	if body.PerShotDuration < 0 || body.PerShotDuration > 15 {
+		common.ApiErrorMsg(c, "单镜时长需在 2~15 秒之间")
+		return
+	}
+	shots, err := directorService.SplitCanvasScript(userID, body.Script, body.TotalDuration, body.PerShotDuration)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"shots": shots})
 }

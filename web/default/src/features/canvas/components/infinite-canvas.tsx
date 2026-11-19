@@ -19,10 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import * as React from 'react'
 
 import type { CanvasTheme } from '../canvas-theme'
-import type {
-  CanvasBackgroundMode,
-  CanvasPosition,
-  ViewportTransform,
+import {
+  CANVAS_MAX_SCALE,
+  CANVAS_MIN_SCALE,
+  type CanvasBackgroundMode,
+  type CanvasPosition,
+  type ViewportTransform,
 } from '../types'
 
 // ===== 无限画布视口（移植自 BeefTV infinite-canvas 的手势/缩放算法） =====
@@ -31,11 +33,11 @@ import type {
 
 const WHEEL_IGNORE_SELECTOR = '[data-canvas-no-zoom],[data-canvas-wheel-scroll]'
 const POINTER_IGNORE_SELECTOR =
-  '[data-canvas-no-zoom],[data-connection-create-menu]'
+  '[data-canvas-no-zoom],[data-connection-create-menu],[data-canvas-menu]'
 const WHEEL_ZOOM_DELTA = 72
 const TRACKPAD_PINCH_ZOOM_DELTA = 24
-const MIN_SCALE = 0.05
-const MAX_SCALE = 2
+const MIN_SCALE = CANVAS_MIN_SCALE
+const MAX_SCALE = CANVAS_MAX_SCALE
 
 function clampScale(scale: number) {
   return Math.min(Math.max(scale, MIN_SCALE), MAX_SCALE)
@@ -75,8 +77,18 @@ interface InfiniteCanvasProps {
   onBackgroundClick?: () => void
   onDoubleClick?: (world: CanvasPosition) => void
   onDropFiles?: (files: File[], world: CanvasPosition) => void
+  onBoxSelect?: (
+    rect: { x: number; y: number; width: number; height: number },
+    additive: boolean
+  ) => void
+  onContextMenu?: (
+    event: React.MouseEvent<HTMLDivElement>,
+    world: CanvasPosition
+  ) => void
   dropHint: string
   graphicsLayer?: React.ReactNode
+  // 屏幕空间覆盖层（world 层兄弟）：节点下方面板等借 --canvas-live-* 变量实时跟随手势
+  overlayLayer?: React.ReactNode
   children: React.ReactNode
 }
 
@@ -91,8 +103,11 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
     onBackgroundClick,
     onDoubleClick,
     onDropFiles,
+    onBoxSelect,
+    onContextMenu,
     dropHint,
     graphicsLayer,
+    overlayLayer,
     children,
   } = props
 
@@ -129,6 +144,20 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
   const [isSpacePressed, setIsSpacePressed] = React.useState(false)
   const [isPanning, setIsPanning] = React.useState(false)
   const [isDragOver, setIsDragOver] = React.useState(false)
+  // 选择工具下的背景框选（屏幕坐标矩形，提交时换算世界坐标）
+  const boxStateRef = React.useRef({
+    active: false,
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    additive: false,
+  })
+  const [boxRect, setBoxRect] = React.useState<{
+    left: number
+    top: number
+    width: number
+    height: number
+  } | null>(null)
 
   // 把视口直接画到 DOM（手势期间每帧调用，不走 React）
   const paintViewport = React.useCallback(
@@ -323,6 +352,20 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
     }
   }, [containerRef])
 
+  const toWorld = (clientX: number, clientY: number): CanvasPosition => {
+    const rect =
+      rectRef.current || containerRef.current?.getBoundingClientRect()
+    const v = viewportRef.current
+    if (!rect) return { x: 0, y: 0 }
+    return {
+      x: (clientX - rect.left - v.x) / v.k,
+      y: (clientY - rect.top - v.y) / v.k,
+    }
+  }
+  // window 级指针事件里复用最新 toWorld（避免闭包捕获旧视口）
+  const toWorldRef = React.useRef(toWorld)
+  toWorldRef.current = toWorld
+
   const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
     const current = viewportRef.current
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
@@ -388,13 +431,28 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
       return
     }
 
-    // 中键 / Space / 抓手工具 / 空白处左键拖拽 → 平移
+    // 中键 / Space / 抓手工具 → 平移；选择工具背景左键拖拽 → 框选
     const wantsPan =
-      event.button === 1 ||
-      spacePressedRef.current ||
-      tool === 'hand' ||
-      (event.button === 0 && isBackgroundClick)
-    if (wantsPan) startPan(event)
+      event.button === 1 || spacePressedRef.current || tool === 'hand'
+    if (wantsPan) {
+      startPan(event)
+      return
+    }
+    if (event.button === 0 && isBackgroundClick) {
+      if (onBoxSelect) {
+        event.preventDefault()
+        event.currentTarget.setPointerCapture(event.pointerId)
+        boxStateRef.current = {
+          active: true,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          additive: event.shiftKey,
+        }
+        return
+      }
+      startPan(event)
+    }
   }
 
   React.useEffect(() => {
@@ -431,6 +489,23 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
           })
           return
         }
+      }
+
+      if (
+        boxStateRef.current.active &&
+        boxStateRef.current.pointerId === event.pointerId
+      ) {
+        const box = boxStateRef.current
+        const rect =
+          rectRef.current || containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        setBoxRect({
+          left: Math.min(box.startX, event.clientX) - rect.left,
+          top: Math.min(box.startY, event.clientY) - rect.top,
+          width: Math.abs(event.clientX - box.startX),
+          height: Math.abs(event.clientY - box.startY),
+        })
+        return
       }
 
       if (
@@ -471,6 +546,33 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
         touchPointsRef.current.delete(event.pointerId)
       }
       if (
+        boxStateRef.current.active &&
+        boxStateRef.current.pointerId === event.pointerId
+      ) {
+        const box = boxStateRef.current
+        box.active = false
+        box.pointerId = -1
+        setBoxRect(null)
+        const dx = Math.abs(event.clientX - box.startX)
+        const dy = Math.abs(event.clientY - box.startY)
+        if (dx < 4 && dy < 4) {
+          if (event.type === 'pointerup') onBackgroundClick?.()
+          return
+        }
+        const first = toWorldRef.current(box.startX, box.startY)
+        const second = toWorldRef.current(event.clientX, event.clientY)
+        onBoxSelect?.(
+          {
+            x: Math.min(first.x, second.x),
+            y: Math.min(first.y, second.y),
+            width: Math.abs(second.x - first.x),
+            height: Math.abs(second.y - first.y),
+          },
+          box.additive
+        )
+        return
+      }
+      if (
         !panState.current.isPanning ||
         panState.current.pointerId !== event.pointerId
       ) {
@@ -494,18 +596,13 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
       window.removeEventListener('pointerup', handlePointerEnd)
       window.removeEventListener('pointercancel', handlePointerEnd)
     }
-  }, [containerRef, onBackgroundClick, scheduleViewportChange, syncViewport])
-
-  const toWorld = (clientX: number, clientY: number): CanvasPosition => {
-    const rect =
-      rectRef.current || containerRef.current?.getBoundingClientRect()
-    const v = viewportRef.current
-    if (!rect) return { x: 0, y: 0 }
-    return {
-      x: (clientX - rect.left - v.x) / v.k,
-      y: (clientY - rect.top - v.y) / v.k,
-    }
-  }
+  }, [
+    containerRef,
+    onBackgroundClick,
+    onBoxSelect,
+    scheduleViewportChange,
+    syncViewport,
+  ])
 
   const grabCursor = isSpacePressed || tool === 'hand'
 
@@ -525,6 +622,10 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
         } as React.CSSProperties
       }
       onPointerDown={handlePointerDown}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        onContextMenu?.(event, toWorld(event.clientX, event.clientY))
+      }}
       onDoubleClick={(event) => {
         const target = event.target instanceof Element ? event.target : null
         if (
@@ -576,11 +677,30 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
         className='absolute origin-top-left'
         style={{
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.k})`,
+          // 抓手/Space 期间屏蔽节点命中，保证从任意位置拖拽都能平移
+          pointerEvents: grabCursor ? 'none' : undefined,
         }}
       >
         {graphicsLayer}
         {children}
       </div>
+      {/* 屏幕空间覆盖层：不随 world transform 缩放，内部用 CSS 变量自行定位 */}
+      {overlayLayer}
+      {/* 框选矩形（屏幕坐标） */}
+      {boxRect && (
+        <div
+          aria-hidden='true'
+          className='pointer-events-none absolute z-40 rounded-[3px]'
+          style={{
+            left: boxRect.left,
+            top: boxRect.top,
+            width: boxRect.width,
+            height: boxRect.height,
+            border: `1px solid ${theme.accent.primary}`,
+            background: theme.accent.primarySoft,
+          }}
+        />
+      )}
       {/* 平移期间用透明命中层统一光标，避免逐个子元素改样式 */}
       <div
         aria-hidden='true'

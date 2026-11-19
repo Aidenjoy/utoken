@@ -24,6 +24,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// LocalUploadFile 服务本地回退上传的文件（会话鉴权，仅归属用户可读；
+// <img> 请求无法携带 New-Api-User 头，故不走 UserAuth）
+func LocalUploadFile(c *gin.Context) {
+	path, owner, ok := common.LocalUploadPath(c.Param("name"))
+	if !ok || owner != c.GetInt("id") {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.File(path)
+}
+
 func TestStatus(c *gin.Context) {
 	err := model.PingDB()
 	if err != nil {

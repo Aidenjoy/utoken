@@ -48,6 +48,7 @@ func DirectorUpdateSettings(c *gin.Context) {
 		TextModel    string `json:"textModel"`
 		ImageModel   string `json:"imageModel"`
 		VideoModel   string `json:"videoModel"`
+		AudioModel   string `json:"audioModel"`
 		TextTokenID  int    `json:"textTokenId"`
 		ImageTokenID int    `json:"imageTokenId"`
 		VideoTokenID int    `json:"videoTokenId"`
@@ -59,7 +60,8 @@ func DirectorUpdateSettings(c *gin.Context) {
 	textModel := strings.TrimSpace(req.TextModel)
 	imageModel := strings.TrimSpace(req.ImageModel)
 	videoModel := strings.TrimSpace(req.VideoModel)
-	if textModel == "" && imageModel == "" && videoModel == "" &&
+	audioModel := strings.TrimSpace(req.AudioModel)
+	if textModel == "" && imageModel == "" && videoModel == "" && audioModel == "" &&
 		req.TextTokenID <= 0 && req.ImageTokenID <= 0 && req.VideoTokenID <= 0 {
 		common.ApiErrorMsg(c, "请至少选择一个模型或模型 Key")
 		return
@@ -89,7 +91,7 @@ func DirectorUpdateSettings(c *gin.Context) {
 			return
 		}
 	}
-	if err := model.UpsertDirectorModelSettings(userId, textModel, imageModel, videoModel); err != nil {
+	if err := model.UpsertDirectorModelSettings(userId, textModel, imageModel, videoModel, audioModel); err != nil {
 		common.ApiError(c, err)
 		return
 	}

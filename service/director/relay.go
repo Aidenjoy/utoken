@@ -61,6 +61,8 @@ func getDirectorConfig(userID int, serviceType string) (directorCallConfig, erro
 		modelName = strings.TrimSpace(settings.ImageModel)
 	case "video":
 		modelName = strings.TrimSpace(settings.VideoModel)
+	case "audio":
+		modelName = strings.TrimSpace(settings.AudioModel)
 	default:
 		modelName = strings.TrimSpace(settings.TextModel)
 	}
@@ -84,31 +86,9 @@ var directorHTTPClient = &http.Client{Timeout: directorLLMTimeout}
 
 // relayPost 以用户令牌向回环地址发起 POST JSON 请求（路径形如 /v1/chat/completions）
 func relayPost(cfg directorCallConfig, path string, body any, out any) error {
-	payload, err := common.Marshal(body)
+	respBody, err := relayPostRaw(cfg, path, body)
 	if err != nil {
 		return err
-	}
-	url := relayBaseURL() + path
-	common.SysLog(fmt.Sprintf("云导演请求: url=%s, model=%s, bytes=%d", url, cfg.Model, len(payload)))
-	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(payload)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-	resp, err := directorHTTPClient.Do(req)
-	if err != nil {
-		common.SysError(fmt.Sprintf("云导演请求失败: url=%s, err=%v", url, err))
-		return fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		common.SysError(fmt.Sprintf("云导演响应异常: url=%s, status=%d, body=%s", url, resp.StatusCode, truncate(string(respBody), 600)))
-		return fmt.Errorf("接口返回 %d: %s", resp.StatusCode, truncate(string(respBody), 300))
 	}
 	if out == nil {
 		return nil
@@ -117,6 +97,37 @@ func relayPost(cfg directorCallConfig, path string, body any, out any) error {
 		return fmt.Errorf("解析响应失败: %w", err)
 	}
 	return nil
+}
+
+// relayPostRaw 同 relayPost，但返回原始响应字节（音频合成等二进制产物端点使用）
+func relayPostRaw(cfg directorCallConfig, path string, body any) ([]byte, error) {
+	payload, err := common.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	url := relayBaseURL() + path
+	common.SysLog(fmt.Sprintf("云导演请求: url=%s, model=%s, bytes=%d", url, cfg.Model, len(payload)))
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	resp, err := directorHTTPClient.Do(req)
+	if err != nil {
+		common.SysError(fmt.Sprintf("云导演请求失败: url=%s, err=%v", url, err))
+		return nil, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		common.SysError(fmt.Sprintf("云导演响应异常: url=%s, status=%d, body=%s", url, resp.StatusCode, truncate(string(respBody), 600)))
+		return nil, fmt.Errorf("接口返回 %d: %s", resp.StatusCode, truncate(string(respBody), 300))
+	}
+	return respBody, nil
 }
 
 // relayGet 以用户令牌向回环地址发起 GET 请求并解析 JSON

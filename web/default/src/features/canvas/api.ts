@@ -19,9 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import type {
+  CanvasDraft,
   CanvasGenerateRequest,
   CanvasGeneration,
   CanvasProject,
+  CanvasScriptScene,
 } from './types'
 
 const BASE = '/api/canvas'
@@ -92,6 +94,49 @@ export async function duplicateCanvasProject(id: number) {
   return res.data
 }
 
+export async function getCanvasRecycleProjects() {
+  const res = await api.get<
+    ApiResponse<{ list: CanvasProject[]; total: number }>
+  >(`${BASE}/project/recycle`)
+  return res.data
+}
+
+export async function restoreCanvasProject(id: number) {
+  const res = await api.post<ApiResponse<null>>(`${BASE}/project/restore`, {
+    id,
+  })
+  return res.data
+}
+
+export async function permanentDeleteCanvasProject(id: number) {
+  const res = await api.delete<ApiResponse<null>>(`${BASE}/project/permanent`, {
+    params: { id },
+  })
+  return res.data
+}
+
+export async function optimizeCanvasPrompt(prompt: string) {
+  const res = await api.post<ApiResponse<{ prompt: string }>>(
+    `${BASE}/prompt/optimize`,
+    { prompt }
+  )
+  return res.data
+}
+
+// 分镜脚本 AI 拆分：后端文本模型把剧本拆为镜头行（同步端点）
+export async function splitCanvasScript(body: {
+  script: string
+  totalDuration?: number
+  perShotDuration?: number
+}) {
+  const res = await api.post<
+    ApiResponse<{
+      shots: Omit<CanvasScriptScene, 'id'>[]
+    }>
+  >(`${BASE}/script/split`, body)
+  return res.data
+}
+
 export async function submitCanvasGeneration(req: CanvasGenerateRequest) {
   const res = await api.post<ApiResponse<{ generationId: number }>>(
     `${BASE}/generate`,
@@ -105,6 +150,36 @@ export async function getCanvasGeneration(id: number) {
     `${BASE}/generation`,
     { params: { id }, disableDuplicate: true }
   )
+  return res.data
+}
+
+export async function cancelCanvasGeneration(id: number) {
+  const res = await api.post<ApiResponse<null>>(`${BASE}/generation/cancel`, {
+    id,
+  })
+  return res.data
+}
+
+export async function getCanvasGenerations(params: {
+  projectId?: number
+  p?: number
+  page_size?: number
+}) {
+  const res = await api.get<ApiResponse<PageResult<CanvasGeneration>>>(
+    `${BASE}/generation/list`,
+    { params }
+  )
+  return res.data
+}
+
+export async function submitCanvasAgentDraft(
+  projectId: number,
+  prompt: string
+) {
+  const res = await api.post<ApiResponse<CanvasDraft>>(`${BASE}/agent/draft`, {
+    projectId,
+    prompt,
+  })
   return res.data
 }
 

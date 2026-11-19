@@ -59,6 +59,7 @@ export async function updateDirectorSettings(params: {
   textModel?: string
   imageModel?: string
   videoModel?: string
+  audioModel?: string
   textTokenId?: number
   imageTokenId?: number
   videoTokenId?: number

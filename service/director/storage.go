@@ -50,13 +50,21 @@ func storeRemoteFileToTOS(remoteURL, filename string, userID, projectID int) (st
 	return storeBytesToTOS(data, filename, userID, projectID)
 }
 
-// storeHeaderToTOS 将用户上传的文件转存到 TOS，返回可公开访问的 URL
+// storeHeaderToTOS 将用户上传的文件转存到 TOS，返回可公开访问的 URL；
+// 未配置 TOS 时回退本地磁盘存储（与画布上传共用 /api/local-file 访问）
 func storeHeaderToTOS(header *multipart.FileHeader, userID, projectID int) (string, error) {
 	f, err := header.Open()
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+	if _, ok := common.GetTOSUploadConfig(); !ok {
+		content, rErr := io.ReadAll(f)
+		if rErr != nil {
+			return "", rErr
+		}
+		return common.SaveUploadLocal(content, header.Filename, userID)
+	}
 	url, _, err := common.UploadReaderToTOS(f, header.Filename, userID, directorBatchID(projectID))
 	return url, err
 }

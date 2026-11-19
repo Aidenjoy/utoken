@@ -24,6 +24,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Recycle,
   Search,
   Trash2,
   Workflow,
@@ -33,6 +34,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
+import { useTheme } from '@/context/theme-provider'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,6 +79,8 @@ import {
   getCanvasProjects,
   updateCanvasProject,
 } from './api'
+import { getCanvasTheme } from './canvas-theme'
+import { CanvasRecycleBin } from './components/canvas-resource-dialogs'
 import type { CanvasProject } from './types'
 
 const PAGE_SIZE = 24
@@ -96,6 +100,7 @@ function CanvasProjectCard(props: {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { project } = props
+  const [menuOpen, setMenuOpen] = React.useState(false)
   const open = () =>
     navigate({ to: '/canvas/$id', params: { id: String(project.id) } })
 
@@ -135,7 +140,13 @@ function CanvasProjectCard(props: {
   }
 
   return (
-    <Card className='group h-full gap-0 overflow-hidden rounded-xl py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/10'>
+    <Card
+      className='group h-full gap-0 overflow-hidden rounded-xl py-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/10'
+      onContextMenu={(event) => {
+        event.preventDefault()
+        setMenuOpen(true)
+      }}
+    >
       <button
         type='button'
         onClick={open}
@@ -158,7 +169,7 @@ function CanvasProjectCard(props: {
           >
             {project.title}
           </button>
-          <DropdownMenu>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger
               render={
                 <Button
@@ -219,6 +230,8 @@ export function CanvasListPage() {
   const [renameValue, setRenameValue] = React.useState('')
   const [deleting, setDeleting] = React.useState<CanvasProject | null>(null)
   const [creating, setCreating] = React.useState(false)
+  const [recycleOpen, setRecycleOpen] = React.useState(false)
+  const { resolvedTheme } = useTheme()
 
   React.useEffect(() => {
     setPage(1)
@@ -237,8 +250,11 @@ export function CanvasListPage() {
   const total = data?.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  const invalidate = () =>
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['canvas', 'projects'] })
+    // 软删除/恢复会改变回收站内容，同步失效其缓存，避免重开时读到 staleTime 内的旧列表
+    queryClient.invalidateQueries({ queryKey: ['canvas-recycle-bin'] })
+  }
 
   // 创建即进入画布（与 BeefTV 一致：创建卡/按钮直接落到编辑器）
   const createMutation = useMutation({
@@ -284,7 +300,7 @@ export function CanvasListPage() {
     mutationFn: (id: number) => deleteCanvasProject(id),
     onSuccess: (res) => {
       if (res.success) {
-        toast.success(t('Project deleted'))
+        toast.success(t('Project moved to recycle bin'))
         setDeleting(null)
         invalidate()
       }
@@ -380,6 +396,14 @@ export function CanvasListPage() {
               placeholder={t('Search projects...')}
             />
           </div>
+          <Button
+            variant='outline'
+            onClick={() => setRecycleOpen(true)}
+            aria-label={t('Recycle bin')}
+          >
+            <Recycle aria-hidden='true' />
+            {t('Recycle bin')}
+          </Button>
           <Button disabled={creating} onClick={() => createMutation.mutate()}>
             <Plus aria-hidden='true' />
             {t('Create Project')}
@@ -472,7 +496,7 @@ export function CanvasListPage() {
             <AlertDialogTitle>{t('Delete Project')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                'This will permanently delete the canvas project and all its nodes, connections and generation records. This action cannot be undone.'
+                'This will move the canvas project to the recycle bin. You can restore it from the recycle bin later.'
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -492,6 +516,15 @@ export function CanvasListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 项目回收站（软删除恢复 / 彻底删除） */}
+      {recycleOpen && (
+        <CanvasRecycleBin
+          theme={getCanvasTheme(resolvedTheme === 'light' ? 'light' : 'dark')}
+          onClose={() => setRecycleOpen(false)}
+          onChanged={invalidate}
+        />
+      )}
     </>
   )
 }

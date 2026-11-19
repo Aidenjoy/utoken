@@ -53,6 +53,7 @@ export function DirectorSettingsPage() {
   const [textModel, setTextModel] = React.useState('')
   const [imageModel, setImageModel] = React.useState('')
   const [videoModel, setVideoModel] = React.useState('')
+  const [audioModel, setAudioModel] = React.useState('')
   const [textTokenId, setTextTokenId] = React.useState('')
   const [imageTokenId, setImageTokenId] = React.useState('')
   const [videoTokenId, setVideoTokenId] = React.useState('')
@@ -80,6 +81,7 @@ export function DirectorSettingsPage() {
       setTextModel(settings.textModel ?? '')
       setImageModel(settings.imageModel ?? '')
       setVideoModel(settings.videoModel ?? '')
+      setAudioModel(settings.audioModel ?? '')
     }
     setTextTokenId(data.tokens?.text ? String(data.tokens.text.tokenId) : '')
     setImageTokenId(data.tokens?.image ? String(data.tokens.image.tokenId) : '')
@@ -182,6 +184,17 @@ export function DirectorSettingsPage() {
       ),
     [modelsByCategory, videoTokens, videoTokenId]
   )
+  // 音频（TTS）模型复用语言 Key：候选随所选语言 Key 收窄
+  const audioModelOptions = React.useMemo(
+    () =>
+      getKeyModelOptions(
+        (modelsQuery.data?.data ?? []).filter((model) =>
+          /tts|audio|speech/i.test(model)
+        ),
+        textTokens.find((token) => String(token.id) === textTokenId)
+      ),
+    [modelsQuery.data, textTokens, textTokenId]
+  )
 
   // 存量设定可能绑定已删除/禁用/类型不符的 Key：不在本能力候选内即视为未选择，
   // 避免回显裸 ID、错误收窄模型列表，以及保存时把失效绑定原样写回
@@ -247,6 +260,7 @@ export function DirectorSettingsPage() {
         textModel: textModel.trim(),
         imageModel: imageModel.trim(),
         videoModel: videoModel.trim(),
+        audioModel: audioModel.trim(),
         textTokenId: Number(textTokenId) || 0,
         imageTokenId: Number(imageTokenId) || 0,
         videoTokenId: Number(videoTokenId) || 0,
@@ -283,7 +297,9 @@ export function DirectorSettingsPage() {
             <CardHeader>
               <CardTitle>{t('Model Selection')}</CardTitle>
               <CardDescription>
-                {t('Choose the models and keys used by the production pipeline')}
+                {t(
+                  'Choose the models and keys used by the production pipeline'
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className='space-y-5'>
@@ -408,6 +424,28 @@ export function DirectorSettingsPage() {
                       allowCustomValue
                     />
                   </div>
+                  <div className='space-y-4 border-t pt-5'>
+                    <div className='space-y-1'>
+                      <h3 className='text-sm font-semibold'>
+                        {t('Audio Model')}
+                      </h3>
+                      <p className='text-muted-foreground text-xs'>
+                        {t(
+                          'Used for speech generation on the canvas; it reuses the language model key'
+                        )}
+                      </p>
+                    </div>
+                    <ComboboxField
+                      id='director-audio-model'
+                      label={t('Model')}
+                      options={audioModelOptions}
+                      value={audioModel}
+                      onValueChange={setAudioModel}
+                      placeholder={t('Not selected')}
+                      emptyText={t('No model found.')}
+                      allowCustomValue
+                    />
+                  </div>
                   <p className='text-muted-foreground text-xs'>
                     {t(
                       'AI calls are billed through the key selected for each capability. Create language, image and video model keys on the API Keys page.'
@@ -445,9 +483,7 @@ function getKeyModelOptions(
       .map((model) => model.trim())
       .filter(Boolean)
     if (limits.length > 0) {
-      const intersection = baseModels.filter((model) =>
-        limits.includes(model)
-      )
+      const intersection = baseModels.filter((model) => limits.includes(model))
       candidates = intersection.length > 0 ? intersection : limits
     }
   }

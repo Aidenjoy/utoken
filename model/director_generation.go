@@ -12,6 +12,7 @@ const (
 	DirectorGenStatusProcessing = "processing"
 	DirectorGenStatusSuccess    = "success"
 	DirectorGenStatusFailed     = "failed"
+	DirectorGenStatusCancelled  = "cancelled"
 )
 
 // DirectorImageGeneration 图片生成任务
@@ -25,16 +26,16 @@ type DirectorImageGeneration struct {
 	SceneID         *int   `json:"sceneId" gorm:"index"`
 	CharacterID     *int   `json:"characterId" gorm:"index"`
 	PropID          *int   `json:"propId" gorm:"index"`
-	ImageType       string `json:"imageType" gorm:"size:32;index"`         // character/scene/storyboard/prop
-	Prompt          string `json:"prompt" gorm:"type:text"`                // 提示词
-	Model           string `json:"model" gorm:"size:128"`                  // 模型
-	Size            string `json:"size" gorm:"size:32"`                    // 尺寸
-	ImageURL        string `json:"imageUrl" gorm:"size:512"`               // 图片地址
-	Status          string `json:"status" gorm:"size:32;index"`            // pending/processing/success/failed
-	TaskID          string `json:"taskId" gorm:"size:128"`                 // 第三方任务ID
-	ErrorMsg        string `json:"errorMsg" gorm:"type:text"`              // 错误信息
-	ReferenceImages string `json:"referenceImages" gorm:"type:text"`       // 参考图JSON数组
-	CompletedAt     *int64 `json:"completedAt"`                            // 完成时间
+	ImageType       string `json:"imageType" gorm:"size:32;index"`   // character/scene/storyboard/prop
+	Prompt          string `json:"prompt" gorm:"type:text"`          // 提示词
+	Model           string `json:"model" gorm:"size:128"`            // 模型
+	Size            string `json:"size" gorm:"size:32"`              // 尺寸
+	ImageURL        string `json:"imageUrl" gorm:"size:512"`         // 图片地址
+	Status          string `json:"status" gorm:"size:32;index"`      // pending/processing/success/failed
+	TaskID          string `json:"taskId" gorm:"size:128"`           // 第三方任务ID
+	ErrorMsg        string `json:"errorMsg" gorm:"type:text"`        // 错误信息
+	ReferenceImages string `json:"referenceImages" gorm:"type:text"` // 参考图JSON数组
+	CompletedAt     *int64 `json:"completedAt"`                      // 完成时间
 }
 
 func (DirectorImageGeneration) TableName() string { return "director_image_generations" }
@@ -114,20 +115,20 @@ type DirectorVideoGeneration struct {
 	UserID             int    `json:"userId" gorm:"index"`
 	StoryboardID       *int   `json:"storyboardId" gorm:"index"`
 	ProjectID          *int   `json:"projectId" gorm:"index"`
-	Prompt             string `json:"prompt" gorm:"type:text"`           // 提示词
-	Model              string `json:"model" gorm:"size:128"`             // 模型
-	ReferenceMode      string `json:"referenceMode" gorm:"size:32"`      // first_frame/last_frame/images
-	FirstFrameURL      string `json:"firstFrameUrl" gorm:"size:512"`     // 首帧图
-	LastFrameURL       string `json:"lastFrameUrl" gorm:"size:512"`      // 尾帧图
+	Prompt             string `json:"prompt" gorm:"type:text"`             // 提示词
+	Model              string `json:"model" gorm:"size:128"`               // 模型
+	ReferenceMode      string `json:"referenceMode" gorm:"size:32"`        // first_frame/last_frame/images
+	FirstFrameURL      string `json:"firstFrameUrl" gorm:"size:512"`       // 首帧图
+	LastFrameURL       string `json:"lastFrameUrl" gorm:"size:512"`        // 尾帧图
 	ReferenceImageURLs string `json:"referenceImageUrls" gorm:"type:text"` // 参考图JSON数组
-	Duration           int    `json:"duration"`                          // 时长(秒)
-	Resolution         string `json:"resolution" gorm:"size:32"`         // 分辨率
-	AspectRatio        string `json:"aspectRatio" gorm:"size:16"`        // 宽高比
-	VideoURL           string `json:"videoUrl" gorm:"size:512"`          // 视频地址
-	Status             string `json:"status" gorm:"size:32;index"`       // pending/processing/success/failed
-	TaskID             string `json:"taskId" gorm:"size:128"`            // 第三方任务ID
-	ErrorMsg           string `json:"errorMsg" gorm:"type:text"`         // 错误信息
-	CompletedAt        *int64 `json:"completedAt"`                       // 完成时间
+	Duration           int    `json:"duration"`                            // 时长(秒)
+	Resolution         string `json:"resolution" gorm:"size:32"`           // 分辨率
+	AspectRatio        string `json:"aspectRatio" gorm:"size:16"`          // 宽高比
+	VideoURL           string `json:"videoUrl" gorm:"size:512"`            // 视频地址
+	Status             string `json:"status" gorm:"size:32;index"`         // pending/processing/success/failed
+	TaskID             string `json:"taskId" gorm:"size:128"`              // 第三方任务ID
+	ErrorMsg           string `json:"errorMsg" gorm:"type:text"`           // 错误信息
+	CompletedAt        *int64 `json:"completedAt"`                         // 完成时间
 }
 
 func (DirectorVideoGeneration) TableName() string { return "director_video_generations" }

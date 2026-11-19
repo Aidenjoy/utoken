@@ -285,6 +285,7 @@ export interface DirectorModelSettings {
   textModel: string
   imageModel: string
   videoModel: string
+  audioModel: string
 }
 
 export interface DirectorTokenInfo {

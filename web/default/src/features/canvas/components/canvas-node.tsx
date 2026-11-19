@@ -18,33 +18,52 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clapperboard,
   Download,
+  Folder,
+  History,
   Image as ImageIcon,
   Link2,
   Loader2,
+  Lock,
+  Music2,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
-  Settings2,
   Sparkles,
+  Table2,
+  Trash2,
   Type,
   Upload,
   Video,
-  X,
+  WandSparkles,
 } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { CanvasTheme } from '../canvas-theme'
-import {
-  CANVAS_NODE_TITLE_KEYS,
-  type CanvasNode,
-  type CanvasNodeMetadata,
-  type CanvasNodeType,
-  type CanvasPosition,
+import type {
+  CanvasNode,
+  CanvasNodeMetadata,
+  CanvasNodeType,
+  CanvasPosition,
+  CanvasScriptScene,
 } from '../types'
+import {
+  CanvasCreateList,
+  type CanvasCreateCommandId,
+} from './canvas-create-menu'
+import {
+  CanvasNodeToolbar,
+  type CanvasNodeToolId,
+} from './canvas-node-toolbar'
+import { CanvasScriptTable } from './canvas-script-table'
 
-// ===== 画布节点卡片（移植自 BeefTV canvas-node：外置标题/四角缩放/连接轨/状态徽章） =====
+// ===== 画布节点卡片（移植自 BeefTV canvas-node：外置标题/四角缩放/连接轨/全类型渲染） =====
 
 export interface CanvasNodePatch {
   title?: string
@@ -58,15 +77,18 @@ interface CanvasNodeViewProps {
   node: CanvasNode
   theme: CanvasTheme
   selected: boolean
-  referenceCount: number
   modelConfigured: boolean
+  textModelName?: string
   isConnectionTarget: boolean
+  folderItemCount: number
   getScale: () => number
-  onSelect: (id: string) => void
-  onPatch: (id: string, patch: CanvasNodePatch) => void
+  onSelect: (id: string, additive: boolean) => void
+  onPatch: (id: string, patch: CanvasNodePatch, silent?: boolean) => void
   onMove: (id: string, position: CanvasPosition) => void
+  onBeginEdit: () => void
+  onEndEdit: () => void
   onGenerate: (node: CanvasNode) => void
-  onUploadImage: (node: CanvasNode, file: File) => void
+  onUploadFile: (node: CanvasNode, file: File) => void
   onConnectionStart: (nodeId: string, event: React.PointerEvent) => void
   onCreateConnected: (
     nodeId: string,
@@ -74,25 +96,48 @@ interface CanvasNodeViewProps {
     type: CanvasNodeType
   ) => void
   onOpenSettings: () => void
+  onOpenDrawing: (node: CanvasNode) => void
+  onOpenDirector: (node: CanvasNode) => void
+  onExpandScene: (node: CanvasNode, scene: CanvasScriptScene) => void
+  onSceneVideo: (node: CanvasNode, scene: CanvasScriptScene) => void
+  onEnlarge: (node: CanvasNode) => void
+  onBatchGenerate: (node: CanvasNode) => void
+  references: {
+    connectionId: string
+    id: string
+    title: string
+    url?: string
+    type: CanvasNodeType
+  }[]
+  onTool: (node: CanvasNode, tool: CanvasNodeToolId) => void
+  onOpenFolder: (node: CanvasNode) => void
 }
 
 const NODE_TYPE_ICON = {
   text: Type,
   image: ImageIcon,
   video: Video,
+  audio: Music2,
+  upscale: WandSparkles,
+  script: Clapperboard,
+  director: Clapperboard,
+  folder: Folder,
+  drawing: Pencil,
+  batch: Table2,
 } as const
 
-const IMAGE_SIZE_OPTIONS = [
-  { value: '2048x2048', label: '1:1' },
-  { value: '2560x1440', label: '16:9' },
-  { value: '1440x2560', label: '9:16' },
-  { value: '2304x1728', label: '4:3' },
-  { value: '1728x2304', label: '3:4' },
-]
-
-const VIDEO_ASPECT_OPTIONS = ['16:9', '9:16', '1:1', '4:3', '3:4']
-const VIDEO_DURATION_OPTIONS = [5, 10]
-const VIDEO_RESOLUTION_OPTIONS = ['480p', '720p', '1080p']
+const RAIL_CREATABLE_TYPES = new Set<CanvasCreateCommandId>([
+  'text',
+  'image',
+  'video',
+  'upscale',
+  'audio',
+  'script',
+  'director',
+  'drawing',
+  'folder',
+  'batch',
+])
 
 const MIN_WIDTH = 240
 const MIN_HEIGHT = 160
@@ -111,24 +156,36 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
     node,
     theme,
     selected,
-    referenceCount,
     modelConfigured,
+    textModelName,
     isConnectionTarget,
+    folderItemCount,
     getScale,
     onSelect,
     onPatch,
     onMove,
+    onBeginEdit,
+    onEndEdit,
     onGenerate,
-    onUploadImage,
+    onUploadFile,
     onConnectionStart,
     onCreateConnected,
     onOpenSettings,
+    onOpenDrawing,
+    onOpenDirector,
+    onExpandScene,
+    onSceneVideo,
+    onEnlarge,
+    onBatchGenerate,
+    references,
+    onTool,
+    onOpenFolder,
   } = props
   const { t } = useTranslation()
 
   const [editingTitle, setEditingTitle] = React.useState(false)
   const [titleValue, setTitleValue] = React.useState(node.title)
-  const [editingPrompt, setEditingPrompt] = React.useState(false)
+  const [editingContent, setEditingContent] = React.useState(false)
   const [menuSide, setMenuSide] = React.useState<'left' | 'right' | null>(null)
   const [dragging, setDragging] = React.useState(false)
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
@@ -149,21 +206,21 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
   const status = node.metadata.status ?? 'idle'
   const loading = status === 'loading'
   const hasMedia = Boolean(node.metadata.url)
-
-  // 生成成功后自动回到媒体视图（重新生成流程中composer自动收起）
-  React.useEffect(() => {
-    if (node.metadata.status === 'success' && node.metadata.url) {
-      setEditingPrompt(false)
-    }
-  }, [node.metadata.status, node.metadata.url])
-
+  const isFolder = node.type === 'folder'
+  const locked = Boolean(node.metadata.locked)
+  const history = node.metadata.history ?? []
+  const historyIndex = Math.min(
+    node.metadata.historyIndex ?? history.length - 1,
+    history.length - 1
+  )
   // ----- 节点拖拽（rAF 合帧，直接提交位置，视口手势互不干扰） -----
   const handleCardPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 && event.pointerType !== 'touch') return
     const target = event.target instanceof Element ? event.target : null
     if (target?.closest('button,input,textarea,select,a,[data-no-drag]')) return
     event.stopPropagation()
-    onSelect(node.id)
+    onSelect(node.id, event.shiftKey)
+    if (locked) return
     const state = dragState.current
     state.active = true
     state.moved = false
@@ -181,6 +238,7 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
     const dx = event.clientX - state.startX
     const dy = event.clientY - state.startY
     if (!state.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+    if (!state.moved) onBeginEdit()
     state.moved = true
     setDragging(true)
     const scale = getScale()
@@ -205,6 +263,7 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
       state.frame = null
     }
     if (state.pending) onMove(node.id, state.pending)
+    if (state.moved) onEndEdit()
     state.pending = null
     setDragging(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -212,28 +271,38 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
     }
   }
 
-  // ----- 四角缩放（图片有产物时保持原始比例） -----
+  // ----- 四角缩放（图片类有产物时保持原始比例） -----
   const handleResizePointerDown = (
     event: React.PointerEvent<HTMLDivElement>,
     corner: 'nw' | 'ne' | 'sw' | 'se'
   ) => {
     event.stopPropagation()
     event.preventDefault()
-    onSelect(node.id)
+    if (locked) return
+    onSelect(node.id, false)
     const element = event.currentTarget
     element.setPointerCapture(event.pointerId)
     const startX = event.clientX
     const startY = event.clientY
     const start = { ...node.position, width: node.width, height: node.height }
+    const locksAspect =
+      node.type === 'image' ||
+      node.type === 'upscale' ||
+      node.type === 'drawing'
     const aspect =
-      node.type === 'image' &&
+      locksAspect &&
       node.metadata.url &&
       node.metadata.naturalWidth &&
       node.metadata.naturalHeight
         ? node.metadata.naturalWidth / node.metadata.naturalHeight
         : null
 
+    let resizeMoved = false
     const handleMove = (moveEvent: PointerEvent) => {
+      if (!resizeMoved) {
+        resizeMoved = true
+        onBeginEdit()
+      }
       const scale = getScale()
       const dx = (moveEvent.clientX - startX) / scale
       const dy = (moveEvent.clientY - startY) / scale
@@ -261,6 +330,7 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
       element.removeEventListener('pointermove', handleMove)
       element.removeEventListener('pointerup', handleUp)
       element.removeEventListener('pointercancel', handleUp)
+      if (resizeMoved) onEndEdit()
       if (element.hasPointerCapture(upEvent.pointerId)) {
         element.releasePointerCapture(upEvent.pointerId)
       }
@@ -270,7 +340,7 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
     element.addEventListener('pointercancel', handleUp)
   }
 
-  // ----- 连接轨：拖拽连线 / 单击弹出「添加相连节点」菜单 -----
+  // ----- 连接轨：拖拽连线 / 单击弹出「添加相连节点」list -----
   const railPointerState = React.useRef({
     pointerId: -1,
     startX: 0,
@@ -336,6 +406,7 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
 
   const commitTitle = () => {
     setEditingTitle(false)
+    onEndEdit()
     const title = titleValue.trim()
     if (title && title !== node.title) onPatch(node.id, { title })
     else setTitleValue(node.title)
@@ -344,199 +415,40 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
   const patchMetadata = (metadata: Partial<CanvasNodeMetadata>) =>
     onPatch(node.id, { metadata })
 
-  const selectStyle: React.CSSProperties = {
-    background: theme.node.panel,
-    color: theme.node.text,
-    border: `1px solid ${theme.node.stroke}`,
-  }
+  const uploadAccept = node.type === 'audio' ? 'audio/*' : 'image/*'
 
-  const renderComposer = () => (
-    <div className='flex min-h-0 flex-1 flex-col gap-2 p-3'>
-      <textarea
-        value={node.metadata.prompt ?? ''}
-        onChange={(e) => patchMetadata({ prompt: e.target.value })}
-        placeholder={
-          node.type === 'image'
-            ? t('Describe the image you want to generate...')
-            : t('Describe the motion and scene of the video...')
-        }
-        className='canvas-scroll min-h-16 w-full flex-1 resize-none rounded-lg bg-transparent p-2 text-xs leading-relaxed outline-none'
+  const renderUploadButton = (label: string) => (
+    <>
+      <button
+        type='button'
+        onClick={() => fileInputRef.current?.click()}
+        className='flex size-8 items-center justify-center rounded-lg transition-colors'
         style={{
-          color: theme.node.text,
           border: `1px solid ${theme.node.stroke}`,
+          color: theme.node.muted,
+        }}
+        aria-label={label}
+        title={label}
+      >
+        <Upload aria-hidden='true' className='size-3.5' />
+      </button>
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept={uploadAccept}
+        className='hidden'
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) onUploadFile(node, file)
+          e.target.value = ''
         }}
       />
-      {referenceCount > 0 && (
-        <div
-          className='flex items-center gap-1 text-[11px]'
-          style={{ color: theme.node.muted }}
-        >
-          <Link2 aria-hidden='true' className='size-3' />
-          {t('Upstream reference images')} ×{referenceCount}
-        </div>
-      )}
-      {!modelConfigured && (
-        <button
-          type='button'
-          onClick={onOpenSettings}
-          className='flex items-center gap-1 rounded-md px-1.5 py-1 text-left text-[11px]'
-          style={{ background: 'rgba(245,158,11,.15)', color: '#fcd34d' }}
-        >
-          <Settings2 aria-hidden='true' className='size-3 shrink-0' />
-          {t('Model not configured, click to set up')}
-        </button>
-      )}
-      <div className='flex flex-wrap items-center gap-1.5'>
-        {node.type === 'image' ? (
-          <select
-            value={node.metadata.size ?? '2048x2048'}
-            onChange={(e) => patchMetadata({ size: e.target.value })}
-            className='h-7 rounded-md px-1.5 text-[11px] outline-none'
-            style={selectStyle}
-            aria-label={t('Image size')}
-          >
-            {IMAGE_SIZE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <>
-            <select
-              value={node.metadata.aspectRatio ?? '16:9'}
-              onChange={(e) => patchMetadata({ aspectRatio: e.target.value })}
-              className='h-7 rounded-md px-1.5 text-[11px] outline-none'
-              style={selectStyle}
-              aria-label={t('Aspect ratio')}
-            >
-              {VIDEO_ASPECT_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <select
-              value={node.metadata.duration ?? 5}
-              onChange={(e) =>
-                patchMetadata({ duration: Number(e.target.value) })
-              }
-              className='h-7 rounded-md px-1.5 text-[11px] outline-none'
-              style={selectStyle}
-              aria-label={t('Duration')}
-            >
-              {VIDEO_DURATION_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}s
-                </option>
-              ))}
-            </select>
-            <select
-              value={node.metadata.resolution ?? '720p'}
-              onChange={(e) => patchMetadata({ resolution: e.target.value })}
-              className='h-7 rounded-md px-1.5 text-[11px] outline-none'
-              style={selectStyle}
-              aria-label={t('Resolution')}
-            >
-              {VIDEO_RESOLUTION_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-      </div>
-      <div className='flex items-center gap-1.5'>
-        <button
-          type='button'
-          disabled={loading || !(node.metadata.prompt ?? '').trim()}
-          onClick={() => onGenerate(node)}
-          className='flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40'
-          style={{
-            background: theme.accent.primary,
-            color: theme.accent.onPrimary,
-          }}
-        >
-          {loading ? (
-            <Loader2 aria-hidden='true' className='size-3.5 animate-spin' />
-          ) : (
-            <Sparkles aria-hidden='true' className='size-3.5' />
-          )}
-          {loading ? t('Generating...') : t('Generate')}
-        </button>
-        {node.type === 'image' && (
-          <>
-            <button
-              type='button'
-              onClick={() => fileInputRef.current?.click()}
-              className='flex size-8 items-center justify-center rounded-lg transition-colors'
-              style={{
-                border: `1px solid ${theme.node.stroke}`,
-                color: theme.node.muted,
-              }}
-              aria-label={t('Upload image')}
-              title={t('Upload image')}
-            >
-              <Upload aria-hidden='true' className='size-3.5' />
-            </button>
-            <input
-              ref={fileInputRef}
-              type='file'
-              accept='image/*'
-              className='hidden'
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) onUploadImage(node, file)
-                e.target.value = ''
-              }}
-            />
-          </>
-        )}
-        {editingPrompt && hasMedia && (
-          <button
-            type='button'
-            onClick={() => setEditingPrompt(false)}
-            className='flex size-8 items-center justify-center rounded-lg'
-            style={{
-              border: `1px solid ${theme.node.stroke}`,
-              color: theme.node.muted,
-            }}
-            aria-label={t('Back to result')}
-          >
-            <X aria-hidden='true' className='size-3.5' />
-          </button>
-        )}
-      </div>
-    </div>
+    </>
   )
 
-  const renderMedia = () => (
-    <div
-      className='group/media relative min-h-0 flex-1 overflow-hidden rounded-b-[13px]'
-      style={{ background: 'rgba(0,0,0,.25)' }}
-    >
-      {node.type === 'image' ? (
-        <img
-          src={node.metadata.url}
-          alt={node.title}
-          draggable={false}
-          className='size-full object-contain'
-          onLoad={(e) => {
-            const img = e.currentTarget
-            if (
-              img.naturalWidth &&
-              (node.metadata.naturalWidth !== img.naturalWidth ||
-                node.metadata.naturalHeight !== img.naturalHeight)
-            ) {
-              patchMetadata({
-                naturalWidth: img.naturalWidth,
-                naturalHeight: img.naturalHeight,
-              })
-            }
-          }}
-        />
-      ) : (
+  const renderMediaElement = () => {
+    if (node.type === 'video') {
+      return (
         <video
           src={node.metadata.url}
           controls
@@ -545,18 +457,94 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
           className='size-full object-contain'
           data-no-drag
         />
-      )}
-      {/* 悬停工具：重新生成 / 下载 */}
-      <div className='absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover/media:opacity-100'>
-        <button
-          type='button'
-          onClick={() => setEditingPrompt(true)}
-          className='flex size-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/75'
-          aria-label={t('Regenerate')}
-          title={t('Regenerate')}
+      )
+    }
+    if (node.type === 'audio') {
+      return (
+        <div className='flex size-full flex-col items-center justify-center gap-3 px-4'>
+          <Music2
+            aria-hidden='true'
+            className='size-8'
+            style={{ color: '#a855f7' }}
+          />
+          <audio
+            src={node.metadata.url}
+            controls
+            preload='metadata'
+            className='w-full'
+            data-no-drag
+          />
+        </div>
+      )
+    }
+    return (
+      <img
+        src={node.metadata.url}
+        alt={node.title}
+        draggable={false}
+        className='size-full object-contain'
+        onLoad={(e) => {
+          const img = e.currentTarget
+          if (
+            img.naturalWidth &&
+            (node.metadata.naturalWidth !== img.naturalWidth ||
+              node.metadata.naturalHeight !== img.naturalHeight)
+          ) {
+            // 尺寸是派生元数据，静默落盘，避免每张图加载都压入一条撤销快照
+            onPatch(
+              node.id,
+              {
+                metadata: {
+                  naturalWidth: img.naturalWidth,
+                  naturalHeight: img.naturalHeight,
+                },
+              },
+              true
+            )
+          }
+        }}
+      />
+    )
+  }
+
+  const renderMedia = () => (
+    <div
+      className='group/media relative min-h-0 flex-1 overflow-hidden rounded-b-[13px]'
+      style={{ background: 'rgba(0,0,0,.25)' }}
+    >
+      {renderMediaElement()}
+      {node.type === 'upscale' && (
+        <span
+          className='absolute top-2 left-2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium'
+          style={{ background: 'rgba(0,0,0,.55)', color: '#fff' }}
         >
-          <RefreshCw aria-hidden='true' className='size-3.5' />
-        </button>
+          <WandSparkles aria-hidden='true' className='size-2.5' />
+          {t('AI upscale')}
+        </span>
+      )}
+      {/* 悬停工具：重新生成 / 编辑绘图 / 下载 */}
+      <div className='absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover/media:opacity-100'>
+        {node.type === 'drawing' ? (
+          <button
+            type='button'
+            onClick={() => onOpenDrawing(node)}
+            className='flex size-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/75'
+            aria-label={t('Edit drawing')}
+            title={t('Edit drawing')}
+          >
+            <Pencil aria-hidden='true' className='size-3.5' />
+          </button>
+        ) : (
+          <button
+            type='button'
+            onClick={() => onGenerate(node)}
+            className='flex size-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/75'
+            aria-label={t('Regenerate')}
+            title={t('Regenerate')}
+          >
+            <RefreshCw aria-hidden='true' className='size-3.5' />
+          </button>
+        )}
         <a
           href={node.metadata.url}
           download
@@ -600,222 +588,686 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
     </div>
   )
 
-  const renderLoading = () => (
-    <div className='flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4'>
-      <div className='canvas-node-loading-ring relative flex size-12 items-center justify-center'>
-        <Loader2
-          aria-hidden='true'
-          className='size-8 animate-spin'
-          style={{ color: theme.accent.primary }}
-        />
+  const renderLoading = () => {
+    let loadingLabel = t('Generating image...')
+    if (node.type === 'video') {
+      loadingLabel = t('Generating video, this may take a few minutes...')
+    } else if (node.type === 'text') {
+      loadingLabel = t('Generating text...')
+    } else if (node.type === 'audio') {
+      loadingLabel = t('Generating audio...')
+    }
+    return (
+      <div className='flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4'>
+        <div className='canvas-node-loading-ring relative flex size-12 items-center justify-center'>
+          <Loader2
+            aria-hidden='true'
+            className='size-8 animate-spin'
+            style={{ color: theme.accent.primary }}
+          />
+        </div>
+        <p className='text-xs' style={{ color: theme.node.muted }}>
+          {loadingLabel}
+        </p>
       </div>
-      <p className='text-xs' style={{ color: theme.node.muted }}>
-        {node.type === 'video'
-          ? t('Generating video, this may take a few minutes...')
-          : t('Generating image...')}
-      </p>
-    </div>
-  )
+    )
+  }
 
+  // ----- 各类型节点主体 -----
   const renderBody = () => {
     if (node.type === 'text') {
+      const content = node.metadata.content ?? ''
+      const fontSize = node.metadata.fontSize ?? 14
+      if (editingContent) {
+        return (
+          <textarea
+            ref={textareaRef}
+            autoFocus
+            value={content}
+            onChange={(e) => patchMetadata({ content: e.target.value })}
+            onBlur={() => {
+              setEditingContent(false)
+              onEndEdit()
+            }}
+            placeholder={t('Type your idea, prompt or note here...')}
+            aria-label={t('Node text')}
+            className='canvas-scroll size-full resize-none rounded-[13px] bg-transparent p-3 leading-relaxed outline-none'
+            style={{ color: theme.node.text, fontSize }}
+          />
+        )
+      }
+      if (!content.trim()) {
+        // 空态：居中四条占位横条（对齐 BeefTV），双击卡片进入编辑
+        return (
+          <div className='flex size-full flex-col items-center justify-center gap-2.5'>
+            {[64, 88, 76, 52].map((width) => (
+              <div
+                key={width}
+                className='h-1.5 rounded-full'
+                style={{ width, background: theme.node.stroke }}
+              />
+            ))}
+          </div>
+        )
+      }
       return (
-        <textarea
-          ref={textareaRef}
-          value={node.metadata.content ?? ''}
-          onChange={(e) => patchMetadata({ content: e.target.value })}
-          placeholder={t('Type your idea, prompt or note here...')}
-          className='canvas-scroll min-h-0 w-full flex-1 resize-none bg-transparent p-3 text-sm leading-relaxed outline-none'
-          style={{ color: theme.node.text }}
-          data-no-drag
+        <div
+          className='canvas-scroll size-full overflow-y-auto p-3'
+          data-canvas-wheel-scroll
+        >
+          <p
+            className='leading-relaxed whitespace-pre-wrap'
+            style={{ color: theme.node.text, fontSize }}
+          >
+            {content}
+          </p>
+        </div>
+      )
+    }
+
+    if (node.type === 'folder') {
+      const collapsed = Boolean(node.metadata.collapsed)
+      return (
+        <div className='flex size-full flex-col'>
+          <div className='flex items-center gap-2 px-3 py-2'>
+            <button
+              type='button'
+              onClick={() => patchMetadata({ collapsed: !collapsed })}
+              className='flex size-6 cursor-pointer items-center justify-center rounded-md transition-colors'
+              style={{ color: theme.node.muted }}
+              aria-label={collapsed ? t('Expand folder') : t('Collapse folder')}
+              title={collapsed ? t('Expand folder') : t('Collapse folder')}
+            >
+              {collapsed ? (
+                <ChevronRight aria-hidden='true' className='size-4' />
+              ) : (
+                <ChevronDown aria-hidden='true' className='size-4' />
+              )}
+            </button>
+            <span
+              className='rounded-md px-1.5 py-0.5 text-[10px] tabular-nums'
+              style={{
+                background: theme.toolbar.itemHover,
+                color: theme.node.muted,
+              }}
+            >
+              {t('{{count}} items', { count: folderItemCount })}
+            </span>
+          </div>
+          {collapsed ? (
+            <div className='flex flex-1 flex-col items-center justify-center gap-2 pb-4'>
+              <Folder
+                aria-hidden='true'
+                className='size-10'
+                style={{ color: theme.node.faint }}
+              />
+              <p className='text-[11px]' style={{ color: theme.node.faint }}>
+                {t('Folder collapsed')}
+              </p>
+            </div>
+          ) : (
+            <p
+              className='px-3 pb-2 text-[11px] leading-relaxed'
+              style={{ color: theme.node.faint }}
+            >
+              {t('Drag nodes into the folder area. Collapse to hide them.')}
+            </p>
+          )}
+        </div>
+      )
+    }
+
+    if (node.type === 'script') {
+      return (
+        <CanvasScriptTable
+          node={node}
+          theme={theme}
+          modelConfigured={modelConfigured}
+          textModelName={textModelName}
+          onPatchMetadata={patchMetadata}
+          onBeginEdit={onBeginEdit}
+          onEndEdit={onEndEdit}
+          onExpandScene={onExpandScene}
+          onSceneVideo={onSceneVideo}
+          onOpenSettings={onOpenSettings}
+          onNodeInfo={(target) => onTool(target, 'info')}
+          onEnlarge={onEnlarge}
         />
       )
     }
+
+    if (node.type === 'batch') {
+      const rows = node.metadata.rows ?? ['']
+      const nonEmptyCount = rows.filter((row) => row.trim()).length
+      return (
+        <div className='flex min-h-0 flex-1 flex-col gap-2 p-3'>
+          <p className='text-[11px]' style={{ color: theme.node.faint }}>
+            {t('One prompt per row. Each row generates an image node.')}
+          </p>
+          <div className='canvas-scroll flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto'>
+            {rows.map((row, index) => (
+              // 行内容可编辑，用下标作 key 避免输入时重挂载失焦
+              // eslint-disable-next-line react/no-array-index-key
+              <div key={index} className='flex items-center gap-1.5'>
+                <span
+                  className='w-5 shrink-0 text-right text-[10px] tabular-nums'
+                  style={{ color: theme.node.faint }}
+                >
+                  {index + 1}
+                </span>
+                <input
+                  value={row}
+                  onFocus={onBeginEdit}
+                  onBlur={onEndEdit}
+                  onChange={(e) =>
+                    patchMetadata({
+                      rows: rows.map((r, i) =>
+                        i === index ? e.target.value : r
+                      ),
+                    })
+                  }
+                  placeholder={t('Prompt for row {{n}}', { n: index + 1 })}
+                  aria-label={t('Prompt for row {{n}}', { n: index + 1 })}
+                  className='h-8 min-w-0 flex-1 rounded-md bg-transparent px-2 text-xs outline-none'
+                  style={{
+                    color: theme.node.text,
+                    border: `1px solid ${theme.node.stroke}`,
+                  }}
+                />
+                <button
+                  type='button'
+                  disabled={rows.length <= 1}
+                  onClick={() =>
+                    patchMetadata({ rows: rows.filter((_, i) => i !== index) })
+                  }
+                  className='flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-35'
+                  style={{ color: theme.accent.danger }}
+                  aria-label={t('Delete row')}
+                  title={t('Delete row')}
+                >
+                  <Trash2 aria-hidden='true' className='size-3.5' />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className='flex shrink-0 items-center gap-1.5'>
+            <button
+              type='button'
+              onClick={() => patchMetadata({ rows: [...rows, ''] })}
+              className='flex h-8 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-[11px] transition-colors'
+              style={{
+                border: `1px solid ${theme.node.stroke}`,
+                color: theme.node.muted,
+              }}
+            >
+              <Plus aria-hidden='true' className='size-3' />
+              {t('Add row')}
+            </button>
+            <button
+              type='button'
+              disabled={nonEmptyCount === 0}
+              onClick={() => onBatchGenerate(node)}
+              className='flex h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-40'
+              style={{
+                background: theme.accent.primary,
+                color: theme.accent.onPrimary,
+              }}
+            >
+              <Sparkles aria-hidden='true' className='size-3.5' />
+              {t('Generate {{count}} images', { count: nonEmptyCount })}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    if (
+      node.type === 'drawing' &&
+      !hasMedia &&
+      !loading &&
+      status !== 'error'
+    ) {
+      return (
+        <div className='flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4'>
+          <Pencil
+            aria-hidden='true'
+            className='size-8'
+            style={{ color: theme.node.faint }}
+          />
+          <button
+            type='button'
+            onClick={() => onOpenDrawing(node)}
+            className='flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-medium'
+            style={{
+              background: theme.accent.primary,
+              color: theme.accent.onPrimary,
+            }}
+          >
+            <Pencil aria-hidden='true' className='size-3.5' />
+            {t('Start drawing')}
+          </button>
+        </div>
+      )
+    }
+
+    if (node.type === 'upscale' && !hasMedia && !loading && status !== 'error') {
+      const imageCount =
+        references.filter(
+          (ref) =>
+            ref.type === 'image' ||
+            ref.type === 'drawing' ||
+            ref.type === 'upscale'
+        ).length + (node.metadata.sourceUrl ? 1 : 0)
+      const videoCount = references.filter((ref) => ref.type === 'video').length
+      return (
+        <div className='group/upscale relative flex min-h-0 flex-1 flex-col'>
+          <div
+            className='flex items-center gap-1.5 px-3 pt-2.5 text-[10px]'
+            style={{ color: theme.node.muted }}
+          >
+            <span
+              className='rounded-md px-1.5 py-0.5 tabular-nums'
+              style={{ background: theme.toolbar.itemHover }}
+            >
+              {t('{{count}} images', { count: imageCount })}
+            </span>
+            <span
+              className='rounded-md px-1.5 py-0.5 tabular-nums'
+              style={{ background: theme.toolbar.itemHover }}
+            >
+              {t('{{count}} videos', { count: videoCount })}
+            </span>
+          </div>
+          <div className='flex flex-1 flex-col items-center justify-center gap-1.5 px-4 text-center'>
+            <WandSparkles
+              aria-hidden='true'
+              className='size-7'
+              style={{ color: theme.node.faint }}
+            />
+            <p className='text-[11px]' style={{ color: theme.node.muted }}>
+              {t('Connect images or videos from the left')}
+            </p>
+            <p className='text-[10px]' style={{ color: theme.node.faint }}>
+              {t('Multiple assets can be processed at once')}
+            </p>
+          </div>
+          <div className='absolute right-2 bottom-2 opacity-0 transition-opacity group-hover/upscale:opacity-100'>
+            {renderUploadButton(t('Upload source image'))}
+          </div>
+        </div>
+      )
+    }
+
+    if (node.type === 'director') {
+      const coverUrl = node.metadata.director?.coverUrl
+      return (
+        <div
+          className='relative flex size-full items-center justify-center overflow-hidden'
+          style={{ background: '#0a0a10' }}
+        >
+          {coverUrl && (
+            <img
+              src={coverUrl}
+              alt=''
+              draggable={false}
+              className='absolute inset-0 size-full object-cover opacity-60'
+            />
+          )}
+          <button
+            type='button'
+            onClick={() => onOpenDirector(node)}
+            className='relative flex h-10 cursor-pointer items-center gap-2 rounded-xl px-4 text-xs font-semibold shadow-lg transition-transform hover:scale-105'
+            style={{ background: '#fff', color: '#111' }}
+          >
+            <Clapperboard aria-hidden='true' className='size-4' />
+            {t('Open director studio')}
+          </button>
+        </div>
+      )
+    }
+
+    if (node.type === 'audio' && !hasMedia && !loading && status !== 'error') {
+      return (
+        <div className='group/audio relative flex min-h-0 flex-1 items-center justify-center'>
+          <Music2
+            aria-hidden='true'
+            className='size-10'
+            style={{ color: theme.node.faint }}
+          />
+          <div className='absolute right-2 bottom-2 opacity-0 transition-opacity group-hover/audio:opacity-100'>
+            {renderUploadButton(t('Upload audio'))}
+          </div>
+        </div>
+      )
+    }
+
     if (loading) return renderLoading()
-    if (status === 'error' && !hasMedia) return renderError()
-    if (hasMedia && !editingPrompt) return renderMedia()
-    return renderComposer()
+    if (status === 'error') return renderError()
+    if (hasMedia) return renderMedia()
+    // 空态占位图标：输入 composer 在节点下方弹出，不在卡内
+    if (node.type === 'video') {
+      return (
+        <div className='flex min-h-0 flex-1 items-center justify-center'>
+          <Play
+            aria-hidden='true'
+            className='size-10'
+            fill='currentColor'
+            strokeWidth={0}
+            style={{ color: theme.node.faint }}
+          />
+        </div>
+      )
+    }
+    return (
+      <div className='flex min-h-0 flex-1 items-center justify-center'>
+        <TypeIcon
+          aria-hidden='true'
+          className='size-10'
+          style={{ color: theme.node.faint }}
+        />
+      </div>
+    )
   }
 
+  // ----- 连接轨按钮 + 「添加相连节点」弹层 -----
   const renderRail = (side: 'left' | 'right') => (
     <div
-      className={`absolute top-1/2 z-10 -translate-y-1/2 ${side === 'left' ? '-left-3.5' : '-right-3.5'}`}
+      className={`absolute top-1/2 z-30 -translate-y-1/2 transition-opacity ${
+        side === 'left' ? '-left-3' : '-right-3'
+      } ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
     >
       <button
         type='button'
         data-no-drag
-        onPointerDown={(e) => handleRailPointerDown(e, side)}
+        onPointerDown={(event) => handleRailPointerDown(event, side)}
         onPointerMove={handleRailPointerMove}
         onPointerUp={handleRailPointerUp}
-        className={`flex size-6 cursor-crosshair items-center justify-center rounded-full transition-all duration-150 ${
-          selected || isConnectionTarget
-            ? 'opacity-100'
-            : 'opacity-0 group-hover:opacity-100'
-        } ${isConnectionTarget && side === 'left' ? 'scale-125' : ''}`}
+        className='flex size-6 cursor-pointer items-center justify-center rounded-full transition-colors'
         style={{
           background: theme.node.panel,
-          border: `1px solid ${isConnectionTarget && side === 'left' ? theme.accent.primary : theme.node.stroke}`,
-          color: theme.node.muted,
+          border: `1px solid ${
+            isConnectionTarget ? theme.accent.primary : theme.node.stroke
+          }`,
+          color: isConnectionTarget ? theme.accent.primary : theme.node.muted,
           boxShadow: theme.node.shadow,
         }}
         aria-label={
-          side === 'right'
-            ? t('Drag to connect, click to add node')
-            : t('Connection input')
+          side === 'right' ? t('Add connected node') : t('Connection input')
+        }
+        title={
+          side === 'right' ? t('Add connected node') : t('Connection input')
         }
       >
-        <Plus aria-hidden='true' className='size-3.5' />
+        {side === 'right' ? (
+          <Plus aria-hidden='true' className='size-3' />
+        ) : (
+          <Link2 aria-hidden='true' className='size-3' />
+        )}
       </button>
       {menuSide === side && (
         <div
           data-connection-create-menu
-          data-canvas-no-zoom
-          className={`absolute top-1/2 z-30 w-36 -translate-y-1/2 overflow-hidden rounded-lg py-1 ${side === 'right' ? 'left-8' : 'right-8'}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          className={`canvas-scroll absolute top-8 max-h-80 w-58 overflow-y-auto rounded-xl py-1.5 ${
+            side === 'left' ? 'left-0' : 'right-0'
+          }`}
           style={{
             background: theme.toolbar.panel,
             border: `1px solid ${theme.toolbar.border}`,
             boxShadow: theme.node.hoverShadow,
-            backdropFilter: 'blur(12px)',
           }}
         >
-          {(['image', 'video', 'text'] as const).map((type) => {
-            const Icon = NODE_TYPE_ICON[type]
-            return (
-              <button
-                key={type}
-                type='button'
-                onClick={() => {
-                  setMenuSide(null)
-                  onCreateConnected(node.id, side, type)
-                }}
-                className='flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors'
-                style={{ color: theme.toolbar.item }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = theme.toolbar.itemHover
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent'
-                }}
-              >
-                <Icon aria-hidden='true' className='size-3.5' />
-                {t(CANVAS_NODE_TITLE_KEYS[type])}
-              </button>
-            )
-          })}
+          <CanvasCreateList
+            theme={theme}
+            nodeTypesOnly
+            includeResources={false}
+            title={t('Add connected node')}
+            onCommand={(id) => {
+              if (!RAIL_CREATABLE_TYPES.has(id)) return
+              setMenuSide(null)
+              onCreateConnected(node.id, side, id as CanvasNodeType)
+            }}
+          />
         </div>
       )}
     </div>
   )
 
   let zIndex = 10
-  if (dragging) zIndex = 30
+  if (isFolder) zIndex = 5
   else if (selected) zIndex = 20
+  let cardBorder = `1px solid ${theme.node.stroke}`
+  if (isFolder) {
+    cardBorder = `1.5px dashed ${
+      selected ? theme.accent.primary : theme.node.stroke
+    }`
+  } else if (isConnectionTarget) {
+    cardBorder = `1px solid ${theme.accent.primary}`
+  } else if (selected) {
+    cardBorder = `1px solid ${theme.node.activeStroke}`
+  }
 
   return (
     <div
       data-node-id={node.id}
-      className='group absolute flex flex-col'
+      data-node-type={node.type}
+      className='group absolute'
       style={{
         left: node.position.x,
         top: node.position.y,
         width: node.width,
         height: node.height,
-        background: theme.node.fill,
-        border: `${selected ? 1.5 : 1}px solid ${selected ? theme.node.activeStroke : theme.node.stroke}`,
-        borderRadius: 14,
-        boxShadow: selected ? theme.node.hoverShadow : theme.node.shadow,
         zIndex,
-        cursor: dragging ? 'grabbing' : 'grab',
-        touchAction: 'none',
-        outline: isConnectionTarget
-          ? `2px solid ${theme.accent.primary}`
-          : undefined,
-        outlineOffset: 3,
       }}
-      onPointerDown={handleCardPointerDown}
-      onPointerMove={handleCardPointerMove}
-      onPointerUp={handleCardPointerUp}
-      onPointerCancel={handleCardPointerUp}
       onDoubleClick={(event) => {
+        const target = event.target instanceof Element ? event.target : null
+        if (target?.closest('button,input,textarea,select,a')) return
         if (node.type === 'text') {
-          event.stopPropagation()
-          textareaRef.current?.focus()
-        }
+          setEditingContent(true)
+          onBeginEdit()
+        } else if (node.type === 'drawing') onOpenDrawing(node)
+        else if (node.type === 'director') onOpenDirector(node)
+        else if (node.type === 'folder') onOpenFolder(node)
       }}
     >
-      {/* 外置标题行：inverse-scale 保持屏幕尺寸恒定 */}
+      <CanvasNodeToolbar
+        node={node}
+        theme={theme}
+        selected={selected}
+        onTool={onTool}
+      />
+      {/* 历史版本堆叠层（最近两个旧版本垫在卡片后，仅视觉媒体节点） */}
+      {history.length > 1 &&
+        (node.type === 'image' ||
+          node.type === 'video' ||
+          node.type === 'upscale' ||
+          node.type === 'drawing') && (
+        <div aria-hidden='true' className='pointer-events-none absolute inset-0'>
+          {[1, 2].map((layer) => {
+            const entry = history[history.length - 1 - layer]
+            if (!entry) return null
+            return (
+              <div
+                key={entry.id}
+                className='absolute inset-0 overflow-hidden rounded-[14px]'
+                style={{
+                  background: theme.node.panel,
+                  boxShadow: `0 0 0 1px ${theme.node.stroke}`,
+                  transform: `translate(${layer * 7}px, ${layer * 7}px) scale(${1 - layer * 0.008})`,
+                  zIndex: -1,
+                }}
+              >
+                <img
+                  src={entry.url}
+                  alt=''
+                  draggable={false}
+                  className='size-full object-cover'
+                />
+                <div
+                  className='absolute inset-0'
+                  style={{ background: `rgba(0,0,0,${0.28 + layer * 0.18})` }}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {/* 外置标题（随缩放反向补偿，保持可读） */}
       <div
-        className='absolute bottom-full left-0 mb-1.5 flex items-center gap-1.5 whitespace-nowrap'
+        className='absolute -top-7 left-0 flex items-center gap-1.5'
         style={{
           transform: 'scale(var(--canvas-live-inverse-scale, 1))',
-          transformOrigin: 'bottom left',
+          transformOrigin: 'left bottom',
         }}
-        data-no-drag
       >
         <TypeIcon
           aria-hidden='true'
           className='size-3.5 shrink-0'
-          style={{ color: theme.node.muted }}
+          style={{
+            color: selected ? theme.accent.primary : theme.node.muted,
+          }}
         />
         {editingTitle ? (
           <input
             value={titleValue}
             autoFocus
-            onChange={(e) => setTitleValue(e.target.value)}
+            data-no-drag
+            onChange={(event) => setTitleValue(event.target.value)}
             onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitTitle()
-              if (e.key === 'Escape') {
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') commitTitle()
+              else if (event.key === 'Escape') {
                 setTitleValue(node.title)
                 setEditingTitle(false)
+                onEndEdit()
               }
             }}
-            className='w-40 rounded-md px-1.5 py-0.5 text-xs outline-none'
+            aria-label={t('Node title')}
+            className='h-6 w-44 rounded-md px-1.5 text-xs outline-none'
             style={{
               background: theme.node.panel,
               color: theme.node.text,
-              border: `1px solid ${theme.node.stroke}`,
+              border: `1px solid ${theme.accent.primary}`,
             }}
           />
         ) : (
           <button
             type='button'
-            onClick={() => {
+            data-no-drag
+            onClick={() => onSelect(node.id, false)}
+            onDoubleClick={() => {
               setTitleValue(node.title)
               setEditingTitle(true)
+              onBeginEdit()
             }}
-            className='flex max-w-56 items-center gap-1 text-xs font-medium'
-            style={{ color: theme.node.muted }}
-            title={t('Click to rename node')}
+            className='max-w-56 cursor-pointer truncate text-xs font-medium'
+            style={{ color: theme.node.text }}
+            title={node.title}
           >
-            <span className='truncate'>{node.title}</span>
-            <Pencil
-              aria-hidden='true'
-              className='size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-60'
-            />
+            {node.title}
           </button>
         )}
+        {loading && (
+          <Loader2
+            aria-hidden='true'
+            className='size-3 shrink-0 animate-spin'
+            style={{ color: theme.accent.primary }}
+          />
+        )}
+        {locked && (
+          <Lock
+            aria-hidden='true'
+            className='size-3 shrink-0'
+            style={{ color: theme.node.muted }}
+          />
+        )}
+      </div>
+
+      {/* 卡片主体 */}
+      <div
+        className='relative flex size-full flex-col overflow-hidden rounded-[14px]'
+        style={{
+          background: isFolder ? `${theme.node.fill}66` : theme.node.fill,
+          border: cardBorder,
+          boxShadow:
+            dragging || selected ? theme.node.hoverShadow : theme.node.shadow,
+          cursor: dragging ? 'grabbing' : 'grab',
+          touchAction: 'none',
+        }}
+        onPointerDown={handleCardPointerDown}
+        onPointerMove={handleCardPointerMove}
+        onPointerUp={handleCardPointerUp}
+        onPointerCancel={handleCardPointerUp}
+      >
+        {history.length > 1 &&
+          (node.type === 'image' ||
+            node.type === 'video' ||
+            node.type === 'upscale' ||
+            node.type === 'drawing') && (
+          <div
+            data-no-drag
+            className='absolute top-2 left-2 z-20 flex items-center gap-0.5 rounded-lg bg-black/55 px-1 py-0.5 text-white backdrop-blur-sm'
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type='button'
+              disabled={historyIndex <= 0}
+              onClick={() =>
+                patchMetadata({
+                  url: history[historyIndex - 1].url,
+                  historyIndex: historyIndex - 1,
+                })
+              }
+              className='flex size-5 items-center justify-center rounded disabled:opacity-35'
+              aria-label={t('Previous version')}
+              title={t('Previous version')}
+            >
+              <ChevronLeft aria-hidden='true' className='size-3' />
+            </button>
+            <History aria-hidden='true' className='size-3' />
+            <span className='text-[10px] tabular-nums'>
+              {historyIndex + 1}/{history.length}
+            </span>
+            <button
+              type='button'
+              disabled={historyIndex >= history.length - 1}
+              onClick={() =>
+                patchMetadata({
+                  url: history[historyIndex + 1].url,
+                  historyIndex: historyIndex + 1,
+                })
+              }
+              className='flex size-5 items-center justify-center rounded disabled:opacity-35'
+              aria-label={t('Next version')}
+              title={t('Next version')}
+            >
+              <ChevronRight aria-hidden='true' className='size-3' />
+            </button>
+          </div>
+        )}
+        {renderBody()}
       </div>
 
       {renderRail('left')}
       {renderRail('right')}
-      {renderBody()}
 
-      {/* 四角缩放手柄 */}
-      {(['nw', 'ne', 'sw', 'se'] as const).map((corner) => (
-        <div
-          key={corner}
-          data-no-drag
-          onPointerDown={(e) => handleResizePointerDown(e, corner)}
-          className={`absolute size-2.5 rounded-[3px] transition-opacity ${
-            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          } ${CORNER_CLASSES[corner]}`}
-          style={{
-            background: theme.node.panel,
-            border: `1px solid ${selected ? theme.node.activeStroke : theme.node.stroke}`,
-          }}
-        />
-      ))}
+      {/* 四角缩放手柄（选中时显示） */}
+      {selected &&
+        (Object.keys(CORNER_CLASSES) as (keyof typeof CORNER_CLASSES)[]).map(
+          (corner) => (
+            <div
+              key={corner}
+              data-no-drag
+              onPointerDown={(event) => handleResizePointerDown(event, corner)}
+              className={`absolute z-30 size-2.5 rounded-[3px] ${CORNER_CLASSES[corner]}`}
+              style={{
+                background: theme.node.panel,
+                border: `1.5px solid ${theme.accent.primary}`,
+                touchAction: 'none',
+              }}
+            />
+          )
+        )}
     </div>
   )
 })

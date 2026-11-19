@@ -21,6 +21,7 @@ type DirectorModelSettings struct {
 	TextModel  string `json:"textModel" gorm:"size:128"`  // 文本模型（改写/提取/拆镜等）
 	ImageModel string `json:"imageModel" gorm:"size:128"` // 图片生成模型
 	VideoModel string `json:"videoModel" gorm:"size:128"` // 视频生成模型
+	AudioModel string `json:"audioModel" gorm:"size:128"` // 音频生成模型（TTS，复用语言 Key）
 }
 
 func (DirectorModelSettings) TableName() string { return "director_model_settings" }
@@ -36,7 +37,7 @@ func GetDirectorModelSettings(userID int) (*DirectorModelSettings, error) {
 }
 
 // UpsertDirectorModelSettings 保存用户模型设定
-func UpsertDirectorModelSettings(userID int, textModel, imageModel, videoModel string) error {
+func UpsertDirectorModelSettings(userID int, textModel, imageModel, videoModel, audioModel string) error {
 	now := time.Now().Unix()
 	var s DirectorModelSettings
 	err := DB.Where("user_id = ?", userID).First(&s).Error
@@ -48,6 +49,7 @@ func UpsertDirectorModelSettings(userID int, textModel, imageModel, videoModel s
 			TextModel:  textModel,
 			ImageModel: imageModel,
 			VideoModel: videoModel,
+			AudioModel: audioModel,
 		}
 		return DB.Create(&s).Error
 	}
@@ -58,10 +60,12 @@ func UpsertDirectorModelSettings(userID int, textModel, imageModel, videoModel s
 	s.TextModel = textModel
 	s.ImageModel = imageModel
 	s.VideoModel = videoModel
+	s.AudioModel = audioModel
 	return DB.Model(&s).Updates(map[string]any{
 		"text_model":  textModel,
 		"image_model": imageModel,
 		"video_model": videoModel,
+		"audio_model": audioModel,
 		"updated_at":  now,
 	}).Error
 }
@@ -94,6 +98,8 @@ func DirectorServiceLabel(serviceType string) string {
 		return "图片模型"
 	case "video":
 		return "视频模型"
+	case "audio":
+		return "音频模型"
 	default:
 		return "语言模型"
 	}
