@@ -17,19 +17,19 @@
       content="Unified AI API gateway and admin dashboard."
     />
 
-    <meta name="theme-color" content="#222326" />
-    <!-- 首屏防闪烁：在样式/JS 加载前按 cookie（默认 dark）写入 html.dark/light，
+    <meta name="theme-color" content="#ffffff" />
+    <!-- 首屏防闪烁：在样式/JS 加载前按 cookie（默认 light）写入 html.dark/light，
          与 src/context/theme-provider.tsx 的 DEFAULT_THEME / cookie 名保持一致。 -->
     <script>
       ;(function () {
         try {
           var stored = (document.cookie.match(
-            /(?:^|;\s*)vite-ui-theme-v2=([^;]*)/
+            /(?:^|;\s*)vite-ui-theme-v3=([^;]*)/
           ) || [])[1]
           var theme =
             stored === 'light' || stored === 'dark' || stored === 'system'
               ? stored
-              : 'dark'
+              : 'light'
           var resolved = theme
           if (theme === 'system') {
             var prefersDark =

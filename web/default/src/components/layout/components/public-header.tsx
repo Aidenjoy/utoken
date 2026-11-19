@@ -69,7 +69,7 @@ export interface PublicHeaderProps {
 export function PublicHeader(props: PublicHeaderProps) {
   const {
     navLinks = defaultTopNavLinks,
-    showThemeSwitch = false,
+    showThemeSwitch = true,
     showLanguageSwitcher = true,
     logo: customLogo,
     siteName: customSiteName,
