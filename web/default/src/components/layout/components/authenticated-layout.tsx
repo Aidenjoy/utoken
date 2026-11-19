@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useRouterState } from '@tanstack/react-router'
+
 import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LayoutProvider } from '@/context/layout-provider'
@@ -31,8 +33,27 @@ type AuthenticatedLayoutProps = {
   children?: React.ReactNode
 }
 
+// 画布编辑器在新标签页整幅打开：不渲染顶栏/侧栏，把全部视口面积留给画布
+const CANVAS_EDITOR_ROUTE_ID = '/_authenticated/canvas/$id'
+
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const fullBleed = useRouterState({
+    select: (state) =>
+      state.matches.some((match) => match.routeId === CANVAS_EDITOR_ROUTE_ID),
+  })
+
+  if (fullBleed) {
+    return (
+      <LayoutProvider>
+        <SearchProvider>
+          <div className='flex h-svh w-full flex-col overflow-hidden'>
+            {props.children ?? <QuotaGatedOutlet />}
+          </div>
+        </SearchProvider>
+      </LayoutProvider>
+    )
+  }
 
   return (
     <LayoutProvider>

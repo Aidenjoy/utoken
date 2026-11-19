@@ -386,6 +386,17 @@ export function InfiniteCanvas(props: InfiniteCanvasProps) {
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null
+    // 背景手势会 preventDefault，吞掉浏览器默认的焦点转移；这里手动失焦画布内
+    // 正在编辑的输入框，保证点击空白处也能触发 onBlur 提交（如文本节点退出编辑）
+    const active = document.activeElement
+    if (
+      active instanceof HTMLElement &&
+      active.matches("input,textarea,select,[contenteditable='true']") &&
+      event.currentTarget.contains(active) &&
+      !active.contains(target)
+    ) {
+      active.blur()
+    }
     if (target?.closest(POINTER_IGNORE_SELECTOR)) return
     const isBackgroundClick = !target?.closest(
       '[data-node-id],[data-connection-id]'

@@ -54,6 +54,10 @@ export const canvasThemes = {
       onPrimary: '#ffffff',
       danger: '#f87171',
     },
+    reference: {
+      fill: '#dfe1e6',
+      icon: '#374151',
+    },
   },
   dark: {
     canvas: {
@@ -88,6 +92,10 @@ export const canvasThemes = {
       primarySoft: 'rgba(255,255,255,.11)',
       onPrimary: '#131313',
       danger: '#fb7185',
+    },
+    reference: {
+      fill: '#6e6e6e',
+      icon: '#ffffff',
     },
   },
 } as const

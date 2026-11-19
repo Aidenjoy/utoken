@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   Copy,
   FolderOpen,
@@ -98,11 +98,10 @@ function CanvasProjectCard(props: {
   onDelete: (project: CanvasProject) => void
 }) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const { project } = props
   const [menuOpen, setMenuOpen] = React.useState(false)
-  const open = () =>
-    navigate({ to: '/canvas/$id', params: { id: String(project.id) } })
+  const openNewTab = () =>
+    window.open(`/canvas/${project.id}`, '_blank', 'noopener')
 
   let cover: React.ReactNode
   if (!project.coverUrl) {
@@ -147,11 +146,14 @@ function CanvasProjectCard(props: {
         setMenuOpen(true)
       }}
     >
-      <button
-        type='button'
-        onClick={open}
+      <Link
+        to='/canvas/$id'
+        params={{ id: String(project.id) }}
+        target='_blank'
+        rel='noopener'
         className='bg-muted relative block aspect-[4/3] w-full cursor-pointer overflow-hidden text-left'
         aria-label={t('Open canvas')}
+        title={t('Open in new tab')}
       >
         {cover}
         <div className='absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 backdrop-blur-[2px] transition-opacity duration-300 group-hover:opacity-100'>
@@ -159,16 +161,19 @@ function CanvasProjectCard(props: {
             <FolderOpen aria-hidden='true' className='size-4' />
           </span>
         </div>
-      </button>
+      </Link>
       <div className='flex flex-1 flex-col gap-1.5 p-2.5'>
         <div className='flex items-center justify-between gap-1.5'>
-          <button
-            type='button'
-            onClick={open}
+          <Link
+            to='/canvas/$id'
+            params={{ id: String(project.id) }}
+            target='_blank'
+            rel='noopener'
             className='truncate text-sm font-semibold tracking-tight hover:underline'
+            title={t('Open in new tab')}
           >
             {project.title}
-          </button>
+          </Link>
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger
               render={
@@ -183,7 +188,7 @@ function CanvasProjectCard(props: {
               <MoreHorizontal aria-hidden='true' className='size-4' />
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end'>
-              <DropdownMenuItem onClick={open}>
+              <DropdownMenuItem onClick={openNewTab}>
                 <FolderOpen aria-hidden='true' />
                 {t('Open')}
               </DropdownMenuItem>
@@ -256,21 +261,34 @@ export function CanvasListPage() {
     queryClient.invalidateQueries({ queryKey: ['canvas-recycle-bin'] })
   }
 
-  // 创建即进入画布（与 BeefTV 一致：创建卡/按钮直接落到编辑器）
+  // 创建即在新标签页打开编辑器：同步先开空白页避免异步回调被弹窗拦截，成功后写入地址
   const createMutation = useMutation({
     mutationFn: () => createCanvasProject(t('Untitled canvas')),
-    onSuccess: (res) => {
-      if (res.success && res.data) {
-        invalidate()
-        navigate({ to: '/canvas/$id', params: { id: String(res.data.id) } })
-      }
-      setCreating(false)
-    },
-    onError: (err) => {
-      setCreating(false)
-      handleServerError(err)
-    },
   })
+
+  const startCreate = () => {
+    if (creating) return
+    setCreating(true)
+    const tab = window.open('', '_blank')
+    createMutation.mutate(undefined, {
+      onSuccess: (res) => {
+        setCreating(false)
+        if (res.success && res.data) {
+          invalidate()
+          const id = String(res.data.id)
+          if (tab) tab.location.href = `/canvas/${id}`
+          else navigate({ to: '/canvas/$id', params: { id } })
+        } else {
+          tab?.close()
+        }
+      },
+      onError: (err) => {
+        tab?.close()
+        setCreating(false)
+        handleServerError(err)
+      },
+    })
+  }
 
   const renameMutation = useMutation({
     mutationFn: (body: { id: number; title: string }) =>
@@ -329,7 +347,7 @@ export function CanvasListPage() {
           <button
             type='button'
             disabled={creating}
-            onClick={() => createMutation.mutate()}
+            onClick={startCreate}
             className='border-border bg-card hover:border-foreground/40 hover:bg-accent group flex aspect-[4/3] w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border border-dashed transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/10 disabled:opacity-60'
           >
             <span className='bg-muted text-muted-foreground group-hover:bg-foreground group-hover:text-background flex size-12 items-center justify-center rounded-full transition-colors duration-300'>
@@ -404,7 +422,7 @@ export function CanvasListPage() {
             <Recycle aria-hidden='true' />
             {t('Recycle bin')}
           </Button>
-          <Button disabled={creating} onClick={() => createMutation.mutate()}>
+          <Button disabled={creating} onClick={startCreate}>
             <Plus aria-hidden='true' />
             {t('Create Project')}
           </Button>

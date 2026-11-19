@@ -50,6 +50,9 @@ import {
 
 export type CanvasSaveState = 'saved' | 'dirty' | 'saving' | 'error'
 
+// 工作流 / Agent 功能开发中，暂时隐藏右上角入口；恢复时改为 true 即可
+const showWorkflowAgent = false
+
 interface CanvasTopBarProps {
   theme: CanvasTheme
   title: string
@@ -299,36 +302,40 @@ export function CanvasTopBar(props: CanvasTopBarProps) {
         {saveIndicator()}
       </div>
 
-      {/* 右上：工作流 / Agent / 版本记录 */}
+      {/* 右上：工作流 / Agent / 版本记录（工作流与 Agent 入口暂时隐藏，开发中，恢复时把 showWorkflowAgent 改为 true） */}
       <div
         data-canvas-no-zoom
         className='absolute top-3 right-3 z-[65] flex items-center gap-0.5 rounded-2xl px-1.5 py-1.5'
         style={pillStyle}
       >
-        <button
-          type='button'
-          className='flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs transition-colors'
-          style={{ color: theme.toolbar.item }}
-          onClick={onOpenWorkflow}
-          aria-label={t('Workflow')}
-          title={t('Workflow')}
-          {...hoverHandlers}
-        >
-          <Workflow aria-hidden='true' className='size-3.5' />
-          <span className='hidden md:inline'>{t('Workflow')}</span>
-        </button>
-        <button
-          type='button'
-          className='flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs transition-colors'
-          style={{ color: theme.toolbar.item }}
-          onClick={onOpenAgent}
-          aria-label={t('AI Agent')}
-          title={t('AI Agent (Ctrl/Cmd + J)')}
-          {...hoverHandlers}
-        >
-          <Sparkles aria-hidden='true' className='size-3.5' />
-          <span className='hidden md:inline'>{t('AI Agent')}</span>
-        </button>
+        {showWorkflowAgent && (
+          <>
+            <button
+              type='button'
+              className='flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs transition-colors'
+              style={{ color: theme.toolbar.item }}
+              onClick={onOpenWorkflow}
+              aria-label={t('Workflow')}
+              title={t('Workflow')}
+              {...hoverHandlers}
+            >
+              <Workflow aria-hidden='true' className='size-3.5' />
+              <span className='hidden md:inline'>{t('Workflow')}</span>
+            </button>
+            <button
+              type='button'
+              className='flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs transition-colors'
+              style={{ color: theme.toolbar.item }}
+              onClick={onOpenAgent}
+              aria-label={t('AI Agent')}
+              title={t('AI Agent (Ctrl/Cmd + J)')}
+              {...hoverHandlers}
+            >
+              <Sparkles aria-hidden='true' className='size-3.5' />
+              <span className='hidden md:inline'>{t('AI Agent')}</span>
+            </button>
+          </>
+        )}
         <button
           type='button'
           className='flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors'

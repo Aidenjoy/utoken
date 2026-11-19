@@ -20,6 +20,7 @@ type VideoGenRequest struct {
 	Duration        int      // 时长（秒）
 	AspectRatio     string   // 画幅，如 9:16
 	Resolution      string   // 分辨率，如 720p/1080p
+	GenerateAudio   *bool    // 是否生成音频（nil 默认开启，透传上游 generate_audio）
 	Model           string   // 覆盖默认模型
 }
 
@@ -52,7 +53,7 @@ func (s *VideoGenerationService) SubmitVideoTask(cfg directorCallConfig, req Vid
 	}
 	metadata := map[string]any{
 		"mode":           mode,
-		"generate_audio": true,
+		"generate_audio": req.GenerateAudio == nil || *req.GenerateAudio,
 		"n":              1,
 		// 火山 Ark 默认给视频盖水印，显式关闭（metadata 透传至上游 watermark 字段）
 		"watermark": false,

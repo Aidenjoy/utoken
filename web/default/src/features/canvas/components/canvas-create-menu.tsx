@@ -172,6 +172,17 @@ const CREATE_COMMANDS: CreateCommand[] = [
   },
 ]
 
+// 未开发完的节点类型暂不上线：默认从创建菜单隐藏（搜索也不召回），
+// 开发完成后删除本集合即可恢复；本地调试/E2E 可置 localStorage 召回
+const UNRELEASED_COMMAND_IDS = new Set<CanvasCreateCommandId>([
+  'upscale',
+  'audio',
+  'director',
+  'smart-edit',
+  'frame',
+  'script',
+])
+
 export function CanvasCreateList(props: {
   theme: CanvasTheme
   onCommand: (id: CanvasCreateCommandId) => void
@@ -196,6 +207,8 @@ export function CanvasCreateList(props: {
   }, [searchOpen])
 
   const normalizedQuery = query.trim().toLowerCase()
+  const showUnreleased =
+    window.localStorage.getItem('canvas-show-unreleased') === '1'
   const creatableTypes = new Set<CanvasCreateCommandId>([
     'text',
     'image',
@@ -209,6 +222,7 @@ export function CanvasCreateList(props: {
     'batch',
   ])
   const visible = CREATE_COMMANDS.filter((command) => {
+    if (!showUnreleased && UNRELEASED_COMMAND_IDS.has(command.id)) return false
     if (command.section === 'resource' && !includeResources) return false
     if (nodeTypesOnly && !creatableTypes.has(command.id)) return false
     // 无搜索词时隐藏进阶节点（绘图/文件夹/批量创作表），搜索可召回

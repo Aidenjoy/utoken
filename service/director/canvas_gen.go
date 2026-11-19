@@ -24,10 +24,13 @@ type CanvasGenRequest struct {
 	NodeID          string
 	Prompt          string
 	Size            string   // 图片尺寸（如 2048x2048）
+	Quality         string   // 图片画质档位（low/standard/high/ultra/extreme）
+	Background      string   // 图片背景（auto/keep/transparent）
 	AspectRatio     string   // 视频画幅（如 16:9）
 	Resolution      string   // 视频分辨率（如 720p）
 	Duration        int      // 视频时长（秒）
-	Count           int      // 产出数量（图片张数/文本段数）
+	GenerateAudio   *bool    // 视频是否生成音频（nil 默认开启）
+	Count           int      // 产出数量（图片张数/文本段数/视频个数）
 	Voice           string   // 音频音色（如 alloy）
 	AudioFormat     string   // 音频格式（如 mp3）
 	Speed           float64  // 音频语速倍率
@@ -194,6 +197,29 @@ func SubmitCanvasImage(userID int, req CanvasGenRequest) (int, error) {
 			// 火山 Ark 默认盖「AI 生成」水印，显式关闭（与云导演一致）
 			"watermark": false,
 		}
+		// 画质/背景仅对支持该参数的上游下发，避免不支持的供应商报 400：
+		// gpt-image 系用 low/medium/high + background；dall-e-3 用 standard/hd；其余省略
+		if strings.Contains(cfg.Model, "gpt-image") {
+			switch req.Quality {
+			case "low":
+				body["quality"] = "low"
+			case "standard":
+				body["quality"] = "medium"
+			case "high", "ultra", "extreme":
+				body["quality"] = "high"
+			}
+			switch req.Background {
+			case "keep":
+				body["background"] = "opaque"
+			case "transparent":
+				body["background"] = "transparent"
+			}
+		} else if strings.Contains(cfg.Model, "dall-e-3") {
+			switch req.Quality {
+			case "high", "ultra", "extreme":
+				body["quality"] = "hd"
+			}
+		}
 		if len(req.ReferenceImages) > 0 {
 			body["image"] = req.ReferenceImages
 		}
@@ -264,6 +290,13 @@ func SubmitCanvasVideo(userID int, req CanvasGenRequest) (int, error) {
 	if aspectRatio == "" {
 		aspectRatio = "16:9"
 	}
+	count := req.Count
+	if count < 1 {
+		count = 1
+	}
+	if count > 4 {
+		count = 4
+	}
 	refJSON := ""
 	if len(req.ReferenceImages) > 0 {
 		if b, mErr := common.Marshal(req.ReferenceImages); mErr == nil {
@@ -290,25 +323,42 @@ func SubmitCanvasVideo(userID int, req CanvasGenRequest) (int, error) {
 	go func(genID int) {
 		acquireVideoSlot()
 		defer releaseVideoSlot()
-		taskID, subErr := videoSvc.SubmitVideoTask(cfg, VideoGenRequest{
-			Prompt:          req.Prompt,
-			ReferenceImages: req.ReferenceImages,
-			Duration:        duration,
-			AspectRatio:     aspectRatio,
-			Resolution:      req.Resolution,
-		})
-		if subErr != nil {
-			markCanvasGenFailed(genID, subErr)
-			return
+		// 数量>1 时提交多个上游任务（上游协议无 n 参数），首个结果为主产出，
+		// 其余写入 extras 由前端生成兄弟节点（与图片多产出链路一致）
+		taskIDs := make([]string, 0, count)
+		for i := 0; i < count; i++ {
+			taskID, subErr := videoSvc.SubmitVideoTask(cfg, VideoGenRequest{
+				Prompt:          req.Prompt,
+				ReferenceImages: req.ReferenceImages,
+				Duration:        duration,
+				AspectRatio:     aspectRatio,
+				Resolution:      req.Resolution,
+				GenerateAudio:   req.GenerateAudio,
+			})
+			if subErr != nil {
+				markCanvasGenFailed(genID, subErr)
+				return
+			}
+			taskIDs = append(taskIDs, taskID)
 		}
-		model.DB.Model(&model.CanvasGeneration{}).Where("id = ?", genID).Update("task_id", taskID)
-		pollCanvasVideoTask(videoSvc, genID, cfg, taskID, userID, req.ProjectID)
+		model.DB.Model(&model.CanvasGeneration{}).Where("id = ?", genID).Update("task_id", taskIDs[0])
+		urls := make([]string, 0, len(taskIDs))
+		for _, taskID := range taskIDs {
+			videoURL, ok := pollCanvasVideoTask(videoSvc, genID, cfg, taskID, userID, req.ProjectID)
+			if !ok {
+				return // 失败/超时已落盘；取消时状态守卫兜底
+			}
+			urls = append(urls, videoURL)
+		}
+		markCanvasGenExtras(genID, urls[1:])
+		markCanvasGenSuccess(genID, urls[0])
 	}(gen.ID)
 	return gen.ID, nil
 }
 
-// pollCanvasVideoTask 后台轮询画布视频任务直至完成或超时
-func pollCanvasVideoTask(s *VideoGenerationService, genID int, cfg directorCallConfig, taskID string, userID, projectID int) {
+// pollCanvasVideoTask 后台轮询画布视频任务直至完成或超时，成功返回转存后的视频地址；
+// 失败/超时内部落盘错误状态，取消时直接退出，由调用方决定结果落盘时机
+func pollCanvasVideoTask(s *VideoGenerationService, genID int, cfg directorCallConfig, taskID string, userID, projectID int) (string, bool) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	timeout := time.After(15 * time.Minute)
@@ -317,19 +367,19 @@ func pollCanvasVideoTask(s *VideoGenerationService, genID int, cfg directorCallC
 		select {
 		case <-timeout:
 			markCanvasGenFailed(genID, errors.New("任务超时（15分钟）"))
-			return
+			return "", false
 		case <-ticker.C:
 			// 任务可能已被用户取消，及时退出轮询，不再消耗上游查询
 			var current model.CanvasGeneration
 			if dbErr := model.DB.Select("status").First(&current, genID).Error; dbErr != nil || current.Status != model.DirectorGenStatusProcessing {
-				return
+				return "", false
 			}
 			status, videoURL, err := s.QueryVideoTask(cfg, taskID)
 			if err != nil && status != "processing" {
 				failCount++
 				if failCount >= 3 {
 					markCanvasGenFailed(genID, err)
-					return
+					return "", false
 				}
 				continue
 			}
@@ -340,11 +390,10 @@ func pollCanvasVideoTask(s *VideoGenerationService, genID int, cfg directorCallC
 					common.SysLog(fmt.Sprintf("智能画布视频转存失败，使用原始链接: genId=%d, err=%v", genID, storeErr))
 					finalURL = videoURL
 				}
-				markCanvasGenSuccess(genID, finalURL)
-				return
+				return finalURL, true
 			case "failed":
 				markCanvasGenFailed(genID, err)
-				return
+				return "", false
 			}
 		}
 	}
@@ -380,7 +429,12 @@ func ResumeCanvasPolling() {
 			continue // 任务已失效或不可达，跳过
 		}
 		common.SysLog(fmt.Sprintf("智能画布恢复视频任务轮询: genId=%d, taskId=%s", t.ID, t.TaskID))
-		go pollCanvasVideoTask(videoSvc, t.ID, cfg, t.TaskID, t.UserID, t.ProjectID)
+		go func(genID int, callCfg directorCallConfig, resumeTaskID string, resumeUserID, resumeProjectID int) {
+			videoURL, ok := pollCanvasVideoTask(videoSvc, genID, callCfg, resumeTaskID, resumeUserID, resumeProjectID)
+			if ok {
+				markCanvasGenSuccess(genID, videoURL)
+			}
+		}(t.ID, cfg, t.TaskID, t.UserID, t.ProjectID)
 	}
 }
 

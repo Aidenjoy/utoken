@@ -682,13 +682,20 @@ export function CanvasEditorPage(props: { projectId: number }) {
         return
       }
       recordHistory()
-      updateActiveTab((tab) => ({
-        ...tab,
-        connections: [
-          ...tab.connections,
-          { id: canvasId('conn'), fromNodeId, toNodeId },
-        ],
-      }))
+      updateActiveTab((tab) =>
+        // updater 内再查重：同一 tick 内多次调用也不会产生重复边
+        tab.connections.some(
+          (c) => c.fromNodeId === fromNodeId && c.toNodeId === toNodeId
+        )
+          ? tab
+          : {
+              ...tab,
+              connections: [
+                ...tab.connections,
+                { id: canvasId('conn'), fromNodeId, toNodeId },
+              ],
+            }
+      )
       showConnectionHint()
     },
     [recordHistory, updateActiveTab, showConnectionHint]
@@ -1099,12 +1106,16 @@ export function CanvasEditorPage(props: { projectId: number }) {
           kind,
           prompt,
           size: kind === 'image' ? node.metadata.size : undefined,
+          quality: kind === 'image' ? node.metadata.quality : undefined,
+          background: kind === 'image' ? node.metadata.background : undefined,
           aspectRatio: kind === 'video' ? node.metadata.aspectRatio : undefined,
           resolution: kind === 'video' ? node.metadata.resolution : undefined,
           duration: kind === 'video' ? node.metadata.duration : undefined,
+          generateAudio:
+            kind === 'video' ? node.metadata.generateAudio : undefined,
           referenceImages,
           count:
-            kind === 'image' || kind === 'text'
+            kind === 'image' || kind === 'text' || kind === 'video'
               ? node.metadata.count
               : undefined,
           voice: kind === 'audio' ? node.metadata.voice : undefined,
@@ -1210,8 +1221,9 @@ export function CanvasEditorPage(props: { projectId: number }) {
                   extras = []
                 }
                 if (extras.length > 0) {
-                  const childType: CanvasNodeType =
-                    generation.kind === 'text' ? 'text' : 'image'
+                  let childType: CanvasNodeType = 'image'
+                  if (generation.kind === 'text') childType = 'text'
+                  else if (generation.kind === 'video') childType = 'video'
                   const created = extras.map((value, index) => {
                     const child = createCanvasNode(
                       childType,
@@ -1236,6 +1248,14 @@ export function CanvasEditorPage(props: { projectId: number }) {
                             url: value,
                             prompt: generation.prompt,
                             status: 'success',
+                            // 视频兄弟节点沿用源节点画幅/清晰度/时长，保证卡片比例一致
+                            ...(childType === 'video'
+                              ? {
+                                  aspectRatio: liveNode.metadata.aspectRatio,
+                                  resolution: liveNode.metadata.resolution,
+                                  duration: liveNode.metadata.duration,
+                                }
+                              : {}),
                           }
                     return child
                   })
@@ -2709,6 +2729,8 @@ export function CanvasEditorPage(props: { projectId: number }) {
       const from = nodeMap.get(connection.fromNodeId)
       if (!from) continue
       const list = map.get(connection.toNodeId) ?? []
+      // 同一来源只保留一条参考（重复边不产生重复 chip）
+      if (list.some((ref) => ref.id === from.id)) continue
       list.push({
         connectionId: connection.id,
         id: from.id,

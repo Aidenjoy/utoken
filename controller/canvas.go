@@ -349,14 +349,17 @@ type canvasGenerateRequest struct {
 	NodeID          string   `json:"nodeId"`
 	Kind            string   `json:"kind"` // image/video/text/audio
 	Prompt          string   `json:"prompt"`
-	Size            string   `json:"size"`        // 图片尺寸（如 2048x2048）
-	AspectRatio     string   `json:"aspectRatio"` // 视频画幅
-	Resolution      string   `json:"resolution"`  // 视频分辨率
-	Duration        int      `json:"duration"`    // 视频时长（秒）
-	Count           int      `json:"count"`       // 产出数量（图片张数/文本段数）
-	Voice           string   `json:"voice"`       // 音频音色
-	AudioFormat     string   `json:"audioFormat"` // 音频格式
-	Speed           float64  `json:"speed"`       // 音频语速倍率
+	Size            string   `json:"size"`          // 图片尺寸（如 2048x2048）
+	Quality         string   `json:"quality"`       // 图片画质档位（low/standard/high/ultra/extreme）
+	Background      string   `json:"background"`    // 图片背景（auto/keep/transparent）
+	AspectRatio     string   `json:"aspectRatio"`   // 视频画幅
+	Resolution      string   `json:"resolution"`    // 视频分辨率
+	Duration        int      `json:"duration"`      // 视频时长（秒）
+	GenerateAudio   *bool    `json:"generateAudio"` // 视频是否生成音频（缺省开启）
+	Count           int      `json:"count"`         // 产出数量（图片张数/文本段数/视频个数）
+	Voice           string   `json:"voice"`         // 音频音色
+	AudioFormat     string   `json:"audioFormat"`   // 音频格式
+	Speed           float64  `json:"speed"`         // 音频语速倍率
 	ReferenceImages []string `json:"referenceImages"`
 }
 
@@ -396,9 +399,22 @@ func (r *canvasGenerateRequest) validate() error {
 				return errors.New("图片尺寸需在 512~4096 之间")
 			}
 		}
+		switch r.Quality {
+		case "", "low", "standard", "high", "ultra", "extreme":
+		default:
+			return errors.New("图片画质无效")
+		}
+		switch r.Background {
+		case "", "auto", "keep", "transparent":
+		default:
+			return errors.New("图片背景无效")
+		}
 	case "video":
 		if r.Duration < 0 || r.Duration > relaycommon.MaxTaskDurationSeconds {
 			return fmt.Errorf("视频时长需在 1~%d 秒之间", relaycommon.MaxTaskDurationSeconds)
+		}
+		if r.Count < 0 || r.Count > 4 {
+			return errors.New("视频数量需在 1~4 之间")
 		}
 		switch r.AspectRatio {
 		case "", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive":
@@ -454,9 +470,12 @@ func CanvasGenerate(c *gin.Context) {
 		NodeID:          req.NodeID,
 		Prompt:          req.Prompt,
 		Size:            req.Size,
+		Quality:         req.Quality,
+		Background:      req.Background,
 		AspectRatio:     req.AspectRatio,
 		Resolution:      req.Resolution,
 		Duration:        req.Duration,
+		GenerateAudio:   req.GenerateAudio,
 		Count:           req.Count,
 		Voice:           req.Voice,
 		AudioFormat:     req.AudioFormat,

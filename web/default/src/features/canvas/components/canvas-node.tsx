@@ -448,14 +448,15 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
 
   const renderMediaElement = () => {
     if (node.type === 'video') {
+      // 卡内只做静态预览：原生 controls 会吞掉点击（变成播放/暂停），
+      // 导致无法选中节点弹出下方 composer；播放走全屏预览浮层
       return (
         <video
           src={node.metadata.url}
-          controls
+          muted
           playsInline
           preload='metadata'
-          className='size-full object-contain'
-          data-no-drag
+          className='pointer-events-none size-full object-contain'
         />
       )
     }
@@ -513,6 +514,17 @@ export const CanvasNodeView = React.memo(function CanvasNodeView(
       style={{ background: 'rgba(0,0,0,.25)' }}
     >
       {renderMediaElement()}
+      {node.type === 'video' && (
+        <button
+          type='button'
+          onClick={() => onTool(node, 'fullscreen')}
+          className='absolute inset-0 m-auto flex size-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/75'
+          aria-label={t('Fullscreen preview')}
+          title={t('Fullscreen preview')}
+        >
+          <Play aria-hidden='true' className='size-5' />
+        </button>
+      )}
       {node.type === 'upscale' && (
         <span
           className='absolute top-2 left-2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-medium'

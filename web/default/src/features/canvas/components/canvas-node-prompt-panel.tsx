@@ -19,17 +19,22 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   ArrowUp,
   Camera,
+  Clapperboard,
+  Image as ImageIcon,
   Link2,
   Loader2,
   Maximize2,
   Minus,
+  Music2,
   Plus,
   Settings2,
-  SlidersHorizontal,
   Sparkles,
-  Type,
+  SquarePlay,
+  Volume2,
+  VolumeX,
   WandSparkles,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
@@ -103,19 +108,84 @@ const CANVAS_PROMPT_PRESETS: CanvasPromptPreset[] = [
   },
 ]
 
-const IMAGE_SIZE_OPTIONS = [
-  { value: '2048x2048', label: '1:1' },
-  { value: '2560x1440', label: '16:9' },
-  { value: '1440x2560', label: '9:16' },
-  { value: '2304x1728', label: '4:3' },
-  { value: '1728x2304', label: '3:4' },
+const IMAGE_QUALITY_OPTIONS = [
+  { value: 'low', labelKey: 'Low quality' },
+  { value: 'standard', labelKey: 'Standard quality' },
+  { value: 'high', labelKey: 'High quality' },
+  { value: 'ultra', labelKey: 'Ultra quality' },
+  { value: 'extreme', labelKey: 'Extreme quality' },
 ]
-const VIDEO_ASPECT_OPTIONS = ['16:9', '9:16', '1:1', '4:3', '3:4']
-const VIDEO_DURATION_OPTIONS = [5, 10]
+const IMAGE_CLARITY_OPTIONS = ['1K', '2K', '4K']
+const IMAGE_CLARITY_EDGE: Record<string, number> = {
+  '1K': 1024,
+  '2K': 2048,
+  '4K': 4096,
+}
+const IMAGE_BACKGROUND_OPTIONS = [
+  { value: 'auto', labelKey: 'Auto' },
+  { value: 'keep', labelKey: 'Keep background' },
+  { value: 'transparent', labelKey: 'Transparent background' },
+]
+const IMAGE_RATIO_OPTIONS = [
+  '1:1',
+  '1:2',
+  '2:1',
+  '9:16',
+  '16:9',
+  '3:4',
+  '4:3',
+  '3:2',
+  '2:3',
+  '5:4',
+  '4:5',
+  '21:9',
+  '9:21',
+]
+
+// 画幅+清晰度换算像素尺寸：长边取清晰度档位，短边收敛到网关 512~4096 边界
+function imageSizeForRatio(ratio: string, clarity: string): string {
+  const [rw, rh] = ratio.split(':').map(Number)
+  const edge = IMAGE_CLARITY_EDGE[clarity] ?? 2048
+  let w = rw >= rh ? edge : Math.round((edge * rw) / rh)
+  let h = rw >= rh ? Math.round((edge * rh) / rw) : edge
+  w = Math.min(4096, Math.max(512, w))
+  h = Math.min(4096, Math.max(512, h))
+  return `${w}x${h}`
+}
+// adaptive = 自动画幅（上游按参考图/提示词自适应）
+const VIDEO_ASPECT_OPTIONS = [
+  'adaptive',
+  '16:9',
+  '4:3',
+  '1:1',
+  '3:4',
+  '9:16',
+  '21:9',
+]
 const VIDEO_RESOLUTION_OPTIONS = ['480p', '720p', '1080p']
 const AUDIO_VOICE_OPTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
 const AUDIO_FORMAT_OPTIONS = ['mp3', 'opus', 'aac', 'flac', 'wav']
 const AUDIO_SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+// 上游参考磁贴：文本 → 图片 → 视频 → 音频 分组排序，组内按连接顺序编号
+const REF_TILE_GROUP: Partial<Record<CanvasNodeType, number>> = {
+  text: 0,
+  image: 1,
+  upscale: 1,
+  drawing: 1,
+  video: 2,
+  audio: 3,
+}
+
+const REF_TILE_ICONS: Partial<Record<CanvasNodeType, LucideIcon>> = {
+  image: ImageIcon,
+  upscale: ImageIcon,
+  drawing: ImageIcon,
+  video: SquarePlay,
+  audio: Music2,
+  script: Clapperboard,
+  director: Clapperboard,
+}
 
 export interface CanvasNodeReference {
   connectionId: string
@@ -236,22 +306,71 @@ export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
     placeholder = t('Describe the audio you want, use @ to reference audio')
   }
   const hasUpstreamText = references.some((ref) => Boolean(ref.text?.trim()))
+  // 磁贴只渲染直连上游：连线有几条就显示几个，继承文本仅参与提示词合成
+  const shelfRefs = React.useMemo(() => {
+    const ordinals = new Map<CanvasNodeType, number>()
+    return references
+      .filter((ref) => ref.connectionId)
+      .sort(
+        (a, b) => (REF_TILE_GROUP[a.type] ?? 4) - (REF_TILE_GROUP[b.type] ?? 4)
+      )
+      .map((ref) => {
+        const ordinal = (ordinals.get(ref.type) ?? 0) + 1
+        ordinals.set(ref.type, ordinal)
+        return { ref, ordinal }
+      })
+  }, [references])
   if (!prompt.trim() && hasUpstreamText) {
     placeholder = t(
       'Connected text will be used as the prompt; add extra details here'
     )
   }
 
-  const sizeLabel =
-    IMAGE_SIZE_OPTIONS.find(
-      (option) => option.value === (node.metadata.size ?? '2048x2048')
-    )?.label ?? '1:1'
+  const [sizeW, sizeH] = (node.metadata.size ?? '2048x2048')
+    .split('x')
+    .map(Number)
+  const imageRatio =
+    node.metadata.ratio ??
+    IMAGE_RATIO_OPTIONS.find((option) => {
+      const [rw, rh] = option.split(':').map(Number)
+      return Math.abs(rw / rh - sizeW / sizeH) < 0.02
+    }) ??
+    '1:1'
+  let fallbackClarity = '1K'
+  if (Math.max(sizeW, sizeH) >= 4096) fallbackClarity = '4K'
+  else if (Math.max(sizeW, sizeH) >= 2048) fallbackClarity = '2K'
+  const imageClarity = node.metadata.clarity ?? fallbackClarity
+  const imageQuality = node.metadata.quality ?? 'standard'
+  const imageBackground = node.metadata.background ?? 'auto'
+  // 画质/背景仅 OpenAI 系上游真实支持（与 SubmitCanvasImage 下发门控一致）：
+  // gpt-image 有 quality+background，dall-e-3 有 quality(hd)；
+  // 其余供应商（如方舟 seedream）协议无此参数，不展示点了不生效的档位
+  const imageModelLower = (modelName ?? '').toLowerCase()
+  const qualitySupported =
+    imageModelLower.includes('gpt-image') || imageModelLower.includes('dall-e-3')
+  const backgroundSupported = imageModelLower.includes('gpt-image')
+  const qualityLabel =
+    IMAGE_QUALITY_OPTIONS.find((option) => option.value === imageQuality)
+      ?.labelKey ?? 'Standard quality'
+  const patchImageFormat = (patch: { ratio?: string; clarity?: string }) => {
+    const ratio = patch.ratio ?? imageRatio
+    const clarity = patch.clarity ?? imageClarity
+    onPatchMetadata({ ...patch, size: imageSizeForRatio(ratio, clarity) })
+  }
+  const videoRatio = node.metadata.aspectRatio ?? '16:9'
+  const videoResolution = node.metadata.resolution ?? '720p'
+  const videoDuration = node.metadata.duration ?? 5
+  const videoAudio = node.metadata.generateAudio ?? true
   const voice = node.metadata.voice ?? 'alloy'
   let summaryPill = ''
-  if (node.type === 'image') {
-    summaryPill = `${sizeLabel} · ${t('Auto')} · ${t('{{count}} images', { count })}`
+  if (node.type === 'text') {
+    summaryPill = t('{{count}} texts', { count })
+  } else if (node.type === 'image') {
+    const qualityPart = qualitySupported ? ` · ${t(qualityLabel)}` : ''
+    summaryPill = `${imageRatio}${qualityPart} · ${imageClarity} · ${t('{{count}} images', { count })}`
   } else if (node.type === 'video') {
-    summaryPill = `${(node.metadata.resolution ?? '720p').toUpperCase()} · ${node.metadata.aspectRatio ?? '16:9'} · ${node.metadata.duration ?? 5}s`
+    const ratioLabel = videoRatio === 'adaptive' ? t('Auto') : videoRatio
+    summaryPill = `${ratioLabel} · ${videoResolution.toUpperCase()} · ${videoDuration}s · ${t('{{count}} videos', { count })}`
   } else if (node.type === 'audio') {
     summaryPill = `${voice.charAt(0).toUpperCase()}${voice.slice(1)} · ${(node.metadata.audioFormat ?? 'mp3').toUpperCase()} · ${node.metadata.speed ?? 1}x`
   }
@@ -291,31 +410,44 @@ export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
     element.addEventListener('pointercancel', handleUp)
   }
 
-  const renderParamSelect = (
+  const renderSegments = (
     label: string,
-    value: string | number,
-    options: { value: string | number; label: string }[],
-    onChange: (value: string) => void
+    options: { value: string; label: string }[],
+    current: string,
+    onSelect: (value: string) => void,
+    fill = false
   ) => (
-    <label className='flex items-center justify-between gap-2 text-[11px]'>
-      <span style={{ color: theme.node.muted }}>{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className='h-7 rounded-md px-1.5 text-[11px] outline-none'
-        style={{
-          background: theme.node.panel,
-          color: theme.node.text,
-          border: `1px solid ${theme.node.stroke}`,
-        }}
+    <div>
+      <div className='mb-1.5 text-[11px]' style={{ color: theme.node.muted }}>
+        {label}
+      </div>
+      <div
+        className={fill ? 'grid grid-cols-4 gap-1.5' : 'flex flex-wrap gap-1.5'}
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <button
+            key={option.value}
+            type='button'
+            onClick={() => onSelect(option.value)}
+            className='flex h-8 items-center justify-center rounded-lg px-3 text-[11px] transition-colors'
+            style={
+              current === option.value
+                ? {
+                    border: `1px solid ${theme.node.activeStroke}`,
+                    background: theme.toolbar.activeBg,
+                    color: theme.node.text,
+                  }
+                : {
+                    border: `1px solid ${theme.node.stroke}`,
+                    color: theme.node.muted,
+                  }
+            }
+          >
             {option.label}
-          </option>
+          </button>
         ))}
-      </select>
-    </label>
+      </div>
+    </div>
   )
 
   return (
@@ -459,71 +591,63 @@ export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
         </div>
       </div>
 
-      {/* 上游参考缩略图 / 文本 chip */}
-      {references.some((ref) => ref.url || ref.text?.trim()) && (
-        <div className='canvas-scroll flex gap-1 overflow-x-auto px-3 pt-2'>
-          {references
-            .filter((ref) => ref.url || ref.text?.trim())
-            .map((ref) =>
-              ref.url ? (
-                <div
-                  key={ref.connectionId}
-                  className='group/ref relative size-10 shrink-0 overflow-hidden rounded-md'
-                  style={{ border: `1px solid ${theme.node.stroke}` }}
+      {/* 上游参考磁贴：类型图标 + 序号徽标，悬停右上角移除 */}
+      {shelfRefs.length > 0 && (
+        <div className='canvas-scroll flex gap-2 overflow-x-auto px-3 pt-2.5 pb-0.5'>
+          {shelfRefs.map(({ ref, ordinal }) => {
+            const TileIcon = REF_TILE_ICONS[ref.type]
+            let tileIcon = <Link2 aria-hidden='true' className='size-5' />
+            if (ref.type === 'text') {
+              tileIcon = (
+                <svg
+                  aria-hidden='true'
+                  viewBox='0 0 24 24'
+                  fill='currentColor'
+                  className='size-5'
                 >
-                  <img
-                    src={ref.url}
-                    alt={ref.title}
-                    draggable={false}
-                    className='size-full object-cover'
-                  />
-                  <button
-                    type='button'
-                    onClick={() => onDisconnect(ref.connectionId)}
-                    className='absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover/ref:opacity-100'
-                    aria-label={t('Remove reference {{title}}', {
-                      title: ref.title,
-                    })}
-                  >
-                    <X aria-hidden='true' className='size-3 text-white' />
-                  </button>
-                </div>
-              ) : (
-                <div
-                  key={ref.connectionId || `inherited-${ref.id}`}
-                  data-canvas-text-ref={ref.id}
-                  className='group/ref relative flex h-10 shrink-0 items-center gap-1.5 rounded-md px-2'
-                  style={{
-                    border: `1px solid ${theme.node.stroke}`,
-                    background: theme.toolbar.itemHover,
-                  }}
-                >
-                  <Type
-                    aria-hidden='true'
-                    className='size-3.5 shrink-0'
-                    style={{ color: theme.node.muted }}
-                  />
-                  <span
-                    className='max-w-28 truncate text-[10px]'
-                    style={{ color: theme.node.text }}
-                  >
-                    {ref.title}
-                  </span>
-                  {ref.connectionId && (
-                    <button
-                      type='button'
-                      onClick={() => onDisconnect(ref.connectionId)}
-                      className='absolute inset-0 flex items-center justify-center rounded-md bg-black/60 opacity-0 transition-opacity group-hover/ref:opacity-100'
-                      aria-label={t('Remove reference {{title}}', {
-                        title: ref.title,
-                      })}
-                    >
-                      <X aria-hidden='true' className='size-3 text-white' />
-                    </button>
-                  )}
-                </div>
+                  <rect x='4' y='4.6' width='16' height='2.6' rx='1.3' />
+                  <rect x='4' y='9' width='16' height='2.6' rx='1.3' />
+                  <rect x='4' y='13.4' width='16' height='2.6' rx='1.3' />
+                  <rect x='4' y='17.8' width='10' height='2.6' rx='1.3' />
+                </svg>
               )
-            )}
+            } else if (TileIcon) {
+              tileIcon = <TileIcon aria-hidden='true' className='size-5' />
+            }
+            return (
+              <div
+                key={ref.connectionId}
+                data-canvas-ref-type={ref.type}
+                {...(ref.type === 'text'
+                  ? { 'data-canvas-text-ref': ref.id }
+                  : {})}
+                title={
+                  ref.text ? `${ref.title}\n${ref.text.slice(0, 80)}` : ref.title
+                }
+                className='group/tile relative flex size-11 shrink-0 items-center justify-center rounded-[10px]'
+                style={{
+                  background: theme.reference.fill,
+                  color: theme.reference.icon,
+                }}
+              >
+                {tileIcon}
+                <span className='absolute -left-1 -top-1 flex size-4 items-center justify-center rounded-full bg-black text-[9px] font-semibold text-white transition-opacity group-hover/tile:opacity-0'>
+                  {ordinal}
+                </span>
+                <button
+                  type='button'
+                  onClick={() => onDisconnect(ref.connectionId)}
+                  aria-label={t('Remove reference {{title}}', {
+                    title: ref.title,
+                  })}
+                  className='absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border border-current opacity-0 transition-opacity group-hover/tile:opacity-100'
+                  style={{ background: theme.node.panel }}
+                >
+                  <X aria-hidden='true' className='size-3' />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -614,7 +738,7 @@ export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
         />
       </div>
 
-      {/* 底行：模型 pill / 参数 / 上传 / 摘要 / 数量 / 发送 */}
+      {/* 底行：模型 pill / 上传 / 摘要 pill（点击弹参数选择层） / 发送 */}
       <div className='flex flex-wrap items-center gap-1.5 px-3 pb-2.5'>
         <button
           type='button'
@@ -637,98 +761,318 @@ export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
             </>
           )}
         </button>
-        <div className='relative ml-auto' data-panel-popover>
+        <div
+          className='relative ml-auto flex items-center gap-1.5'
+          data-panel-popover
+        >
+          {(node.type === 'image' || node.type === 'audio') && (
+            <>
+              <button
+                type='button'
+                onClick={() => fileInputRef.current?.click()}
+                className={iconButtonClass}
+                style={{ color: theme.node.muted }}
+                aria-label={
+                  node.type === 'audio' ? t('Upload audio') : t('Upload image')
+                }
+                title={
+                  node.type === 'audio' ? t('Upload audio') : t('Upload image')
+                }
+              >
+                <Camera aria-hidden='true' className='size-3.5' />
+              </button>
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept={node.type === 'audio' ? 'audio/*' : 'image/*'}
+                className='hidden'
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) onUploadFile(node, file)
+                  event.target.value = ''
+                }}
+              />
+            </>
+          )}
           <button
             type='button'
             onClick={() => {
               setParamsOpen((prev) => !prev)
               setPresetOpen(false)
             }}
-            className={iconButtonClass}
-            style={{ color: theme.node.muted }}
+            className='flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-[10px] whitespace-nowrap tabular-nums transition-colors'
+            style={
+              paramsOpen
+                ? {
+                    background: theme.toolbar.activeBg,
+                    color: theme.node.text,
+                  }
+                : pillStyle
+            }
             aria-label={t('Generation parameters')}
             title={t('Generation parameters')}
           >
-            <SlidersHorizontal aria-hidden='true' className='size-3.5' />
+            {node.type === 'video' &&
+              (videoAudio ? (
+                <Volume2 aria-hidden='true' className='size-3 shrink-0' />
+              ) : (
+                <VolumeX aria-hidden='true' className='size-3 shrink-0' />
+              ))}
+            {summaryPill}
           </button>
           {paramsOpen && (
             <div
-              className='absolute right-0 bottom-9 z-20 flex w-60 flex-col gap-2 rounded-xl p-3'
+              className='canvas-scroll absolute right-0 bottom-9 z-30 flex w-[340px] flex-col gap-3 overflow-y-auto rounded-xl p-3'
               style={{
                 background: theme.toolbar.panel,
                 border: `1px solid ${theme.toolbar.border}`,
                 boxShadow: theme.node.hoverShadow,
+                maxHeight: 'calc(100svh - 220px)',
               }}
             >
-              {node.type === 'image' &&
-                renderParamSelect(
-                  t('Aspect ratio'),
-                  node.metadata.size ?? '2048x2048',
-                  IMAGE_SIZE_OPTIONS,
-                  (value) => onPatchMetadata({ size: value })
-                )}
+              {node.type === 'image' && (
+                <>
+                  {qualitySupported &&
+                    renderSegments(
+                      t('Image quality'),
+                      IMAGE_QUALITY_OPTIONS.map((option) => ({
+                        value: option.value,
+                        label: t(option.labelKey),
+                      })),
+                      imageQuality,
+                      (value) => onPatchMetadata({ quality: value })
+                    )}
+                  {renderSegments(
+                    t('Clarity'),
+                    IMAGE_CLARITY_OPTIONS.map((value) => ({
+                      value,
+                      label: value,
+                    })),
+                    imageClarity,
+                    (value) => patchImageFormat({ clarity: value })
+                  )}
+                  {backgroundSupported &&
+                    renderSegments(
+                      t('Background'),
+                      IMAGE_BACKGROUND_OPTIONS.map((option) => ({
+                        value: option.value,
+                        label: t(option.labelKey),
+                      })),
+                      imageBackground,
+                      (value) => onPatchMetadata({ background: value })
+                    )}
+                  <div>
+                    <div
+                      className='mb-1.5 text-[11px]'
+                      style={{ color: theme.node.muted }}
+                    >
+                      {t('Aspect ratio')}
+                    </div>
+                    <div className='grid grid-cols-5 gap-1.5'>
+                      {IMAGE_RATIO_OPTIONS.map((ratio) => {
+                        const [rw, rh] = ratio.split(':').map(Number)
+                        const glyphW = rw >= rh ? 18 : Math.round((18 * rw) / rh)
+                        const glyphH = rw >= rh ? Math.round((18 * rh) / rw) : 18
+                        const selected = imageRatio === ratio
+                        return (
+                          <button
+                            key={ratio}
+                            type='button'
+                            onClick={() => patchImageFormat({ ratio })}
+                            className='flex h-14 flex-col items-center justify-center gap-1 rounded-lg transition-colors'
+                            style={
+                              selected
+                                ? {
+                                    border: `1px solid ${theme.node.activeStroke}`,
+                                    background: theme.toolbar.activeBg,
+                                    color: theme.node.text,
+                                  }
+                                : {
+                                    border: `1px solid ${theme.node.stroke}`,
+                                    color: theme.node.muted,
+                                  }
+                            }
+                          >
+                            <span
+                              className='rounded-[3px]'
+                              style={{
+                                width: glyphW,
+                                height: glyphH,
+                                border: `1.5px solid ${selected ? theme.node.text : theme.node.muted}`,
+                              }}
+                            />
+                            <span className='text-[10px] tabular-nums'>
+                              {ratio}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  {renderSegments(
+                    t('Generation count'),
+                    [1, 2, 3, 4].map((value) => ({
+                      value: String(value),
+                      label: t('{{count}} images', { count: value }),
+                    })),
+                    String(count),
+                    (value) => onPatchMetadata({ count: Number(value) }),
+                    true
+                  )}
+                </>
+              )}
               {node.type === 'video' && (
                 <>
-                  {renderParamSelect(
-                    t('Aspect ratio'),
-                    node.metadata.aspectRatio ?? '16:9',
-                    VIDEO_ASPECT_OPTIONS.map((value) => ({
-                      value,
-                      label: value,
-                    })),
-                    (value) => onPatchMetadata({ aspectRatio: value })
-                  )}
-                  {renderParamSelect(
+                  <div>
+                    <div
+                      className='mb-1.5 text-[11px]'
+                      style={{ color: theme.node.muted }}
+                    >
+                      {t('Aspect ratio')}
+                    </div>
+                    <div className='grid grid-cols-4 gap-1.5'>
+                      {VIDEO_ASPECT_OPTIONS.map((ratio) => {
+                        const selected = videoRatio === ratio
+                        let glyphW = 18
+                        let glyphH = 12
+                        if (ratio !== 'adaptive') {
+                          const [rw, rh] = ratio.split(':').map(Number)
+                          glyphW = rw >= rh ? 18 : Math.round((18 * rw) / rh)
+                          glyphH = rw >= rh ? Math.round((18 * rh) / rw) : 18
+                        }
+                        return (
+                          <button
+                            key={ratio}
+                            type='button'
+                            onClick={() => onPatchMetadata({ aspectRatio: ratio })}
+                            className='flex h-14 flex-col items-center justify-center gap-1 rounded-lg transition-colors'
+                            style={
+                              selected
+                                ? {
+                                    border: `1px solid ${theme.node.activeStroke}`,
+                                    background: theme.toolbar.activeBg,
+                                    color: theme.node.text,
+                                  }
+                                : {
+                                    border: `1px solid ${theme.node.stroke}`,
+                                    color: theme.node.muted,
+                                  }
+                            }
+                          >
+                            <span
+                              className='rounded-[3px]'
+                              style={{
+                                width: glyphW,
+                                height: glyphH,
+                                border: `1.5px ${ratio === 'adaptive' ? 'dashed' : 'solid'} ${selected ? theme.node.text : theme.node.muted}`,
+                              }}
+                            />
+                            <span className='text-[10px] tabular-nums'>
+                              {ratio === 'adaptive' ? t('Auto') : ratio}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  {renderSegments(
                     t('Resolution'),
-                    node.metadata.resolution ?? '720p',
                     VIDEO_RESOLUTION_OPTIONS.map((value) => ({
                       value,
-                      label: value,
+                      label: value.toUpperCase(),
                     })),
+                    videoResolution,
                     (value) => onPatchMetadata({ resolution: value })
                   )}
-                  {renderParamSelect(
-                    t('Duration'),
-                    node.metadata.duration ?? 5,
-                    VIDEO_DURATION_OPTIONS.map((value) => ({
-                      value,
-                      label: `${value}s`,
+                  <div>
+                    <div className='mb-1.5 flex items-center justify-between text-[11px]'>
+                      <span style={{ color: theme.node.muted }}>
+                        {t('Video duration')}
+                      </span>
+                      <span
+                        className='tabular-nums'
+                        style={{ color: theme.node.text }}
+                      >
+                        {videoDuration}s
+                      </span>
+                    </div>
+                    <input
+                      type='range'
+                      min={5}
+                      max={15}
+                      step={1}
+                      value={videoDuration}
+                      onChange={(event) =>
+                        onPatchMetadata({ duration: Number(event.target.value) })
+                      }
+                      aria-label={t('Video duration')}
+                      className='w-full cursor-pointer'
+                      style={{ accentColor: theme.accent.primary }}
+                    />
+                  </div>
+                  {renderSegments(
+                    t('Generate audio'),
+                    [
+                      { value: 'on', label: t('On') },
+                      { value: 'off', label: t('Off') },
+                    ],
+                    videoAudio ? 'on' : 'off',
+                    (value) => onPatchMetadata({ generateAudio: value === 'on' })
+                  )}
+                  {renderSegments(
+                    t('Generation count'),
+                    [1, 2, 3, 4].map((value) => ({
+                      value: String(value),
+                      label: t('{{count}} videos', { count: value }),
                     })),
-                    (value) => onPatchMetadata({ duration: Number(value) })
+                    String(count),
+                    (value) => onPatchMetadata({ count: Number(value) }),
+                    true
                   )}
                 </>
               )}
               {node.type === 'audio' && (
                 <>
-                  {renderParamSelect(
+                  {renderSegments(
                     t('Voice'),
-                    voice,
                     AUDIO_VOICE_OPTIONS.map((value) => ({
                       value,
                       label: value.charAt(0).toUpperCase() + value.slice(1),
                     })),
+                    voice,
                     (value) => onPatchMetadata({ voice: value })
                   )}
-                  {renderParamSelect(
+                  {renderSegments(
                     t('Format'),
-                    node.metadata.audioFormat ?? 'mp3',
                     AUDIO_FORMAT_OPTIONS.map((value) => ({
                       value,
                       label: value.toUpperCase(),
                     })),
+                    node.metadata.audioFormat ?? 'mp3',
                     (value) => onPatchMetadata({ audioFormat: value })
                   )}
-                  {renderParamSelect(
+                  {renderSegments(
                     t('Speed'),
-                    node.metadata.speed ?? 1,
                     AUDIO_SPEED_OPTIONS.map((value) => ({
-                      value,
+                      value: String(value),
                       label: `${value}x`,
                     })),
+                    String(node.metadata.speed ?? 1),
                     (value) => onPatchMetadata({ speed: Number(value) })
                   )}
                 </>
               )}
+              {node.type === 'text' &&
+                renderSegments(
+                  t('Generation count'),
+                  [1, 2, 3, 4].map((value) => ({
+                    value: String(value),
+                    label: t('{{count}} texts', { count: value }),
+                  })),
+                  String(count),
+                  (value) => onPatchMetadata({ count: Number(value) }),
+                  true
+                )}
               <button
                 type='button'
                 disabled={optimizing || loading || !prompt.trim()}
@@ -748,82 +1092,28 @@ export function CanvasNodePromptPanel(props: CanvasNodePromptPanelProps) {
               </button>
             </div>
           )}
-        </div>
-        {(node.type === 'image' || node.type === 'audio') && (
-          <>
-            <button
-              type='button'
-              onClick={() => fileInputRef.current?.click()}
-              className={iconButtonClass}
-              style={{ color: theme.node.muted }}
-              aria-label={
-                node.type === 'audio' ? t('Upload audio') : t('Upload image')
-              }
-              title={
-                node.type === 'audio' ? t('Upload audio') : t('Upload image')
-              }
-            >
-              <Camera aria-hidden='true' className='size-3.5' />
-            </button>
-            <input
-              ref={fileInputRef}
-              type='file'
-              accept={node.type === 'audio' ? 'audio/*' : 'image/*'}
-              className='hidden'
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) onUploadFile(node, file)
-                event.target.value = ''
-              }}
-            />
-          </>
-        )}
-        {summaryPill && (
-          <span
-            className='flex h-7 items-center rounded-full px-2.5 text-[10px] whitespace-nowrap tabular-nums'
-            style={pillStyle}
-          >
-            {summaryPill}
-          </span>
-        )}
-        {(node.type === 'text' || node.type === 'image') && (
-          <input
-            value={count}
-            onChange={(event) => {
-              const value = Number(event.target.value)
-              if (Number.isFinite(value)) {
-                onPatchMetadata({
-                  count: Math.min(4, Math.max(1, Math.round(value))),
-                })
-              }
+          <button
+            type='button'
+            disabled={!canSend}
+            onClick={() => {
+              setParamsOpen(false)
+              onGenerate(node)
             }}
-            aria-label={t('Generation count')}
-            title={t('Generation count')}
-            className='h-7 w-9 rounded-lg text-center text-[11px] tabular-nums outline-none'
+            className='flex size-8 items-center justify-center rounded-full transition-opacity disabled:cursor-not-allowed disabled:opacity-35'
             style={{
-              background: theme.toolbar.itemHover,
-              color: theme.node.text,
+              background: theme.accent.primary,
+              color: theme.accent.onPrimary,
             }}
-          />
-        )}
-        <button
-          type='button'
-          disabled={!canSend}
-          onClick={() => onGenerate(node)}
-          className='flex size-8 items-center justify-center rounded-full transition-opacity disabled:cursor-not-allowed disabled:opacity-35'
-          style={{
-            background: theme.accent.primary,
-            color: theme.accent.onPrimary,
-          }}
-          aria-label={t('Generate')}
-          title={t('Generate')}
-        >
-          {loading ? (
-            <Loader2 aria-hidden='true' className='size-4 animate-spin' />
-          ) : (
-            <ArrowUp aria-hidden='true' className='size-4' />
-          )}
-        </button>
+            aria-label={t('Generate')}
+            title={t('Generate')}
+          >
+            {loading ? (
+              <Loader2 aria-hidden='true' className='size-4 animate-spin' />
+            ) : (
+              <ArrowUp aria-hidden='true' className='size-4' />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 放大编辑弹层 */}

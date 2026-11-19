@@ -111,9 +111,16 @@ export interface CanvasNodeMetadata {
   error?: string
   generationId?: number
   size?: string
+  // 图片画幅/清晰度/画质/背景（size 由 ratio+clarity 换算）
+  ratio?: string
+  clarity?: string
+  quality?: string
+  background?: string
   aspectRatio?: string
   resolution?: string
   duration?: number
+  // 视频是否生成音频（默认开启）
+  generateAudio?: boolean
   naturalWidth?: number
   naturalHeight?: number
   // AI 超分：待增强的源图
@@ -133,7 +140,7 @@ export interface CanvasNodeMetadata {
   startedAt?: number
   // 文本节点字号
   fontSize?: number
-  // 一次生成产出数量（文本/图片）
+  // 一次生成产出数量（文本/图片/视频）
   count?: number
   // 音频生成参数
   voice?: string
@@ -225,9 +232,12 @@ export interface CanvasGenerateRequest {
   kind: 'image' | 'video' | 'text' | 'audio'
   prompt: string
   size?: string
+  quality?: string
+  background?: string
   aspectRatio?: string
   resolution?: string
   duration?: number
+  generateAudio?: boolean
   referenceImages?: string[]
   count?: number
   voice?: string
@@ -340,13 +350,27 @@ function sanitizeNodes(raw: unknown): CanvasNode[] {
 
 function sanitizeConnections(raw: unknown): CanvasConnection[] {
   if (!Array.isArray(raw)) return []
-  return raw.filter(
-    (c): c is CanvasConnection =>
-      Boolean(c) &&
-      typeof c.id === 'string' &&
-      typeof c.fromNodeId === 'string' &&
-      typeof c.toNodeId === 'string'
-  )
+  // 历史文档可能残留重复边（同 id 或同 from→to）：去重避免重叠连线与重复参考 chip
+  const seenIds = new Set<string>()
+  const seenPairs = new Set<string>()
+  const result: CanvasConnection[] = []
+  for (const c of raw) {
+    if (
+      !c ||
+      typeof c.id !== 'string' ||
+      typeof c.fromNodeId !== 'string' ||
+      typeof c.toNodeId !== 'string' ||
+      c.fromNodeId === c.toNodeId
+    ) {
+      continue
+    }
+    const pair = `${c.fromNodeId}->${c.toNodeId}`
+    if (seenIds.has(c.id) || seenPairs.has(pair)) continue
+    seenIds.add(c.id)
+    seenPairs.add(pair)
+    result.push(c)
+  }
+  return result
 }
 
 function sanitizeViewport(raw: unknown): ViewportTransform {
