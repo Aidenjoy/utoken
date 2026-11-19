@@ -81,8 +81,9 @@ export function OrganizationsTable() {
   const [editing, setEditing] = useState<Organization | null>(null)
   const [quotaTarget, setQuotaTarget] = useState<Organization | null>(null)
   const [membersTarget, setMembersTarget] = useState<Organization | null>(null)
-  const [discountTarget, setDiscountTarget] =
-    useState<Organization | null>(null)
+  const [discountTarget, setDiscountTarget] = useState<Organization | null>(
+    null
+  )
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [isWorking, setIsWorking] = useState(false)
   // 归属代理商筛选：0 = 全部（后端 agent_id=0 即不过滤）。

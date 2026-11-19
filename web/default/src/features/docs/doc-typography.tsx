@@ -46,13 +46,15 @@ export function Note(props: { children: ReactNode }) {
 export function DocText(props: { text: string }) {
   return (
     <>
-      {props.text.split('`').map((part, i) =>
-        i % 2 === 1 ? (
-          <InlineCode key={i}>{part}</InlineCode>
-        ) : (
-          <Fragment key={i}>{part}</Fragment>
-        )
-      )}
+      {props.text
+        .split('`')
+        .map((part, i) =>
+          i % 2 === 1 ? (
+            <InlineCode key={i}>{part}</InlineCode>
+          ) : (
+            <Fragment key={i}>{part}</Fragment>
+          )
+        )}
     </>
   )
 }

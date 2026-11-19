@@ -241,8 +241,7 @@ export function OrganizationDiscountDialog({
           <DialogTitle>{t('Model Discounts')}</DialogTitle>
           <DialogDescription>
             {t('Enterprise: {{name}}', {
-              name:
-                organization?.display_name || organization?.name || '',
+              name: organization?.display_name || organization?.name || '',
             })}
           </DialogDescription>
         </DialogHeader>

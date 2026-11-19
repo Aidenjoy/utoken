@@ -37,7 +37,9 @@ export function buildVideoKeySection(t: DocsTranslate): DocSection {
             )}
           />
         </P>
-        <P>{t('To use the asset library, also generate AK/SK under this Key.')}</P>
+        <P>
+          {t('To use the asset library, also generate AK/SK under this Key.')}
+        </P>
         <Note>
           {t(
             'The model and 4K tier cannot be changed after creation; mismatched requests fail directly — the model is not swapped and the resolution is not downgraded automatically.'

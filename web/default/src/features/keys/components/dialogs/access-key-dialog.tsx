@@ -184,11 +184,7 @@ export function AccessKeyDialog() {
               {t('Cancel')}
             </Button>
             <Button variant='destructive' onClick={handleReset} disabled={busy}>
-              {resetting ? (
-                <Loader2 className='animate-spin' />
-              ) : (
-                <RefreshCw />
-              )}
+              {resetting ? <Loader2 className='animate-spin' /> : <RefreshCw />}
               {t('Confirm Reset')}
             </Button>
           </>
@@ -208,11 +204,7 @@ export function AccessKeyDialog() {
               </Button>
             ) : (
               <Button onClick={handleGenerate} disabled={busy}>
-                {loading ? (
-                  <Loader2 className='animate-spin' />
-                ) : (
-                  <KeyRound />
-                )}
+                {loading ? <Loader2 className='animate-spin' /> : <KeyRound />}
                 {t('Generate AK/SK')}
               </Button>
             )}

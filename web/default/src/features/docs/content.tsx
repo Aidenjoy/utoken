@@ -69,7 +69,10 @@ export function resolveDocsSiteUrl(status: unknown): string {
 
 const VIDEO_MODEL = 'doubao-seedance-2.0'
 
-function buildLanguageSections(siteUrl: string, t: DocsTranslate): DocSection[] {
+function buildLanguageSections(
+  siteUrl: string,
+  t: DocsTranslate
+): DocSection[] {
   const baseUrl = `${siteUrl}/v1`
   return [
     {
@@ -145,7 +148,11 @@ function buildLanguageSections(siteUrl: string, t: DocsTranslate): DocSection[] 
       title: t('List Models'),
       body: (
         <>
-          <P>{t('Lists all model IDs available under the current account group.')}</P>
+          <P>
+            {t(
+              'Lists all model IDs available under the current account group.'
+            )}
+          </P>
           <CodeBlock
             method='GET'
             url={`${baseUrl}/models`}
@@ -633,7 +640,7 @@ curl -X GET ${tasksUrl}/{task_id} \\
           <Note>
             <DocText
               text={t(
-                'Auth & isolation: generate Ark AK/SK for the token on the Key Management page. List/query requests are served from this site\'s database, filtered by AK → token → user ownership, so you can only see assets and asset groups you created.'
+                "Auth & isolation: generate Ark AK/SK for the token on the Key Management page. List/query requests are served from this site's database, filtered by AK → token → user ownership, so you can only see assets and asset groups you created."
               )}
             />
           </Note>
@@ -980,7 +987,9 @@ curl -X GET ${tasksUrl}/{task_id} \\
           title: t('Get Asset'),
           body: (
             <>
-              <P>{t('Queries the details and status of a single asset by Id.')}</P>
+              <P>
+                {t('Queries the details and status of a single asset by Id.')}
+              </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=GetAsset&Version=2024-01-01`}
@@ -1158,7 +1167,9 @@ curl -X GET ${tasksUrl}/{task_id} \\
           title: t('Update Asset'),
           body: (
             <>
-              <P>{t('Updates an asset (officially only renaming is supported).')}</P>
+              <P>
+                {t('Updates an asset (officially only renaming is supported).')}
+              </P>
               <CodeBlock
                 method='POST'
                 url={`${siteUrl}/?Action=UpdateAsset&Version=2024-01-01`}
@@ -1393,7 +1404,9 @@ function buildFaqSections(siteUrl: string, t: DocsTranslate): DocSection[] {
           />
           <FaqItem
             q={t('Q4: Is there an advanced creation entitlement package?')}
-            a={t('Yes, the advanced creation entitlement package supports 1 million assets.')}
+            a={t(
+              'Yes, the advanced creation entitlement package supports 1 million assets.'
+            )}
           />
           <FaqItem
             q={t('Q5: What is the asset upload endpoint?')}
@@ -1477,10 +1490,14 @@ function buildFaqSections(siteUrl: string, t: DocsTranslate): DocSection[] {
             q={t(
               'Q11: Which models are supported? Are text/image/video capabilities all covered?'
             )}
-            a={t('All three capabilities — text, image, and video — are fully integrated.')}
+            a={t(
+              'All three capabilities — text, image, and video — are fully integrated.'
+            )}
           />
           <FaqItem
-            q={t('Q12: Can task details be read back? Is reconciliation convenient?')}
+            q={t(
+              'Q12: Can task details be read back? Is reconciliation convenient?'
+            )}
             a={t(
               'Yes. The task query endpoint returns task number, status, progress, result URL, token usage, etc., facilitating reconciliation.'
             )}

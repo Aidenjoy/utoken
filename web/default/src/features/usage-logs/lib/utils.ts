@@ -168,7 +168,13 @@ export function buildBaseParams(config: {
   start_timestamp?: number
   end_timestamp?: number
 } {
-  const { page, pageSize, searchParams, scope, useMilliseconds = false } = config
+  const {
+    page,
+    pageSize,
+    searchParams,
+    scope,
+    useMilliseconds = false,
+  } = config
 
   return {
     p: page,

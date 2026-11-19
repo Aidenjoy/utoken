@@ -676,9 +676,7 @@ export function useChannelsColumns(
                       <TooltipProvider delay={200}>
                         <Tooltip>
                           <TooltipTrigger
-                            render={
-                              <span className='cursor-help shrink-0' />
-                            }
+                            render={<span className='shrink-0 cursor-help' />}
                           >
                             <CircleAlert className='h-3.5 w-3.5 text-amber-500' />
                           </TooltipTrigger>

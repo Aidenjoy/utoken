@@ -162,7 +162,9 @@ export function RatioSettingsCard({
   // 被授予模型定价权限的管理员看不到这两个入口，只能编辑价格、增删模型。
   const effectiveTabs = useMemo(
     () =>
-      isRoot ? visibleTabs : visibleTabs.filter((tab) => tab !== 'upstream-sync'),
+      isRoot
+        ? visibleTabs
+        : visibleTabs.filter((tab) => tab !== 'upstream-sync'),
     [isRoot, visibleTabs]
   )
 

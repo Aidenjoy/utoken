@@ -84,7 +84,10 @@ export function CommonLogDetailsDialog({
   const task =
     open && taskResult && taskResult.id === taskId ? taskResult.value : null
 
-  const { requestData, responseData } = useLogBodies(log.request_id, open && !taskId)
+  const { requestData, responseData } = useLogBodies(
+    log.request_id,
+    open && !taskId
+  )
   // 错误行的 content 已含当次上游状态码与原始报错，必须按行展示。log_bodies 按
   // request_id 共享，重试多个渠道时若用它做错误响应，会把最后一次失败显示到每一行。
   const responseSnapshot =
@@ -93,11 +96,7 @@ export function CommonLogDetailsDialog({
   // 关联到任务的行：完全复用任务日志详情弹窗，保证两处逐字段一致。
   if (taskId) {
     return (
-      <TaskDetailsDialog
-        task={task}
-        open={open}
-        onOpenChange={onOpenChange}
-      />
+      <TaskDetailsDialog task={task} open={open} onOpenChange={onOpenChange} />
     )
   }
 

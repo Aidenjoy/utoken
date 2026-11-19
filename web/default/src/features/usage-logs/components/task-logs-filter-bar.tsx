@@ -22,6 +22,7 @@ import { type Table } from '@tanstack/react-table'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { MultiSelect } from '@/components/multi-select'
 import {
   Select,
   SelectContent,
@@ -30,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { MultiSelect } from '@/components/multi-select'
 import { useAgentMemberOptions } from '@/features/agents/hooks'
 import { useLogsScope } from '@/hooks/use-admin'
 
@@ -116,7 +116,9 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
             ...baseFilters,
             ...(searchParams.filter ? { taskId: searchParams.filter } : {}),
             ...(searchParams.status ? { status: searchParams.status } : {}),
-            ...(searchParams.username ? { username: searchParams.username } : {}),
+            ...(searchParams.username
+              ? { username: searchParams.username }
+              : {}),
           }
 
     setFilters(next)
@@ -234,7 +236,9 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     <LogsFilterField>
       <MultiSelect
         options={memberOptions}
-        selected={filters.userIds ? filters.userIds.split(',').filter(Boolean) : []}
+        selected={
+          filters.userIds ? filters.userIds.split(',').filter(Boolean) : []
+        }
         onChange={(values) => handleChange('userIds', values.join(','))}
         placeholder={t('Select members')}
         maxVisibleChips={2}

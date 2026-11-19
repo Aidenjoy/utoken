@@ -156,7 +156,10 @@ export function ComboboxInput({
 
   const showDropdown =
     open &&
-    (filteredOptions.length > 0 || (allowCustomValue && searchValue.trim()))
+    (filteredOptions.length > 0 ||
+      (allowCustomValue && searchValue.trim()) ||
+      // 候选为空时给出空态提示，避免点击后毫无反馈；emptyText 为空串则保持隐藏
+      (options.length === 0 && emptyText.trim() !== ''))
 
   return (
     <div ref={containerRef} className='relative'>
@@ -186,7 +189,14 @@ export function ComboboxInput({
           }
         }}
         onFocus={() => {
-          setSearchValue(allowCustomValue && !selectedOption ? value : '')
+          // 有候选时清空搜索词展示完整列表：若把不在候选内的已存值（如历史模型名）
+          // 预填为搜索词，会把全部候选过滤掉造成「未找到模型」的假象；
+          // 仅无任何候选时才预填自定义值便于继续编辑
+          setSearchValue(
+            allowCustomValue && !selectedOption && options.length === 0
+              ? value
+              : ''
+          )
           if (openOnFocus || pointerFocusRef.current) {
             setOpen(true)
           }

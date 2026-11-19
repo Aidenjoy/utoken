@@ -1524,4 +1524,3 @@ function ConfigDurationGrid({
     </Popover>
   )
 }
-

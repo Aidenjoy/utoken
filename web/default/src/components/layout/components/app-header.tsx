@@ -84,7 +84,7 @@ type AppHeaderProps = {
   showNotifications?: boolean
   /**
    * Whether to show config drawer
-   * @default true
+   * @default false 主题默认深色，顶栏不再暴露主题设置入口
    */
   showConfigDrawer?: boolean
   /**
@@ -101,7 +101,7 @@ export function AppHeader({
   showSearch = true,
   rightContent,
   showNotifications = true,
-  showConfigDrawer = true,
+  showConfigDrawer = false,
   showProfileDropdown = true,
 }: AppHeaderProps) {
   // Prioritize dynamically generated links from backend

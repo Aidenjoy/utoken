@@ -216,7 +216,10 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                   <FormItem>
                     <FormLabel>{t('SMS SDK App ID')}</FormLabel>
                     <FormControl>
-                      <Input placeholder={t('Enter your sdkappid')} {...field} />
+                      <Input
+                        placeholder={t('Enter your sdkappid')}
+                        {...field}
+                      />
                     </FormControl>
                     <FormDescription>
                       {t('Yundashi customer number (sdkappid)')}
@@ -290,7 +293,9 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                     <FormLabel>{t('SMS Template')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={t('Your code is {code}, valid for 5 minutes.')}
+                        placeholder={t(
+                          'Your code is {code}, valid for 5 minutes.'
+                        )}
                         {...field}
                       />
                     </FormControl>

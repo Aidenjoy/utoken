@@ -79,7 +79,10 @@ export function PlaygroundChannelSelector({
         >
           <span>{t('Auto')}</span>
           <Check
-            className={cn('size-3.5', value === 0 ? 'opacity-100' : 'opacity-0')}
+            className={cn(
+              'size-3.5',
+              value === 0 ? 'opacity-100' : 'opacity-0'
+            )}
           />
         </button>
         {channels.map((ch) => (

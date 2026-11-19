@@ -166,8 +166,7 @@ export function ChannelBillingPanel() {
             onValueChange={(value) =>
               setDraft((current) => ({
                 ...current,
-                modelType:
-                  !value || value === MODEL_TYPE_ALL ? '' : value,
+                modelType: !value || value === MODEL_TYPE_ALL ? '' : value,
               }))
             }
           >

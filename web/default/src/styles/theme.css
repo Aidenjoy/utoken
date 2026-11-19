@@ -171,21 +171,23 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .dark {
-  /* OpenAI-like dark mode with a crisp charcoal canvas. */
-  --background: oklch(0.235 0 0);
-  --foreground: oklch(0.965 0 0);
-  --card: oklch(0.285 0 0);
-  --card-foreground: oklch(0.965 0 0);
-  --popover: oklch(0.305 0 0);
-  --popover-foreground: oklch(0.965 0 0);
-  --primary: oklch(0.965 0 0);
-  --primary-foreground: oklch(0.155 0 0);
-  --secondary: oklch(0.335 0 0);
-  --secondary-foreground: oklch(0.965 0 0);
-  --muted: oklch(0.305 0 0);
-  --muted-foreground: oklch(0.78 0 0);
-  --accent: oklch(0.365 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  /* Visual Studio Dark 风格的低刺激深色：冷调炭灰画布（≈#222326）而非纯黑，
+   * 菜单/卡片用更浅的灰（≈#2d2d30）分层，正文用柔和的 #d4d4d4 而非亮白，
+   * 主色改用 VS 蓝（≈#007acc）代替刺眼的白色按钮/选中态。 */
+  --background: oklch(0.255 0.004 265);
+  --foreground: oklch(0.875 0.003 265);
+  --card: oklch(0.285 0.004 265);
+  --card-foreground: oklch(0.875 0.003 265);
+  --popover: oklch(0.3 0.004 265);
+  --popover-foreground: oklch(0.875 0.003 265);
+  --primary: oklch(0.567 0.154 248);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.33 0.004 265);
+  --secondary-foreground: oklch(0.875 0.003 265);
+  --muted: oklch(0.3 0.004 265);
+  --muted-foreground: oklch(0.72 0.004 265);
+  --accent: oklch(0.35 0.005 265);
+  --accent-foreground: oklch(0.95 0.003 265);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.696 0.17 162.48);
@@ -194,26 +196,26 @@ For commercial licensing, please contact support@quantumnous.com
   --warning-foreground: oklch(0.145 0 0);
   --info: oklch(0.68 0.17 237.323);
   --info-foreground: oklch(0.145 0 0);
-  --neutral: oklch(0.76 0 0);
+  --neutral: oklch(0.72 0.004 265);
   --neutral-foreground: oklch(0.155 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 17%);
-  --ring: oklch(0.68 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.62 0.15 248);
+  --chart-1: oklch(0.62 0.15 248);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.225 0 0);
-  --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.965 0 0);
-  --sidebar-primary-foreground: oklch(0.155 0 0);
-  --sidebar-accent: oklch(0.355 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.68 0 0);
-  --skeleton-base: oklch(0.335 0 0);
-  --skeleton-highlight: oklch(0.44 0 0);
+  --sidebar: oklch(0.27 0.004 265);
+  --sidebar-foreground: oklch(0.86 0.003 265);
+  --sidebar-primary: oklch(0.567 0.154 248);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.34 0.005 265);
+  --sidebar-accent-foreground: oklch(0.95 0.003 265);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.62 0.15 248);
+  --skeleton-base: oklch(0.32 0.004 265);
+  --skeleton-highlight: oklch(0.42 0.004 265);
   --table-row: var(--background);
   --table-header: color-mix(in oklch, var(--foreground) 6%, var(--background));
   --table-header-hover: color-mix(

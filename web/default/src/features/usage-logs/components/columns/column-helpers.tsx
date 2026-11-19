@@ -33,8 +33,8 @@ import { formatTimestampToDate, formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { formatDuration } from '../../lib/format'
-import { useUsageLogsContext } from '../usage-logs-provider'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
+import { useUsageLogsContext } from '../usage-logs-provider'
 
 /**
  * Cache tooltip component for token display

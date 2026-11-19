@@ -42,9 +42,9 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ZoomableImage } from '@/components/zoomable-image'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
-import { useIsSuperAdmin } from '@/hooks/use-admin'
 
 import {
   deleteAsset,
@@ -578,5 +578,7 @@ export function AssetLibraryContent({
   group,
   className,
 }: AssetLibraryContentProps) {
-  return <ChannelAssetsPanel model={model} group={group} className={className} />
+  return (
+    <ChannelAssetsPanel model={model} group={group} className={className} />
+  )
 }

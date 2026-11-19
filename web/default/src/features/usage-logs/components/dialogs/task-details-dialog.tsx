@@ -75,9 +75,7 @@ export function TaskDetailsDialog({
       {t('Protocol Details')}
     </>
   )
-  const description = t(
-    'View the full request and response data for this task'
-  )
+  const description = t('View the full request and response data for this task')
 
   if (!task) {
     return (
@@ -163,7 +161,11 @@ export function TaskDetailsDialog({
     { label: t('User'), value: task.username || String(task.user_id ?? '-') },
     { label: t('Group'), value: task.group || '-' },
     { label: t('Cost'), mono: true, value: formatLogQuota(task.quota ?? 0) },
-    { label: t('Submit Time'), mono: true, value: formatTime(task.submit_time) },
+    {
+      label: t('Submit Time'),
+      mono: true,
+      value: formatTime(task.submit_time),
+    },
     { label: t('Start Time'), mono: true, value: formatTime(task.start_time) },
     {
       label: t('Finish Time'),

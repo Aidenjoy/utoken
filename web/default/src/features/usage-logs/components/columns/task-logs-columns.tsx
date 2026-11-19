@@ -16,81 +16,81 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ColumnDef } from "@tanstack/react-table";
-import { useQueryClient } from "@tanstack/react-query";
-import { Info, Music, RefreshCw } from "lucide-react";
+import { useQueryClient } from '@tanstack/react-query'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Info, Music, RefreshCw } from 'lucide-react'
 /* eslint-disable react-refresh/only-export-components */
-import { useState, useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
+import { useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
-import { StatusBadge } from "@/components/status-badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useIsSuperAdmin } from "@/hooks/use-admin";
-import { getUserAvatarFallback, getUserAvatarStyle } from "@/lib/avatar";
-import { formatTimestampToDate } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { StatusBadge } from '@/components/status-badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { useIsSuperAdmin } from '@/hooks/use-admin'
+import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
+import { formatTimestampToDate } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
+import { refetchTaskLog } from '../../api'
 import {
   REFETCH_RESULT_TOAST,
   TASK_ACTIONS,
   TASK_STATUS,
-} from "../../constants";
-import { refetchTaskLog } from "../../api";
-import { taskActionMapper, taskStatusMapper } from "../../lib/mappers";
-import type { TaskLog, LogsScope } from "../../types";
+} from '../../constants'
+import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
+import type { TaskLog, LogsScope } from '../../types'
 import {
   AudioPreviewDialog,
   type AudioClip,
-} from "../dialogs/audio-preview-dialog";
-import { FailReasonDialog } from "../dialogs/fail-reason-dialog";
-import { TaskDetailsDialog } from "../dialogs/task-details-dialog";
-import { ModelBadge } from "../model-badge";
-import { useUsageLogsContext } from "../usage-logs-provider";
+} from '../dialogs/audio-preview-dialog'
+import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
+import { TaskDetailsDialog } from '../dialogs/task-details-dialog'
+import { ModelBadge } from '../model-badge'
+import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
   createChannelColumn,
   createProgressColumn,
-} from "./column-helpers";
+} from './column-helpers'
 
 // Video-generation actions / formatTime 已随弹窗本体迁至 dialogs/task-details-dialog.tsx。
 
 function parseTaskData(data: unknown): unknown[] {
-  if (Array.isArray(data)) return data;
-  if (typeof data === "string") {
+  if (Array.isArray(data)) return data
+  if (typeof data === 'string') {
     try {
-      const parsed = JSON.parse(data);
-      return Array.isArray(parsed) ? parsed : [];
+      const parsed = JSON.parse(data)
+      return Array.isArray(parsed) ? parsed : []
     } catch {
-      return [];
+      return []
     }
   }
-  return [];
+  return []
 }
 
 function AudioPreviewCell({ log }: { log: TaskLog }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
   const clips = useMemo(() => {
-    const data = parseTaskData(log.data);
+    const data = parseTaskData(log.data)
     return data.filter(
       (c) =>
-        c && typeof c === "object" && (c as Record<string, unknown>).audio_url,
-    );
-  }, [log.data]);
+        c && typeof c === 'object' && (c as Record<string, unknown>).audio_url
+    )
+  }, [log.data])
 
-  if (clips.length === 0) return null;
+  if (clips.length === 0) return null
 
   return (
     <>
       <button
-        type="button"
-        className="group flex items-center gap-1 text-left text-xs"
+        type='button'
+        className='group flex items-center gap-1 text-left text-xs'
         onClick={() => setOpen(true)}
       >
-        <Music className="text-muted-foreground size-3" />
-        <span className="text-foreground leading-snug group-hover:underline">
-          {t("Click to preview audio")}
+        <Music className='text-muted-foreground size-3' />
+        <span className='text-foreground leading-snug group-hover:underline'>
+          {t('Click to preview audio')}
         </span>
       </button>
       <AudioPreviewDialog
@@ -99,111 +99,111 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
         clips={clips as AudioClip[]}
       />
     </>
-  );
+  )
 }
 
 // 管理员手动补录：重新回源上游并结算单个任务（找回被超时清扫丢弃的结果）。
 function TaskRefetchCell({ log }: { log: TaskLog }) {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const [loading, setLoading] = useState(false);
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [loading, setLoading] = useState(false)
 
   if (!log.task_id) {
-    return <span className="text-muted-foreground/60 text-xs">-</span>;
+    return <span className='text-muted-foreground/60 text-xs'>-</span>
   }
 
   const handleRefetch = async () => {
-    setLoading(true);
+    setLoading(true)
     try {
-      const res = await refetchTaskLog(log.task_id);
+      const res = await refetchTaskLog(log.task_id)
       if (res?.success) {
-        const summary = res.data?.result;
+        const summary = res.data?.result
         const toastKey =
           (summary && REFETCH_RESULT_TOAST[summary]) ||
-          "Task re-queried and settled";
-        toast.success(t(toastKey));
-        await queryClient.invalidateQueries({ queryKey: ["logs"] });
+          'Task re-queried and settled'
+        toast.success(t(toastKey))
+        await queryClient.invalidateQueries({ queryKey: ['logs'] })
       } else {
-        toast.error(res?.message || t("Re-query failed"));
+        toast.error(res?.message || t('Re-query failed'))
       }
     } catch {
-      toast.error(t("Re-query failed"));
+      toast.error(t('Re-query failed'))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <button
-      type="button"
+      type='button'
       disabled={loading}
       onClick={handleRefetch}
-      title={t("Re-query upstream and settle billing")}
-      className="text-foreground flex items-center gap-1 text-xs hover:underline disabled:opacity-50"
+      title={t('Re-query upstream and settle billing')}
+      className='text-foreground flex items-center gap-1 text-xs hover:underline disabled:opacity-50'
     >
-      <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-      <span>{t("Retry")}</span>
+      <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
+      <span>{t('Retry')}</span>
     </button>
-  );
+  )
 }
 
 // 仅超级管理员可见：查看单个任务的完整请求/响应数据（含提示词、分辨率、
 // 上游返回、视频地址与 token 消耗）。普通管理员、代理商与自助用户不渲染该按钮。
 // 弹窗本体复用共享 TaskDetailsDialog（与使用日志关联任务的详情同一份代码）。
 function TaskDetailsCell({ log }: { log: TaskLog }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
 
   return (
     <>
       <button
-        type="button"
+        type='button'
         onClick={() => setOpen(true)}
-        title={t("View the full request and response data for this task")}
-        className="text-foreground flex items-center gap-1 text-xs hover:underline"
+        title={t('View the full request and response data for this task')}
+        className='text-foreground flex items-center gap-1 text-xs hover:underline'
       >
-        <Info className="size-3.5" />
-        <span>{t("Protocol Details")}</span>
+        <Info className='size-3.5' />
+        <span>{t('Protocol Details')}</span>
       </button>
       <TaskDetailsDialog task={log} open={open} onOpenChange={setOpen} />
     </>
-  );
+  )
 }
 
 export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
-  const isAdmin = scope === "admin";
-  const isAgent = scope === "agent";
-  const { t } = useTranslation();
-  const isSuperAdmin = useIsSuperAdmin();
+  const isAdmin = scope === 'admin'
+  const isAgent = scope === 'agent'
+  const { t } = useTranslation()
+  const isSuperAdmin = useIsSuperAdmin()
   const columns: ColumnDef<TaskLog>[] = [
     {
-      accessorKey: "submit_time",
-      header: t("Submit Time"),
+      accessorKey: 'submit_time',
+      header: t('Submit Time'),
       cell: ({ row }) => {
-        const log = row.original;
-        const submitTime = row.getValue("submit_time") as number;
+        const log = row.original
+        const submitTime = row.getValue('submit_time') as number
 
         return (
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate font-mono text-xs tabular-nums">
-              {formatTimestampToDate(submitTime, "seconds")}
+          <div className='flex min-w-0 flex-col gap-0.5'>
+            <span className='truncate font-mono text-xs tabular-nums'>
+              {formatTimestampToDate(submitTime, 'seconds')}
             </span>
             {log.finish_time ? (
-              <span className="text-muted-foreground/60 truncate font-mono text-[11px] tabular-nums">
-                {formatTimestampToDate(log.finish_time, "seconds")}
+              <span className='text-muted-foreground/60 truncate font-mono text-[11px] tabular-nums'>
+                {formatTimestampToDate(log.finish_time, 'seconds')}
               </span>
             ) : (
-              <span className="text-muted-foreground/50 text-[11px]">-</span>
+              <span className='text-muted-foreground/50 text-[11px]'>-</span>
             )}
           </div>
-        );
+        )
       },
       size: 180,
     },
-  ];
+  ]
 
   if (isAdmin) {
-    columns.push(createChannelColumn<TaskLog>({ headerLabel: t("Channel") }));
+    columns.push(createChannelColumn<TaskLog>({ headerLabel: t('Channel') }))
   }
 
   // Member/user column: admins get a clickable cell (opens the user info
@@ -211,146 +211,147 @@ export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
   // /api/user/:id endpoint.
   if (isAdmin || isAgent) {
     columns.push({
-      id: "user",
-      header: t("User"),
+      id: 'user',
+      header: t('User'),
       accessorFn: (row) => row.username || row.user_id,
       cell: function UserCell({ row }) {
         const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-          useUsageLogsContext();
-        const log = row.original;
-        const displayName = log.username || String(log.user_id || "?");
+          useUsageLogsContext()
+        const log = row.original
+        const displayName = log.username || String(log.user_id || '?')
 
         if (isAgent) {
           return (
-            <span className="text-muted-foreground max-w-[120px] truncate text-sm">
+            <span className='text-muted-foreground max-w-[120px] truncate text-sm'>
               {displayName}
             </span>
-          );
+          )
         }
 
         return (
           <button
-            type="button"
-            className="flex items-center gap-1.5 text-left"
+            type='button'
+            className='flex items-center gap-1.5 text-left'
             onClick={(e) => {
-              e.stopPropagation();
-              setSelectedUserId(log.user_id);
-              setUserInfoDialogOpen(true);
+              e.stopPropagation()
+              setSelectedUserId(log.user_id)
+              setUserInfoDialogOpen(true)
             }}
           >
-            <Avatar className="ring-border/60 size-6 ring-1 max-sm:hidden">
+            <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
               <AvatarFallback
                 className={cn(
-                  "text-[11px] font-semibold",
-                  !sensitiveVisible && "bg-muted text-muted-foreground",
+                  'text-[11px] font-semibold',
+                  !sensitiveVisible && 'bg-muted text-muted-foreground'
                 )}
                 style={
                   sensitiveVisible ? getUserAvatarStyle(displayName) : undefined
                 }
               >
-                {sensitiveVisible ? getUserAvatarFallback(displayName) : "•"}
+                {sensitiveVisible ? getUserAvatarFallback(displayName) : '•'}
               </AvatarFallback>
             </Avatar>
-            <span className="text-muted-foreground truncate text-sm hover:underline">
-              {sensitiveVisible ? displayName : "••••"}
+            <span className='text-muted-foreground truncate text-sm hover:underline'>
+              {sensitiveVisible ? displayName : '••••'}
             </span>
           </button>
-        );
+        )
       },
-    });
+    })
   }
 
   columns.push(
     {
-      accessorKey: "task_id",
-      header: t("Task ID"),
+      accessorKey: 'task_id',
+      header: t('Task ID'),
       cell: ({ row }) => {
-        const log = row.original;
-        const taskId = row.getValue("task_id") as string;
-        const platformLabel = log.platform ? `${t(log.platform)} · ` : "";
+        const log = row.original
+        const taskId = row.getValue('task_id') as string
+        const platformLabel = log.platform ? `${t(log.platform)} · ` : ''
         if (!taskId) {
-          return <span className="text-muted-foreground/60 text-xs">-</span>;
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
         return (
-          <div className="flex max-w-[170px] flex-col gap-0.5">
+          <div className='flex max-w-[170px] flex-col gap-0.5'>
             <StatusBadge
               label={taskId}
               copyText={taskId}
-              variant="neutral"
-              size="sm"
-              className="border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono"
+              variant='neutral'
+              size='sm'
+              className='border-border/60 bg-muted/30 !text-foreground max-w-full truncate rounded-md border px-1.5 py-0.5 font-mono'
             />
-            <span className="text-muted-foreground/60 truncate text-[11px]">
-              {platformLabel}{t(taskActionMapper.getLabel(log.action))}
+            <span className='text-muted-foreground/60 truncate text-[11px]'>
+              {platformLabel}
+              {t(taskActionMapper.getLabel(log.action))}
             </span>
           </div>
-        );
+        )
       },
       meta: { mobileTitle: true },
     },
     {
-      id: "model",
-      header: t("Model"),
+      id: 'model',
+      header: t('Model'),
       cell: ({ row }) => {
-        const props = row.original.properties;
-        const modelName = props?.origin_model_name || props?.upstream_model_name;
+        const props = row.original.properties
+        const modelName = props?.origin_model_name || props?.upstream_model_name
         if (!modelName) {
-          return <span className="text-muted-foreground/60 text-xs">-</span>;
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
         return (
-          <div className="flex w-fit flex-col gap-0.5">
+          <div className='flex w-fit flex-col gap-0.5'>
             <ModelBadge modelName={modelName} />
           </div>
-        );
+        )
       },
       meta: { mobileTitle: true },
     },
     createDurationColumn<TaskLog>({
-      submitTimeKey: "submit_time",
-      finishTimeKey: "finish_time",
-      unit: "seconds",
-      headerLabel: t("Duration"),
+      submitTimeKey: 'submit_time',
+      finishTimeKey: 'finish_time',
+      unit: 'seconds',
+      headerLabel: t('Duration'),
       warningThresholdSec: 300,
     }),
     {
-      accessorKey: "status",
-      header: t("Status"),
+      accessorKey: 'status',
+      header: t('Status'),
       cell: ({ row }) => {
-        const status = row.getValue("status") as string;
+        const status = row.getValue('status') as string
         return (
           <StatusBadge
-            label={t(taskStatusMapper.getLabel(status, status || "Submitting"))}
+            label={t(taskStatusMapper.getLabel(status, status || 'Submitting'))}
             variant={taskStatusMapper.getVariant(status)}
-            size="sm"
+            size='sm'
             copyable={false}
-            className="-ml-1.5"
+            className='-ml-1.5'
           />
-        );
+        )
       },
     },
-    createProgressColumn<TaskLog>({ headerLabel: t("Progress") }),
+    createProgressColumn<TaskLog>({ headerLabel: t('Progress') }),
     {
-      accessorKey: "fail_reason",
-      header: t("Details"),
+      accessorKey: 'fail_reason',
+      header: t('Details'),
       cell: function DetailsCell({ row }) {
-        const log = row.original;
-        const failReason = row.getValue("fail_reason") as string;
-        const status = log.status;
-        const [dialogOpen, setDialogOpen] = useState(false);
+        const log = row.original
+        const failReason = row.getValue('fail_reason') as string
+        const status = log.status
+        const [dialogOpen, setDialogOpen] = useState(false)
 
         const isSunoSuccess =
-          log.platform === "suno" && status === TASK_STATUS.SUCCESS;
+          log.platform === 'suno' && status === TASK_STATUS.SUCCESS
         if (isSunoSuccess) {
-          const data = parseTaskData(log.data);
+          const data = parseTaskData(log.data)
           if (
             data.some(
               (c) =>
                 c &&
-                typeof c === "object" &&
-                (c as Record<string, unknown>).audio_url,
+                typeof c === 'object' &&
+                (c as Record<string, unknown>).audio_url
             )
           ) {
-            return <AudioPreviewCell log={log} />;
+            return <AudioPreviewCell log={log} />
           }
         }
 
@@ -359,37 +360,37 @@ export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
           log.action === TASK_ACTIONS.TEXT_GENERATE ||
           log.action === TASK_ACTIONS.FIRST_TAIL_GENERATE ||
           log.action === TASK_ACTIONS.REFERENCE_GENERATE ||
-          log.action === TASK_ACTIONS.REMIX_GENERATE;
-        const isSuccess = status === TASK_STATUS.SUCCESS;
-        const isUrl = failReason?.startsWith("http");
+          log.action === TASK_ACTIONS.REMIX_GENERATE
+        const isSuccess = status === TASK_STATUS.SUCCESS
+        const isUrl = failReason?.startsWith('http')
 
         if (isSuccess && isVideoTask && isUrl) {
-          const videoUrl = `/v1/videos/${log.task_id}/content`;
+          const videoUrl = `/v1/videos/${log.task_id}/content`
           return (
             <a
               href={videoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-foreground text-xs hover:underline"
+              target='_blank'
+              rel='noopener noreferrer'
+              className='text-foreground text-xs hover:underline'
             >
-              {t("Click to preview video")}
+              {t('Click to preview video')}
             </a>
-          );
+          )
         }
 
         if (!failReason) {
-          return <span className="text-muted-foreground/60 text-xs">-</span>;
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
 
         return (
           <>
             <button
-              type="button"
-              className="group flex max-w-[200px] items-center gap-1 text-left text-xs"
+              type='button'
+              className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
               onClick={() => setDialogOpen(true)}
-              title={t("Click to view full error message")}
+              title={t('Click to view full error message')}
             >
-              <span className="truncate leading-snug text-red-600 group-hover:underline dark:text-red-400">
+              <span className='truncate leading-snug text-red-600 group-hover:underline dark:text-red-400'>
                 {failReason}
               </span>
             </button>
@@ -399,30 +400,30 @@ export function useTaskLogsColumns(scope: LogsScope): ColumnDef<TaskLog>[] {
               onOpenChange={setDialogOpen}
             />
           </>
-        );
+        )
       },
       size: 200,
       maxSize: 220,
-    },
-  );
+    }
+  )
 
   // Actions column: admins get Re-query, super admins additionally get Details.
   if (isAdmin) {
     columns.push({
-      id: "actions",
-      header: t("Actions"),
+      id: 'actions',
+      header: t('Actions'),
       cell: ({ row }) => {
-        const log = row.original;
+        const log = row.original
         return (
-          <div className="flex items-center gap-3">
+          <div className='flex items-center gap-3'>
             <TaskRefetchCell log={log} />
             {isSuperAdmin && <TaskDetailsCell log={log} />}
           </div>
-        );
+        )
       },
       size: isSuperAdmin ? 190 : 110,
-    });
+    })
   }
 
-  return columns;
+  return columns
 }

@@ -175,8 +175,7 @@ export function OrgTokenRatesTable() {
               {t(
                 'Clear the token rate for {{name}}? It restores the default 1.0x multiplier for every member of this organization.',
                 {
-                  name:
-                    clearTarget?.display_name || clearTarget?.name || '',
+                  name: clearTarget?.display_name || clearTarget?.name || '',
                 }
               )}
             </AlertDialogDescription>

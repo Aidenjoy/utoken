@@ -4572,7 +4572,6 @@ export function ChannelMutateDrawer({
                                 </FormItem>
                               )}
                             />
-
                           </fieldset>
                         </div>
 

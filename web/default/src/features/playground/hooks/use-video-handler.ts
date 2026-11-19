@@ -321,7 +321,9 @@ export function useVideoHandler(config: VideoConfig) {
             ...t,
             status: 'failed',
             progress: 100,
-            error: t.error || 'Poll failed repeatedly, task may belong to another session',
+            error:
+              t.error ||
+              'Poll failed repeatedly, task may belong to another session',
             completedAt: Date.now(),
           }))
           setIsGenerating(false)

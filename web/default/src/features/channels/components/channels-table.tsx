@@ -61,8 +61,8 @@ import {
   getChannelTypeLabel,
   getChannelModelKinds,
 } from '../lib'
-import type { Channel, ChannelSortBy } from '../types'
 import type { ChannelModelKind } from '../lib'
+import type { Channel, ChannelSortBy } from '../types'
 import { ChannelCard } from './channel-card'
 import { useChannelsColumns } from './channels-columns'
 import { useChannels } from './channels-provider'

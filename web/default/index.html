@@ -17,7 +17,37 @@
       content="Unified AI API gateway and admin dashboard."
     />
 
-    <meta name="theme-color" content="#fff" />
+    <meta name="theme-color" content="#222326" />
+    <!-- 首屏防闪烁：在样式/JS 加载前按 cookie（默认 dark）写入 html.dark/light，
+         与 src/context/theme-provider.tsx 的 DEFAULT_THEME / cookie 名保持一致。 -->
+    <script>
+      ;(function () {
+        try {
+          var stored = (document.cookie.match(
+            /(?:^|;\s*)vite-ui-theme-v2=([^;]*)/
+          ) || [])[1]
+          var theme =
+            stored === 'light' || stored === 'dark' || stored === 'system'
+              ? stored
+              : 'dark'
+          var resolved = theme
+          if (theme === 'system') {
+            var prefersDark =
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches
+            resolved = prefersDark ? 'dark' : 'light'
+          }
+          document.documentElement.classList.add(resolved)
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) {
+            meta.setAttribute(
+              'content',
+              resolved === 'dark' ? '#222326' : '#ffffff'
+            )
+          }
+        } catch (e) {}
+      })()
+    </script>
     <!-- 老内核浏览器（不认 @layer/oklch/svh，如部分国产 OEM 浏览器旧 WebView）
          会整层丢弃 Tailwind v4 样式；此处用内联样式给出降级提示，不依赖外部 CSS。 -->
     <style>

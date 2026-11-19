@@ -176,7 +176,9 @@ export function SetOrgTokenRateDialog({
               placeholder={t('Auto-calculated')}
             />
             <p className='text-muted-foreground text-xs'>
-              {t('Rate = Channel Purchase Discount ÷ Customer Expected Discount')}
+              {t(
+                'Rate = Channel Purchase Discount ÷ Customer Expected Discount'
+              )}
             </p>
             <p className='text-muted-foreground text-xs'>
               {t(

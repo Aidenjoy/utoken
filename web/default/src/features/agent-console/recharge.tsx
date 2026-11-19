@@ -30,10 +30,9 @@ import {
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge, type StatusVariant } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatTimestampToDate } from '@/lib/format'
-
 import { listMyRecharge } from '@/features/agents/api'
 import type { AgentRechargeRecord } from '@/features/agents/types'
+import { formatTimestampToDate } from '@/lib/format'
 
 const SOURCE_META: Record<string, { label: string; variant: StatusVariant }> = {
   online_topup: { label: 'Online Top-up', variant: 'success' },
@@ -192,9 +191,7 @@ export function AgentRecharge() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('Recharge Records')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Recharge Records')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <DataTablePage
           table={table}

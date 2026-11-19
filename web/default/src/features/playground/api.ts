@@ -354,4 +354,3 @@ export async function deleteAsset(id: number): Promise<void> {
     throw new Error(apiErrorMessage(error))
   }
 }
-

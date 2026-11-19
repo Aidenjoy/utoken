@@ -127,9 +127,7 @@ export function UserAgentBindDialog({
       void queryClient.invalidateQueries({ queryKey: ['users'] })
       onSuccess?.()
     } catch (e: unknown) {
-      toast.error(
-        e instanceof Error ? e.message : t('Failed to bind agent')
-      )
+      toast.error(e instanceof Error ? e.message : t('Failed to bind agent'))
     } finally {
       setIsSubmitting(false)
     }

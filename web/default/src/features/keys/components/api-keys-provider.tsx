@@ -68,8 +68,7 @@ export function ApiKeysProvider({
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useDialogState<ApiKeysDialogType>(null)
-  const [createKeyType, setCreateKeyType] =
-    useState<ApiKeyType>('language')
+  const [createKeyType, setCreateKeyType] = useState<ApiKeyType>('language')
   const openCreate = useCallback(
     (keyType: Exclude<ApiKeyType, ''>) => {
       setCreateKeyType(keyType)

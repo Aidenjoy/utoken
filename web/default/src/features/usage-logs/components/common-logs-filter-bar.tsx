@@ -23,8 +23,8 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { MultiSelect } from '@/components/multi-select'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
