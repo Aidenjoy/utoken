@@ -159,7 +159,23 @@ export interface PlanPayload {
   plan: Partial<SubscriptionPlan>
 }
 
+export interface SubscriptionUpgradeOffer {
+  quote_token: string
+  quote: {
+    target_plan_id: number
+    target_title: string
+    amount: string
+    currency: string
+    input_added: number
+    output_added: number
+    input_available: number
+    output_available: number
+    end_time: number
+  }
+}
+
 export interface SubscriptionPayRequest {
+  upgrade_quote?: string
   plan_id: number
   payment_method?: string
 }

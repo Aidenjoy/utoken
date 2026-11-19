@@ -786,7 +786,7 @@ export function SubscriptionsMutateDrawer({
                     <FormItem>
                       <FormLabel>{t('Reset Cycle')}</FormLabel>
                       <Select
-                        disabled={meterType !== 'quota'}
+                        disabled={meterType === 'channel'}
                         items={resetPeriodOpts.map((o) => ({
                           value: o.value,
                           label: o.label,

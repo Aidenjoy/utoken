@@ -55,6 +55,7 @@ interface PaymentMethod {
 }
 
 interface Props {
+  upgradeOffer?: import("../../types").SubscriptionUpgradeOffer | null
   open: boolean
   onOpenChange: (open: boolean) => void
   plan: PlanRecord | null
@@ -101,7 +102,8 @@ export function SubscriptionPurchaseDialog(props: Props) {
     selectedEpayMethod ||
     t('Select payment method')
   const totalAmount = Number(plan.total_amount || 0)
-  const price = Number(plan.price_amount || 0).toFixed(2)
+  const upgradeQuote = props.upgradeOffer?.quote
+  const price = Number(upgradeQuote?.amount ?? plan.price_amount ?? 0).toFixed(2)
   const quotaPerUnit =
     currency?.quotaPerUnit && currency.quotaPerUnit > 0
       ? currency.quotaPerUnit
@@ -111,7 +113,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
     Math.ceil(Number(plan.price_amount || 0) * quotaPerUnit)
   )
   const userQuota = Math.max(0, Number(props.userQuota || 0))
-  const allowBalancePay = plan.allow_balance_pay !== false
+  const allowBalancePay = !upgradeQuote && plan.allow_balance_pay !== false
   const insufficientBalance = userQuota < balanceCost
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
@@ -198,6 +200,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
       const res = await paySubscriptionEpay({
         plan_id: plan.id,
         payment_method: selectedEpayMethod,
+        upgrade_quote: props.upgradeOffer?.quote_token,
       })
       if (res.message === 'success' && res.url) {
         const form = document.createElement('form')
@@ -265,7 +268,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
       title={
         <>
           <Crown className='h-5 w-5' />
-          {t('Purchase Subscription')}
+          {upgradeQuote ? t('Upgrade plan') : t('Purchase Subscription')}
         </>
       }
       contentClassName='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'
@@ -289,7 +292,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </span>
             <span className='flex items-center gap-1 text-sm'>
               <CalendarClock className='h-3.5 w-3.5' />
-              {formatDuration(plan, t)}
+              {upgradeQuote ? new Date(upgradeQuote.end_time * 1000).toLocaleString() : formatDuration(plan, t)}
             </span>
           </div>
           {formatResetPeriod(plan, t) !== t('No Reset') && (
@@ -301,7 +304,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </div>
           )}
           {plan.meter_type === 'shared_tokens' ? (
-            <span className='text-sm'>{t('Input / output tokens')}</span>
+            <div className='text-sm'>
+              {upgradeQuote ? (
+                <>
+                  <div>{t('Input tokens')}: +{upgradeQuote.input_added.toLocaleString()} · {t('Available')} {upgradeQuote.input_available.toLocaleString()}</div>
+                  <div>{t('Output tokens')}: +{upgradeQuote.output_added.toLocaleString()} · {t('Available')} {upgradeQuote.output_available.toLocaleString()}</div>
+                </>
+              ) : t('Input / output tokens')}
+            </div>
           ) : null}
           {plan.meter_type === 'channel' && (
             <ChannelQuotaSummary quotas={plan.channel_quotas ?? []} />
@@ -328,7 +338,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <Separator />
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
-            <span className='text-primary text-lg font-bold'>${price}</span>
+            <span className='text-primary text-lg font-bold'>{upgradeQuote ? `${price} ${upgradeQuote.currency}` : `$${price}`}</span>
           </div>
         </div>
 

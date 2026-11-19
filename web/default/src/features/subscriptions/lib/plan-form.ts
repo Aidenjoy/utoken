@@ -126,7 +126,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       duration_value: Number(values.duration_value || 0),
       custom_seconds: Number(values.custom_seconds || 0),
       quota_reset_period:
-        values.meter_type !== 'quota'
+        values.meter_type === 'channel'
           ? 'never'
           : values.quota_reset_period || 'never',
       quota_reset_custom_seconds:

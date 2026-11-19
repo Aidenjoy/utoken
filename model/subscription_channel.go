@@ -53,6 +53,7 @@ type SubscriptionChannelConfig struct {
 
 // SubscriptionChannelQuota is an activation snapshot, shared by all keys for this grant.
 type SubscriptionChannelQuota struct {
+	CycleStart         int64     `json:"-" gorm:"not null;default:0"`
 	QuantityLimit      int64     `json:"quantity_limit" gorm:"not null;default:0"`
 	QuantityUsed       int64     `json:"quantity_used" gorm:"not null;default:0"`
 	QuantityReserved   int64     `json:"quantity_reserved" gorm:"not null;default:0"`
@@ -75,6 +76,7 @@ type SubscriptionChannelQuota struct {
 // SubscriptionChannelRequest persists the request state independently of HTTP lifetime.
 // prepared -> dispatched -> settled/pending; prepared alone may be released without usage.
 type SubscriptionChannelRequest struct {
+	CycleStart         int64     `json:"-" gorm:"not null;default:0"`
 	Unit               string    `json:"unit" gorm:"type:varchar(32);not null;default:input_output_tokens"`
 	QuantityReserved   int64     `json:"quantity_reserved" gorm:"not null;default:0"`
 	QuantityUsed       int64     `json:"quantity_used" gorm:"not null;default:0"`
@@ -125,8 +127,8 @@ func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLi
 		if plan.InputTokenLimit <= 0 || plan.InputTokenLimit > MembershipMaxTokens || plan.OutputTokenLimit <= 0 || plan.OutputTokenLimit > MembershipMaxTokens {
 			return nil, errors.New("input and output token limits must be positive and within bounds")
 		}
-		if plan.TotalAmount != 0 || plan.UpgradeGroup != "" || plan.DowngradeGroup != "" || NormalizeResetPeriod(plan.QuotaResetPeriod) != SubscriptionResetNever {
-			return nil, errors.New("shared token membership requires no legacy quota, resets or group changes")
+		if plan.TotalAmount != 0 || plan.UpgradeGroup != "" || plan.DowngradeGroup != "" {
+			return nil, errors.New("shared token membership requires no legacy quota or group changes")
 		}
 		plan.ChannelQuotas = nil
 		return []SubscriptionChannelConfig{{Profile: SubscriptionMeterSharedTokens, Unit: MembershipUnitTokens, InputLimit: plan.InputTokenLimit, OutputLimit: plan.OutputTokenLimit}}, nil
@@ -264,6 +266,15 @@ func ReserveMembership(record *SubscriptionChannelRequest) error {
 		return errors.New("invalid membership reservation")
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		if record.ChannelId == 0 {
+			var sub UserSubscription
+			if err := lockForUpdate(tx).Where("id = ? AND user_id = ? AND meter_type = ?", record.UserSubscriptionId, record.UserId, SubscriptionMeterSharedTokens).First(&sub).Error; err != nil {
+				return err
+			}
+			if err := resetSharedTokenCycleTx(tx, &sub, getDBTimestampTx(tx)); err != nil {
+				return err
+			}
+		}
 		grant, err := GetMembershipGrant(tx, record.UserId, record.UserSubscriptionId, record.ChannelId)
 		if err != nil {
 			return err
@@ -272,6 +283,7 @@ func ReserveMembership(record *SubscriptionChannelRequest) error {
 			return errors.New("reservation does not match membership unit")
 		}
 		record.Unit = grant.Unit
+		record.CycleStart = grant.CycleStart
 		var models []string
 		if grant.Profile != SubscriptionMeterSharedTokens && (common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, record.Model)) {
 			return errors.New("model not included in membership")
@@ -367,6 +379,15 @@ func finishMembershipTx(tx *gorm.DB, requestId string, input, output, quantity i
 	}
 	if outcome == "pending" {
 		return nil
+	}
+	if record.ChannelId == 0 {
+		var grant SubscriptionChannelQuota
+		if err := lockForUpdate(tx).Where("user_subscription_id = ? AND channel_id = 0", record.UserSubscriptionId).First(&grant).Error; err != nil {
+			return err
+		}
+		if grant.CycleStart != record.CycleStart {
+			return nil
+		}
 	}
 	result = tx.Model(&SubscriptionChannelQuota{}).Where("user_subscription_id = ? AND channel_id = ? AND input_reserved >= ? AND output_reserved >= ? AND quantity_reserved >= ?", record.UserSubscriptionId, record.ChannelId, record.InputReserved, record.OutputReserved, record.QuantityReserved).Updates(map[string]interface{}{
 		"quantity_reserved": gorm.Expr("quantity_reserved - ?", record.QuantityReserved), "quantity_used": gorm.Expr("quantity_used + ?", quantity), "input_reserved": gorm.Expr("input_reserved - ?", record.InputReserved), "output_reserved": gorm.Expr("output_reserved - ?", record.OutputReserved),

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -71,4 +72,61 @@ func TestMembershipEpayMockLifecycle(t *testing.T) {
 	assert.EqualValues(t, 2, countGrants(), "duplicate signed callbacks grant exactly once")
 	require.NoError(t, db.First(&order, order.Id).Error)
 	assert.Equal(t, common.TopUpStatusSuccess, order.Status)
+}
+
+func TestMembershipUpgradeEpayUsesSignedQuote(t *testing.T) {
+	r, db, _, _ := membershipHTTPFixture(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("upgrade test must never call a model provider")
+	})
+	previousAddress, previousID, previousKey := operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey
+	operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = "http://127.0.0.1/mock-payment", "mock-merchant", "mock-signing-key"
+	t.Cleanup(func() {
+		operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = previousAddress, previousID, previousKey
+	})
+	for id, price := range map[int]float64{8301: 1, 8302: 2} {
+		require.NoError(t, db.Create(&model.SubscriptionPlan{
+			Id: id, Title: "mock token plan", Currency: "USD", PriceAmount: price,
+			MeterType: model.SubscriptionMeterSharedTokens, InputTokenLimit: int64(id) * 100, OutputTokenLimit: int64(id) * 10,
+			DurationUnit: model.SubscriptionDurationDay, DurationValue: 30, Enabled: true,
+		}).Error)
+	}
+	require.NoError(t, model.PurchaseSubscriptionWithBalance(8101, 8301))
+	var sub model.UserSubscription
+	require.NoError(t, db.Where("plan_id = ?", 8301).First(&sub).Error)
+	r.POST("/api/subscription/upgrade/quote", func(c *gin.Context) { c.Set("id", 8101); SubscriptionRequestUpgradeQuote(c) })
+	r.POST("/api/subscription/epay/pay", func(c *gin.Context) { c.Set("id", 8101); SubscriptionRequestEpay(c) })
+	r.GET("/api/subscription/epay/notify", SubscriptionEpayNotify)
+	quoted := membershipHTTPRequest(r, "/api/subscription/upgrade/quote", "", fmt.Sprintf(`{"subscription_id":%d,"target_plan_id":8302}`, sub.Id))
+	var result struct {
+		Success bool
+		Data    struct {
+			Token string `json:"quote_token"`
+			Quote model.SubscriptionUpgradeQuote
+		}
+	}
+	require.NoError(t, common.Unmarshal(quoted.Body.Bytes(), &result))
+	require.True(t, result.Success, quoted.Body.String())
+	require.NotEmpty(t, result.Data.Token)
+	orderRequest := func(token string) *httptest.ResponseRecorder {
+		return membershipHTTPRequest(r, "/api/subscription/epay/pay", "", fmt.Sprintf(`{"plan_id":8302,"payment_method":"alipay","upgrade_quote":%q}`, token))
+	}
+	require.NotContains(t, orderRequest(result.Data.Token+"tampered").Body.String(), "mock-payment")
+	require.Contains(t, orderRequest(result.Data.Token).Body.String(), "mock-payment")
+	var order model.SubscriptionOrder
+	require.NoError(t, db.Where("plan_id = ? AND status = ?", 8302, common.TopUpStatusPending).First(&order).Error)
+	require.InDelta(t, result.Data.Quote.Amount.InexactFloat64(), order.Money, 0.001)
+	params := epay.GenerateParams(map[string]string{"pid": "mock-merchant", "out_trade_no": order.TradeNo,
+		"trade_no": "mock-upgrade-receipt", "type": "alipay", "money": result.Data.Quote.Amount.StringFixed(2),
+		"trade_status": epay.StatusTradeSuccess, "sign_type": "MD5"}, "mock-signing-key")
+	query := url.Values{}
+	for key, value := range params {
+		query.Set(key, value)
+	}
+	recorder := httptest.NewRecorder()
+	r.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/subscription/epay/notify?"+query.Encode(), nil))
+	require.Equal(t, "success", recorder.Body.String())
+	var updated model.UserSubscription
+	require.NoError(t, db.First(&updated, sub.Id).Error)
+	require.Equal(t, 8302, updated.PlanId)
+	require.Equal(t, sub.EndTime, updated.EndTime)
 }

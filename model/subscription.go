@@ -219,11 +219,13 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 
 // Subscription order (payment -> webhook -> create UserSubscription)
 type SubscriptionOrder struct {
-	PlanSnapshot string  `json:"-" gorm:"type:text"`
-	Id           int     `json:"id"`
-	UserId       int     `json:"user_id" gorm:"index"`
-	PlanId       int     `json:"plan_id" gorm:"index"`
-	Money        float64 `json:"money"`
+	UpgradeSnapshot  string  `json:"-" gorm:"type:text"`
+	SettlementReason string  `json:"settlement_reason,omitempty" gorm:"type:text"`
+	PlanSnapshot     string  `json:"-" gorm:"type:text"`
+	Id               int     `json:"id"`
+	UserId           int     `json:"user_id" gorm:"index"`
+	PlanId           int     `json:"plan_id" gorm:"index"`
+	Money            float64 `json:"money"`
 
 	TradeNo         string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -249,6 +251,11 @@ func (o *SubscriptionOrder) Insert() error {
 	}
 	if _, err := ValidateSubscriptionChannels(DB, &plan); err != nil {
 		return err
+	}
+	if plan.MeterType == SubscriptionMeterSharedTokens && o.UpgradeSnapshot == "" {
+		if err := checkActiveSharedPlan(DB, o.UserId, plan.Id, GetDBTimestamp()); err != nil {
+			return err
+		}
 	}
 	if !IsQuotaSubscription(plan.MeterType) && o.PaymentProvider != PaymentProviderEpay {
 		return errors.New("channel membership online payment currently supports Epay only")
@@ -282,10 +289,11 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 
 // User subscription instance
 type UserSubscription struct {
-	MeterType string `json:"meter_type" gorm:"type:varchar(16);not null;default:quota"`
-	Id        int    `json:"id"`
-	UserId    int    `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
-	PlanId    int    `json:"plan_id" gorm:"index"`
+	EffectivePlanSnapshot string `json:"-" gorm:"type:text"`
+	MeterType             string `json:"meter_type" gorm:"type:varchar(16);not null;default:quota"`
+	Id                    int    `json:"id"`
+	UserId                int    `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
+	PlanId                int    `json:"plan_id" gorm:"index"`
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
@@ -526,6 +534,15 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
 	}
+	if plan.MeterType == SubscriptionMeterSharedTokens {
+		var user User
+		if err := lockForUpdate(tx).Select("id").First(&user, userId).Error; err != nil {
+			return nil, err
+		}
+		if err := checkActiveSharedPlan(tx, userId, plan.Id, getDBTimestampTx(tx)); err != nil {
+			return nil, err
+		}
+	}
 	if plan.MaxPurchasePerUser > 0 {
 		var count int64
 		if err := tx.Model(&UserSubscription{}).
@@ -594,6 +611,13 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		CreatedAt:           common.GetTimestamp(),
 		UpdatedAt:           common.GetTimestamp(),
 	}
+	if plan.MeterType == SubscriptionMeterSharedTokens {
+		snapshot, err := common.Marshal(plan)
+		if err != nil {
+			return nil, err
+		}
+		sub.EffectivePlanSnapshot = string(snapshot)
+	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
 	}
@@ -653,7 +677,7 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 				return errors.New("subscription payment amount mismatch")
 			}
 		}
-		if order.Status == common.TopUpStatusSuccess {
+		if order.Status == common.TopUpStatusSuccess || order.Status == SubscriptionOrderPaidUnapplied {
 			return nil
 		}
 		if order.Status != common.TopUpStatusPending {
@@ -685,15 +709,22 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if claim.RowsAffected != 1 {
 			return errors.New("subscription order concurrently completed")
 		}
-		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
-		if err != nil {
+		order.Status = common.TopUpStatusSuccess
+		if order.UpgradeSnapshot != "" {
+			err = applySubscriptionUpgradeTx(tx, &order, plan, getDBTimestampTx(tx))
+		} else {
+			upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+			_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+		}
+		if errors.Is(err, errSubscriptionUpgradeStale) || errors.Is(err, errSharedPlanAlreadyActive) {
+			order.Status = SubscriptionOrderPaidUnapplied
+			order.SettlementReason = err.Error()
+		} else if err != nil {
 			return err
 		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
 		}
-		order.Status = common.TopUpStatusSuccess
 		order.CompleteTime = common.GetTimestamp()
 		if providerPayload != "" {
 			order.ProviderPayload = providerPayload
@@ -703,6 +734,9 @@ func completeSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		if err := tx.Save(&order).Error; err != nil {
 			return err
+		}
+		if order.Status == SubscriptionOrderPaidUnapplied {
+			return nil
 		}
 		logUserId = order.UserId
 		logPlanTitle = plan.Title
@@ -739,7 +773,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				PaymentMethod: order.PaymentMethod,
 				CreateTime:    order.CreateTime,
 				CompleteTime:  now,
-				Status:        common.TopUpStatusSuccess,
+				Status:        order.Status,
 			}
 			return tx.Create(&topup).Error
 		}
@@ -755,7 +789,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 		topup.CreateTime = order.CreateTime
 	}
 	topup.CompleteTime = now
-	topup.Status = common.TopUpStatusSuccess
+	topup.Status = order.Status
 	return tx.Save(&topup).Error
 }
 
@@ -1518,7 +1552,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	}
 	now := GetDBTimestamp()
 	var subs []UserSubscription
-	if err := DB.Where("(meter_type IS NULL OR meter_type = ? OR meter_type = ?)", "", SubscriptionMeterQuota).Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ?", now, "active").
+	if err := DB.Where("(meter_type IS NULL OR meter_type IN ?)", []string{"", SubscriptionMeterQuota, SubscriptionMeterSharedTokens}).Where("next_reset_time > 0 AND next_reset_time <= ? AND status = ? AND end_time > ?", now, "active", now).
 		Order("next_reset_time asc").
 		Limit(limit).
 		Find(&subs).Error; err != nil {
@@ -1530,19 +1564,25 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	resetCount := 0
 	for _, sub := range subs {
 		subCopy := sub
-		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
-		if err != nil || plan == nil {
-			continue
-		}
-		err = DB.Transaction(func(tx *gorm.DB) error {
+		err := DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
 			if err := lockForUpdate(tx).
 				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
 				First(&locked).Error; err != nil {
 				return nil
 			}
-			if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
-				return err
+			if locked.MeterType == SubscriptionMeterSharedTokens {
+				if err := resetSharedTokenCycleTx(tx, &locked, now); err != nil {
+					return err
+				}
+			} else {
+				plan, err := getSubscriptionPlanByIdTx(tx, locked.PlanId)
+				if err != nil || plan == nil {
+					return nil
+				}
+				if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
+					return err
+				}
 			}
 			resetCount++
 			return nil

@@ -17,6 +17,7 @@ import (
 )
 
 type SubscriptionEpayPayRequest struct {
+	UpgradeQuote  string `json:"upgrade_quote"`
 	PlanId        int    `json:"plan_id"`
 	PaymentMethod string `json:"payment_method"`
 }
@@ -38,6 +39,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
+	userId := c.GetInt("id")
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
 		common.ApiError(c, err)
@@ -47,7 +49,19 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
-	if plan.PriceAmount < 0.01 {
+	var upgradeSnapshot string
+	money := plan.PriceAmount
+	if req.UpgradeQuote != "" {
+		offer, err := verifySubscriptionUpgradeOffer(req.UpgradeQuote, userId, req.PlanId)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		plan = &offer.Target
+		money = offer.Quote.Amount.InexactFloat64()
+		upgradeSnapshot = common.GetJsonString(offer.Quote)
+	}
+	if money < 0.01 {
 		common.ApiErrorMsg(c, "套餐金额过低")
 		return
 	}
@@ -56,8 +70,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
-	userId := c.GetInt("id")
-	if plan.MaxPurchasePerUser > 0 {
+	if upgradeSnapshot == "" && plan.MaxPurchasePerUser > 0 {
 		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
 			common.ApiError(c, err)
@@ -92,9 +105,10 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	order := &model.SubscriptionOrder{
 		PlanSnapshot:    common.GetJsonString(plan),
+		UpgradeSnapshot: upgradeSnapshot,
 		UserId:          userId,
 		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
+		Money:           money,
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
 		PaymentProvider: model.PaymentProviderEpay,
@@ -109,7 +123,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(money, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
@@ -218,6 +232,10 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		if err := model.CompleteEpaySubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), verifyInfo.Type, verifyInfo.Money); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=fail"))
+			return
+		}
+		if order := model.GetSubscriptionOrderByTradeNo(verifyInfo.ServiceTradeNo); order != nil && order.Status == model.SubscriptionOrderPaidUnapplied {
+			c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=pending"))
 			return
 		}
 		c.Redirect(http.StatusFound, paymentReturnPath("/console/topup?pay=success"))

@@ -42,6 +42,10 @@ export const STATUS_CONFIG: Record<TopupStatus, StatusConfig> = {
     variant: 'warning',
     label: 'Pending',
   },
+  paid_unapplied: {
+    variant: 'warning',
+    label: 'Paid, pending reconciliation',
+  },
   expired: {
     variant: 'danger',
     label: 'Expired',

@@ -91,8 +91,8 @@ async function beginDesktopLogin(origin, openBrowser, complete, signal) {
         accepted = true;
         clearTimeout(timeout);
         try {
-          const { accessToken, audioApiKey } = await exchangeCode(origin, code, callback.href, verifier, signal);
-          await complete(accessToken, audioApiKey);
+          const { accessToken, languageApiKey } = await exchangeCode(origin, code, callback.href, verifier, signal);
+          await complete(accessToken, languageApiKey);
           callbackResponse(response, 200, '登录成功，可以关闭页面并返回客户端。');
           resolve();
         } catch (error) {
@@ -129,11 +129,11 @@ async function exchangeCode(origin, code, redirectURI, verifier, signal) {
   if (result.token_type !== 'Bearer' || !/^[A-Za-z0-9_-]{43}$/.test(result.access_token)) {
     throw new Error('服务器没有返回有效的登录凭证。');
   }
-  const audioApiKey = result.audio_api_key;
-  if (audioApiKey !== undefined && (typeof audioApiKey !== 'string' || !/^sk-[A-Za-z0-9_-]+$/.test(audioApiKey))) {
-    throw new Error('服务器返回的语音密钥格式无效。');
+  const languageApiKey = result.language_api_key;
+  if (languageApiKey !== undefined && (typeof languageApiKey !== 'string' || !/^sk-[A-Za-z0-9_-]+$/.test(languageApiKey))) {
+    throw new Error('服务器返回的语言模型密钥格式无效。');
   }
-  return { accessToken: result.access_token, audioApiKey };
+  return { accessToken: result.access_token, languageApiKey };
 }
 
 async function createDashboardSession(origin, token, signal) {

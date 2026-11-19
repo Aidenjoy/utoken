@@ -29,6 +29,7 @@ import type {
   SubscriptionResetResult,
   SubscriptionPayResponse,
   SubscriptionPayRequest,
+  SubscriptionUpgradeOffer,
   SelfSubscriptionData,
 } from './types'
 
@@ -250,5 +251,17 @@ export async function getMembershipAccount() {
     await api.get<ApiResponse<{ quota: number; group: string }>>(
       '/api/user/self'
     )
+  return res.data
+}
+
+
+export async function quoteSubscriptionUpgrade(
+  subscriptionId: number,
+  targetPlanId: number
+): Promise<ApiResponse<SubscriptionUpgradeOffer>> {
+  const res = await api.post('/api/subscription/upgrade/quote', {
+    subscription_id: subscriptionId,
+    target_plan_id: targetPlanId,
+  })
   return res.data
 }

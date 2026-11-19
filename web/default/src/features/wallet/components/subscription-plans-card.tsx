@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -473,7 +474,14 @@ export function SubscriptionPlansCard({
                             quotas={sub.channel_quotas ?? []}
                           />
                         )}
-                        {subscription?.meter_type === 'shared_tokens' && t('Input / output tokens')}
+                        {subscription?.meter_type === 'shared_tokens' && (
+                          <>
+                            {t('Input / output tokens')}{' '}
+                            <Link to='/memberships' className='text-primary underline'>
+                              {t('Upgrade plan')}
+                            </Link>
+                          </>
+                        )}
                         {subscription?.meter_type !== 'channel' &&
                           subscription?.meter_type !== 'shared_tokens' &&
                           (totalAmount > 0 ? (

@@ -129,16 +129,16 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, result.Code)
 	assert.Equal(t, "no-store", result.Header().Get("Cache-Control"))
 	var token struct {
-		Value    string `json:"access_token"`
-		AudioKey string `json:"audio_api_key"`
-		Type     string `json:"token_type"`
+		Value       string `json:"access_token"`
+		LanguageKey string `json:"language_api_key"`
+		Type        string `json:"token_type"`
 	}
 	require.NoError(t, common.Unmarshal(result.Body.Bytes(), &token))
 	require.NotEmpty(t, token.Value)
-	var audioKey model.Token
-	require.NoError(t, db.Where("user_id = ? AND key_type = ?", user.Id, model.TokenKeyTypeDesktopAudio).First(&audioKey).Error)
-	require.Equal(t, "sk-"+audioKey.Key, token.AudioKey)
-	require.True(t, audioKey.UnlimitedQuota)
+	var languageKey model.Token
+	require.NoError(t, db.Where("user_id = ? AND key_type = ?", user.Id, model.TokenKeyTypeLanguage).First(&languageKey).Error)
+	require.Equal(t, "sk-"+languageKey.Key, token.LanguageKey)
+	require.True(t, languageKey.UnlimitedQuota)
 	assert.Equal(t, "Bearer", token.Type)
 	replay := send(http.MethodPost, "/api/desktop-auth/token", exchange, nil, "")
 	assert.Equal(t, http.StatusBadRequest, replay.Code)
@@ -163,14 +163,14 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 	renewed := send(http.MethodPost, "/api/desktop-auth/token", exchange, nil, "")
 	require.Equal(t, http.StatusOK, renewed.Code)
 	var renewedToken struct {
-		AudioKey string `json:"audio_api_key"`
+		LanguageKey string `json:"language_api_key"`
 	}
 	require.NoError(t, common.Unmarshal(renewed.Body.Bytes(), &renewedToken))
-	require.Equal(t, token.AudioKey, renewedToken.AudioKey)
+	require.Equal(t, token.LanguageKey, renewedToken.LanguageKey)
 	var count int64
-	require.NoError(t, db.Model(&model.Token{}).Where("user_id = ? AND key_type = ?", user.Id, model.TokenKeyTypeDesktopAudio).Count(&count).Error)
+	require.NoError(t, db.Model(&model.Token{}).Where("user_id = ? AND key_type = ?", user.Id, model.TokenKeyTypeLanguage).Count(&count).Error)
 	require.EqualValues(t, 1, count)
-	require.Equal(t, "客户端语音专用（不建议用于其他用途）", audioKey.Name)
+	require.Equal(t, "客户端语言模型专用（不建议用于其他用途）", languageKey.Name)
 
 	secondApproval := send(http.MethodPost, desktopAuthPath, authorize, browserCookies, "")
 	require.Equal(t, http.StatusSeeOther, secondApproval.Code)

@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -37,12 +38,13 @@ import {
   getMembershipAccount,
   getPublicPlans,
   getSelfSubscriptionFull,
+  quoteSubscriptionUpgrade,
 } from './api'
 import { ChannelQuotaSummary } from './components/channel-quota-summary'
 import { SubscriptionPurchaseDialog } from './components/dialogs/subscription-purchase-dialog'
 import { MembershipKeyDialog } from './components/membership-key-dialog'
 import { formatDuration } from './lib'
-import type { ChannelQuota, PlanRecord } from './types'
+import type { ChannelQuota, PlanRecord, SubscriptionUpgradeOffer } from './types'
 
 /** User-facing channel membership hub; all purchases reuse the existing checkout dialog. */
 export function ChannelMemberships() {
@@ -66,6 +68,20 @@ export function ChannelMemberships() {
     queryFn: getTopupInfo,
   })
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
+  const [upgradeOffer, setUpgradeOffer] = useState<SubscriptionUpgradeOffer | null>(null)
+  const upgrade = useMutation({
+    mutationFn: async ({ subscriptionId, target }: { subscriptionId: number; target: PlanRecord }) => {
+      const result = await quoteSubscriptionUpgrade(subscriptionId, target.plan.id)
+      if (!result.success || !result.data) throw new Error(result.message || t('Payment request failed'))
+      return { offer: result.data, target }
+    },
+    onSuccess: ({ offer, target }) => {
+      setUpgradeOffer(offer)
+      setSelectedPlan(target)
+    },
+    onError: (error) => toast.error(error.message),
+  })
+
   const [selectedGrant, setSelectedGrant] = useState<ChannelQuota | null>(null)
   const rights = (subscriptions.data?.data?.all_subscriptions ?? []).filter(
     (record) => ['channel', 'shared_tokens'].includes(record.subscription.meter_type ?? '')
@@ -145,6 +161,25 @@ export function ChannelMemberships() {
                         record.subscription.end_time * 1000
                       ).toLocaleString()}
                     </p>
+                    {active && record.subscription.meter_type === 'shared_tokens' && (
+                      <label className='flex flex-wrap items-center gap-2 text-sm'>
+                        {t('Upgrade plan')}
+                        <select
+                          className='bg-background rounded-md border px-2 py-1'
+                          value=''
+                          disabled={upgrade.isPending}
+                          onChange={(event) => {
+                            const target = offers.find((item) => item.plan.id === Number(event.target.value))
+                            if (target) upgrade.mutate({ subscriptionId: record.subscription.id, target })
+                          }}
+                        >
+                          <option value=''>{t('Membership plans')}</option>
+                          {offers.filter((item) => item.plan.meter_type === 'shared_tokens' && item.plan.id !== record.subscription.plan_id).map((item) => (
+                            <option key={item.plan.id} value={item.plan.id}>{item.plan.title}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     {(record.channel_quotas ?? []).map((grant) => (
                       <div key={grant.channel_id} className='space-y-2'>
                         {grant.channel_id > 0 ? (
@@ -204,10 +239,12 @@ export function ChannelMemberships() {
           onOpenChange={(open) => {
             if (!open) {
               setSelectedPlan(null)
+              setUpgradeOffer(null)
               void refresh()
             }
           }}
           plan={selectedPlan}
+          upgradeOffer={upgradeOffer}
           userQuota={account.data?.data?.quota ?? 0}
           enableStripe={payment?.enable_stripe_topup}
           enableCreem={payment?.enable_creem_topup}

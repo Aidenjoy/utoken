@@ -228,7 +228,7 @@ func DesktopExchange(c *gin.Context) {
 	now := model.GetDBTimestamp()
 	ttl := int64(desktopTokenTTL / time.Second)
 	hash := sha256.Sum256([]byte(form.Verifier))
-	audioKey, err := model.ExchangeDesktopAuthCode(desktopDigest(form.Code), form.ClientID, form.RedirectURI, base64.RawURLEncoding.EncodeToString(hash[:]),
+	languageKey, err := model.ExchangeDesktopAuthCode(desktopDigest(form.Code), form.ClientID, form.RedirectURI, base64.RawURLEncoding.EncodeToString(hash[:]),
 		now, &model.DesktopAuthSession{Digest: desktopDigest(token), ExpiresAt: now + ttl})
 	if errors.Is(err, model.ErrDesktopCredentialInvalid) {
 		desktopOAuthError(c, http.StatusBadRequest, "invalid_grant")
@@ -241,7 +241,7 @@ func DesktopExchange(c *gin.Context) {
 
 	c.Header("Cache-Control", "no-store")
 	c.Header("Pragma", "no-cache")
-	c.JSON(http.StatusOK, gin.H{"access_token": token, "token_type": "Bearer", "expires_in": ttl, "audio_api_key": "sk-" + audioKey.Key})
+	c.JSON(http.StatusOK, gin.H{"access_token": token, "token_type": "Bearer", "expires_in": ttl, "language_api_key": "sk-" + languageKey.Key})
 }
 
 func DesktopProfile(c *gin.Context) {

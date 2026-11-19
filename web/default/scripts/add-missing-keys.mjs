@@ -245,6 +245,18 @@ newKeys.fr['Membership Center'] = 'Espace membre'
 newKeys.ja['Membership Center'] = 'メンバーシップセンター'
 newKeys.ru['Membership Center'] = 'Центр подписок'
 newKeys.vi['Membership Center'] = 'Trung tâm hội viên'
+newKeys.en['Upgrade plan'] = 'Upgrade plan'
+newKeys.zh['Upgrade plan'] = '升级套餐'
+newKeys.fr['Upgrade plan'] = 'Changer de forfait'
+newKeys.ja['Upgrade plan'] = 'プランをアップグレード'
+newKeys.ru['Upgrade plan'] = 'Повысить тариф'
+newKeys.vi['Upgrade plan'] = 'Nâng cấp gói'
+newKeys.en['Paid, pending reconciliation'] = 'Paid, pending reconciliation'
+newKeys.zh['Paid, pending reconciliation'] = '已收款，待对账'
+newKeys.fr['Paid, pending reconciliation'] = 'Payé, en attente de rapprochement'
+newKeys.ja['Paid, pending reconciliation'] = '支払い済み、照合待ち'
+newKeys.ru['Paid, pending reconciliation'] = 'Оплачено, ожидает сверки'
+newKeys.vi['Paid, pending reconciliation'] = 'Đã thanh toán, đang chờ đối soát'
 async function main() {
   for (const [locale, trans] of Object.entries(newKeys)) {
     const filePath = path.join(LOCALES_DIR, `${locale}.json`)

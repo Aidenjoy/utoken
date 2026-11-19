@@ -46,7 +46,7 @@ func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, no
 		return nil, desktopCredentialError(err)
 	}
 
-	var audioKey Token
+	var languageKey Token
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		deleted := tx.Where("digest = ? AND expires_at > ?", digest, now).Delete(&DesktopAuthCode{})
 		if deleted.Error != nil {
@@ -59,15 +59,16 @@ func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, no
 		if err != nil {
 			return err
 		}
-		err = tx.Where("user_id = ? AND key_type = ?", user.Id, TokenKeyTypeDesktopAudio).Order("id asc").First(&audioKey).Error
+		const desktopLanguageKeyName = "客户端语言模型专用（不建议用于其他用途）"
+		err = tx.Where("user_id = ? AND key_type = ? AND name = ? AND user_subscription_id = ? AND channel_id = ?", user.Id, TokenKeyTypeLanguage, desktopLanguageKeyName, 0, 0).Order("id asc").First(&languageKey).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			key, keyErr := common.GenerateKey()
 			if keyErr != nil {
 				return keyErr
 			}
-			audioKey = Token{UserId: user.Id, Key: key, Name: "客户端语音专用（不建议用于其他用途）", KeyType: TokenKeyTypeDesktopAudio,
+			languageKey = Token{UserId: user.Id, Key: key, Name: desktopLanguageKeyName, KeyType: TokenKeyTypeLanguage,
 				Status: common.TokenStatusEnabled, CreatedTime: now, AccessedTime: now, ExpiredTime: -1, UnlimitedQuota: true}
-			if err := tx.Create(&audioKey).Error; err != nil {
+			if err := tx.Create(&languageKey).Error; err != nil {
 				return err
 			}
 		} else if err != nil {
@@ -79,7 +80,7 @@ func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, no
 	if err != nil {
 		return nil, err
 	}
-	return &audioKey, nil
+	return &languageKey, nil
 }
 
 func GetDesktopAuthUser(digest string, now int64, consume bool) (*User, error) {
