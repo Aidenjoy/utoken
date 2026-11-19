@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	channelconstant "github.com/QuantumNous/new-api/constant"
@@ -85,6 +86,17 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
 	relaycommon.NormalizeKimiFixedSamplingParams(upstreamModel, request.TopP, request.PresencePenalty, request.FrequencyPenalty)
+	// Moonshot 校验器拒绝递归工具 schema（codex 计划/MCP 工具的 $defs/$ref
+	// 自引用，报 infinite recursion），与 volcengine/openai 路径一致，
+	// 转发前内联并断环。
+	if relaycommon.IsKimiFixedSamplingModel(upstreamModel) && len(request.Tools) > 0 {
+		if raw, err := common.Marshal(request.Tools); err == nil && strings.Contains(string(raw), `"$ref"`) {
+			var tools []dto.ToolCallRequest
+			if err := common.Unmarshal(relaycommon.InlineKimiToolSchemaRefs(upstreamModel, raw), &tools); err == nil {
+				request.Tools = tools
+			}
+		}
+	}
 	return request, nil
 }
 
