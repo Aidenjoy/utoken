@@ -356,6 +356,16 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
 	relaycommon.NormalizeKimiFixedSamplingParams(info.UpstreamModelName, request.TopP, request.PresencePenalty, request.FrequencyPenalty)
+	// Kimi 上游对工具参数 schema 里 array items 内指向复合 schema 的 $ref
+	// 解引用不完整，递归 $defs/$ref 直接被拒（infinite recursion），转发前内联并断环。
+	if relaycommon.IsKimiFixedSamplingModel(info.UpstreamModelName) && len(request.Tools) > 0 {
+		if raw, err := common.Marshal(request.Tools); err == nil && strings.Contains(string(raw), `"$ref"`) {
+			var tools []dto.ToolCallRequest
+			if err := common.Unmarshal(relaycommon.InlineKimiToolSchemaRefs(info.UpstreamModelName, raw), &tools); err == nil {
+				request.Tools = tools
+			}
+		}
+	}
 
 	return request, nil
 }
@@ -748,10 +758,21 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	}
 	// Kimi 推理模型固定采样参数归一化，与 chat 路径保持一致；
 	// Responses 格式没有 penalty 字段，传 nil 表示不适用。
-	if request.Temperature != nil && relaycommon.IsTemperatureOneOnlyModel(request.Model) && *request.Temperature != 1.0 {
+	upstreamModel := request.Model
+	if info != nil && info.UpstreamModelName != "" {
+		upstreamModel = info.UpstreamModelName
+	}
+	if request.Temperature != nil && relaycommon.IsTemperatureOneOnlyModel(upstreamModel) && *request.Temperature != 1.0 {
 		request.Temperature = common.GetPointer[float64](1.0)
 	}
-	relaycommon.NormalizeKimiFixedSamplingParams(request.Model, request.TopP, nil, nil)
+	relaycommon.NormalizeKimiFixedSamplingParams(upstreamModel, request.TopP, nil, nil)
+	// Kimi 上游要求 input 历史里的工具调用项必须有配对输出，且拒绝递归
+	// 工具 schema（codex 挂载 MCP/计划类工具后必现）；与 volcengine 路径
+	// 一致，转发前修复孤立调用并内联 $ref。
+	if relaycommon.IsKimiFixedSamplingModel(upstreamModel) {
+		request.Input = relaycommon.RepairResponsesOrphanToolCalls(request.Input)
+		request.Tools = relaycommon.InlineKimiToolSchemaRefs(upstreamModel, request.Tools)
+	}
 	return request, nil
 }
 

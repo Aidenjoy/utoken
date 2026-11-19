@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 package openai
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -128,4 +129,50 @@ func TestConvertOpenAIRequestNormalizesKimiFixedSamplingParams(t *testing.T) {
 	assert.Nil(t, convertedRequest.TopP)
 	assert.Nil(t, convertedRequest.PresencePenalty)
 	assert.Nil(t, convertedRequest.FrequencyPenalty)
+}
+
+// OpenAI 兼容渠道转售 Kimi 时，codex 等客户端的递归工具 schema（steps
+// 自引用 $defs/$ref）会被 Moonshot 校验器拒绝（"detected infinite recursion
+// without termination condition"）；Responses 路径转发前必须内联并断环。
+func TestConvertOpenAIResponsesRequestBreaksRecursiveKimiToolSchema(t *testing.T) {
+	request := dto.OpenAIResponsesRequest{
+		Model: "kimi-k3.1-pro",
+		Tools: []byte(`[{
+			"type": "function",
+			"name": "update_plan",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"steps": {"type": "array", "items": {"$ref": "#/$defs/PlanStep"}}
+				},
+				"required": ["steps"],
+				"$defs": {
+					"PlanStep": {
+						"type": "object",
+						"properties": {
+							"title": {"type": "string"},
+							"substeps": {"type": "array", "items": {"$ref": "#/$defs/PlanStep"}}
+						},
+						"required": ["title"]
+					}
+				}
+			}
+		}]`),
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeOpenAI,
+			UpstreamModelName: "kimi-k3.1-pro",
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, request)
+
+	require.NoError(t, err)
+	convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	toolsJSON := string(convertedRequest.Tools)
+	assert.NotContains(t, toolsJSON, `"$ref"`, "recursive refs must be inlined")
+	assert.NotContains(t, toolsJSON, `"$defs"`, "defs block must be removed")
+	assert.True(t, strings.Contains(toolsJSON, `"title"`), "non-recursive schema content must survive")
 }
