@@ -102,10 +102,12 @@ export function MembershipKeyDialog(props: {
       }
     >
       <div className='space-y-3'>
+        {props.grant.channel_id > 0 && (
         <p>
           {t('Channel {{id}}', { id: props.grant.channel_id })} ·{' '}
           {props.grant.models.join(', ')}
         </p>
+        )}
         {video && (
           <div className='space-y-2'>
             <Label>{t('Model')}</Label>

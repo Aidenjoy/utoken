@@ -463,7 +463,8 @@ export function SubscriptionPlansCard({
                         </div>
                       )}
                       <div className='text-muted-foreground mt-1'>
-                        {subscription?.meter_type === 'channel'
+                        {(subscription?.meter_type === 'channel' ||
+                          subscription?.meter_type === 'shared_tokens')
                           ? t('Membership benefits')
                           : t('Total Quota')}
                         :{' '}
@@ -472,7 +473,9 @@ export function SubscriptionPlansCard({
                             quotas={sub.channel_quotas ?? []}
                           />
                         )}
+                        {subscription?.meter_type === 'shared_tokens' && t('Input / output tokens')}
                         {subscription?.meter_type !== 'channel' &&
+                          subscription?.meter_type !== 'shared_tokens' &&
                           (totalAmount > 0 ? (
                             <Tooltip>
                               <TooltipTrigger
@@ -527,7 +530,9 @@ export function SubscriptionPlansCard({
               const reached = limit > 0 && count >= limit
 
               let quotaBenefit = `${t('Total Quota')}: ${t('Unlimited')}`
-              if (plan.meter_type === 'channel') {
+              if (plan.meter_type === 'shared_tokens') {
+                quotaBenefit = t('Input / output tokens')
+              } else if (plan.meter_type === 'channel') {
                 quotaBenefit = t('Channel membership')
               } else if (totalAmount > 0) {
                 quotaBenefit = `${t('Total Quota')}: ${formatQuota(totalAmount)}`

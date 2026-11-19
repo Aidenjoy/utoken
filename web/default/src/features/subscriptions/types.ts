@@ -26,6 +26,7 @@ export const channelQuotaConfigSchema = z.object({
   channel_id: z.number().int().positive(),
   profile: z.enum([
     'openai_chat_text_v1',
+    'shared_tokens',
     'openai_images_count_v1',
     'sora_completed_video_v1',
     'openai_whisper_duration_v1',
@@ -86,7 +87,9 @@ export interface MembershipChannelOption {
 }
 
 export const subscriptionPlanSchema = z.object({
-  meter_type: z.enum(['quota', 'channel']).optional(),
+  meter_type: z.enum(['quota', 'channel', 'shared_tokens']).optional(),
+  input_token_limit: z.number().optional(),
+  output_token_limit: z.number().optional(),
   channel_quotas: z.array(channelQuotaConfigSchema).nullish(),
   id: z.number(),
   title: z.string(),

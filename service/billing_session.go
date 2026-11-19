@@ -440,7 +440,7 @@ func (s *BillingSession) syncRelayInfo() {
 // ---------------------------------------------------------------------------
 
 // NewBillingSession 根据用户计费偏好创建 BillingSession，处理 subscription_first / wallet_first 的回退。
-func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
+func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int, shared ...func() (bool, *types.NewAPIError)) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -455,7 +455,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 			types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 	}
 
-	session, apiErr := newBillingSession(c, relayInfo, preConsumedQuota)
+	session, apiErr := newBillingSession(c, relayInfo, preConsumedQuota, shared...)
 	if apiErr != nil {
 		// 计费未成立：释放幂等位，允许客户端修正后用同一 requestId 重试
 		ReleaseBillingIdempotency(relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName)
@@ -464,7 +464,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 }
 
 // newBillingSession 按计费偏好创建预扣费会话（不含幂等占位）。
-func newBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
+func newBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int, shared ...func() (bool, *types.NewAPIError)) (*BillingSession, *types.NewAPIError) {
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
 	// 企业额度池优先：成员的消费一律先扣企业池，与个人计费偏好无关
@@ -507,6 +507,11 @@ func newBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
+		if len(shared) > 0 {
+			if selected, err := shared[0](); selected || err != nil {
+				return nil, err
+			}
+		}
 		subConsume := int64(preConsumedQuota)
 		if subConsume <= 0 {
 			subConsume = 1

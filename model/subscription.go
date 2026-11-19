@@ -144,9 +144,11 @@ func InvalidateSubscriptionPlanCache(planId int) {
 
 // Subscription plan
 type SubscriptionPlan struct {
-	MeterType     string    `json:"meter_type" gorm:"type:varchar(16);not null;default:quota"`
-	ChannelQuotas JSONValue `json:"channel_quotas" gorm:"type:text"`
-	Id            int       `json:"id"`
+	MeterType        string    `json:"meter_type" gorm:"type:varchar(16);not null;default:quota"`
+	ChannelQuotas    JSONValue `json:"channel_quotas" gorm:"type:text"`
+	InputTokenLimit  int64     `json:"input_token_limit,omitempty" gorm:"not null;default:0"`
+	OutputTokenLimit int64     `json:"output_token_limit,omitempty" gorm:"not null;default:0"`
+	Id               int       `json:"id"`
 
 	Title    string `json:"title" gorm:"type:varchar(128);not null"`
 	Subtitle string `json:"subtitle" gorm:"type:varchar(255);default:''"`
@@ -248,7 +250,7 @@ func (o *SubscriptionOrder) Insert() error {
 	if _, err := ValidateSubscriptionChannels(DB, &plan); err != nil {
 		return err
 	}
-	if plan.MeterType == SubscriptionMeterChannel && o.PaymentProvider != PaymentProviderEpay {
+	if !IsQuotaSubscription(plan.MeterType) && o.PaymentProvider != PaymentProviderEpay {
 		return errors.New("channel membership online payment currently supports Epay only")
 	}
 	data, err := common.Marshal(plan)
@@ -937,7 +939,7 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 	}
 	now := common.GetTimestamp()
 	var count int64
-	if err := DB.Model(&UserSubscription{}).Where("(meter_type IS NULL OR meter_type = ? OR meter_type = ?)", "", SubscriptionMeterQuota).
+	if err := DB.Model(&UserSubscription{}).Where("(meter_type IS NULL OR meter_type IN ?)", []string{"", SubscriptionMeterQuota, SubscriptionMeterSharedTokens}).
 		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 		Count(&count).Error; err != nil {
 		return false, err
@@ -954,7 +956,7 @@ func UserActiveSubscriptionsAllowWalletOverflow(userId int) (bool, error) {
 	}
 	now := common.GetTimestamp()
 	var strictCount int64
-	if err := DB.Model(&UserSubscription{}).Where("(meter_type IS NULL OR meter_type = ? OR meter_type = ?)", "", SubscriptionMeterQuota).
+	if err := DB.Model(&UserSubscription{}).Where("(meter_type IS NULL OR meter_type IN ?)", []string{"", SubscriptionMeterQuota, SubscriptionMeterSharedTokens}).
 		Where("user_id = ? AND status = ? AND end_time > ? AND allow_wallet_overflow = ?",
 			userId, "active", now, false).
 		Count(&strictCount).Error; err != nil {
@@ -986,7 +988,7 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	for _, sub := range subs {
 		subCopy := sub
 		var grants []SubscriptionChannelQuota
-		if sub.MeterType == SubscriptionMeterChannel {
+		if !IsQuotaSubscription(sub.MeterType) {
 			if err := DB.Where("user_subscription_id = ?", sub.Id).Find(&grants).Error; err != nil {
 				common.SysError("membership grants unavailable: " + err.Error())
 			}
@@ -1059,7 +1061,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 			return err
 		}
-		if sub.MeterType == SubscriptionMeterChannel {
+		if !IsQuotaSubscription(sub.MeterType) {
 			return errors.New("membership ledger must be retained; invalidate the subscription instead")
 		}
 		userId = sub.UserId

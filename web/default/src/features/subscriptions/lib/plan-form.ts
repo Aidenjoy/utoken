@@ -29,7 +29,9 @@ import {
 
 export function getPlanFormSchema(t: TFunction) {
   return z.object({
-    meter_type: z.enum(['quota', 'channel']),
+    meter_type: z.enum(['quota', 'channel', 'shared_tokens']),
+    input_token_limit: z.coerce.number().int().min(0).max(2147483647),
+    output_token_limit: z.coerce.number().int().min(0).max(2147483647),
     channel_quotas: z.array(channelQuotaConfigSchema),
     title: z.string().min(1, t('Please enter plan title')),
     subtitle: z.string().optional(),
@@ -62,7 +64,9 @@ export function getPlanFormSchema(t: TFunction) {
 export type PlanFormValues = z.infer<ReturnType<typeof getPlanFormSchema>>
 
 export const PLAN_FORM_DEFAULTS: PlanFormValues = {
-  meter_type: 'quota',
+  meter_type: 'shared_tokens',
+  input_token_limit: 0,
+  output_token_limit: 0,
   channel_quotas: [],
   title: '',
   subtitle: '',
@@ -87,7 +91,9 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
   return {
-    meter_type: plan.meter_type === 'channel' ? 'channel' : 'quota',
+    meter_type: plan.meter_type ?? 'quota',
+    input_token_limit: plan.input_token_limit ?? 0,
+    output_token_limit: plan.output_token_limit ?? 0,
     channel_quotas: plan.channel_quotas || [],
     title: plan.title || '',
     subtitle: plan.subtitle || '',
@@ -120,7 +126,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       duration_value: Number(values.duration_value || 0),
       custom_seconds: Number(values.custom_seconds || 0),
       quota_reset_period:
-        values.meter_type === 'channel'
+        values.meter_type !== 'quota'
           ? 'never'
           : values.quota_reset_period || 'never',
       quota_reset_custom_seconds:
@@ -130,7 +136,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       total_amount:
-        values.meter_type === 'channel'
+        values.meter_type !== 'quota'
           ? 0
           : parseQuotaFromDollars(Number(values.total_amount || 0)),
       channel_quotas:
@@ -138,9 +144,9 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       allow_wallet_overflow:
         values.meter_type === 'channel' ? false : values.allow_wallet_overflow,
       upgrade_group:
-        values.meter_type === 'channel' ? '' : values.upgrade_group || '',
+        values.meter_type !== 'quota' ? '' : values.upgrade_group || '',
       downgrade_group:
-        values.meter_type === 'channel' ? '' : values.downgrade_group || '',
+        values.meter_type !== 'quota' ? '' : values.downgrade_group || '',
     },
   }
 }

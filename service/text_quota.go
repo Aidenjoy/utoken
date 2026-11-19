@@ -45,6 +45,8 @@ type textQuotaSummary struct {
 	CacheCreationRatio5m     float64
 	CacheCreationRatio1h     float64
 	Quota                    int
+	InputQuotaBeforeRounding decimal.Decimal
+	CanSplitQuota            bool
 	IsClaudeUsageSemantic    bool
 	UsageSemantic            string
 	WebSearchPrice           float64
@@ -305,6 +307,8 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 
 		promptQuota := baseTokens.Add(cachedTokensWithRatio).Add(imageTokensWithRatio).Add(cachedCreationTokensWithRatio)
 		completionQuota := dCompletionTokens.Mul(dCompletionRatio)
+		summary.InputQuotaBeforeRounding = relayInfo.PriceData.ApplyOtherRatiosToDecimal(promptQuota.Mul(ratio).Add(audioInputQuota))
+		summary.CanSplitQuota = summary.ToolCallSurchargeQuota.IsZero() && !promptQuota.IsNegative() && !completionQuota.IsNegative()
 		quotaCalculateDecimal := promptQuota.Add(completionQuota).Mul(ratio)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(summary.ToolCallSurchargeQuota)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(audioInputQuota)
@@ -333,6 +337,23 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	}
 
 	return summary
+}
+
+// calculateTextQuotaParts preserves the wallet total for separable ratio pricing.
+// The output component absorbs integer rounding and the minimum-charge remainder.
+func calculateTextQuotaParts(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.Usage) (input, output int, ok bool) {
+	if usage == nil || info.PriceData.UsePrice || info.TieredBillingSnapshot != nil {
+		return 0, 0, false
+	}
+	summary := calculateTextQuotaSummary(ctx, info, usage)
+	if !summary.CanSplitQuota || info.QuotaClamp != nil {
+		return 0, 0, false
+	}
+	total, _ := applyUserModelDiscount(info, summary.Quota)
+	input = common.QuotaFromDecimal(summary.InputQuotaBeforeRounding)
+	input, _ = applyUserModelDiscount(info, input)
+	input = min(total, input)
+	return input, total - input, true
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {

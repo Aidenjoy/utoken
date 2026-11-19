@@ -835,6 +835,10 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
+meter_type varchar(16) NOT NULL DEFAULT 'quota',
+channel_quotas text,
+input_token_limit bigint NOT NULL DEFAULT 0,
+output_token_limit bigint NOT NULL DEFAULT 0,
 PRIMARY KEY (` + "`id`" + `)
 )`
 		return DB.Exec(createSQL).Error
@@ -850,6 +854,11 @@ PRIMARY KEY (` + "`id`" + `)
 		existing[c.Name] = struct{}{}
 	}
 	required := []sqliteColumnDef{
+		{Name: "meter_type", DDL: "meter_type varchar(16) NOT NULL DEFAULT 'quota'"},
+		{Name: "channel_quotas", DDL: "channel_quotas text"},
+		{Name: "input_token_limit", DDL: "input_token_limit bigint NOT NULL DEFAULT 0"},
+		{Name: "output_token_limit", DDL: "output_token_limit bigint NOT NULL DEFAULT 0"},
+
 		{Name: "title", DDL: "`title` varchar(128) NOT NULL"},
 		{Name: "subtitle", DDL: "`subtitle` varchar(255) DEFAULT ''"},
 		{Name: "price_amount", DDL: "`price_amount` decimal(10,6) NOT NULL"},

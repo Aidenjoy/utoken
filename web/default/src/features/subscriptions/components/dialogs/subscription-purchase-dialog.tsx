@@ -86,7 +86,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const plan = props.plan?.plan
   if (!plan) return null
 
-  const isMembership = plan.meter_type === 'channel'
+  const isMembership = plan.meter_type === 'channel' || plan.meter_type === 'shared_tokens'
   const hasStripe =
     !isMembership && props.enableStripe && !!plan.stripe_price_id
   const hasCreem = !isMembership && props.enableCreem && !!plan.creem_product_id
@@ -300,9 +300,13 @@ export function SubscriptionPurchaseDialog(props: Props) {
               <span className='text-sm'>{formatResetPeriod(plan, t)}</span>
             </div>
           )}
-          {isMembership ? (
+          {plan.meter_type === 'shared_tokens' ? (
+            <span className='text-sm'>{t('Input / output tokens')}</span>
+          ) : null}
+          {plan.meter_type === 'channel' && (
             <ChannelQuotaSummary quotas={plan.channel_quotas ?? []} />
-          ) : (
+          )}
+          {!isMembership && (
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-sm'>
                 {t('Plan Quota')}

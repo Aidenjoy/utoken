@@ -38,7 +38,7 @@ func CreateDesktopAuthCode(code *DesktopAuthCode, now int64) error {
 	})
 }
 
-func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, now int64, session *DesktopAuthSession) (*User, error) {
+func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, now int64, session *DesktopAuthSession) (*Token, error) {
 	match := DB.Where("digest = ? AND client_id = ? AND redirect_uri = ? AND challenge = ? AND expires_at > ?",
 		digest, clientID, redirectURI, challenge, now)
 	var code DesktopAuthCode
@@ -46,7 +46,7 @@ func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, no
 		return nil, desktopCredentialError(err)
 	}
 
-	var user *User
+	var audioKey Token
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		deleted := tx.Where("digest = ? AND expires_at > ?", digest, now).Delete(&DesktopAuthCode{})
 		if deleted.Error != nil {
@@ -55,15 +55,31 @@ func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, no
 		if deleted.RowsAffected != 1 {
 			return ErrDesktopCredentialInvalid
 		}
-		var err error
-		user, err = activeDesktopUser(tx, code.UserID)
+		user, err := activeDesktopUser(lockForUpdate(tx), code.UserID)
 		if err != nil {
+			return err
+		}
+		err = tx.Where("user_id = ? AND key_type = ?", user.Id, TokenKeyTypeDesktopAudio).Order("id asc").First(&audioKey).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			key, keyErr := common.GenerateKey()
+			if keyErr != nil {
+				return keyErr
+			}
+			audioKey = Token{UserId: user.Id, Key: key, Name: "客户端语音专用（不建议用于其他用途）", KeyType: TokenKeyTypeDesktopAudio,
+				Status: common.TokenStatusEnabled, CreatedTime: now, AccessedTime: now, ExpiredTime: -1, UnlimitedQuota: true}
+			if err := tx.Create(&audioKey).Error; err != nil {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
 		session.UserID = user.Id
 		return tx.Create(session).Error
 	})
-	return user, err
+	if err != nil {
+		return nil, err
+	}
+	return &audioKey, nil
 }
 
 func GetDesktopAuthUser(digest string, now int64, consume bool) (*User, error) {

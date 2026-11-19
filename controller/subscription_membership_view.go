@@ -25,6 +25,7 @@ type PublicSubscriptionSummary struct {
 
 // publicMembershipPlan projects a response copy; purchased snapshots and admin configuration are untouched.
 func publicMembershipPlan(plan model.SubscriptionPlan) (model.SubscriptionPlan, error) {
+	plan.InputTokenLimit, plan.OutputTokenLimit = 0, 0
 	if plan.MeterType != model.SubscriptionMeterChannel {
 		return plan, nil
 	}

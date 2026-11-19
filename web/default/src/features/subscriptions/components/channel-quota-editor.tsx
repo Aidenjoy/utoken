@@ -70,127 +70,152 @@ export function ChannelQuotaEditor(props: {
         {t('Channel membership never falls back to wallet balance.')}
       </p>
       {channels.isError && <p role='alert'>{t('Failed to load channels')}</p>}
-      {props.value.map((quota, index) => (
-        <div key={quota.channel_id} className='space-y-3 rounded-md border p-3'>
-          <Label>{t('Channel')}</Label>
-          <Select
-            value={`${quota.channel_id}:${quota.profile}`}
-            items={options.map((item) => ({
-              value: `${item.id}:${item.profile}`,
-              label: `#${item.id} ${item.name} · ${t(channelQuotaUnitLabels[item.unit])}`,
-            }))}
-            onValueChange={(value) => {
-              const channel = options.find(
-                (item) => `${item.id}:${item.profile}` === value
-              )
-              if (channel) {
-                props.onChange(
-                  props.value.map((item, i) =>
-                    i === index ? quotaFromChannel(channel) : item
-                  )
+      {props.value.map((quota, index) => {
+        const channel = options.find(
+          (item) => item.id === quota.channel_id && item.profile === quota.profile
+        )
+        return (
+          <div key={quota.channel_id} className='space-y-3 rounded-md border p-3'>
+            <Label>{t('Channel')}</Label>
+            <Select
+              value={`${quota.channel_id}:${quota.profile}`}
+              items={options.map((item) => ({
+                value: `${item.id}:${item.profile}`,
+                label: `#${item.id} ${item.name} · ${t(channelQuotaUnitLabels[item.unit])}`,
+              }))}
+              onValueChange={(value) => {
+                const channel = options.find(
+                  (item) => `${item.id}:${item.profile}` === value
                 )
-              }
-            }}
-          >
-            <SelectTrigger aria-label={t('Channel')}>
-              <SelectValue placeholder={t('Select a channel')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {options
-                  .filter(
-                    (item) =>
-                      item.id === quota.channel_id ||
-                      !props.value.some((q) => q.channel_id === item.id)
-                  )
-                  .map((item) => (
-                    <SelectItem
-                      key={`${item.id}:${item.profile}`}
-                      value={`${item.id}:${item.profile}`}
-                    >
-                      #{item.id} {item.name} ·{' '}
-                      {t(channelQuotaUnitLabels[item.unit])}
-                    </SelectItem>
-                  ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <p className='text-muted-foreground text-xs'>
-            {quota.models.join(', ')}
-          </p>
-          {quota.unit !== 'input_output_tokens' ? (
-            <div className='space-y-1'>
-              <Label htmlFor={`membership-${index}-quantity`}>
-                {t(channelQuotaUnitLabels[quota.unit])}
-              </Label>
-              <Input
-                id={`membership-${index}-quantity`}
-                type='number'
-                min={1}
-                max={2147483647}
-                step={1}
-                value={quota.quantity_limit ?? 0}
-                onChange={(event) =>
+                if (channel) {
                   props.onChange(
                     props.value.map((item, i) =>
-                      i === index
-                        ? {
-                            ...item,
-                            quantity_limit: Number(event.target.value),
-                          }
-                        : item
+                      i === index ? quotaFromChannel(channel) : item
                     )
                   )
                 }
-              />
-            </div>
-          ) : (
-            <div className='grid grid-cols-2 gap-3'>
-              {(['input', 'output'] as const).map((dimension) => (
-                <div key={dimension} className='space-y-1'>
-                  <Label htmlFor={`membership-${index}-${dimension}`}>
-                    {dimension === 'input'
-                      ? t('Input tokens')
-                      : t('Output tokens')}
-                  </Label>
-                  <Input
-                    id={`membership-${index}-${dimension}`}
-                    type='number'
-                    min={1}
-                    max={2147483647}
-                    step={1}
-                    value={quota[`${dimension}_limit`]}
-                    onChange={(event) =>
+              }}
+            >
+              <SelectTrigger aria-label={t('Channel')}>
+                <SelectValue placeholder={t('Select a channel')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {options
+                    .filter(
+                      (item) =>
+                        item.id === quota.channel_id ||
+                        !props.value.some((q) => q.channel_id === item.id)
+                    )
+                    .map((item) => (
+                      <SelectItem
+                        key={`${item.id}:${item.profile}`}
+                        value={`${item.id}:${item.profile}`}
+                      >
+                        #{item.id} {item.name} ·{' '}
+                        {t(channelQuotaUnitLabels[item.unit])}
+                      </SelectItem>
+                    ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <fieldset className='space-y-2'>
+              <legend className='text-sm font-medium'>{t('Models')}</legend>
+              {(channel?.models ?? quota.models).map((model) => (
+                <label key={model} className='flex items-center gap-2 text-sm'>
+                  <input
+                    type='checkbox'
+                    disabled={!channel}
+                    checked={quota.models.includes(model)}
+                    onChange={(event) => {
+                      const models = event.target.checked
+                        ? [...quota.models, model]
+                        : quota.models.filter((name) => name !== model)
                       props.onChange(
                         props.value.map((item, i) =>
-                          i === index
-                            ? {
-                                ...item,
-                                [`${dimension}_limit`]: Number(
-                                  event.target.value
-                                ),
-                              }
-                            : item
+                          i === index ? { ...item, models } : item
                         )
                       )
-                    }
+                    }}
                   />
-                </div>
+                  {model}
+                </label>
               ))}
-            </div>
-          )}
-          <Button
-            type='button'
-            variant='ghost'
-            size='sm'
-            onClick={() =>
-              props.onChange(props.value.filter((_, i) => i !== index))
-            }
-          >
-            {t('Remove channel from plan')}
-          </Button>
-        </div>
-      ))}
+            </fieldset>
+            {quota.unit !== 'input_output_tokens' ? (
+              <div className='space-y-1'>
+                <Label htmlFor={`membership-${index}-quantity`}>
+                  {t(channelQuotaUnitLabels[quota.unit])}
+                </Label>
+                <Input
+                  id={`membership-${index}-quantity`}
+                  type='number'
+                  min={1}
+                  max={2147483647}
+                  step={1}
+                  value={quota.quantity_limit ?? 0}
+                  onChange={(event) =>
+                    props.onChange(
+                      props.value.map((item, i) =>
+                        i === index
+                          ? {
+                              ...item,
+                              quantity_limit: Number(event.target.value),
+                            }
+                          : item
+                      )
+                    )
+                  }
+                />
+              </div>
+            ) : (
+              <div className='grid grid-cols-2 gap-3'>
+                {(['input', 'output'] as const).map((dimension) => (
+                  <div key={dimension} className='space-y-1'>
+                    <Label htmlFor={`membership-${index}-${dimension}`}>
+                      {dimension === 'input'
+                        ? t('Input tokens')
+                        : t('Output tokens')}
+                    </Label>
+                    <Input
+                      id={`membership-${index}-${dimension}`}
+                      type='number'
+                      min={1}
+                      max={2147483647}
+                      step={1}
+                      value={quota[`${dimension}_limit`]}
+                      onChange={(event) =>
+                        props.onChange(
+                          props.value.map((item, i) =>
+                            i === index
+                              ? {
+                                  ...item,
+                                  [`${dimension}_limit`]: Number(
+                                    event.target.value
+                                  ),
+                                }
+                              : item
+                          )
+                        )
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              onClick={() =>
+                props.onChange(props.value.filter((_, i) => i !== index))
+              }
+            >
+              {t('Remove channel from plan')}
+            </Button>
+          </div>
+        )
+      })}
       <Button
         type='button'
         variant='outline'

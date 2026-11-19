@@ -29,6 +29,7 @@ const (
 	// pixel-derived reference quantity and no input_tokens field exists), so the faithful
 	// unit is image count, not tokens. See docs/channel-membership-acceptance.md.
 	MembershipSeedreamImageProfile       = "ark_seedream_image_count_v1"
+	SubscriptionMeterSharedTokens        = "shared_tokens"
 	SubscriptionMeterQuota               = "quota"
 	SubscriptionMeterChannel             = "channel"
 	MembershipTextProfile                = "openai_chat_text_v1"
@@ -120,6 +121,16 @@ func ValidateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan) ([]Subscr
 
 // validateSubscriptionChannels preserves paid snapshots even if a live channel is later disabled.
 func validateSubscriptionChannels(tx *gorm.DB, plan *SubscriptionPlan, requireLiveChannel bool) ([]SubscriptionChannelConfig, error) {
+	if plan.MeterType == SubscriptionMeterSharedTokens {
+		if plan.InputTokenLimit <= 0 || plan.InputTokenLimit > MembershipMaxTokens || plan.OutputTokenLimit <= 0 || plan.OutputTokenLimit > MembershipMaxTokens {
+			return nil, errors.New("input and output token limits must be positive and within bounds")
+		}
+		if plan.TotalAmount != 0 || plan.UpgradeGroup != "" || plan.DowngradeGroup != "" || NormalizeResetPeriod(plan.QuotaResetPeriod) != SubscriptionResetNever {
+			return nil, errors.New("shared token membership requires no legacy quota, resets or group changes")
+		}
+		plan.ChannelQuotas = nil
+		return []SubscriptionChannelConfig{{Profile: SubscriptionMeterSharedTokens, Unit: MembershipUnitTokens, InputLimit: plan.InputTokenLimit, OutputLimit: plan.OutputTokenLimit}}, nil
+	}
 	if IsQuotaSubscription(plan.MeterType) {
 		if len(plan.ChannelQuotas) > 0 && string(plan.ChannelQuotas) != "null" && string(plan.ChannelQuotas) != "[]" {
 			return nil, errors.New("quota plans cannot include channel grants")
@@ -233,7 +244,11 @@ func MembershipTextChannelSupported(channelType int) bool {
 func GetMembershipGrant(tx *gorm.DB, userId, subscriptionId, channelId int) (*SubscriptionChannelQuota, error) {
 	var sub UserSubscription
 	now := getDBTimestampTx(tx)
-	if err := tx.Where("id = ? AND user_id = ? AND meter_type = ? AND status = ? AND start_time <= ? AND end_time > ?", subscriptionId, userId, SubscriptionMeterChannel, "active", now, now).First(&sub).Error; err != nil {
+	meter := SubscriptionMeterChannel
+	if channelId == 0 {
+		meter = SubscriptionMeterSharedTokens
+	}
+	if err := tx.Where("id = ? AND user_id = ? AND meter_type = ? AND status = ? AND start_time <= ? AND end_time > ?", subscriptionId, userId, meter, "active", now, now).First(&sub).Error; err != nil {
 		return nil, errors.New("membership unavailable, expired or not owned by user")
 	}
 	var grant SubscriptionChannelQuota
@@ -258,7 +273,7 @@ func ReserveMembership(record *SubscriptionChannelRequest) error {
 		}
 		record.Unit = grant.Unit
 		var models []string
-		if common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, record.Model) {
+		if grant.Profile != SubscriptionMeterSharedTokens && (common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, record.Model)) {
 			return errors.New("model not included in membership")
 		}
 		// A duplicate request cannot reserve twice, even when its original outcome is unknown.

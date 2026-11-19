@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ChannelQuotaEditor } from './channel-quota-editor'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -78,7 +79,6 @@ import {
   type PlanFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
-import { ChannelQuotaEditor } from './channel-quota-editor'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface Props {
@@ -290,16 +290,19 @@ export function SubscriptionsMutateDrawer({
                       value={field.value}
                       items={[
                         { value: 'quota', label: t('Wallet quota') },
-                        { value: 'channel', label: t('Channel membership') },
+                        { value: 'shared_tokens', label: t('Input / output tokens') },
+                        ...(meterType === 'channel'
+                          ? [{ value: 'channel', label: t('Channel membership') }]
+                          : []),
                       ]}
                       onValueChange={(value) => {
                         field.onChange(value)
-                        if (value === 'channel') {
+                        if (value === 'shared_tokens') {
                           form.setValue('total_amount', 0)
                           form.setValue('quota_reset_period', 'never')
                           form.setValue('upgrade_group', '')
                           form.setValue('downgrade_group', '')
-                          form.setValue('allow_wallet_overflow', false)
+                          form.setValue('allow_wallet_overflow', true)
                         }
                       }}
                     >
@@ -313,9 +316,14 @@ export function SubscriptionsMutateDrawer({
                           <SelectItem value='quota'>
                             {t('Wallet quota')}
                           </SelectItem>
-                          <SelectItem value='channel'>
-                            {t('Channel membership')}
+                          <SelectItem value='shared_tokens'>
+                            {t('Input / output tokens')}
                           </SelectItem>
+                          {meterType === 'channel' && (
+                            <SelectItem value='channel'>
+                              {t('Channel membership')}
+                            </SelectItem>
+                          )}
                         </SelectGroup>
                       </SelectContent>
                     </Select>
@@ -338,6 +346,29 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               )}
+              {meterType === 'shared_tokens' &&
+                (['input_token_limit', 'output_token_limit'] as const).map(
+                  (name) => (
+                    <FormField
+                      key={name}
+                      control={form.control}
+                      name={name}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            {name === 'input_token_limit'
+                              ? t('Input tokens')
+                              : t('Output tokens')}
+                          </FormLabel>
+                          <FormControl>
+                            <Input type='number' min={1} max={2147483647} step={1} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )
+                )}
             </SideDrawerSection>
             {/* Basic Info */}
             <SideDrawerSection>
@@ -407,7 +438,7 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
-                {meterType !== 'channel' && (
+                {meterType === 'quota' && (
                   <FormField
                     control={form.control}
                     name='total_amount'
@@ -458,7 +489,7 @@ export function SubscriptionsMutateDrawer({
                     <FormItem>
                       <FormLabel>{t('Upgrade Group')}</FormLabel>
                       <Select
-                        disabled={meterType === 'channel'}
+                        disabled={meterType !== 'quota'}
                         items={[
                           { value: '__none__', label: t('No Upgrade') },
                           ...groupOptions.map((g) => ({ value: g, label: g })),
@@ -498,7 +529,7 @@ export function SubscriptionsMutateDrawer({
                     <FormItem>
                       <FormLabel>{t('Downgrade Group')}</FormLabel>
                       <Select
-                        disabled={meterType === 'channel'}
+                        disabled={meterType !== 'quota'}
                         items={[
                           {
                             value: '__none__',
@@ -755,7 +786,7 @@ export function SubscriptionsMutateDrawer({
                     <FormItem>
                       <FormLabel>{t('Reset Cycle')}</FormLabel>
                       <Select
-                        disabled={meterType === 'channel'}
+                        disabled={meterType !== 'quota'}
                         items={resetPeriodOpts.map((o) => ({
                           value: o.value,
                           label: o.label,
@@ -810,7 +841,7 @@ export function SubscriptionsMutateDrawer({
             </SideDrawerSection>
 
             {/* Payment Config */}
-            {meterType !== 'channel' && (
+            {meterType === 'quota' && (
               <SideDrawerSection>
                 <h3 className='flex items-center gap-2 text-sm font-medium'>
                   <CreditCard className='h-4 w-4' />

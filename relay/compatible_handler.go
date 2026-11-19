@@ -72,8 +72,22 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	adaptor.Init(info)
 
 	var membership *service.MembershipSession
+	deferredBilling := c.GetBool("defer_shared_subscription_billing") && info.Billing == nil && c.GetInt("membership_subscription_id") == 0
+	defer func() {
+		if deferredBilling && membership != nil {
+			service.FinishMembershipRequest(c, info, membership, newAPIError == nil)
+		}
+	}()
+
 	if c.GetInt("membership_subscription_id") > 0 {
-		if (!model.MembershipTextChannelSupported(info.ChannelType) && info.ChannelType != constant.ChannelTypeAnthropic && info.ChannelType != constant.ChannelTypeGemini) || info.RelayMode != relayconstant.RelayModeChatCompletions || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		shared := c.GetBool("membership_shared_tokens")
+		channelSupported := model.MembershipTextChannelSupported(info.ChannelType)
+		if shared {
+			channelSupported = channelSupported || info.ChannelType == constant.ChannelTypeCustom
+		} else {
+			channelSupported = channelSupported || info.ChannelType == constant.ChannelTypeAnthropic || info.ChannelType == constant.ChannelTypeGemini
+		}
+		if !channelSupported || info.RelayMode != relayconstant.RelayModeChatCompletions || model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled || service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
 			return types.NewErrorWithStatusCode(fmt.Errorf("membership channel or protocol conversion is not supported"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		if (request.MaxTokens == nil && request.MaxCompletionTokens == nil) || (request.MaxTokens != nil && request.MaxCompletionTokens != nil) || (request.N != nil && *request.N != 1) || len(request.Tools) > 0 || len(request.Functions) > 0 || request.ToolChoice != nil || len(request.FunctionCall) > 0 {
@@ -106,6 +120,11 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		!passThroughGlobal &&
 		!info.ChannelSetting.PassThroughBodyEnabled &&
 		service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, info.OriginModelName) {
+		if deferredBilling {
+			if err := service.PreConsumeBilling(c, info.PriceData.QuotaToPreConsume, info); err != nil {
+				return err
+			}
+		}
 		applySystemPromptIfNeeded(c, info, request)
 		usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, request)
 		if newApiErr != nil {
@@ -220,6 +239,15 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 			}
 		}
+		if deferredBilling && (model.MembershipTextChannelSupported(info.ChannelType) || info.ChannelType == constant.ChannelTypeCustom) {
+			if err := service.PreConsumeBilling(c, info.PriceData.QuotaToPreConsume, info, func() (bool, *types.NewAPIError) {
+				return service.TrySharedTextSubscription(c, info, jsonData, uint(helper.MaxTokensLimit))
+			}); err != nil {
+				return err
+			}
+			value, _ := c.Get("membership_session")
+			membership, _ = value.(*service.MembershipSession)
+		}
 		logger.LogDebugJSON(c, "text request body: %s", jsonData)
 
 		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
@@ -232,6 +260,11 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		requestBody = body
 	}
 
+	if deferredBilling && membership == nil && info.Billing == nil {
+		if err := service.PreConsumeBilling(c, info.PriceData.QuotaToPreConsume, info); err != nil {
+			return err
+		}
+	}
 	var httpResp *http.Response
 	if membership != nil {
 		if err := model.DispatchMembership(membership.Request.RequestId); err != nil {
@@ -265,6 +298,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	}
 
 	if membership != nil {
+		if c.GetBool("membership_shared_tokens") {
+			membership.WalletTextUsage, _ = usage.(*dto.Usage)
+		}
 		return nil
 	} // The deferred membership settlement owns this request.
 	var containAudioTokens = usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0

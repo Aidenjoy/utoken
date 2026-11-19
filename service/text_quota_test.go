@@ -490,3 +490,23 @@ func TestTryTieredSettleNoClampInRange(t *testing.T) {
 	require.NotNil(t, result)
 	require.Nil(t, relayInfo.QuotaClamp, "in-range settlement must not record a clamp")
 }
+
+func TestCalculateTextQuotaPartsPreservesWalletTotal(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		PriceData: types.PriceData{
+			ModelRatio: 2, CompletionRatio: 1.5,
+			GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 200}
+	input, output, ok := calculateTextQuotaParts(ctx, info, usage)
+	require.True(t, ok)
+	require.Equal(t, 2000, input)
+	require.Equal(t, 600, output)
+	require.Equal(t, calculateTextQuotaSummary(ctx, info, usage).Quota, input+output)
+
+	info.PriceData.UsePrice = true
+	_, _, ok = calculateTextQuotaParts(ctx, info, usage)
+	require.False(t, ok)
+}

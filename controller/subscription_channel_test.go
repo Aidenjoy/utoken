@@ -524,3 +524,113 @@ func TestMembershipPublicViewsHideAmounts(t *testing.T) {
 	assert.Contains(t, exhausted.Body.String(), `"available":false`)
 	assert.NotContains(t, exhausted.Body.String(), `"output_used"`)
 }
+
+func TestMembershipHTTPSharedTokensDeductWalletPricingAcrossChannels(t *testing.T) {
+	var calls atomic.Int32
+	r, db, _, _ := membershipHTTPFixture(t, func(w http.ResponseWriter, req *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":1000,"completion_tokens":200,"total_tokens":1200}}`)
+	})
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"shared-one":2,"shared-two":3}`))
+	var existing model.Channel
+	require.NoError(t, db.First(&existing, 8102).Error)
+	for i, name := range []string{"shared-one", "shared-two"} {
+		id := 8200 + i
+		base := *existing.BaseURL + "/v2/chat/completions"
+		require.NoError(t, db.Create(&model.Channel{
+			Id: id, Name: name, Type: constant.ChannelTypeCustom, Key: "mock-upstream",
+			Models: name, Group: "default", BaseURL: &base, Status: common.ChannelStatusEnabled,
+		}).Error)
+		require.NoError(t, db.Create(&model.Ability{ChannelId: id, Model: name, Group: "default", Enabled: true}).Error)
+	}
+	require.NoError(t, db.Create(&model.SubscriptionPlan{
+		Id: 8202, Title: "shared mock", MeterType: model.SubscriptionMeterSharedTokens,
+		InputTokenLimit: 10000, OutputTokenLimit: 2500, PriceAmount: 1,
+		DurationUnit: model.SubscriptionDurationDay, DurationValue: 1, Enabled: true,
+		AllowWalletOverflow: common.GetPointer(true),
+	}).Error)
+	paid := membershipHTTPRequest(r, "/api/subscription/balance/pay", "", `{"plan_id":8202}`)
+	var result struct{ Success bool }
+	require.NoError(t, common.Unmarshal(paid.Body.Bytes(), &result))
+	require.True(t, result.Success, paid.Body.String())
+	var sub model.UserSubscription
+	require.NoError(t, db.Where("plan_id = ?", 8202).First(&sub).Error)
+	created := membershipHTTPRequest(r, "/api/token", "", `{"name":"ordinary","key_type":"language","expired_time":-1,"remain_quota":1000000}`)
+	require.NoError(t, common.Unmarshal(created.Body.Bytes(), &result))
+	require.True(t, result.Success, created.Body.String())
+	var key model.Token
+	require.NoError(t, db.Where("name = ?", "ordinary").First(&key).Error)
+	require.Zero(t, key.ChannelId)
+	require.Zero(t, key.UserSubscriptionId)
+	var before model.User
+	require.NoError(t, db.First(&before, 8101).Error)
+	for _, name := range []string{"shared-one", "shared-two"} {
+		body := fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":%q}],"max_tokens":200}`, name, strings.Repeat("x", 1000))
+		response := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, body)
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	}
+	var grant model.SubscriptionChannelQuota
+	require.NoError(t, db.Where("user_subscription_id = ?", sub.Id).First(&grant).Error)
+	require.EqualValues(t, 5000, grant.InputUsed)
+	expectedOutput := common.QuotaFromFloat(400*ratio_setting.GetCompletionRatio("shared-one")) + common.QuotaFromFloat(600*ratio_setting.GetCompletionRatio("shared-two"))
+	require.EqualValues(t, expectedOutput, grant.OutputUsed)
+	require.Zero(t, grant.InputReserved)
+	require.Zero(t, grant.OutputReserved)
+	body := `{"model":"shared-one","messages":[{"role":"user","content":"mock"}],"max_tokens":10000}`
+	setPreference := func(pref string) {
+		require.NoError(t, model.UpdateUserSetting(8101, dto.UserSetting{BillingPreference: pref}))
+	}
+	var after model.User
+	require.NoError(t, db.First(&after, 8101).Error)
+	require.Equal(t, before.Quota, after.Quota)
+	var afterKey model.Token
+	require.NoError(t, db.First(&afterKey, key.Id).Error)
+	require.Equal(t, 5000+expectedOutput, key.RemainQuota-afterKey.RemainQuota)
+
+	setPreference("subscription_only")
+	blocked := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, body)
+	require.Equal(t, http.StatusForbidden, blocked.Code, blocked.Body.String())
+	require.EqualValues(t, 2, calls.Load())
+	require.NoError(t, db.First(&after, 8101).Error)
+	require.Equal(t, before.Quota, after.Quota)
+
+	setPreference("subscription_first")
+	require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", sub.Id).Update("allow_wallet_overflow", false).Error)
+	strict := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, body)
+	require.Equal(t, http.StatusForbidden, strict.Code, strict.Body.String())
+	require.EqualValues(t, 2, calls.Load())
+	require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", sub.Id).Update("allow_wallet_overflow", true).Error)
+	fallback := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, body)
+	require.Equal(t, http.StatusOK, fallback.Code, fallback.Body.String())
+	require.NoError(t, db.First(&after, 8101).Error)
+	charge := 2000 + common.QuotaFromFloat(400*ratio_setting.GetCompletionRatio("shared-one"))
+	require.Equal(t, charge, before.Quota-after.Quota)
+
+	setPreference("wallet_first")
+	wallet := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, `{"model":"shared-one","messages":[{"role":"user","content":"mock"}],"max_tokens":100}`)
+	require.Equal(t, http.StatusOK, wallet.Code, wallet.Body.String())
+	require.NoError(t, db.First(&after, 8101).Error)
+	require.Equal(t, charge*2, before.Quota-after.Quota)
+	require.NoError(t, db.Where("user_subscription_id = ?", sub.Id).First(&grant).Error)
+	require.EqualValues(t, 5000, grant.InputUsed)
+	require.EqualValues(t, expectedOutput, grant.OutputUsed)
+	require.EqualValues(t, 4, calls.Load())
+
+	// A wallet-first request can use the same subscription once the wallet cannot reserve.
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", 8101).Update("quota", 0).Error)
+	fromSubscription := membershipHTTPRequest(r, "/v1/chat/completions", key.Key,
+		fmt.Sprintf(`{"model":"shared-one","messages":[{"role":"user","content":%q}],"max_tokens":200}`, strings.Repeat("x", 1000)))
+	require.Equal(t, http.StatusOK, fromSubscription.Code, fromSubscription.Body.String())
+	require.NoError(t, db.First(&after, 8101).Error)
+	require.Zero(t, after.Quota)
+	require.NoError(t, db.Where("user_subscription_id = ?", sub.Id).First(&grant).Error)
+	require.EqualValues(t, 7000, grant.InputUsed)
+	require.EqualValues(t, expectedOutput+charge-2000, grant.OutputUsed)
+	require.EqualValues(t, 5, calls.Load())
+
+	setPreference("wallet_only")
+	onlyWallet := membershipHTTPRequest(r, "/v1/chat/completions", key.Key, body)
+	require.Equal(t, http.StatusForbidden, onlyWallet.Code, onlyWallet.Body.String())
+	require.EqualValues(t, 5, calls.Load())
+}

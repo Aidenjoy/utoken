@@ -68,10 +68,10 @@ export function ChannelMemberships() {
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
   const [selectedGrant, setSelectedGrant] = useState<ChannelQuota | null>(null)
   const rights = (subscriptions.data?.data?.all_subscriptions ?? []).filter(
-    (record) => record.subscription.meter_type === 'channel'
+    (record) => ['channel', 'shared_tokens'].includes(record.subscription.meter_type ?? '')
   )
   const offers = (plans.data?.data ?? []).filter(
-    (record) => record.plan.meter_type === 'channel'
+    (record) => record.plan.meter_type === 'channel' || record.plan.meter_type === 'shared_tokens'
   )
   const payment = topup.data?.data
   const refresh = async () => {
@@ -90,7 +90,7 @@ export function ChannelMemberships() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>
-        {t('Channel membership')}
+        {t('Membership Center')}
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button variant='outline' onClick={() => void refresh()}>
@@ -120,6 +120,55 @@ export function ChannelMemberships() {
             <Skeleton className='h-32 w-full' />
           )}
           <section className='space-y-3'>
+            <h2 className='text-lg font-semibold'>{t('My memberships')}</h2>
+            {!subscriptions.isPending && !failed && rights.length === 0 && (
+              <p className='text-muted-foreground'>
+                {t('No channel memberships yet')}
+              </p>
+            )}
+            {rights.map((record) => {
+              const active =
+                record.subscription.status === 'active' &&
+                record.subscription.end_time * 1000 > Date.now()
+              return (
+                <Card key={record.subscription.id}>
+                  <CardHeader>
+                    <CardTitle>
+                      {t('Subscription')} #{record.subscription.id} ·{' '}
+                      {active ? t('Active') : t('Expired')}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className='space-y-3'>
+                    <p>
+                      {t('Expires')}:{' '}
+                      {new Date(
+                        record.subscription.end_time * 1000
+                      ).toLocaleString()}
+                    </p>
+                    {(record.channel_quotas ?? []).map((grant) => (
+                      <div key={grant.channel_id} className='space-y-2'>
+                        {grant.channel_id > 0 ? (
+                          <>
+                            <ChannelQuotaSummary quotas={[grant]} />
+                            <Button
+                              variant='outline'
+                              disabled={!active || grant.available === false}
+                              onClick={() => setSelectedGrant(grant)}
+                            >
+                              {t('Create membership Key')}
+                            </Button>
+                          </>
+                        ) : (
+                          <span>{t('Input / output tokens')}</span>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </section>
+          <section className='space-y-3'>
             <h2 className='text-lg font-semibold'>{t('Membership plans')}</h2>
             {!plans.isPending && !failed && offers.length === 0 && (
               <p className='text-muted-foreground'>
@@ -148,49 +197,6 @@ export function ChannelMemberships() {
                 </Card>
               ))}
             </div>
-          </section>
-          <section className='space-y-3'>
-            <h2 className='text-lg font-semibold'>{t('My memberships')}</h2>
-            {!subscriptions.isPending && !failed && rights.length === 0 && (
-              <p className='text-muted-foreground'>
-                {t('No channel memberships yet')}
-              </p>
-            )}
-            {rights.map((record) => {
-              const active =
-                record.subscription.status === 'active' &&
-                record.subscription.end_time * 1000 > Date.now()
-              return (
-                <Card key={record.subscription.id}>
-                  <CardHeader>
-                    <CardTitle>
-                      {t('Subscription')} #{record.subscription.id} ·{' '}
-                      {active ? t('Active') : t('Expired')}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className='space-y-3'>
-                    <p>
-                      {t('Expires')}:{' '}
-                      {new Date(
-                        record.subscription.end_time * 1000
-                      ).toLocaleString()}
-                    </p>
-                    {(record.channel_quotas ?? []).map((grant) => (
-                      <div key={grant.channel_id} className='space-y-2'>
-                        <ChannelQuotaSummary quotas={[grant]} />
-                        <Button
-                          variant='outline'
-                          disabled={!active || grant.available === false}
-                          onClick={() => setSelectedGrant(grant)}
-                        >
-                          {t('Create membership Key')}
-                        </Button>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              )
-            })}
           </section>
         </div>
         <SubscriptionPurchaseDialog

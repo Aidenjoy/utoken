@@ -448,10 +448,17 @@ func AddToken(c *gin.Context) {
 				return
 			}
 		}
-		channel, err := model.GetChannelById(token.ChannelId, false)
-		if err != nil || channel.Status != common.ChannelStatusEnabled || (grant.Profile == model.MembershipTextProfile && !model.MembershipTextChannelSupported(channel.Type)) || (grant.Profile == model.MembershipClaudeProfile && channel.Type != 14) || ((grant.Profile == model.MembershipGeminiProfile || grant.Profile == model.MembershipGeminiImageProfile) && channel.Type != 24) || (grant.Profile == model.MembershipImageProfile && channel.Type != 1) || (grant.Profile == model.MembershipSeedreamImageProfile && channel.Type != 60) || (grant.Profile == model.MembershipVideoProfile && !model.MembershipVideoChannelSupported(channel.Type)) || ((grant.Profile == model.MembershipTranscriptionProfile || grant.Profile == model.MembershipSpeechProfile || grant.Profile == model.MembershipRealtimeProfile) && channel.Type != 1) {
-			common.ApiErrorMsg(c, "membership channel unavailable")
-			return
+		if grant.Profile == model.SubscriptionMeterSharedTokens {
+			if token.KeyType != model.TokenKeyTypeLanguage || token.ChannelId != 0 {
+				common.ApiErrorMsg(c, "shared membership requires an unbound language key")
+				return
+			}
+		} else {
+			channel, err := model.GetChannelById(token.ChannelId, false)
+			if err != nil || channel.Status != common.ChannelStatusEnabled || (grant.Profile == model.MembershipTextProfile && !model.MembershipTextChannelSupported(channel.Type)) || (grant.Profile == model.MembershipClaudeProfile && channel.Type != 14) || ((grant.Profile == model.MembershipGeminiProfile || grant.Profile == model.MembershipGeminiImageProfile) && channel.Type != 24) || (grant.Profile == model.MembershipImageProfile && channel.Type != 1) || (grant.Profile == model.MembershipSeedreamImageProfile && channel.Type != 60) || (grant.Profile == model.MembershipVideoProfile && !model.MembershipVideoChannelSupported(channel.Type)) || ((grant.Profile == model.MembershipTranscriptionProfile || grant.Profile == model.MembershipSpeechProfile || grant.Profile == model.MembershipRealtimeProfile) && channel.Type != 1) {
+				common.ApiErrorMsg(c, "membership channel unavailable")
+				return
+			}
 		}
 		bindChannelId = token.ChannelId
 		token.UnlimitedQuota = true

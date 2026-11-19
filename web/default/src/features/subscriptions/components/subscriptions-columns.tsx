@@ -165,6 +165,14 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Plan Quota'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
+          if (row.original.plan.meter_type === 'shared_tokens') {
+            return (
+              <div>
+                <div>{t('Input tokens')} {row.original.plan.input_token_limit?.toLocaleString()}</div>
+                <div>{t('Output tokens')} {row.original.plan.output_token_limit?.toLocaleString()}</div>
+              </div>
+            )
+          }
           if (row.original.plan.meter_type === 'channel') {
             return (
               <span>

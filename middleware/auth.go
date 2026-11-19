@@ -515,6 +515,16 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	if token == nil {
 		return fmt.Errorf("token is nil")
 	}
+	if token.KeyType == model.TokenKeyTypeDesktopAudio {
+		path := c.Request.URL.Path
+		audio := c.Request.Method == http.MethodPost && (path == "/v1/audio/speech" || path == "/v1/audio/transcriptions" || path == "/v1/audio/translations")
+		realtime := c.Request.Method == http.MethodGet && path == "/v1/realtime"
+		if (!audio && !realtime) || len(parts) > 1 {
+			err := fmt.Errorf("desktop audio key requires an audio endpoint")
+			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+			return err
+		}
+	}
 	if token.UserSubscriptionId > 0 {
 		// Task reads are scoped to the immutable original reservation and remain
 		// available after membership expiry or channel disablement.
@@ -543,6 +553,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 				return err
 			}
+			shared := grant.Profile == model.SubscriptionMeterSharedTokens && token.KeyType == model.TokenKeyTypeLanguage && c.Request.URL.Path == "/v1/chat/completions"
 			text := grant.Profile == model.MembershipTextProfile && token.KeyType == model.TokenKeyTypeLanguage && (c.Request.URL.Path == "/v1/chat/completions" || c.Request.URL.Path == "/v1/responses")
 			image := grant.Profile == model.MembershipImageProfile && token.KeyType == model.TokenKeyTypeImage && c.Request.URL.Path == "/v1/images/generations"
 			video := grant.Profile == model.MembershipVideoProfile && token.KeyType == model.TokenKeyTypeVideo && c.Request.URL.Path == "/v1/videos"
@@ -552,7 +563,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			seedreamImage := grant.Profile == model.MembershipSeedreamImageProfile && token.KeyType == model.TokenKeyTypeImage && c.Request.URL.Path == "/v1/images/generations"
 			claude := grant.Profile == model.MembershipClaudeProfile && token.KeyType == model.TokenKeyTypeLanguage && (c.Request.URL.Path == "/v1/messages" || c.Request.URL.Path == "/v1/chat/completions")
 			realtime := grant.Profile == model.MembershipRealtimeProfile && token.KeyType == model.TokenKeyTypeLanguage && c.Request.Method == http.MethodGet && c.Request.URL.Path == "/v1/realtime"
-			if !realtime && (c.Request.Method != http.MethodPost || (!text && !image && !video && !audio && !claude && !gemini && !geminiImage && !seedreamImage)) {
+			if !realtime && (c.Request.Method != http.MethodPost || (!text && !image && !video && !audio && !claude && !gemini && !geminiImage && !seedreamImage && !shared)) {
 				err := fmt.Errorf("membership endpoint is not supported")
 				abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 				return err
@@ -560,7 +571,11 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			if geminiImage {
 				c.Set("membership_gemini_image", true)
 			}
-			common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(token.ChannelId))
+			if shared {
+				c.Set("membership_shared_tokens", true)
+			} else {
+				common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, strconv.Itoa(token.ChannelId))
+			}
 		}
 		if len(parts) > 1 {
 			err := fmt.Errorf("membership channel override forbidden")

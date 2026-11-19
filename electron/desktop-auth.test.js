@@ -19,7 +19,7 @@ test('desktop completes the browser callback only for the original state and PKC
       for await (const part of request) body += part;
       form = new URLSearchParams(body);
       response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify({ access_token: token, token_type: 'Bearer' }));
+      response.end(JSON.stringify({ access_token: token, token_type: 'Bearer', audio_api_key: 'sk-mock-audio' }));
       return;
     }
     assert.equal(request.url, '/api/desktop-auth/session');
@@ -43,7 +43,8 @@ test('desktop completes the browser callback only for the original state and PKC
     assert.equal(tokenRequests, 0);
     callback.searchParams.set('state', authorization.searchParams.get('state'));
     callbackResult = fetch(callback);
-  }, async (credential) => {
+  }, async (credential, audioApiKey) => {
+    assert.equal(audioApiKey, 'sk-mock-audio');
     assert.equal(credential, token);
     const session = await createDashboardSession(origin, credential);
     assert.equal(session.user.id, 42);

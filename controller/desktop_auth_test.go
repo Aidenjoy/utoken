@@ -36,7 +36,7 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 		common.SetDatabaseTypes(oldMainType, oldLogType)
 		_ = sqlDB.Close()
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.DesktopAuthCode{}, &model.DesktopAuthSession{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Log{}, &model.DesktopAuthCode{}, &model.DesktopAuthSession{}))
 	user := model.User{Username: "desktop-tester", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default"}
 	require.NoError(t, db.Create(&user).Error)
 
@@ -129,11 +129,16 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 	require.Equal(t, http.StatusOK, result.Code)
 	assert.Equal(t, "no-store", result.Header().Get("Cache-Control"))
 	var token struct {
-		Value string `json:"access_token"`
-		Type  string `json:"token_type"`
+		Value    string `json:"access_token"`
+		AudioKey string `json:"audio_api_key"`
+		Type     string `json:"token_type"`
 	}
 	require.NoError(t, common.Unmarshal(result.Body.Bytes(), &token))
 	require.NotEmpty(t, token.Value)
+	var audioKey model.Token
+	require.NoError(t, db.Where("user_id = ? AND key_type = ?", user.Id, model.TokenKeyTypeDesktopAudio).First(&audioKey).Error)
+	require.Equal(t, "sk-"+audioKey.Key, token.AudioKey)
+	require.True(t, audioKey.UnlimitedQuota)
 	assert.Equal(t, "Bearer", token.Type)
 	replay := send(http.MethodPost, "/api/desktop-auth/token", exchange, nil, "")
 	assert.Equal(t, http.StatusBadRequest, replay.Code)
@@ -149,6 +154,23 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 	assert.Equal(t, "session", dashboard.Result().Cookies()[0].Name)
 	assert.Equal(t, http.StatusUnauthorized,
 		send(http.MethodPost, "/api/desktop-auth/session", nil, nil, token.Value).Code)
+
+	reapproval := send(http.MethodPost, desktopAuthPath, authorize, browserCookies, "")
+	require.Equal(t, http.StatusSeeOther, reapproval.Code)
+	reapprovalLocation, err := url.Parse(reapproval.Header().Get("Location"))
+	require.NoError(t, err)
+	exchange.Set("code", reapprovalLocation.Query().Get("code"))
+	renewed := send(http.MethodPost, "/api/desktop-auth/token", exchange, nil, "")
+	require.Equal(t, http.StatusOK, renewed.Code)
+	var renewedToken struct {
+		AudioKey string `json:"audio_api_key"`
+	}
+	require.NoError(t, common.Unmarshal(renewed.Body.Bytes(), &renewedToken))
+	require.Equal(t, token.AudioKey, renewedToken.AudioKey)
+	var count int64
+	require.NoError(t, db.Model(&model.Token{}).Where("user_id = ? AND key_type = ?", user.Id, model.TokenKeyTypeDesktopAudio).Count(&count).Error)
+	require.EqualValues(t, 1, count)
+	require.Equal(t, "客户端语音专用（不建议用于其他用途）", audioKey.Name)
 
 	secondApproval := send(http.MethodPost, desktopAuthPath, authorize, browserCookies, "")
 	require.Equal(t, http.StatusSeeOther, secondApproval.Code)

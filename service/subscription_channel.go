@@ -3,6 +3,10 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
+	"net/http"
+
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -10,12 +14,16 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 // MembershipSession owns one reservation and its provider usage receipt.
 // It deliberately does not implement wallet billing or use normalized quota usage.
 type MembershipSession struct {
+	TokenQuotaReserved int
+	WalletTextUsage    *dto.Usage
 	GeminiImage        bool
 	SeedreamImage      bool
 	ClaudeInputReceipt []byte
@@ -35,12 +43,22 @@ type MembershipSession struct {
 // PrepareMembershipText validates the final outbound body and reserves both token dimensions.
 // The conservative UTF-8 byte bound avoids under-reserving a provider-specific tokenizer;
 // it is only a reservation, never presented as provider input usage.
-func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []byte, maxOutputLimit uint) (*MembershipSession, error) {
+var errSharedTextUnsupported = errors.New("request does not support shared token settlement")
+
+func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []byte, maxOutputLimit uint) (session *MembershipSession, err error) {
+	shared := c.GetBool("membership_shared_tokens")
+	validated := false
+	defer func() {
+		if shared && !validated && err != nil {
+			err = fmt.Errorf("%w: %v", errSharedTextUnsupported, err)
+		}
+	}()
+
 	var req dto.GeneralOpenAIRequest
 	if err := common.Unmarshal(body, &req); err != nil {
 		return nil, err
 	}
-	if !model.MembershipTextModelSupported(req.Model) || req.Model != info.UpstreamModelName || len(req.Messages) == 0 || len(req.Tools) > 0 || len(req.Functions) > 0 || len(req.Audio) > 0 || len(req.Modalities) > 0 || len(req.ExtraBody) > 0 || req.WebSearchOptions != nil || req.Prompt != nil || req.Input != nil || req.ResponseFormat != nil || req.ToolChoice != nil || len(req.FunctionCall) > 0 || (req.N != nil && *req.N != 1) {
+	if (!shared && !model.MembershipTextModelSupported(req.Model)) || req.Model != info.UpstreamModelName || len(req.Messages) == 0 || len(req.Tools) > 0 || len(req.Functions) > 0 || len(req.Audio) > 0 || len(req.Modalities) > 0 || len(req.ExtraBody) > 0 || req.WebSearchOptions != nil || req.Prompt != nil || req.Input != nil || req.ResponseFormat != nil || req.ToolChoice != nil || len(req.FunctionCall) > 0 || (req.N != nil && *req.N != 1) {
 		return nil, errors.New("membership profile supports plain text chat with one output only")
 	}
 	if info.ChannelType == constant.ChannelTypeVolcEngine && (req.MaxTokens != nil || req.MaxCompletionTokens == nil) {
@@ -73,17 +91,86 @@ func PrepareMembershipText(c *gin.Context, info *relaycommon.RelayInfo, body []b
 			return nil, errors.New("membership input is too large")
 		}
 	}
-	session := &MembershipSession{Request: model.SubscriptionChannelRequest{
+	session = &MembershipSession{Request: model.SubscriptionChannelRequest{
 		RequestId: common.GetUUID(), UserId: info.UserId, TokenId: info.TokenId,
 		UserSubscriptionId: c.GetInt("membership_subscription_id"), ChannelId: info.ChannelId,
 		Model: info.OriginModelName, InputReserved: inputBound, OutputReserved: int64(*limit),
 	}}
+	if shared {
+		price := info.PriceData
+		if price.UsePrice || info.TieredBillingSnapshot != nil || billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeSeedream {
+			return nil, errors.New("shared membership requires separable token ratio pricing")
+		}
+		// Use the highest applicable input coefficient for the final bounded prompt.
+		ratios := []float64{price.ModelRatio, price.GroupRatioInfo.GroupRatio, price.CompletionRatio, price.CacheRatio, price.CacheCreationRatio, price.CacheCreation5mRatio, price.CacheCreation1hRatio}
+		for _, ratio := range ratios {
+			if ratio < 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+				return nil, errors.New("invalid shared membership price ratio")
+			}
+		}
+		ratio := decimal.NewFromFloat(price.ModelRatio).Mul(decimal.NewFromFloat(price.GroupRatioInfo.GroupRatio))
+		cache := max(1, price.CacheRatio, price.CacheCreationRatio, price.CacheCreation5mRatio, price.CacheCreation1hRatio)
+		input := price.ApplyOtherRatiosToDecimal(decimal.NewFromInt(inputBound).Mul(ratio).Mul(decimal.NewFromFloat(cache))).Ceil()
+		output := price.ApplyOtherRatiosToDecimal(decimal.NewFromInt(int64(*limit)).Mul(ratio).Mul(decimal.NewFromFloat(price.CompletionRatio))).Ceil()
+		// Reserve one extra output unit for rounding and minimum-charge allocation.
+		in, inClamp := common.QuotaFromDecimalChecked(input)
+		out, outClamp := common.QuotaFromDecimalChecked(output.Add(decimal.NewFromInt(1)))
+		if inClamp != nil || outClamp != nil {
+			return nil, errors.New("shared membership reservation exceeds supported range")
+		}
+		session.Request.ChannelId = 0
+		session.Request.InputReserved = int64(max(1, in))
+		session.Request.OutputReserved = int64(max(1, out))
+	}
+	validated = true
 	if err := model.ReserveMembership(&session.Request); err != nil {
 		return nil, err
 	}
 	c.Set("membership_session", session)
 	logger.LogInfo(c, fmt.Sprintf("membership reserved request=%s subscription=%d channel=%d input_bound=%d output_limit=%d", session.Request.RequestId, session.Request.UserSubscriptionId, info.ChannelId, inputBound, *limit))
 	return session, nil
+}
+
+// TrySharedTextSubscription runs inside the existing subscription source selection.
+func TrySharedTextSubscription(c *gin.Context, info *relaycommon.RelayInfo, body []byte, maxOutputLimit uint) (bool, *types.NewAPIError) {
+	value, _ := c.Get("shared_subscription_candidates")
+	ids, _ := value.([]int)
+	for _, id := range ids {
+		c.Set("membership_subscription_id", id)
+		c.Set("membership_shared_tokens", true)
+		session, err := PrepareMembershipText(c, info, body, maxOutputLimit)
+		if err != nil {
+			c.Set("membership_subscription_id", 0)
+			c.Set("membership_shared_tokens", false)
+			if errors.Is(err, errSharedTextUnsupported) {
+				return false, nil
+			}
+			if errors.Is(err, model.ErrMembershipQuota) {
+				continue
+			}
+			return false, types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		if !info.IsPlayground && !info.TokenUnlimited {
+			reserved := session.Request.InputReserved + session.Request.OutputReserved
+			if reserved > model.MembershipMaxTokens {
+				err = errors.New("shared token reservation exceeds key quota range")
+			} else {
+				err = PreConsumeTokenQuota(info, int(reserved))
+			}
+			if err != nil {
+				if releaseErr := model.FinishMembership(session.Request.RequestId, 0, 0, "released", "key quota reservation failed"); releaseErr != nil {
+					logger.LogError(c, releaseErr.Error())
+				}
+				c.Set("membership_session", nil)
+				c.Set("membership_subscription_id", 0)
+				c.Set("membership_shared_tokens", false)
+				return false, types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+			}
+			session.TokenQuotaReserved = int(reserved)
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // ObserveMembershipUsage captures explicit raw provider counters before any fallback or ratio conversion.
@@ -137,6 +224,16 @@ func FinishMembershipRequest(c *gin.Context, info *relaycommon.RelayInfo, sessio
 		outcome, reason = "settled", "raw provider usage receipt"
 		input, output, quantity = session.Input, session.Output, session.Quantity
 	}
+	if outcome == "settled" && c.GetBool("membership_shared_tokens") {
+		usage := session.WalletTextUsage
+		if usage == nil || usage.PromptTokensDetails.ImageTokens != 0 || usage.PromptTokensDetails.AudioTokens != 0 || usage.CompletionTokenDetails.AudioTokens != 0 {
+			outcome, reason, input, output = "pending", "missing or unsupported split usage", 0, 0
+		} else if in, out, ok := calculateTextQuotaParts(c, info, usage); ok {
+			input, output, reason = int64(in), int64(out), "wallet pricing split"
+		} else {
+			outcome, reason, input, output = "pending", "wallet pricing cannot be split", 0, 0
+		}
+	}
 	var err error
 	if session.Request.Unit != model.MembershipUnitTokens {
 		err = model.FinishMembershipQuantity(session.Request.RequestId, quantity, outcome, reason)
@@ -149,6 +246,13 @@ func FinishMembershipRequest(c *gin.Context, info *relaycommon.RelayInfo, sessio
 			logger.LogError(c, pendingErr.Error())
 		}
 		outcome, input, output, quantity = "pending", 0, 0, 0
+	}
+	if session.TokenQuotaReserved > 0 && (outcome == "settled" || outcome == "released") {
+		if refund := session.TokenQuotaReserved - int(input+output); refund > 0 {
+			if err := model.IncreaseTokenQuota(info.TokenId, info.TokenKey, refund); err != nil {
+				logger.LogError(c, "membership key quota release failed: "+err.Error())
+			}
+		}
 	}
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId, TokenId: info.TokenId, TokenName: c.GetString("token_name"), ModelName: info.OriginModelName,

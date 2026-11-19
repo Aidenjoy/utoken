@@ -170,7 +170,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.SetEstimatePromptTokens(tokens)
 
 	var priceData types.PriceData
-	if c.GetInt("membership_subscription_id") == 0 {
+	if c.GetInt("membership_subscription_id") == 0 || c.GetBool("membership_shared_tokens") {
 		priceData, err = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 	}
 	if err != nil {
@@ -192,7 +192,25 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
-	if c.GetInt("membership_subscription_id") > 0 {
+	if relayFormat == types.RelayFormatOpenAI && c.Request.URL.Path == "/v1/chat/completions" &&
+		c.GetInt("membership_subscription_id") == 0 && !priceData.FreeModel &&
+		common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference) != "wallet_only" {
+		var ids []int
+		now := common.GetTimestamp()
+		err := model.DB.Model(&model.UserSubscription{}).
+			Where("user_id = ? AND meter_type = ? AND status = ? AND start_time <= ? AND end_time > ?", relayInfo.UserId, model.SubscriptionMeterSharedTokens, "active", now, now).
+			Order("end_time asc, id asc").Pluck("id", &ids).Error
+		if err != nil {
+			newAPIError = types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			return
+		}
+		if len(ids) > 0 {
+			c.Set("shared_subscription_candidates", ids)
+			c.Set("defer_shared_subscription_billing", true)
+		}
+	}
+
+	if c.GetInt("membership_subscription_id") > 0 || c.GetBool("defer_shared_subscription_billing") {
 		// Membership is reserved against the final outbound body in TextHelper.
 	} else if priceData.FreeModel {
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))

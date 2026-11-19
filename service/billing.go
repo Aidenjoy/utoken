@@ -19,11 +19,11 @@ const (
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
 // 会话存储在 relayInfo.Billing 上，供后续 Settle / Refund 使用。
-func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycommon.RelayInfo) *types.NewAPIError {
+func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycommon.RelayInfo, shared ...func() (bool, *types.NewAPIError)) *types.NewAPIError {
 	if c.GetInt("membership_subscription_id") > 0 {
 		return types.NewError(fmt.Errorf("membership cannot use legacy billing"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
-	session, apiErr := NewBillingSession(c, relayInfo, preConsumedQuota)
+	session, apiErr := NewBillingSession(c, relayInfo, preConsumedQuota, shared...)
 	if apiErr != nil {
 		return apiErr
 	}

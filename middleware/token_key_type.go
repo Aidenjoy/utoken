@@ -57,7 +57,8 @@ func requiredKeyType(method, path string) string {
 // 视频 Key 的协议级隔离。存量空类型 Key 与未归类路径直接放行，保持原有行为。
 func enforceTokenKeyType(c *gin.Context) {
 	keyType := c.GetString("token_key_type")
-	if keyType == "" {
+	// Desktop audio scope was validated by SetupContextForToken.
+	if keyType == "" || keyType == model.TokenKeyTypeDesktopAudio {
 		return
 	}
 	required := requiredKeyType(c.Request.Method, c.Request.URL.Path)

@@ -100,7 +100,7 @@ func Distribute() func(c *gin.Context) {
 				return
 			}
 			var models []string
-			if common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, modelRequest.Model) {
+			if grant.Profile != model.SubscriptionMeterSharedTokens && (common.Unmarshal(grant.Models, &models) != nil || !slices.Contains(models, modelRequest.Model)) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, "model not included in membership")
 				return
 			}

@@ -437,6 +437,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		updateMap := map[string]interface{}{
 			"meter_type":                 req.Plan.MeterType,
 			"channel_quotas":             req.Plan.ChannelQuotas,
+			"input_token_limit":          req.Plan.InputTokenLimit,
+			"output_token_limit":         req.Plan.OutputTokenLimit,
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,

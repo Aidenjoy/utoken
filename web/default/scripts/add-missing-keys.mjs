@@ -239,6 +239,12 @@ Object.assign(newKeys.vi, {
   'Audio duration (ms)': 'Thời lượng âm thanh (ms)',
   'Input characters': 'Số ký tự đầu vào',
 })
+newKeys.en['Membership Center'] = 'Membership Center'
+newKeys.zh['Membership Center'] = '会员中心'
+newKeys.fr['Membership Center'] = 'Espace membre'
+newKeys.ja['Membership Center'] = 'メンバーシップセンター'
+newKeys.ru['Membership Center'] = 'Центр подписок'
+newKeys.vi['Membership Center'] = 'Trung tâm hội viên'
 async function main() {
   for (const [locale, trans] of Object.entries(newKeys)) {
     const filePath = path.join(LOCALES_DIR, `${locale}.json`)

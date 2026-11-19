@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	TokenKeyTypeLanguage = "language"
-	TokenKeyTypeImage    = "image"
-	TokenKeyTypeVideo    = "video"
+	TokenKeyTypeLanguage     = "language"
+	TokenKeyTypeDesktopAudio = "desktop_audio"
+	TokenKeyTypeImage        = "image"
+	TokenKeyTypeVideo        = "video"
 )
 
 type Token struct {
