@@ -17,11 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SendIcon, SquareIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PromptInputButton } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
+import { Input } from '@/components/ui/input'
 import { getModelCategory } from '@/lib/model-category'
 
 import { getInputControlState } from '../../lib'
@@ -45,6 +46,8 @@ type PlaygroundInputControlsProps = {
   channels?: PlaygroundChannel[]
   channelValue?: number
   onChannelChange?: (value: number) => void
+  temperatureValue: number
+  onTemperatureChange: (value: number) => void
 }
 
 export function PlaygroundInputControls({
@@ -64,6 +67,8 @@ export function PlaygroundInputControls({
   channels = [],
   channelValue = 0,
   onChannelChange,
+  temperatureValue,
+  onTemperatureChange,
 }: PlaygroundInputControlsProps) {
   const { t } = useTranslation()
   const { canSubmit, isSelectorDisabled, shouldShowStop } =
@@ -76,6 +81,29 @@ export function PlaygroundInputControls({
       models,
       text,
     })
+
+  // 采样温度草稿：输入过程中不实时提交，失焦/回车时才校验并写回配置，
+  // 避免 typing “1.” 这类中间态被规范化打断。
+  const [temperatureDraft, setTemperatureDraft] = useState(
+    String(temperatureValue)
+  )
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTemperatureDraft(String(temperatureValue))
+  }, [temperatureValue])
+
+  const commitTemperature = () => {
+    const parsed = Number.parseFloat(temperatureDraft)
+    if (Number.isNaN(parsed)) {
+      setTemperatureDraft(String(temperatureValue))
+      return
+    }
+    const clamped = Math.min(2, Math.max(0, parsed))
+    setTemperatureDraft(String(clamped))
+    if (clamped !== temperatureValue) {
+      onTemperatureChange(clamped)
+    }
+  }
 
   const renderSelector = () => (
     <div className='flex min-w-0 items-center gap-2'>
@@ -96,6 +124,31 @@ export function PlaygroundInputControls({
         categorizeModel={getModelCategory}
         disabled={isSelectorDisabled}
       />
+      <label className='flex shrink-0 items-center gap-1.5'>
+        <span className='text-muted-foreground text-xs whitespace-nowrap'>
+          {t('Sampling Temperature')}
+        </span>
+        <Input
+          type='number'
+          min={0}
+          max={2}
+          step={0.1}
+          inputMode='decimal'
+          aria-label={t('Sampling Temperature')}
+          className='h-8 w-16 px-2 text-xs'
+          disabled={isSelectorDisabled}
+          value={temperatureDraft}
+          onChange={(event) => setTemperatureDraft(event.target.value)}
+          onBlur={commitTemperature}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              // 阻止表单隐式提交，回车只确认温度值
+              event.preventDefault()
+              commitTemperature()
+            }
+          }}
+        />
+      </label>
     </div>
   )
 

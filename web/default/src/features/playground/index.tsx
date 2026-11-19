@@ -177,6 +177,8 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
           channels={channels}
           channelValue={config.channelId}
           onChannelChange={(value) => updateConfig('channelId', value)}
+          temperatureValue={config.temperature}
+          onTemperatureChange={(value) => updateConfig('temperature', value)}
         />
       </div>
     </div>

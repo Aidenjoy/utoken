@@ -350,6 +350,13 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 	}
 
+	// Kimi 推理模型上游固定采样参数（temperature=1、top_p=0.95、penalty=0），
+	// OpenAI 兼容渠道转售 Kimi 时同样要在转发前归一化；客户端未传的字段保持省略。
+	if request.Temperature != nil && relaycommon.IsTemperatureOneOnlyModel(info.UpstreamModelName) && *request.Temperature != 1.0 {
+		request.Temperature = common.GetPointer[float64](1.0)
+	}
+	relaycommon.NormalizeKimiFixedSamplingParams(info.UpstreamModelName, request.TopP, request.PresencePenalty, request.FrequencyPenalty)
+
 	return request, nil
 }
 
@@ -739,6 +746,12 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if info != nil && request.Reasoning != nil && request.Reasoning.Effort != "" {
 		info.ReasoningEffort = request.Reasoning.Effort
 	}
+	// Kimi 推理模型固定采样参数归一化，与 chat 路径保持一致；
+	// Responses 格式没有 penalty 字段，传 nil 表示不适用。
+	if request.Temperature != nil && relaycommon.IsTemperatureOneOnlyModel(request.Model) && *request.Temperature != 1.0 {
+		request.Temperature = common.GetPointer[float64](1.0)
+	}
+	relaycommon.NormalizeKimiFixedSamplingParams(request.Model, request.TopP, nil, nil)
 	return request, nil
 }
 

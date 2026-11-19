@@ -85,3 +85,47 @@ func TestConvertOpenAIRequestKeepsSamplingParamsForClassicChatModels(t *testing.
 	assert.Equal(t, uint(128), *convertedRequest.MaxTokens)
 	assert.Nil(t, convertedRequest.MaxCompletionTokens)
 }
+
+// OpenAI 兼容渠道转售 Kimi 推理模型（如百度/电信网关上的 kimi-k3.1-pro）时，
+// 上游同样拒绝非固定采样参数（"`temperature` only 1 is allowed for this model"），
+// 转换层必须归一化；客户端未传的字段保持省略，非 Kimi 模型不受影响。
+func TestConvertOpenAIRequestNormalizesKimiFixedSamplingParams(t *testing.T) {
+	request := &dto.GeneralOpenAIRequest{
+		Model:            "kimi-k3.1-pro",
+		Temperature:      common.GetPointer[float64](0.7),
+		TopP:             common.GetPointer[float64](1),
+		PresencePenalty:  common.GetPointer[float64](0.5),
+		FrequencyPenalty: common.GetPointer[float64](0.5),
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeOpenAI,
+			UpstreamModelName: "kimi-k3.1-pro",
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+
+	require.NoError(t, err)
+	convertedRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	require.NotNil(t, convertedRequest.Temperature)
+	assert.Equal(t, 1.0, *convertedRequest.Temperature)
+	require.NotNil(t, convertedRequest.TopP)
+	assert.Equal(t, 0.95, *convertedRequest.TopP)
+	require.NotNil(t, convertedRequest.PresencePenalty)
+	assert.Equal(t, 0.0, *convertedRequest.PresencePenalty)
+	require.NotNil(t, convertedRequest.FrequencyPenalty)
+	assert.Equal(t, 0.0, *convertedRequest.FrequencyPenalty)
+
+	// 未传的采样参数保持省略，不得被归一化填充成显式零值。
+	omitted := &dto.GeneralOpenAIRequest{Model: "kimi-k3.1-pro"}
+	converted, err = (&Adaptor{}).ConvertOpenAIRequest(nil, info, omitted)
+	require.NoError(t, err)
+	convertedRequest, ok = converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Nil(t, convertedRequest.Temperature)
+	assert.Nil(t, convertedRequest.TopP)
+	assert.Nil(t, convertedRequest.PresencePenalty)
+	assert.Nil(t, convertedRequest.FrequencyPenalty)
+}
