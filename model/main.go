@@ -598,7 +598,11 @@ func migrateLOGDB() error {
 		return err
 	}
 	// 为历史差额结算/退款行补写折前原价（有 discount 但缺 original_quota 的行）。
-	return backfillLogDiscountOriginalQuota()
+	if err := backfillLogDiscountOriginalQuota(); err != nil {
+		return err
+	}
+	// 为历史任务消耗/退款行按 tasks.data 上游响应快照回填视频计费秒数。
+	return backfillLogVideoSeconds()
 }
 
 // seedanceBillingModeOf 是 billing_setting.GetBillingMode 的可测试替身（仅测试覆盖）。

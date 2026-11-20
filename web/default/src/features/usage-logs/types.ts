@@ -250,6 +250,9 @@ export interface LogOtherData {
   is_task?: boolean
   task_id?: string
   reason?: string
+  // 上游返回的视频计费秒数（wan 按秒计费 / seedance），写在 other 顶层而非
+  // admin_info：用户看自己日志也需可见；历史行缺失时秒数列显示 '-'。
+  video_seconds?: number
   // API 审计日志（type=8/9）的响应 HTTP 状态码。新行同步落 http_status 真列，
   // 此处保留供历史行（真列为 0）展示回落。
   http_status?: number

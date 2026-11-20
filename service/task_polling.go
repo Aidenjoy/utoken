@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -710,6 +711,12 @@ func ApplyUpstreamTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, ta
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		}
+		// 记录上游终态返回的视频计费时长（wan usage.duration / seedance duration），
+		// 供结算/退款/预扣回填日志的 other.video_seconds 展示。时长属上游可控输入：
+		// NaN/负值不记录（NaN > 0 为 false），荒谬值钳制到与计费相同的上限。
+		if d := taskResult.Duration; d > 0 && !math.IsInf(d, 0) {
+			task.PrivateData.VideoSeconds = math.Min(d, float64(relaycommon.MaxTaskDurationSeconds))
+		}
 		shouldSettle = true
 	case model.TaskStatusFailure:
 		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", task.TaskID), task)
@@ -864,7 +871,8 @@ func backfillPreConsumeLogUsage(ctx context.Context, task *model.Task, taskResul
 	if useTime < 0 {
 		useTime = 0
 	}
-	if promptTokens+completionTokens <= 0 && useTime <= 0 {
+	videoSeconds := task.PrivateData.VideoSeconds
+	if promptTokens+completionTokens <= 0 && useTime <= 0 && videoSeconds <= 0 {
 		return
 	}
 	// 预扣回填行是上游对账唯一计入行：被用户费率缩放过的任务（seedance）
@@ -877,12 +885,12 @@ func backfillPreConsumeLogUsage(ctx context.Context, task *model.Task, taskResul
 		}
 		upstreamCompletion = int(scale.OriginalCompletionTokens)
 	}
-	n, err := model.UpdateTaskConsumeLogUsage(task.TaskID, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion, task.TokenRateScale)
+	n, err := model.UpdateTaskConsumeLogUsage(task.TaskID, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion, videoSeconds, task.TokenRateScale)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("回填预扣消费日志失败 task %s: %s", task.TaskID, err.Error()))
 		return
 	}
 	if n > 0 {
-		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 回填预扣消费日志 tokens=%d+%d 耗时=%ds", task.TaskID, promptTokens, completionTokens, useTime))
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 回填预扣消费日志 tokens=%d+%d 耗时=%ds 视频秒数=%.2f", task.TaskID, promptTokens, completionTokens, useTime, videoSeconds))
 	}
 }

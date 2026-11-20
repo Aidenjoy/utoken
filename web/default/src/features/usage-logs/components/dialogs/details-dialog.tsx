@@ -350,6 +350,14 @@ function BillingBreakdown(props: {
     })
   }
 
+  // 上游返回的视频计费秒数（wan 按秒计费 / seedance），仅视频任务日志携带。
+  if (other.video_seconds != null && other.video_seconds > 0) {
+    rows.push({
+      label: t('Seconds'),
+      value: `${other.video_seconds}s`,
+    })
+  }
+
   rows.push({
     label: t('Total Cost'),
     value: formatLogQuota(getLogCharges(log).walletQuota),

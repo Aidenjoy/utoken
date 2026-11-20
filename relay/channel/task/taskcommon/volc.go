@@ -134,8 +134,9 @@ type VolcTaskResponse struct {
 		Content struct {
 			VideoURL string `json:"video_url"`
 		} `json:"content"`
-		Usage      volcUsage `json:"usage"`
-		Resolution string    `json:"resolution"`
+		Usage      volcUsage      `json:"usage"`
+		Resolution string         `json:"resolution"`
+		Duration   volcLenientInt `json:"duration"`
 	} `json:"resultSummary"`
 	Seed            volcLenientInt `json:"seed"`
 	Resolution      string         `json:"resolution"`
@@ -176,6 +177,12 @@ func (r *VolcTaskResponse) TotalTokens() int {
 // 用于 seedance 按分辨率结算（转小写比较）。方法名避开与顶层 Resolution 字段重名。
 func (r *VolcTaskResponse) OutputResolution() string {
 	return lo.CoalesceOrEmpty(r.Resolution, r.ResultSummary.Resolution)
+}
+
+// VideoDuration 返回视频计费时长（秒）：官方顶层 duration 优先，中转站 resultSummary 兜底。
+// 用于日志展示上游真实秒数；无值/异常形态记 0，不阻断状态解析。
+func (r *VolcTaskResponse) VideoDuration() float64 {
+	return float64(lo.CoalesceOrEmpty(r.Duration, r.ResultSummary.Duration))
 }
 
 // ParseVolcTaskResult 解析火山方舟任务查询响应为内部 TaskInfo。
@@ -230,6 +237,8 @@ func ParseVolcTaskResult(respBody []byte, logPrefix string) (*relaycommon.TaskIn
 		taskResult.TotalTokens = resTask.TotalTokens()
 		// 解析实际输出分辨率用于 seedance 按分辨率结算
 		taskResult.Resolution = resTask.OutputResolution()
+		// 上游返回的视频计费时长（秒），随日志 other.video_seconds 展示
+		taskResult.Duration = resTask.VideoDuration()
 		taskResult.FinishTime = int64(resTask.UpdatedAt)
 	case "failed":
 		taskResult.Status = model.TaskStatusFailure

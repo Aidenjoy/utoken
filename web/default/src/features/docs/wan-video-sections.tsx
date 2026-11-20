@@ -52,7 +52,7 @@ export function buildWanVideoSections(
           <P>
             <DocText
               text={t(
-                'Four creation modes are supported: reference-based generation, text-to-video, first & last frame, and first frame; a successful submission returns a task ID for later status queries.'
+                'Three creation modes are supported: reference-based generation, text-to-video, and first & last frame (the last frame can be omitted to animate a single first frame); a successful submission returns a task ID for later status queries.'
               )}
             />
           </P>
@@ -68,17 +68,15 @@ export function buildWanVideoSections(
     },
     {
       id: 'wan-submit',
-      title: t('Submit Video Generation Task'),
+      title: t('Create Video Generation Task'),
       body: (
-        <>
-          <P>
-            <DocText
-              text={t(
-                'Creates an asynchronous video generation task. `input.prompt` describes the video; `input.media` carries image, video and audio inputs for the image-to-video and reference-based modes. `parameters.resolution` selects the resolution tier (`480P` / `720P` / `1080P`), `parameters.ratio` the aspect ratio (`adaptive` follows the input media), and `parameters.duration` the video length in seconds (`2`-`30`, or `-1` to let the model decide automatically).'
-              )}
-            />
-          </P>
-        </>
+        <P>
+          <DocText
+            text={t(
+              'Creates an asynchronous video generation task. `input.prompt` describes the video; `input.media` carries image, video and audio inputs for the image-to-video and reference-based modes. `parameters.resolution` selects the resolution tier (`480P` / `720P` / `1080P`), `parameters.ratio` the aspect ratio (`adaptive` follows the input media), and `parameters.duration` the video length in seconds (`2`-`30`, or `-1` to let the model decide automatically).'
+            )}
+          />
+        </P>
       ),
       children: [
         {
@@ -271,26 +269,6 @@ export function buildWanVideoSections(
     }
   }'`}
               />
-              <CodeBlock
-                title={t('Response example')}
-                lang='json'
-                code={wanSubmitResponse}
-              />
-              <Note>
-                <DocText
-                  text={t(
-                    'Keep the returned `output.task_id` for querying the task. Tasks are asynchronous: poll the query endpoint until `task_status` reaches a terminal state.'
-                  )}
-                />
-              </Note>
-            </>
-          ),
-        },
-        {
-          id: 'wan-first-frame',
-          title: t('First Frame'),
-          body: (
-            <>
               <P>
                 <DocText
                   text={t(
@@ -299,8 +277,7 @@ export function buildWanVideoSections(
                 />
               </P>
               <CodeBlock
-                method='POST'
-                url={submitUrl}
+                title={t('First Frame')}
                 lang='json'
                 code={`{
   "model": "${WAN_MODEL}",

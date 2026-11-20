@@ -21,6 +21,7 @@ func TestParseVolcTaskResultRelayStringUsage(t *testing.T) {
 	require.Equal(t, 40594, info.CompletionTokens)
 	require.Equal(t, 40594, info.TotalTokens)
 	require.Equal(t, "480p", info.Resolution)
+	require.Equal(t, float64(4), info.Duration)
 	require.Equal(t, int64(1789027908), info.FinishTime)
 }
 
@@ -88,4 +89,23 @@ func TestParseVolcTaskResultRunningStatus(t *testing.T) {
 	require.Equal(t, "50%", info.Progress)
 	// 非终态不记录 FinishTime
 	require.Equal(t, int64(0), info.FinishTime)
+}
+
+// TestParseVolcTaskResultVideoDuration 锁定 seedance 视频秒数解析：官方顶层
+// duration 优先，中转站 resultSummary.duration（数字字符串）兜底，缺失记 0。
+func TestParseVolcTaskResultVideoDuration(t *testing.T) {
+	body := `{"id":"t-summary","status":"succeeded","resultSummary":{"content":{"video_url":"u"},"duration":"5","usage":{"total_tokens":10}}}`
+	info, err := ParseVolcTaskResult([]byte(body), "[ArkNative]")
+	require.NoError(t, err)
+	require.Equal(t, float64(5), info.Duration)
+
+	body = `{"id":"t-both","status":"succeeded","duration":8,"resultSummary":{"duration":"5"},"content":{"video_url":"u"}}`
+	info, err = ParseVolcTaskResult([]byte(body), "[ArkNative]")
+	require.NoError(t, err)
+	require.Equal(t, float64(8), info.Duration)
+
+	body = `{"id":"t-none","status":"succeeded","content":{"video_url":"u"},"usage":{"total_tokens":10}}`
+	info, err = ParseVolcTaskResult([]byte(body), "[DoubaoVideo]")
+	require.NoError(t, err)
+	require.Equal(t, float64(0), info.Duration)
 }

@@ -187,6 +187,9 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 	// EstimateBilling 注入 seconds 倍率乘上真实秒数；分辨率未指定时取已配置最高档价
 	// 作预扣兜底，结算时按响应分辨率与真实时长重算。未配置档价的模型落入下方常规
 	// ModelPrice/ModelRatio 逻辑。
+	// UsePrice 必须为 false（对齐 seedance）：true 会被控制器标为 PerCallBilling，
+	// 轮询结算据此跳过差额结算，最终扣费将永远停在预扣的预估秒数（如 5 秒），
+	// 无法按上游真实 usage.duration（输入+输出总时长）重算。
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeWan {
 		if tierPrice, ok := billing_setting.GetWanTierPrice(info.OriginModelName, info.WanResolution); ok {
 			quota := common.QuotaFromFloat(tierPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
@@ -200,7 +203,7 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 			return types.PriceData{
 				FreeModel:      freeModel,
 				ModelPrice:     tierPrice,
-				UsePrice:       true,
+				UsePrice:       false,
 				Quota:          quota,
 				GroupRatioInfo: groupRatioInfo,
 			}, nil
