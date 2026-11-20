@@ -1,0 +1,981 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "utoken 云大师 Agent API（基于 new-api）",
+    "version": "2026-11-18",
+    "description": "设备授权、来源管理及现有管理 API 契约。可导入 Apifox；完整权限、额度及分页语义见 agent-api.md。浏览器批准需要真实会话和页面 CSRF，不支持由设备凭证自行批准。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3000",
+      "description": "替换为测试实例 origin；生产必须 HTTPS"
+    }
+  ],
+  "paths": {
+    "/oauth/device/code": {
+      "post": {
+        "summary": "申请设备授权码",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "client_id"
+                ],
+                "properties": {
+                  "client_id": {
+                    "type": "string",
+                    "enum": [
+                      "yundashi-agent"
+                    ]
+                  },
+                  "scope": {
+                    "type": "string",
+                    "example": "token:manage user:read log:read"
+                  },
+                  "device_name": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "设备挑战；等待至少 interval 秒后轮询",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthorization"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth 请求错误或轮询状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "限流；响应可能为空"
+          },
+          "500": {
+            "description": "服务端错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/device/token": {
+      "post": {
+        "summary": "轮询并一次性兑换设备凭证",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "grant_type",
+                  "client_id",
+                  "device_code"
+                ],
+                "properties": {
+                  "grant_type": {
+                    "type": "string",
+                    "enum": [
+                      "urn:ietf:params:oauth:grant-type:device_code"
+                    ]
+                  },
+                  "client_id": {
+                    "type": "string",
+                    "enum": [
+                      "yundashi-agent"
+                    ]
+                  },
+                  "device_code": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "30 天独立凭证，不返回 refresh_token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAccess"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OAuth 请求错误或轮询状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "限流；响应可能为空"
+          },
+          "500": {
+            "description": "服务端错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/device": {
+      "get": {
+        "summary": "浏览器设备授权页",
+        "description": "现有浏览器会话登录；未登录则显示登录入口。",
+        "responses": {
+          "200": {
+            "description": "HTML 页面",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "提交浏览器决定",
+        "description": "从 GET 页面获取 CSRF 字段，只接受浏览器会话。",
+        "responses": {
+          "200": {
+            "description": "批准/拒绝后的 HTML 页面"
+          },
+          "303": {
+            "description": "撤销后跳转管理页"
+          },
+          "400": {
+            "description": "无效授权"
+          },
+          "403": {
+            "description": "会话或 CSRF 无效"
+          }
+        }
+      }
+    },
+    "/oauth/device/grants": {
+      "get": {
+        "summary": "浏览器设备授权管理页",
+        "description": "现有浏览器会话登录；未登录则显示登录入口。",
+        "responses": {
+          "200": {
+            "description": "HTML 页面",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "撤销设备及关联 key",
+        "description": "从 GET 页面获取 CSRF 字段，只接受浏览器会话。",
+        "responses": {
+          "200": {
+            "description": "批准/拒绝后的 HTML 页面"
+          },
+          "303": {
+            "description": "撤销后跳转管理页"
+          },
+          "400": {
+            "description": "无效授权"
+          },
+          "403": {
+            "description": "会话或 CSRF 无效"
+          }
+        }
+      }
+    },
+    "/api/user/self": {
+      "get": {
+        "summary": "读取个人资料及余额",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "设备凭证需要 user:read。详见 agent-api.md。"
+      }
+    },
+    "/api/user/token": {
+      "get": {
+        "summary": "生成/重置原有系统访问令牌",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": true,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "设备令牌禁止；此 GET 会覆盖原系统令牌，不是匿名登录或读取操作。data 为新令牌字符串。"
+      }
+    },
+    "/api/token/": {
+      "get": {
+        "summary": "分页读取脱敏 key",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "设备凭证需要 token:manage。详见 agent-api.md。"
+      },
+      "post": {
+        "summary": "创建模型 key，返回脱敏对象及 ID",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "设备凭证需要 token:manage。详见 agent-api.md。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateToken"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/token/{id}": {
+      "get": {
+        "summary": "读取单个脱敏 key",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "description": "设备凭证需要 token:manage。详见 agent-api.md。"
+      },
+      "delete": {
+        "summary": "删除单个 key",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "description": "设备凭证需要 token:manage。详见 agent-api.md。"
+      }
+    },
+    "/api/token/{id}/key": {
+      "post": {
+        "summary": "根据 ID 获取完整 key",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "description": "设备凭证需要 token:manage。详见 agent-api.md。"
+      }
+    },
+    "/api/log/self": {
+      "get": {
+        "summary": "读取当前账号调用日志",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "token_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "description": "设备凭证需要 log:read。详见 agent-api.md。"
+      }
+    },
+    "/api/log/self/stat": {
+      "get": {
+        "summary": "读取消费额度及最近一分钟统计",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        },
+        "security": [
+          {
+            "DeviceBearer": []
+          },
+          {
+            "SystemBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "New-Api-User",
+            "in": "header",
+            "required": false,
+            "description": "系统访问令牌必须携带用户数字 ID；设备令牌可省略，提供时须匹配账号。",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "token_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model_name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "设备凭证需要 log:read。详见 agent-api.md。"
+      }
+    },
+    "/api/status": {
+      "get": {
+        "summary": "公开平台信息、额度展示及条件公告配置",
+        "responses": {
+          "200": {
+            "description": "检查 success，原有业务错误可能使用 HTTP 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "凭证失效或用户 ID 不匹配"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "429": {
+            "description": "限流，可能无 JSON"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "summary": "服务存活探测",
+        "responses": {
+          "200": {
+            "description": "存活"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "DeviceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "/oauth/device/token 返回的 udv_ 设备访问令牌"
+      },
+      "SystemBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "现有系统令牌；额外必须提供 New-Api-User"
+      }
+    },
+    "schemas": {
+      "OAuthError": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Envelope": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {},
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceAuthorization": {
+        "type": "object",
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_in",
+          "interval"
+        ],
+        "properties": {
+          "device_code": {
+            "type": "string"
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "type": "string"
+          },
+          "verification_uri_complete": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "example": 600
+          },
+          "interval": {
+            "type": "integer",
+            "example": 5
+          }
+        }
+      },
+      "DeviceAccess": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope",
+          "user_id",
+          "username"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "example": 2592000
+          },
+          "scope": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateToken": {
+        "type": "object",
+        "required": [
+          "name",
+          "expired_time",
+          "unlimited_quota"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "expired_time": {
+            "type": "integer",
+            "format": "int64",
+            "example": -1
+          },
+          "unlimited_quota": {
+            "type": "boolean",
+            "example": true
+          },
+          "remain_quota": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 64,
+            "example": "yundashi-agent"
+          },
+          "group": {
+            "type": "string",
+            "description": "可选，沿用服务端分组权限；不应假定存在 agent 组"
+          }
+        }
+      }
+    }
+  }
+}
