@@ -3746,6 +3746,11 @@
     "Actual Consumption": "Consommation réelle",
     "{{value}} points": "{{value}} points",
     "User ID": "ID utilisateur",
-    "No Records Found": "Aucun enregistrement trouvé"
+    "No Records Found": "Aucun enregistrement trouvé",
+    "推理接入点": "Points de terminaison d'inférence",
+    "每个模型对应一个上游接入点，保存后写入模型重定向。渠道 API Key 必须已授权该接入点；引用素材时，接入点须与素材库属于同一账号和项目。": "Un point de terminaison amont par modèle, enregistré dans la Redirection de modèle. La clé API du canal doit être autorisée pour ce point de terminaison ; pour référencer des ressources, le point de terminaison et la bibliothèque de ressources doivent appartenir au même compte et projet.",
+    "ep-20260101xxxx-xxxx，留空则按模型 ID 直连": "ep-20260101xxxx-xxxx, laissez vide pour appeler avec l'ID du modèle",
+    "请先修正模型重定向的 JSON 格式": "Corrigez d’abord le JSON de la Redirection de modèle",
+    "请先在模型列表中添加模型": "Ajoutez d’abord des modèles à la liste des modèles"
   }
 }

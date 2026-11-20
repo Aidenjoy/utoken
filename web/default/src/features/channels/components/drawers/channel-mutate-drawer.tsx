@@ -173,6 +173,7 @@ import {
 } from '../dialogs/missing-models-confirmation-dialog'
 import { ParamOverrideEditorDialog } from '../dialogs/param-override-editor-dialog'
 import { StatusCodeRiskDialog } from '../dialogs/status-code-risk-dialog'
+import { EndpointMappingEditor } from '../endpoint-mapping-editor'
 import { ModelMappingEditor } from '../model-mapping-editor'
 import {
   ChannelAdvancedSection,
@@ -3937,6 +3938,34 @@ export function ChannelMutateDrawer({
                               )}
                             />
                           </div>
+
+                          {[45, 54, 59].includes(Number(currentType)) && (
+                            <div className='border-border/60 rounded-lg border p-4'>
+                              <div className='space-y-3'>
+                                <div className='space-y-1'>
+                                  <div className='text-sm font-medium'>
+                                    {t('Inference Endpoints')}
+                                  </div>
+                                  <p className='text-muted-foreground text-sm'>
+                                    {t(
+                                      'One upstream endpoint per model, saved into Model Mapping. The channel API key must be authorized for the endpoint; to reference assets, the endpoint and the asset library must belong to the same account and project.'
+                                    )}
+                                  </p>
+                                </div>
+                                <EndpointMappingEditor
+                                  models={currentModelsArray}
+                                  value={currentModelMapping || ''}
+                                  onChange={(next) =>
+                                    form.setValue('model_mapping', next, {
+                                      shouldDirty: true,
+                                      shouldValidate: true,
+                                    })
+                                  }
+                                  disabled={isSubmitting}
+                                />
+                              </div>
+                            </div>
+                          )}
 
                           <div className='border-border/60 rounded-lg border p-4'>
                             <FormField

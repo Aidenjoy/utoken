@@ -286,6 +286,20 @@ const EditChannelModal = (props) => {
       return [];
     }
   }, [inputs.model_mapping]);
+  // 方舟接入点（ep-）复用 model_mapping 存储；null 表示 JSON 格式非法
+  const endpointMapping = useMemo(() => {
+    const mapping = inputs.model_mapping;
+    if (typeof mapping !== 'string' || !mapping.trim()) return {};
+    try {
+      const parsed = JSON.parse(mapping);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      return parsed;
+    } catch (error) {
+      return null;
+    }
+  }, [inputs.model_mapping]);
   const upstreamDetectedModels = useMemo(
     () =>
       Array.from(
@@ -3634,6 +3648,81 @@ const EditChannelModal = (props) => {
                       '键为请求中的模型名称，值为要替换的模型名称',
                     )}
                   />
+
+                  {/* Inference Endpoints - Ark channels, writes into model_mapping */}
+                  {[45, 54, 59].includes(Number(inputs.type)) && (
+                    <div className='mb-4'>
+                      <div style={{ marginBottom: 4 }}>
+                        <Text strong>{t('推理接入点')}</Text>
+                      </div>
+                      <Text
+                        type='tertiary'
+                        size='small'
+                        style={{ display: 'block', marginBottom: 8 }}
+                      >
+                        {t(
+                          '每个模型对应一个上游接入点，保存后写入模型重定向。渠道 API Key 必须已授权该接入点；引用素材时，接入点须与素材库属于同一账号和项目。',
+                        )}
+                      </Text>
+                      {endpointMapping === null ? (
+                        <Banner
+                          type='warning'
+                          description={t('请先修正模型重定向的 JSON 格式')}
+                        />
+                      ) : inputs.models.length === 0 ? (
+                        <Banner
+                          type='info'
+                          description={t('请先在模型列表中添加模型')}
+                        />
+                      ) : (
+                        <Space vertical align='start' style={{ width: '100%' }}>
+                          {inputs.models.map((model) => (
+                            <div
+                              key={model}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                width: '100%',
+                              }}
+                            >
+                              <Text
+                                code
+                                style={{ width: 220, flexShrink: 0 }}
+                              >
+                                {model}
+                              </Text>
+                              <Input
+                                value={
+                                  typeof endpointMapping[model] === 'string'
+                                    ? endpointMapping[model]
+                                    : ''
+                                }
+                                placeholder={t(
+                                  'ep-20260101xxxx-xxxx，留空则按模型 ID 直连',
+                                )}
+                                onChange={(value) => {
+                                  const next = { ...endpointMapping };
+                                  const endpoint = String(value || '').trim();
+                                  if (endpoint) {
+                                    next[model] = endpoint;
+                                  } else {
+                                    delete next[model];
+                                  }
+                                  handleInputChange(
+                                    'model_mapping',
+                                    Object.keys(next).length
+                                      ? JSON.stringify(next, null, 2)
+                                      : '',
+                                  );
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </Space>
+                      )}
+                    </div>
+                  )}
 
                   {/* Auto Ban - Core Config */}
                   <Form.Switch
