@@ -247,3 +247,66 @@ func TestModelPriceHelperPerCallSeedanceFallsBackWithoutTierPrice(t *testing.T) 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "seedance-no-price-model 的价格")
 }
+
+// TestModelPriceHelperPerCallWanAbsolutePrice 锁定 wan 按秒档价模式的预扣边界，尤其是
+// UsePrice 必须为 false：控制器据 PriceData.UsePrice 置 BillingContext.PerCallBilling，
+// 轮询结算遇 PerCallBilling=true 会跳过差额结算，扣费永远停在预扣的预估秒数（如 5 秒），
+// 无法按上游真实 usage.duration（输入+输出总时长）重算。预扣额度 = 每秒档价 × QuotaPerUnit
+// × groupRatio（1 秒基础，秒数由 EstimateBilling 注入的 seconds 倍率另乘）；空分辨率取最高档兜底。
+func TestModelPriceHelperPerCallWanAbsolutePrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"wan-abs-model":"wan"}`,
+		"billing_setting.wan_config":      `{"wan-abs-model":"{\"480p\":0.4,\"720p\":0.6,\"1080p\":1}"}`,
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+	}))
+
+	cases := []struct {
+		name       string
+		resolution string
+		wantPrice  float64
+		wantQuota  int
+	}{
+		// 0.6×500000×1 = 300000（1 秒基础预扣）
+		{name: "720p档价", resolution: "720p", wantPrice: 0.6, wantQuota: 300_000},
+		{name: "480p档价", resolution: "480p", wantPrice: 0.4, wantQuota: 200_000},
+		// 空分辨率取最高档 1.0 兜底
+		{name: "空分辨率取最高档兜底", resolution: "", wantPrice: 1, wantQuota: 500_000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			req := httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
+			req.Header.Set("Content-Type", "application/json")
+			ctx.Request = req
+			ctx.Set("group", "default")
+
+			info := &relaycommon.RelayInfo{
+				OriginModelName: "wan-abs-model",
+				UserGroup:       "default",
+				UsingGroup:      "default",
+				TaskRelayInfo: &relaycommon.TaskRelayInfo{
+					WanResolution: tc.resolution,
+				},
+			}
+
+			priceData, err := ModelPriceHelperPerCall(ctx, info)
+			require.NoError(t, err)
+			// 核心契约：UsePrice=false，否则任务被标 PerCallBilling 而跳过差额结算
+			assert.False(t, priceData.UsePrice)
+			assert.InDelta(t, tc.wantPrice, priceData.ModelPrice, 1e-9)
+			assert.Equal(t, tc.wantQuota, priceData.Quota)
+		})
+	}
+}
