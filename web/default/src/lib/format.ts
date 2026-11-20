@@ -281,3 +281,10 @@ export function stringToColor(str: string): string {
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`
 }
+
+/** Use the existing quota display conversion for points, without a currency symbol. */
+export function formatSubscriptionPoints(quota: number): string {
+  return quotaUnitsToDollars(quota).toLocaleString(undefined, {
+    maximumFractionDigits: 6,
+  })
+}

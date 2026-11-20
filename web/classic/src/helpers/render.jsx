@@ -3357,3 +3357,15 @@ export function rehypeSplitWordsIntoSpans(options = {}) {
     });
   };
 }
+
+// Subscription quota represents points; it must not carry a currency symbol.
+export function renderSubscriptionPoints(quota) {
+  const quotaPerUnit = Number(localStorage.getItem('quota_per_unit')) || 500000;
+  const { rate, type } = getCurrencyConfig();
+  const amount = type === 'TOKENS' ? Number(quota || 0) : Number(quota || 0) / quotaPerUnit * rate;
+  return i18next.t('{{value}} 点', { value: amount.toLocaleString(undefined, { maximumFractionDigits: 6 }) });
+}
+
+export function renderSubscriptionPlanPrice(amount) {
+  return `${getCurrencyConfig().symbol}${Number(amount || 0).toFixed(2)}`;
+}

@@ -203,6 +203,16 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
 	}
 	if relayInfo.BillingSource == "subscription" {
+		// 套餐计价快照只放在 admin_info，普通用户日志由现有脱敏逻辑剥离。
+		admin, _ := other["admin_info"].(map[string]interface{})
+		if admin == nil {
+			admin = make(map[string]interface{})
+			other["admin_info"] = admin
+		}
+		admin["subscription_base_quota"] = relayInfo.SubscriptionQuotaBeforeMarkup
+
+		admin["subscription_gross_profit_percent"] = relayInfo.SubscriptionGrossProfitPercent
+
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId
 		}

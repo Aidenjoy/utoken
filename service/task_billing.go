@@ -43,6 +43,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 	}
 	other := make(map[string]interface{})
 	other["is_task"] = true
+	appendBillingInfo(info, other)
 	if taskID != "" {
 		other["task_id"] = taskID
 	}
@@ -71,8 +72,10 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 		Group:     info.UsingGroup,
 		Other:     other,
 	})
-	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
-	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+	model.UpdateUserConsumption(info.UserId, info.PriceData.Quota, info.BillingSource == BillingSourceSubscription, true)
+	if info.BillingSource != BillingSourceSubscription {
+		model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +134,7 @@ func taskAdjustFunding(task *model.Task, delta int) error {
 // 无限额度令牌没有余额上限，跳过令牌级调整（与预扣费旁路对称），
 // 否则结算会把 remain_quota 越扣越负、退费又把它抬回，账目无意义且会触发余额不足告警。
 func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
-	if task.PrivateData.TokenId <= 0 || delta == 0 {
+	if taskIsSubscription(task) || task.PrivateData.TokenId <= 0 || delta == 0 {
 		return
 	}
 	token := resolveTaskToken(ctx, task.PrivateData.TokenId, task.TaskID)
@@ -184,6 +187,7 @@ func settleTaskFundingWithRetry(ctx context.Context, task *model.Task, delta int
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
+	other["billing_source"] = task.PrivateData.BillingSource
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
 		if bc.ModelRatio > 0 {
@@ -291,7 +295,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string, usage
 	taskAdjustTokenQuota(ctx, task, -quota)
 
 	// 3. 减少已用额度统计（退款不影响请求次数）
-	model.DecreaseUserUsedQuota(task.UserId, quota)
+	if !taskIsSubscription(task) {
+		model.DecreaseUserUsedQuota(task.UserId, quota)
+	}
 
 	// 4. 记录日志
 	other := taskBillingOther(task)
@@ -362,6 +368,12 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if actualQuota <= 0 {
 		return
 	}
+	baseQuota := actualQuota
+	if taskIsSubscription(task) {
+		charged, clamp := common.SubscriptionQuotaWithMarkup(actualQuota, task.PrivateData.SubscriptionGrossProfitPercent, task.PrivateData.SubscriptionPointsRatio)
+		actualQuota = charged
+		clamps = append(clamps, clamp)
+	}
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
 
@@ -399,17 +411,31 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if quotaDelta > 0 {
 		logType = model.LogTypeConsume
 		logQuota = quotaDelta
-		model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta)
-		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		model.UpdateUserConsumption(task.UserId, quotaDelta, taskIsSubscription(task), false)
+		if !taskIsSubscription(task) {
+			model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		}
 	} else {
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
-		model.DecreaseUserUsedQuota(task.UserId, -quotaDelta)
+		if !taskIsSubscription(task) {
+			model.DecreaseUserUsedQuota(task.UserId, -quotaDelta)
+		}
 	}
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	if taskIsSubscription(task) {
+		admin, _ := other["admin_info"].(map[string]interface{})
+		if admin == nil {
+			admin = make(map[string]interface{})
+			other["admin_info"] = admin
+		}
+		admin["subscription_base_quota"] = baseQuota
+
+		admin["subscription_gross_profit_percent"] = task.PrivateData.SubscriptionGrossProfitPercent
+	}
 	attachTaskLogDiscountOriginal(other, logQuota)
 	for _, clamp := range clamps {
 		attachQuotaSaturationToOther(other, clamp)

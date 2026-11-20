@@ -434,3 +434,21 @@ export function renderAuditContent(
   if (!template) return null
   return t(template, (op.params ?? {}) as Record<string, unknown>)
 }
+
+/** Resolve wallet and subscription charges, including legacy rows stored in quota. */
+export function getLogCharges(log: UsageLog): {
+  walletQuota: number
+  subscriptionQuota: number
+} {
+  const other = parseLogOther(log.other)
+  const subscription =
+    (log.subscription_quota || 0) > 0 || other?.billing_source === 'subscription'
+  return {
+    walletQuota: subscription ? 0 : log.quota,
+    subscriptionQuota: subscription
+      ? log.subscription_quota || log.quota || 0
+      : 0,
+  }
+}
+
+export { formatSubscriptionPoints } from '@/lib/format'

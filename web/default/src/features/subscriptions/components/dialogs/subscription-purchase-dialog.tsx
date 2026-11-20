@@ -35,7 +35,8 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { useSystemConfig } from '@/hooks/use-system-config'
-import { formatQuota } from '@/lib/format'
+import { formatQuota, formatSubscriptionPoints } from '@/lib/format'
+import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 
 import {
@@ -98,7 +99,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
     selectedEpayMethod ||
     t('Select payment method')
   const totalAmount = Number(plan.total_amount || 0)
-  const price = Number(plan.price_amount || 0).toFixed(2)
+  const price = formatLocalCurrencyAmount(Number(plan.price_amount || 0), { digitsLarge: 2, digitsSmall: 2 })
   const quotaPerUnit =
     currency?.quotaPerUnit && currency.quotaPerUnit > 0
       ? currency.quotaPerUnit
@@ -303,7 +304,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </span>
             <span className='flex items-center gap-1 text-sm'>
               <Package className='h-3.5 w-3.5' />
-              {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+              {totalAmount > 0
+                ? t('{{value}} points', {
+                    value: formatSubscriptionPoints(totalAmount),
+                  })
+                : t('Unlimited')}
             </span>
           </div>
           {plan.upgrade_group && (
@@ -317,7 +322,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <Separator />
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
-            <span className='text-primary text-lg font-bold'>${price}</span>
+            <span className='text-primary text-lg font-bold'>{price}</span>
           </div>
         </div>
 

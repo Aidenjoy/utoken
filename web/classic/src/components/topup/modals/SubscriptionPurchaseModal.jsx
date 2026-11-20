@@ -26,12 +26,11 @@ import {
   Button,
   Select,
   Divider,
-  Tooltip,
 } from '@douyinfe/semi-ui';
 import { Crown, CalendarClock, Package } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
-import { renderQuota } from '../../../helpers';
+import { renderSubscriptionPoints } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
@@ -59,9 +58,9 @@ const SubscriptionPurchaseModal = ({
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
-  const { symbol, rate } = getCurrencyConfig();
+  const { symbol } = getCurrencyConfig();
   const price = plan ? Number(plan.price_amount || 0) : 0;
-  const convertedPrice = price * rate;
+  const convertedPrice = price;
   const displayPrice = convertedPrice.toFixed(
     Number.isInteger(convertedPrice) ? 0 : 2,
   );
@@ -134,11 +133,9 @@ const SubscriptionPurchaseModal = ({
                 <div className='flex items-center'>
                   <Package size={14} className='mr-1 text-slate-500' />
                   {totalAmount > 0 ? (
-                    <Tooltip content={`${t('原生额度')}：${totalAmount}`}>
-                      <Text className='text-slate-900 dark:text-slate-100'>
-                        {renderQuota(totalAmount)}
-                      </Text>
-                    </Tooltip>
+                    <Text className='text-slate-900 dark:text-slate-100'>
+                      {renderSubscriptionPoints(totalAmount)}
+                    </Text>
                   ) : (
                     <Text className='text-slate-900 dark:text-slate-100'>
                       {t('不限')}

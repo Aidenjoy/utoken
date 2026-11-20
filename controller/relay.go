@@ -655,6 +655,8 @@ func RelayTask(c *gin.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
+		result.Quota = service.ApplySubscriptionMarkup(relayInfo, result.Quota)
+		relayInfo.PriceData.Quota = result.Quota
 		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 			common.SysError("settle task billing error: " + settleErr.Error())
 		}
@@ -663,6 +665,8 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
+		task.PrivateData.SubscriptionGrossProfitPercent = relayInfo.SubscriptionGrossProfitPercent
+		task.PrivateData.SubscriptionPointsRatio = relayInfo.SubscriptionPointsRatio
 		task.PrivateData.OrgId = relayInfo.OrgId
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.NodeName = common.NodeName

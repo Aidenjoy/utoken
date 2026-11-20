@@ -57,7 +57,13 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 	return input, nil
 }
 
+// Log 保存调用审计；Quota 是钱包金额额度，SubscriptionQuota 独立保存订阅扣减，均使用原始 quota 单位。
 type Log struct {
+	// BillingPurchaseAmount/Method are read-only fields for merged billing rows, never log columns.
+	BillingPurchaseAmount *float64 `json:"purchase_amount,omitempty" gorm:"-"`
+	BillingPaymentMethod  string   `json:"payment_method,omitempty" gorm:"-"`
+
+	SubscriptionQuota int    `json:"subscription_quota" gorm:"type:int;not null;default:0"`
 	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
 	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
 	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
@@ -543,25 +549,27 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		UpstreamPromptTokens:     params.UpstreamPromptTokens,
 		UpstreamCompletionTokens: params.UpstreamCompletionTokens,
 	}
+	log.splitSubscriptionCharge(params.Other)
 	err := createLog(log)
 	if err != nil {
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
 		LogQuotaData(QuotaDataLogParams{
-			UserID:          userId,
-			OrgId:           orgId,
-			Username:        username,
-			ModelName:       params.ModelName,
-			Quota:           params.Quota,
-			CreatedAt:       createdAt,
-			TokenUsed:       params.PromptTokens + params.CompletionTokens,
-			UseGroup:        params.Group,
-			TokenID:         params.TokenId,
-			ChannelID:       params.ChannelId,
-			NodeName:        common.NodeName,
-			CacheHit:        params.CacheHit,
-			CacheSavedQuota: params.CacheSavedQuota,
+			UserID:            userId,
+			OrgId:             orgId,
+			Username:          username,
+			ModelName:         params.ModelName,
+			Quota:             log.Quota,
+			SubscriptionQuota: log.SubscriptionQuota,
+			CreatedAt:         createdAt,
+			TokenUsed:         params.PromptTokens + params.CompletionTokens,
+			UseGroup:          params.Group,
+			TokenID:           params.TokenId,
+			ChannelID:         params.ChannelId,
+			NodeName:          common.NodeName,
+			CacheHit:          params.CacheHit,
+			CacheSavedQuota:   params.CacheSavedQuota,
 		})
 	}
 }
@@ -736,6 +744,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		UpstreamPromptTokens:     int(upstreamPrompt),
 		UpstreamCompletionTokens: int(upstreamCompletion),
 	}
+	log.splitSubscriptionCharge(params.Other)
 	err := createLog(log)
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
@@ -751,23 +760,26 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		if quotaDataCreatedAt == 0 {
 			quotaDataCreatedAt = createdAt
 		}
-		quota := params.Quota
+		quota := log.Quota
+		subscriptionQuota := log.SubscriptionQuota
 		if params.LogType == LogTypeRefund {
 			quota = -quota
+			subscriptionQuota = -subscriptionQuota
 		}
 		LogQuotaData(QuotaDataLogParams{
-			UserID:     params.UserId,
-			OrgId:      orgId,
-			Username:   username,
-			ModelName:  params.ModelName,
-			Quota:      quota,
-			CreatedAt:  quotaDataCreatedAt,
-			TokenUsed:  params.PromptTokens + params.CompletionTokens,
-			UseGroup:   params.Group,
-			TokenID:    params.TokenId,
-			ChannelID:  params.ChannelId,
-			NodeName:   nodeName,
-			Adjustment: true,
+			UserID:            params.UserId,
+			OrgId:             orgId,
+			Username:          username,
+			ModelName:         params.ModelName,
+			Quota:             quota,
+			SubscriptionQuota: subscriptionQuota,
+			CreatedAt:         quotaDataCreatedAt,
+			TokenUsed:         params.PromptTokens + params.CompletionTokens,
+			UseGroup:          params.Group,
+			TokenID:           params.TokenId,
+			ChannelID:         params.ChannelId,
+			NodeName:          nodeName,
+			Adjustment:        true,
 		})
 	}
 }
@@ -1090,14 +1102,19 @@ func GetAgentScopedLogs(userIds []int, logType int, startTimestamp int64, endTim
 	return logs, total, err
 }
 
+// Stat 返回筛选范围内的钱包用量、订阅点数及实时请求速率。
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	SubscriptionQuota int `json:"subscription_quota"`
+	Quota             int `json:"quota"`
+	Rpm               int `json:"rpm"`
+	Tpm               int `json:"tpm"`
 }
 
+// SumUsedQuota 按日志筛选条件分别汇总钱包金额与订阅点数，兼容点数仍存于 quota 的历史日志。
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
+	tx := LOG_DB.Table("logs").Select(`COALESCE(SUM(CASE WHEN subscription_quota > 0 OR replace(COALESCE(other, ''), ' ', '') LIKE ? THEN 0 ELSE quota END), 0) AS quota,
+		COALESCE(SUM(CASE WHEN subscription_quota > 0 THEN subscription_quota WHEN replace(COALESCE(other, ''), ' ', '') LIKE ? THEN quota ELSE 0 END), 0) AS subscription_quota`,
+		`%"billing_source":"subscription"%`, `%"billing_source":"subscription"%`)
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
@@ -1159,7 +1176,9 @@ func SumUsedQuotaByUserIds(userIds []int, logType int, startTimestamp int64, end
 	if len(userIds) == 0 {
 		return stat, nil
 	}
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota").Where("user_id IN ?", userIds)
+	tx := LOG_DB.Table("logs").Select(`COALESCE(SUM(CASE WHEN subscription_quota > 0 OR replace(COALESCE(other, ''), ' ', '') LIKE ? THEN 0 ELSE quota END), 0) AS quota,
+		COALESCE(SUM(CASE WHEN subscription_quota > 0 THEN subscription_quota WHEN replace(COALESCE(other, ''), ' ', '') LIKE ? THEN quota ELSE 0 END), 0) AS subscription_quota`,
+		`%"billing_source":"subscription"%`, `%"billing_source":"subscription"%`).Where("user_id IN ?", userIds)
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm").Where("user_id IN ?", userIds)
@@ -1294,4 +1313,13 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 	}
 
 	return total, nil
+}
+
+// splitSubscriptionCharge 将已计算的订阅扣费移入独立字段；退款方向继续由日志 Type 表示。
+// 这里只拆分审计记录，不改变实际扣费，也不对额度再次乘倍率或做展示换算。
+func (log *Log) splitSubscriptionCharge(other map[string]interface{}) {
+	if other["billing_source"] == "subscription" {
+		log.SubscriptionQuota = log.Quota
+		log.Quota = 0
+	}
 }

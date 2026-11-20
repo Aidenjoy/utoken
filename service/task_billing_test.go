@@ -404,8 +404,8 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	// Subscription used should decrease by preConsumed
 	assert.Equal(t, subUsed-int64(preConsumed), getSubscriptionUsed(t, subID))
 
-	// Token should also be refunded
-	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
+	// Subscription refunds only restore points; API key monetary balances stay unchanged.
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 
 	log := getLastLog(t)
 	require.NotNil(t, log)
@@ -688,8 +688,8 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 	// Subscription used should decrease by delta (refund 3000)
 	assert.Equal(t, subUsed-int64(preConsumed-actualQuota), getSubscriptionUsed(t, subID))
 
-	// Token refunded
-	assert.Equal(t, tokenRemain+(preConsumed-actualQuota), getTokenRemainQuota(t, tokenID))
+	// Subscription adjustments do not modify API key monetary balances.
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 
 	assert.Equal(t, actualQuota, task.Quota)
 

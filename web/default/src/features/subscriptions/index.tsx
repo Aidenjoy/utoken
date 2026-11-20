@@ -1,3 +1,4 @@
+import { Info } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -16,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -64,7 +64,7 @@ function SubscriptionsContent() {
                 </AlertDescription>
               </Alert>
             ) : null}
-            <div className='min-h-0 flex-1'>
+            <div className='min-h-0 flex-1 overflow-auto'>
               <SubscriptionsTable />
             </div>
           </div>

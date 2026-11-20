@@ -280,6 +280,8 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&DesktopAuthCode{},
+		&DesktopAuthSession{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},
@@ -491,6 +493,8 @@ func migrateDBFast() error {
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
+		{&DesktopAuthCode{}, "DesktopAuthCode"},
+		{&DesktopAuthSession{}, "DesktopAuthSession"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
@@ -708,6 +712,9 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
+	if err := LOG_DB.Exec("ALTER TABLE logs ADD COLUMN IF NOT EXISTS subscription_quota Int32 DEFAULT 0").Error; err != nil {
+		return err
+	}
 	return syncClickHouseLogTTL(ttlDays)
 }
 
@@ -746,6 +753,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	token_name String DEFAULT '',
 	model_name String DEFAULT '',
 	quota Int32 DEFAULT 0,
+	subscription_quota Int32 DEFAULT 0,
 	prompt_tokens Int32 DEFAULT 0,
 	completion_tokens Int32 DEFAULT 0,
 	use_time Int32 DEFAULT 0,

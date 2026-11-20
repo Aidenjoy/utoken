@@ -18,41 +18,44 @@ import (
 
 const UserNameMaxLength = 20
 
+// User 保存账户资料、钱包金额及调用计数；订阅额度由用户订阅独立管理。
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int            `json:"id"`
-	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string         `json:"email" gorm:"index" validate:"max=50"`
-	Phone            string         `json:"phone" gorm:"index;column:phone;type:varchar(32)"`
-	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string         `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken      *string        `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int            `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	OrgId            int            `json:"org_id" gorm:"type:int;column:org_id;index;default:0"` // 所属企业（组织），0=无企业
-	OrgName          string         `json:"org_name" gorm:"-"`                                    // 所属企业展示名（列表返回时回填，不落库）
-	OrgQuotaLimit    int            `json:"org_quota_limit" gorm:"-"`                             // 企业子额度上限（列表返回时回填，0=不限，不落库）
-	OrgQuotaUsed     int            `json:"org_quota_used" gorm:"-"`                              // 企业子额度已用（列表返回时回填，不落库）
-	DeletedAt        gorm.DeletedAt `gorm:"index"`
-	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
+	Id               int     `json:"id"`
+	Username         string  `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password         string  `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword string  `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName      string  `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int     `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status           int     `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email            string  `json:"email" gorm:"index" validate:"max=50"`
+	Phone            string  `json:"phone" gorm:"index;column:phone;type:varchar(32)"`
+	GitHubId         string  `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId        string  `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId           string  `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId         string  `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId       string  `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode string  `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
+	AccessToken      *string `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota            int     `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota        int     `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	// SubscriptionRequestCount 仅统计真实使用订阅资金来源的调用，不包含购买、补扣或退款。
+	SubscriptionRequestCount int64          `json:"subscription_request_count" gorm:"type:bigint;not null;default:0"`
+	RequestCount             int            `json:"request_count" gorm:"type:int;default:0;"` // request number
+	Group                    string         `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode                  string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount                 int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota                 int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota          int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId                int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	OrgId                    int            `json:"org_id" gorm:"type:int;column:org_id;index;default:0"` // 所属企业（组织），0=无企业
+	OrgName                  string         `json:"org_name" gorm:"-"`                                    // 所属企业展示名（列表返回时回填，不落库）
+	OrgQuotaLimit            int            `json:"org_quota_limit" gorm:"-"`                             // 企业子额度上限（列表返回时回填，0=不限，不落库）
+	OrgQuotaUsed             int            `json:"org_quota_used" gorm:"-"`                              // 企业子额度已用（列表返回时回填，不落库）
+	DeletedAt                gorm.DeletedAt `gorm:"index"`
+	LinuxDOId                string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting                  string         `json:"setting" gorm:"type:text;column:setting"`
 	// ModelDiscounts 按模型折扣（管理员或所属代理商配置，JSON：{"模型名":0.8}，值域 (0,1]）。
 	// 空字符串 = 无折扣（原价）。仅 model_discounts 专用接口可写，通用更新路径不得覆盖。
 	ModelDiscounts   string  `json:"model_discounts,omitempty" gorm:"type:text;column:model_discounts"`
@@ -981,7 +984,7 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	// model_discounts 与 agent_id 同属资金/权限相关字段：通用更新路径（管理员 PUT /api/user/）
 	// 不得覆盖，否则请求体里带上该字段就能绕过专用接口的校验与审计。
-	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "model_discounts", "agent_id").Updates(newUser).Error; err != nil {
+	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "subscription_request_count", "model_discounts", "agent_id").Updates(newUser).Error; err != nil {
 		return err
 	}
 	return tx.First(user, user.Id).Error
@@ -1481,13 +1484,40 @@ func UpdateUserLastLoginAt(id int) {
 	}
 }
 
+// UpdateUserUsedQuotaAndRequestCount 保留普通钱包消费入口，每次调用累计金额和一个请求。
 func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
-	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
-		addNewRecord(BatchUpdateTypeRequestCount, id, 1)
+	UpdateUserConsumption(id, quota, false, true)
+}
+
+// UpdateUserConsumption 按实际资金来源分别统计钱包金额和调用次数。
+// subscription 为真时不累计钱包总用量；countRequest 仅在真实调用完成时为真，差额修正不能计数。
+func UpdateUserConsumption(id int, quota int, subscription bool, countRequest bool) {
+	requestCount, subscriptionCount := 0, 0
+	if subscription {
+		quota = 0
+	}
+	if countRequest {
+		requestCount = 1
+		if subscription {
+			subscriptionCount = 1
+		}
+	}
+	if quota == 0 && requestCount == 0 {
 		return
 	}
-	updateUserUsedQuotaAndRequestCount(id, quota, 1)
+	if common.BatchUpdateEnabled {
+		if quota != 0 {
+			addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
+		}
+		if requestCount != 0 {
+			addNewRecord(BatchUpdateTypeRequestCount, id, requestCount)
+		}
+		if subscriptionCount != 0 {
+			addNewRecord(BatchUpdateTypeSubscriptionRequestCount, id, subscriptionCount)
+		}
+		return
+	}
+	updateUserUsedQuotaAndRequestCount(id, quota, requestCount, subscriptionCount)
 }
 
 // DecreaseUserUsedQuota reduces used_quota by the given amount (for refunds).
@@ -1503,11 +1533,17 @@ func DecreaseUserUsedQuota(id int, quota int) {
 	updateUserUsedQuota(id, -quota)
 }
 
-func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
+// updateUserUsedQuotaAndRequestCount 在一次更新中累计金额、总请求和套餐请求；省略套餐增量兼容旧调用。
+func updateUserUsedQuotaAndRequestCount(id int, quota int, count int, subscriptionCounts ...int) {
+	subscriptionCount := 0
+	if len(subscriptionCounts) > 0 {
+		subscriptionCount = subscriptionCounts[0]
+	}
 	err := DB.Model(&User{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
-			"used_quota":    gorm.Expr("used_quota + ?", quota),
-			"request_count": gorm.Expr("request_count + ?", count),
+			"used_quota":                 gorm.Expr("used_quota + ?", quota),
+			"request_count":              gorm.Expr("request_count + ?", count),
+			"subscription_request_count": gorm.Expr("subscription_request_count + ?", subscriptionCount),
 		},
 	).Error
 	if err != nil {
@@ -1521,16 +1557,21 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	//}
 }
 
-func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
-	if quota == 0 && usedQuota == 0 && requestCount == 0 {
+func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int, subscriptionCounts ...int) {
+	subscriptionCount := 0
+	if len(subscriptionCounts) > 0 {
+		subscriptionCount = subscriptionCounts[0]
+	}
+	if quota == 0 && usedQuota == 0 && requestCount == 0 && subscriptionCount == 0 {
 		return
 	}
 
 	err := DB.Model(&User{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
-			"quota":         gorm.Expr("quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
-			"request_count": gorm.Expr("request_count + ?", requestCount),
+			"quota":                      gorm.Expr("quota + ?", quota),
+			"used_quota":                 gorm.Expr("used_quota + ?", usedQuota),
+			"request_count":              gorm.Expr("request_count + ?", requestCount),
+			"subscription_request_count": gorm.Expr("subscription_request_count + ?", subscriptionCount),
 		},
 	).Error
 	if err != nil {

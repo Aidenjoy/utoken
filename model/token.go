@@ -18,6 +18,8 @@ const (
 )
 
 type Token struct {
+	DeviceGrantID      int64   `json:"-" gorm:"column:device_grant_id;index"`
+	Source             string  `json:"-" gorm:"column:source"`
 	Id                 int     `json:"id"`
 	UserId             int     `json:"user_id" gorm:"index"`
 	Key                string  `json:"key" gorm:"type:varchar(128);uniqueIndex"`

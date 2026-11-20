@@ -55,7 +55,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
-import { formatQuota } from '@/lib/format'
+import { formatSubscriptionPoints } from '@/lib/format'
 
 import {
   getAdminPlans,
@@ -346,7 +346,7 @@ export function UserSubscriptionsDialog(props: Props) {
                     const total = Number(sub.amount_total || 0)
                     const used = Number(sub.amount_used || 0)
                     return total > 0
-                      ? `${formatQuota(used)}/${formatQuota(total)}`
+                      ? `${t('{{value}} points', { value: formatSubscriptionPoints(used) })}/${t('{{value}} points', { value: formatSubscriptionPoints(total) })}`
                       : t('Unlimited')
                   },
                 },

@@ -145,7 +145,7 @@ const RechargeCard = ({
               </div>
 
               {/* 统计数据 */}
-              <div className='grid grid-cols-3 gap-6 mt-4'>
+              <div className='grid grid-cols-2 sm:grid-cols-4 gap-6 mt-4'>
                 {/* 当前余额 */}
                 <div className='text-center'>
                   <div
@@ -219,6 +219,12 @@ const RechargeCard = ({
                       {t('请求次数')}
                     </Text>
                   </div>
+                </div>
+                <div className='text-center text-white'>
+                  <div className='text-base sm:text-2xl font-bold mb-2'>
+                    {userState?.user?.subscription_request_count || 0}
+                  </div>
+                  <div className='text-xs'>{t('套餐请求数')}</div>
                 </div>
               </div>
             </div>

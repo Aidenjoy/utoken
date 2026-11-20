@@ -84,6 +84,8 @@ const AddEditSubscriptionModal = ({
     title: '',
     subtitle: '',
     price_amount: 0,
+    points_ratio: 1,
+    gross_profit_percent: 0,
     currency: 'USD',
     duration_unit: 'month',
     duration_value: 1,
@@ -108,6 +110,8 @@ const AddEditSubscriptionModal = ({
       title: p.title || '',
       subtitle: p.subtitle || '',
       price_amount: Number(p.price_amount || 0),
+      points_ratio: Number(p.points_ratio || 0),
+      gross_profit_percent: Number(p.gross_profit_percent || 0),
       currency: 'USD',
       duration_unit: p.duration_unit || 'month',
       duration_value: Number(p.duration_value || 1),
@@ -162,7 +166,11 @@ const AddEditSubscriptionModal = ({
               : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-          total_amount: displayAmountToQuota(values.total_amount),
+          total_amount: displayAmountToQuota(
+            Number(values.points_ratio || 0) > 0
+              ? Number(values.price_amount || 0) * Number(values.points_ratio)
+              : values.total_amount,
+          ),
           upgrade_group: values.upgrade_group || '',
         },
       };
@@ -308,20 +316,56 @@ const AddEditSubscriptionModal = ({
                     </Col>
 
                     <Col span={12}>
+                      {Number(values.points_ratio || 0) > 0 ? (
+                        <Form.Slot label={t('总额度')}>
+                          <Text>
+                            {Number(values.price_amount || 0) *
+                              Number(values.points_ratio)}{' '}
+                            {t('点')}
+                          </Text>
+                        </Form.Slot>
+                      ) : (
+                        <Form.InputNumber
+                          field='total_amount'
+                          label={t('总额度')}
+                          required
+                          min={0}
+                          precision={6}
+                          rules={[
+                            { required: true, message: t('请输入总额度') },
+                          ]}
+                          extraText={t('0 表示不限')}
+                          style={{ width: '100%' }}
+                        />
+                      )}
+                    </Col>
+
+                    <Col span={12}>
                       <Form.InputNumber
-                        field='total_amount'
-                        label={t('总额度')}
-                        required
+                        field='points_ratio'
+                        label={t('点数比例')}
                         min={0}
-                        precision={2}
-                        rules={[{ required: true, message: t('请输入总额度') }]}
-                        extraText={`${t('0 表示不限')} · ${t('原生额度')}：${displayAmountToQuota(
-                          values.total_amount,
-                        )}`}
+                        max={1000000}
+                        precision={8}
+                        extraText={t(
+                          '套餐价格 × 点数比例 = 点数；0 保留手动额度',
+                        )}
                         style={{ width: '100%' }}
                       />
                     </Col>
-
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='gross_profit_percent'
+                        label={t('预计毛利润（%）')}
+                        min={0}
+                        max={100}
+                        precision={2}
+                        extraText={t(
+                          '基础扣费 ×（1 + 百分比）× 点数比例 = 扣除点数',
+                        )}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
                     <Col span={12}>
                       <Form.Select
                         field='upgrade_group'

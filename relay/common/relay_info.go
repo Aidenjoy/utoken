@@ -158,7 +158,11 @@ type RelayInfo struct {
 	// "" or "wallet" => wallet; "subscription" => subscription
 	BillingSource string
 	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
-	SubscriptionId int
+	// SubscriptionGrossProfitPercent 是已选订阅的购买快照，仅用于订阅加价。
+	SubscriptionPointsRatio        float64
+	SubscriptionQuotaBeforeMarkup  int
+	SubscriptionGrossProfitPercent float64
+	SubscriptionId                 int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
 	SubscriptionPreConsumed int64
 	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).

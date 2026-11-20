@@ -50,6 +50,8 @@ import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
+  getLogCharges,
+  formatSubscriptionPoints,
   getFirstResponseTimeColor,
   getResponseTimeColor,
   getTieredBillingSummary,
@@ -369,6 +371,21 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
           },
         ]
       : []
+  const subscriptionAdminColumns: ColumnDef<UsageLog>[] = isAdmin
+    ? [
+        {
+          id: 'subscription_base_quota',
+          header: t('Charge Before Subscription Markup'),
+          cell: ({ row }) => {
+            const value = parseLogOther(row.original.other)?.admin_info?.subscription_base_quota
+            return value == null ? '—' : formatLogQuota(value)
+          },
+          size: 180,
+        },
+
+      ]
+    : []
+
   const columns: ColumnDef<UsageLog>[] = [
     {
       accessorKey: 'created_at',
@@ -898,7 +915,10 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
 
         const other = parseLogOther(log.other)
         // 订阅抵扣不走钱包折扣，原价/折扣两列对它没有意义。
-        if (other?.billing_source === 'subscription') {
+        if (
+          other?.billing_source === 'subscription' ||
+          getLogCharges(log).subscriptionQuota > 0
+        ) {
           return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
         // 历史日志没有 original_quota：回退为当前费用，即“原价 = 费用”。
@@ -932,41 +952,37 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
       size: 90,
     },
 
+    ...subscriptionAdminColumns,
     {
-      accessorKey: 'quota',
+      id: 'subscription_quota',
+      accessorFn: (log) => getLogCharges(log).subscriptionQuota,
+      header: t('Subscription Points'),
+      cell: ({ row }) => {
+        if (!isDisplayableLogType(row.original.type)) return null
+        const { subscriptionQuota } = getLogCharges(row.original)
+        if (subscriptionQuota === 0) {
+          return <span className='text-muted-foreground'>—</span>
+        }
+        return (
+          <span className='font-mono text-sm tabular-nums'>
+            {t('{{value}} points', {
+              value: formatSubscriptionPoints(subscriptionQuota),
+            })}
+          </span>
+        )
+      },
+      size: 150,
+    },
+
+    {
+      id: 'quota',
+      accessorFn: (log) => getLogCharges(log).walletQuota,
       header: t('Cost'),
       cell: ({ row }) => {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const quota = row.getValue('quota') as number
-        const other = parseLogOther(log.other)
-        const isSubscription = other?.billing_source === 'subscription'
-
-        if (isSubscription) {
-          return (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <StatusBadge
-                      label={t('Subscription')}
-                      variant='success'
-                      size='sm'
-                      copyable={false}
-                      className='cursor-help'
-                    />
-                  }
-                />
-                <TooltipContent>
-                  <span>
-                    {t('Deducted by subscription')}: {formatLogQuota(quota)}
-                  </span>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )
-        }
+        const { walletQuota: quota } = getLogCharges(log)
 
         const quotaStr = formatLogQuota(quota)
         const quotaDisplay = splitQuotaDisplay(quotaStr)

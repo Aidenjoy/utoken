@@ -48,6 +48,8 @@ import { cn } from '@/lib/utils'
 import type { UsageLog } from '../../data/schema'
 import {
   parseLogOther,
+  getLogCharges,
+  formatSubscriptionPoints,
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
@@ -335,7 +337,10 @@ function BillingBreakdown(props: {
   if (other.original_quota != null) {
     rows.push({
       label: t('Original Price'),
-      value: formatLogQuota(other.original_quota),
+      value:
+        other.billing_source === 'subscription'
+          ? `${formatSubscriptionPoints(other.original_quota)} ${t('Points')}`
+          : formatLogQuota(other.original_quota),
     })
   }
   if (other.discount != null) {
@@ -347,8 +352,16 @@ function BillingBreakdown(props: {
 
   rows.push({
     label: t('Total Cost'),
-    value: formatLogQuota(log.quota),
+    value: formatLogQuota(getLogCharges(log).walletQuota),
   })
+
+  const { subscriptionQuota } = getLogCharges(log)
+  if (subscriptionQuota > 0) {
+    rows.push({
+      label: t('Subscription Points'),
+      value: `${formatSubscriptionPoints(subscriptionQuota)} ${t('Points')}`,
+    })
+  }
 
   if (rows.length === 0) return null
 
@@ -729,6 +742,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 </div>
               </div>
             </div>
+          </DetailSection>
+        )}
+
+        {props.isAdmin && other?.admin_info?.subscription_base_quota != null && (
+          <DetailSection label={t('Subscription Billing')}>
+            <DetailRow
+              label={t('Charge Before Subscription Markup')}
+              value={formatLogQuota(other.admin_info.subscription_base_quota)}
+              mono
+            />
+            <DetailRow
+              label={t('Expected Gross Profit (%)')}
+              value={`${other.admin_info.subscription_gross_profit_percent ?? 0}%`}
+              mono
+            />
           </DetailSection>
         )}
 
@@ -1125,7 +1153,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             {other.subscription_pre_consumed != null && (
               <DetailRow
                 label={t('Pre-consumed')}
-                value={formatLogQuota(other.subscription_pre_consumed)}
+                value={`${formatSubscriptionPoints(other.subscription_pre_consumed)} ${t('Points')}`}
                 mono
               />
             )}
@@ -1133,21 +1161,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
               other.subscription_post_delta !== 0 && (
                 <DetailRow
                   label={t('Post Delta')}
-                  value={formatLogQuota(other.subscription_post_delta)}
+                  value={`${formatSubscriptionPoints(other.subscription_post_delta)} ${t('Points')}`}
                   mono
                 />
               )}
             {other.subscription_consumed != null && (
               <DetailRow
                 label={t('Final Consumed')}
-                value={formatLogQuota(other.subscription_consumed)}
+                value={`${formatSubscriptionPoints(other.subscription_consumed)} ${t('Points')}`}
                 mono
               />
             )}
             {other.subscription_remain != null && (
               <DetailRow
                 label={t('Remaining')}
-                value={`${formatLogQuota(other.subscription_remain)}${other.subscription_total != null ? ` / ${formatLogQuota(other.subscription_total)}` : ''}`}
+                value={`${formatSubscriptionPoints(other.subscription_remain)}${other.subscription_total != null ? ` / ${formatSubscriptionPoints(other.subscription_total)}` : ''} ${t('Points')}`}
                 mono
               />
             )}

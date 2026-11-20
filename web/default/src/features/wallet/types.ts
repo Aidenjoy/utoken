@@ -234,6 +234,8 @@ export interface UserWalletData {
   used_quota: number
   /** Total request count */
   request_count: number
+  /** Calls billed to a subscription; included in total request_count. */
+  subscription_request_count?: number
   /** Affiliate quota (pending rewards) */
   aff_quota: number
   /** Total affiliate quota earned (historical) */

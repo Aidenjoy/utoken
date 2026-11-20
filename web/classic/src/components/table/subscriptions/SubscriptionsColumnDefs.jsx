@@ -27,10 +27,9 @@ import {
   Popover,
   Divider,
   Badge,
-  Tooltip,
 } from '@douyinfe/semi-ui';
-import { renderQuota } from '../../../helpers';
-import { convertUSDToCurrency } from '../../../helpers/render';
+import { renderSubscriptionPoints } from '../../../helpers';
+import { renderSubscriptionPlanPrice } from '../../../helpers/render';
 
 const { Text } = Typography;
 
@@ -79,13 +78,11 @@ const renderPlanTitle = (text, record, t) => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <Text type='tertiary'>{t('价格')}</Text>
         <Text strong style={{ color: 'var(--semi-color-success)' }}>
-          {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+          {renderSubscriptionPlanPrice(Number(plan?.price_amount || 0), 2)}
         </Text>
         <Text type='tertiary'>{t('总额度')}</Text>
         {plan?.total_amount > 0 ? (
-          <Tooltip content={`${t('原生额度')}：${plan.total_amount}`}>
-            <Text>{renderQuota(plan.total_amount)}</Text>
-          </Tooltip>
+          <Text>{renderSubscriptionPoints(plan.total_amount)}</Text>
         ) : (
           <Text>{t('不限')}</Text>
         )}
@@ -128,7 +125,7 @@ const renderPlanTitle = (text, record, t) => {
 const renderPrice = (text) => {
   return (
     <Text strong style={{ color: 'var(--semi-color-success)' }}>
-      {convertUSDToCurrency(Number(text || 0), 2)}
+      {renderSubscriptionPlanPrice(Number(text || 0), 2)}
     </Text>
   );
 };
@@ -172,13 +169,7 @@ const renderTotalAmount = (text, record, t) => {
   const total = Number(record?.plan?.total_amount || 0);
   return (
     <Text type={total > 0 ? 'secondary' : 'tertiary'}>
-      {total > 0 ? (
-        <Tooltip content={`${t('原生额度')}：${total}`}>
-          <span>{renderQuota(total)}</span>
-        </Tooltip>
-      ) : (
-        t('不限')
-      )}
+      {total > 0 ? <span>{renderSubscriptionPoints(total)}</span> : t('不限')}
     </Text>
   );
 };

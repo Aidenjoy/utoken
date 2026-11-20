@@ -165,6 +165,7 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	targetQuota = ApplySubscriptionMarkup(s.relayInfo, targetQuota)
 	if s.settled || s.refunded || s.trusted || targetQuota <= s.preConsumedQuota {
 		return nil
 	}
@@ -195,7 +196,7 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 // PreConsume — 统一预扣费入口（含信任额度旁路）
 // ---------------------------------------------------------------------------
 
-// preConsume 执行预扣费：信任检查 -> 令牌预扣 -> 资金来源预扣。
+// preConsume 执行预扣费；订阅先选择资金来源及加价快照，再按实际预扣额校验令牌。
 // 任一步骤失败时原子回滚已完成的步骤。
 func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIError {
 	effectiveQuota := quota
@@ -209,9 +210,28 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		logger.LogInfo(c, fmt.Sprintf("用户 %d 需要预扣费 %s (funding=%s)", s.relayInfo.UserId, logger.FormatQuota(effectiveQuota), s.funding.Source()))
 	}
 
+	// 订阅先选择并预扣，拿到该订阅的倍率后再扣令牌；令牌失败时退还原额。
+	sub, isSubscription := s.funding.(*SubscriptionFunding)
+	if isSubscription {
+		if err := sub.PreConsume(effectiveQuota); err != nil {
+			if strings.Contains(err.Error(), "no active subscription") || strings.Contains(err.Error(), "subscription quota insufficient") {
+				return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %w", err), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+			}
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		effectiveQuota = int(sub.preConsumed)
+		s.relayInfo.SubscriptionGrossProfitPercent = sub.GrossProfitPercent
+		s.relayInfo.SubscriptionPointsRatio = sub.PointsRatio
+		logger.LogInfo(c, fmt.Sprintf("subscription preconsume subscription=%d gross_profit_percent=%.2f charged_quota=%d", sub.subscriptionId, sub.GrossProfitPercent, effectiveQuota))
+	}
 	// ---- 1) 预扣令牌额度 ----
-	if effectiveQuota > 0 {
+	if effectiveQuota > 0 && !isSubscription {
 		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
+			if isSubscription {
+				if refundErr := sub.Refund(); refundErr != nil {
+					common.SysError(fmt.Sprintf("subscription token preconsume rollback failed user=%d subscription=%d: %v", s.relayInfo.UserId, sub.subscriptionId, refundErr))
+				}
+			}
 			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
 		if s.tokenQuotaTracked() {
@@ -220,7 +240,11 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	}
 
 	// ---- 2) 预扣资金来源 ----
-	if err := s.funding.PreConsume(effectiveQuota); err != nil {
+	var fundingErr error
+	if !isSubscription {
+		fundingErr = s.funding.PreConsume(effectiveQuota)
+	}
+	if err := fundingErr; err != nil {
 		// 预扣费失败，回滚令牌额度
 		if s.tokenConsumed > 0 && !s.relayInfo.IsPlayground {
 			if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); rollbackErr != nil {
@@ -325,7 +349,7 @@ func (s *BillingSession) reserveToken(delta int) error {
 // 游乐场请求按用户计费、无限额度令牌没有余额上限，二者都不触碰 token 的
 // remain_quota；否则异步任务的强制预扣会因无限令牌 remain_quota<=0 被误拒。
 func (s *BillingSession) tokenQuotaTracked() bool {
-	return !s.relayInfo.IsPlayground && !s.relayInfo.TokenUnlimited
+	return s.funding.Source() != BillingSourceSubscription && !s.relayInfo.IsPlayground && !s.relayInfo.TokenUnlimited
 }
 
 // shouldTrust 统一信任额度检查，适用于钱包和订阅。

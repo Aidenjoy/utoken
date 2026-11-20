@@ -29,6 +29,7 @@ import {
 import {
   renderGroup,
   renderQuota,
+  renderSubscriptionPoints,
   stringToColor,
   getLogOther,
   renderModelTag,
@@ -144,10 +145,7 @@ function renderType(type, t) {
 
 function buildStreamStatusTooltip(ss, t) {
   if (!ss) return null;
-  const lines = [
-    t('流状态') + '：' + t('异常'),
-    (ss.end_reason || 'unknown'),
-  ];
+  const lines = [t('流状态') + '：' + t('异常'), ss.end_reason || 'unknown'];
   if (ss.error_count > 0) {
     lines.push(`${t('软错误')}: ${ss.error_count}`);
   }
@@ -185,11 +183,7 @@ function renderIsStream(bool, t, streamStatus) {
                 userSelect: 'none',
               }}
             >
-              <CircleAlert
-                size={14}
-                strokeWidth={2.5}
-                color='currentColor'
-              />
+              <CircleAlert size={14} strokeWidth={2.5} color='currentColor' />
             </span>
           </Tooltip>
         )}
@@ -255,18 +249,6 @@ function renderFirstUseTime(type, t) {
       </Tag>
     );
   }
-}
-
-function renderBillingTag(record, t) {
-  const other = getLogOther(record.other);
-  if (other?.billing_source === 'subscription') {
-    return (
-      <Tag color='green' shape='circle'>
-        {t('订阅抵扣')}
-      </Tag>
-    );
-  }
-  return null;
 }
 
 function renderModelName(record, copyText, t) {
@@ -461,7 +443,11 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     };
   }
 
-  const summaryOpts = { ...other, displayMode: billingDisplayMode, outputMode: 'segments' };
+  const summaryOpts = {
+    ...other,
+    displayMode: billingDisplayMode,
+    outputMode: 'segments',
+  };
 
   if (other?.billing_mode === 'tiered_expr') {
     return { segments: renderTieredModelPriceSimple(summaryOpts) };
@@ -817,16 +803,27 @@ export const getLogsColumns = ({
           return <></>;
         }
         const other = getLogOther(record.other);
-        const isSubscription = other?.billing_source === 'subscription';
-        if (isSubscription) {
-          // Subscription billed: show only tag (no $0), but keep tooltip for equivalent cost.
-          return (
-            <Tooltip content={`${t('由订阅抵扣')}：${renderQuota(text, 6)}`}>
-              <span>{renderBillingTag(record, t)}</span>
-            </Tooltip>
-          );
+        if (
+          other?.billing_source === 'subscription' ||
+          Number(record.subscription_quota || 0) !== 0
+        ) {
+          return <>{renderQuota(0, 6)}</>;
         }
         return <>{renderQuota(text, 6)}</>;
+      },
+    },
+    {
+      key: COLUMN_KEYS.SUBSCRIPTION_POINTS,
+      title: t('订阅点数'),
+      dataIndex: 'subscription_quota',
+      render: (value, record) => {
+        const other = getLogOther(record.other);
+        const quota =
+          Number(value || 0) ||
+          (other?.billing_source === 'subscription'
+            ? Number(record.quota || 0)
+            : 0);
+        return quota ? renderSubscriptionPoints(quota) : '—';
       },
     },
     {

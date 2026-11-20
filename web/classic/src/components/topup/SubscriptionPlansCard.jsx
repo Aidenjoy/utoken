@@ -30,7 +30,12 @@ import {
   Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess, renderQuota } from '../../helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  renderSubscriptionPoints,
+} from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
@@ -453,15 +458,12 @@ const SubscriptionPlansCard = ({
                         <div className='text-xs text-gray-500 mb-2'>
                           {t('总额度')}:{' '}
                           {totalAmount > 0 ? (
-                            <Tooltip
-                              content={`${t('原生额度')}：${usedAmount}/${totalAmount} · ${t('剩余')} ${remainAmount}`}
-                            >
-                              <span>
-                                {renderQuota(usedAmount)}/
-                                {renderQuota(totalAmount)} · {t('剩余')}{' '}
-                                {renderQuota(remainAmount)}
-                              </span>
-                            </Tooltip>
+                            <span>
+                              {renderSubscriptionPoints(usedAmount)}/
+                              {renderSubscriptionPoints(totalAmount)} ·{' '}
+                              {t('剩余')}{' '}
+                              {renderSubscriptionPoints(remainAmount)}
+                            </span>
                           ) : (
                             t('不限')
                           )}
@@ -490,9 +492,9 @@ const SubscriptionPlansCard = ({
               {plans.map((p, index) => {
                 const plan = p?.plan;
                 const totalAmount = Number(plan?.total_amount || 0);
-                const { symbol, rate } = getCurrencyConfig();
+                const { symbol } = getCurrencyConfig();
                 const price = Number(plan?.price_amount || 0);
-                const convertedPrice = price * rate;
+                const convertedPrice = price;
                 const displayPrice = convertedPrice.toFixed(
                   Number.isInteger(convertedPrice) ? 0 : 2,
                 );
@@ -501,7 +503,7 @@ const SubscriptionPlansCard = ({
                 const limitLabel = limit > 0 ? `${t('限购')} ${limit}` : null;
                 const totalLabel =
                   totalAmount > 0
-                    ? `${t('总额度')}: ${renderQuota(totalAmount)}`
+                    ? `${t('总额度')}: ${renderSubscriptionPoints(totalAmount)}`
                     : `${t('总额度')}: ${t('不限')}`;
                 const upgradeLabel = plan?.upgrade_group
                   ? `${t('升级分组')}: ${plan.upgrade_group}`
@@ -518,7 +520,6 @@ const SubscriptionPlansCard = ({
                   totalAmount > 0
                     ? {
                         label: totalLabel,
-                        tooltip: `${t('原生额度')}：${totalAmount}`,
                       }
                     : { label: totalLabel },
                   limitLabel ? { label: limitLabel } : null,

@@ -24,7 +24,8 @@ import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatQuota } from '@/lib/format'
+import { formatSubscriptionPoints } from '@/lib/format'
+import { formatLocalCurrencyAmount } from '@/lib/currency'
 
 import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
@@ -69,7 +70,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Price'),
         cell: ({ row }) => (
           <span className='font-semibold text-emerald-600'>
-            ${Number(row.original.plan.price_amount || 0).toFixed(2)}
+            {formatLocalCurrencyAmount(Number(row.original.plan.price_amount || 0), { digitsLarge: 2, digitsSmall: 2 })}
           </span>
         ),
         size: 100,
@@ -168,11 +169,18 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           const total = Number(row.original.plan.total_amount || 0)
           return (
             <span className='text-muted-foreground'>
-              {total > 0 ? formatQuota(total) : t('Unlimited')}
+              {total > 0 ? t('{{value}} points', { value: formatSubscriptionPoints(total) }) : t('Unlimited')}
             </span>
           )
         },
         size: 150,
+      },
+      {
+        id: 'gross_profit_percent',
+        accessorFn: (row) => Number(row.plan.gross_profit_percent || 0),
+        header: t('Expected Gross Profit (%)'),
+        cell: ({ row }) => `${Number(row.original.plan.gross_profit_percent || 0)}%`,
+        size: 140,
       },
       {
         id: 'upgrade_group',
