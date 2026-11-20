@@ -483,6 +483,54 @@ func ComputeTaskQuotaByTokens(task *model.Task, totalTokens int) (int, bool) {
 	return quota, ok
 }
 
+// ComputeTaskQuotaBySeconds 计算 wan 按秒档价的最终额度（纯计算，不结算），
+// 供 ali 适配器 AdjustBillingOnComplete 按上游真实 usage.duration × 实际分辨率档价重算。
+// 公式：seconds × pricePerSecond × QuotaPerUnit × finalGroupRatio × otherMultiplier（饱和转换）。
+// 快照 OtherRatios 中的 "seconds" 键被跳过（秒数已显式传入，避免重复计秒），
+// user_discount 等其它附加倍率保留。seconds 钳制到 MaxTaskDurationSeconds，
+// 防止上游返回荒谬时长溢出成负数。返回 (quota, ok)：ok=false 表示输入无效或分组信息缺失。
+func ComputeTaskQuotaBySeconds(task *model.Task, seconds float64, pricePerSecond float64) (int, bool) {
+	if seconds <= 0 || pricePerSecond <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) ||
+		math.IsNaN(pricePerSecond) || math.IsInf(pricePerSecond, 0) {
+		return 0, false
+	}
+	if seconds > float64(relaycommon.MaxTaskDurationSeconds) {
+		seconds = float64(relaycommon.MaxTaskDurationSeconds)
+	}
+
+	group := task.Group
+	if group == "" {
+		user, err := model.GetUserById(task.UserId, false)
+		if err == nil {
+			group = user.Group
+		}
+	}
+	if group == "" {
+		return 0, false
+	}
+
+	groupRatio := ratio_setting.GetGroupRatio(group)
+	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
+	finalGroupRatio := groupRatio
+	if hasUserGroupRatio {
+		finalGroupRatio = userGroupRatio
+	}
+
+	// OtherRatios() 已过滤非正/NaN/Inf 倍率；跳过 seconds 避免与显式秒数重复相乘
+	otherMultiplier := 1.0
+	if priceData := taskBillingContextPriceData(task.PrivateData.BillingContext); priceData != nil {
+		for key, ratio := range priceData.OtherRatios() {
+			if key == "seconds" {
+				continue
+			}
+			otherMultiplier *= ratio
+		}
+	}
+
+	quota, _ := common.QuotaFromFloatChecked(seconds * pricePerSecond * common.QuotaPerUnit * finalGroupRatio * otherMultiplier)
+	return quota, true
+}
+
 // computeTaskQuotaByTokens 计算任务按 token 的最终额度（纯计算，不结算）。
 // 公式：totalTokens × modelRatio × finalGroupRatio × otherMultiplier（饱和转换，防止溢出成负数）。
 // 返回 (quota, clamp, reason, ok)：ok=false 表示无法重算（token<=0 / 模型未配倍率 / 分组缺失）。

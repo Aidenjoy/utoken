@@ -75,6 +75,7 @@ type ModelRatioVisualEditorProps = {
   savedAudioCompletionRatio: string
   savedBillingMode: string
   savedBillingExpr: string
+  savedWanConfig: string
   savedSeedanceConfig: string
   savedSeedreamConfig: string
   modelPrice: string
@@ -87,6 +88,7 @@ type ModelRatioVisualEditorProps = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  wanConfig: string
   seedanceConfig: string
   seedreamConfig: string
   onChange: (field: string, value: string) => void
@@ -115,6 +117,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedAudioCompletionRatio,
     savedBillingMode,
     savedBillingExpr,
+    savedWanConfig,
     savedSeedanceConfig,
     savedSeedreamConfig,
     modelPrice,
@@ -127,6 +130,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     audioCompletionRatio,
     billingMode,
     billingExpr,
+    wanConfig,
     seedanceConfig,
     seedreamConfig,
     onChange,
@@ -200,6 +204,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio: savedAudioCompletionRatio,
       billingMode: savedBillingMode,
       billingExpr: savedBillingExpr,
+      wanConfig: savedWanConfig,
       seedanceConfig: savedSeedanceConfig,
       seedreamConfig: savedSeedreamConfig,
     })
@@ -214,6 +219,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      wanConfig,
       seedanceConfig,
       seedreamConfig,
     })
@@ -252,6 +258,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedAudioCompletionRatio,
     savedBillingMode,
     savedBillingExpr,
+    savedWanConfig,
     savedSeedanceConfig,
     savedSeedreamConfig,
     modelPrice,
@@ -264,6 +271,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     audioCompletionRatio,
     billingMode,
     billingExpr,
+    wanConfig,
     seedanceConfig,
     seedreamConfig,
   ])
@@ -280,6 +288,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           const mode =
             model.billingMode === 'per-request' ||
             model.billingMode === 'tiered_expr' ||
+            model.billingMode === 'wan' ||
             model.billingMode === 'seedance' ||
             model.billingMode === 'seedream'
               ? model.billingMode
@@ -291,10 +300,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
           'per-token': 0,
           'per-request': 0,
           tiered_expr: 0,
+          wan: 0,
           seedance: 0,
           seedream: 0,
         } as Record<
-          'per-token' | 'per-request' | 'tiered_expr' | 'seedance' | 'seedream',
+          | 'per-token'
+          | 'per-request'
+          | 'tiered_expr'
+          | 'wan'
+          | 'seedance'
+          | 'seedream',
           number
         >
       ),
@@ -317,15 +332,18 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingMode:
           editableModel.billingMode === 'tiered_expr'
             ? 'tiered_expr'
-            : editableModel.billingMode === 'seedance'
-              ? 'seedance'
-              : editableModel.billingMode === 'seedream'
-                ? 'seedream'
-                : editableModel.price && editableModel.price !== ''
-                  ? 'per-request'
-                  : 'per-token',
+            : editableModel.billingMode === 'wan'
+              ? 'wan'
+              : editableModel.billingMode === 'seedance'
+                ? 'seedance'
+                : editableModel.billingMode === 'seedream'
+                  ? 'seedream'
+                  : editableModel.price && editableModel.price !== ''
+                    ? 'per-request'
+                    : 'per-token',
         billingExpr: editableModel.billingExpr,
         requestRuleExpr: editableModel.requestRuleExpr,
+        wanConfig: editableModel.wanConfig,
         seedanceConfig: editableModel.seedanceConfig,
         seedreamConfig: editableModel.seedreamConfig,
       })
@@ -398,6 +416,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr,
         { fallback: {}, silent: true }
       )
+      const wanConfigMap = safeJsonParse<Record<string, string>>(wanConfig, {
+        fallback: {},
+        silent: true,
+      })
       const seedanceConfigMap = safeJsonParse<Record<string, string>>(
         seedanceConfig,
         { fallback: {}, silent: true }
@@ -417,6 +439,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       delete audioCompletionMap[name]
       delete billingModeMap[name]
       delete billingExprMap[name]
+      delete wanConfigMap[name]
       delete seedanceConfigMap[name]
       delete seedreamConfigMap[name]
 
@@ -438,6 +461,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
       onChange(
         'billing_setting.billing_expr',
         JSON.stringify(billingExprMap, null, 2)
+      )
+      onChange(
+        'billing_setting.wan_config',
+        JSON.stringify(wanConfigMap, null, 2)
       )
       onChange(
         'billing_setting.seedance_config',
@@ -465,6 +492,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      wanConfig,
       seedanceConfig,
       seedreamConfig,
       onChange,
@@ -551,6 +579,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr,
         { fallback: {}, silent: true }
       )
+      const wanConfigMap = safeJsonParse<Record<string, string>>(wanConfig, {
+        fallback: {},
+        silent: true,
+      })
       const seedanceConfigMap = safeJsonParse<Record<string, string>>(
         seedanceConfig,
         { fallback: {}, silent: true }
@@ -581,6 +613,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         delete audioCompletionMap[name]
         delete billingModeMap[name]
         delete billingExprMap[name]
+        delete wanConfigMap[name]
         delete seedanceConfigMap[name]
         delete seedreamConfigMap[name]
       }
@@ -612,6 +645,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
           setIfPresent(imageMap, name, data.imageRatio)
           setIfPresent(audioMap, name, data.audioRatio)
           setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
+        } else if (data.billingMode === 'wan') {
+          billingModeMap[name] = 'wan'
+          if (data.wanConfig) wanConfigMap[name] = data.wanConfig
         } else if (data.billingMode === 'seedance') {
           billingModeMap[name] = 'seedance'
           if (data.seedanceConfig) seedanceConfigMap[name] = data.seedanceConfig
@@ -653,6 +689,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
         JSON.stringify(billingExprMap, null, 2)
       )
       onChange(
+        'billing_setting.wan_config',
+        JSON.stringify(wanConfigMap, null, 2)
+      )
+      onChange(
         'billing_setting.seedance_config',
         JSON.stringify(seedanceConfigMap, null, 2)
       )
@@ -672,6 +712,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       audioCompletionRatio,
       billingMode,
       billingExpr,
+      wanConfig,
       seedanceConfig,
       seedreamConfig,
       onChange,
@@ -751,6 +792,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     label: 'Expression',
                     value: 'tiered_expr',
                     count: modeCounts.tiered_expr,
+                  },
+                  {
+                    label: 'Wan',
+                    value: 'wan',
+                    count: modeCounts.wan,
                   },
                   {
                     label: 'Seedance',
@@ -900,6 +946,7 @@ export const ModelRatioVisualEditor = memo(
       prevProps.audioCompletionRatio === nextProps.audioCompletionRatio &&
       prevProps.billingMode === nextProps.billingMode &&
       prevProps.billingExpr === nextProps.billingExpr &&
+      prevProps.wanConfig === nextProps.wanConfig &&
       prevProps.seedanceConfig === nextProps.seedanceConfig &&
       prevProps.seedreamConfig === nextProps.seedreamConfig &&
       prevProps.onChange === nextProps.onChange &&

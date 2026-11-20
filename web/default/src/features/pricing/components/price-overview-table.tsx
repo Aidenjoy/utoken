@@ -48,6 +48,8 @@ type VideoTier = {
   resolution: string | null
   withoutVideo?: OverviewPriceRow
   withVideo?: OverviewPriceRow
+  /** Wan per-second price: spans both video-input columns as one cell */
+  perSecond?: OverviewPriceRow
 }
 
 type ColumnDef = { field: OverviewPriceField; labelKey: string }
@@ -101,6 +103,7 @@ function groupByVendor(models: PricingModel[]): VendorGroup[] {
 /**
  * Pivot a model's seedance billing rows into one tier per resolution so the
  * desktop table can show resolution / without-video / with-video columns.
+ * Wan rows carry a single per-second price shown as one merged cell.
  * Rows without a resolution (e.g. per-request video models) collapse into a
  * single tier rendered as one merged price cell.
  */
@@ -116,7 +119,8 @@ function getVideoTiers(rows: OverviewPriceRow[]): VideoTier[] {
       tier = { resolution: row.labelPrefix }
       tiers.push(tier)
     }
-    if (row.labelKey === 'With video input') tier.withVideo = row
+    if (row.labelKey === 'Video generation') tier.perSecond = row
+    else if (row.labelKey === 'With video input') tier.withVideo = row
     else tier.withoutVideo = row
   }
   return tiers.length > 0 ? tiers : [{ resolution: null }]
@@ -343,18 +347,29 @@ export function PriceOverviewTable(props: PriceOverviewTableProps) {
                 {tier && !fallbackPrice && (
                   <>
                     <td className={cellClass}>{tier.resolution ?? '—'}</td>
-                    <td className={cn(cellClass, 'text-right')}>
-                      <PriceValue
-                        value={tier.withoutVideo?.value ?? null}
-                        unit={tier.withoutVideo?.sub}
-                      />
-                    </td>
-                    <td className={cn(cellClass, 'text-right')}>
-                      <PriceValue
-                        value={tier.withVideo?.value ?? null}
-                        unit={tier.withVideo?.sub}
-                      />
-                    </td>
+                    {tier.perSecond ? (
+                      <td colSpan={2} className={cn(cellClass, 'text-right')}>
+                        <PriceValue
+                          value={tier.perSecond.value}
+                          unit={tier.perSecond.sub}
+                        />
+                      </td>
+                    ) : (
+                      <>
+                        <td className={cn(cellClass, 'text-right')}>
+                          <PriceValue
+                            value={tier.withoutVideo?.value ?? null}
+                            unit={tier.withoutVideo?.sub}
+                          />
+                        </td>
+                        <td className={cn(cellClass, 'text-right')}>
+                          <PriceValue
+                            value={tier.withVideo?.value ?? null}
+                            unit={tier.withVideo?.sub}
+                          />
+                        </td>
+                      </>
+                    )}
                   </>
                 )}
                 {!tier &&

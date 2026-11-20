@@ -35,10 +35,11 @@ type Pricing struct {
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
 	BillingMode            string                  `json:"billing_mode,omitempty"`
 	BillingExpr            string                  `json:"billing_expr,omitempty"`
-	// SeedanceConfig / SeedreamConfig 为按模型单价配置的原始 JSON 字符串（见 billing_setting），
-	// 仅当对应计费模式生效时填充，供模型广场展示按分辨率/按张单价
+	// SeedanceConfig / SeedreamConfig / WanConfig 为按模型单价配置的原始 JSON 字符串（见 billing_setting），
+	// 仅当对应计费模式生效时填充，供模型广场展示按分辨率/按张/按秒单价
 	SeedanceConfig string `json:"seedance_config,omitempty"`
 	SeedreamConfig string `json:"seedream_config,omitempty"`
+	WanConfig      string `json:"wan_config,omitempty"`
 	PricingVersion string `json:"pricing_version,omitempty"`
 }
 
@@ -292,6 +293,7 @@ func updatePricing() {
 	pricingMap = make([]Pricing, 0)
 	seedanceConfigs := billing_setting.GetSeedanceConfigCopy()
 	seedreamConfigs := billing_setting.GetSeedreamConfigCopy()
+	wanConfigs := billing_setting.GetWanConfigCopy()
 	for model, groups := range modelGroupsMap {
 		pricing := Pricing{
 			ModelName:              model,
@@ -353,6 +355,12 @@ func updatePricing() {
 			if cfg, ok := seedreamConfigs[model]; ok && strings.TrimSpace(cfg) != "" {
 				pricing.BillingMode = billing_setting.BillingModeSeedream
 				pricing.SeedreamConfig = cfg
+			}
+		case billing_setting.BillingModeWan:
+			// 缺单价配置时保持回退语义（relay 侧回退 legacy 倍率），广场按常规倍率展示
+			if cfg, ok := wanConfigs[model]; ok && strings.TrimSpace(cfg) != "" {
+				pricing.BillingMode = billing_setting.BillingModeWan
+				pricing.WanConfig = cfg
 			}
 		}
 		pricingMap = append(pricingMap, pricing)

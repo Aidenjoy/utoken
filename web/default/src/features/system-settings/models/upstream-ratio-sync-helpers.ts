@@ -49,6 +49,7 @@ export const SYNC_FIELD_ORDER: RatioType[] = [
   'model_price',
   'billing_mode',
   'billing_expr',
+  'wan_config',
   'seedance_config',
   'seedream_config',
 ]

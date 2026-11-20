@@ -43,8 +43,10 @@ import {
 import {
   getSeedanceTiers,
   getSeedreamPrices,
+  getWanTiers,
   isSeedanceBillingModel,
   isSeedreamBillingModel,
+  isWanBillingModel,
 } from '../lib/seed-price'
 import type { PricingModel, TokenUnit } from '../types'
 
@@ -105,6 +107,7 @@ export function usePricingColumns(
       header: t('Type'),
       cell: ({ row }) => {
         const isTokenBased = row.original.quota_type === QUOTA_TYPE_VALUES.TOKEN
+        const isWan = isWanBillingModel(row.original)
         const seedMode = isSeedreamBillingModel(row.original)
           ? t('Seedream')
           : isSeedanceBillingModel(row.original)
@@ -112,8 +115,14 @@ export function usePricingColumns(
             : null
         return (
           <StatusBadge
-            label={seedMode || (isTokenBased ? t('Token') : t('Request'))}
-            variant={isTokenBased || seedMode ? 'info' : 'neutral'}
+            label={
+              isWan
+                ? t('Wan')
+                : seedMode || (isTokenBased ? t('Token') : t('Request'))
+            }
+            variant={
+              isWan ? 'orange' : isTokenBased || seedMode ? 'info' : 'neutral'
+            }
             copyable={false}
             className='-ml-1.5'
           />
@@ -194,6 +203,42 @@ export function usePricingColumns(
 
         const isTokenBased = isTokenBasedModel(model)
         const seedreamPrices = getSeedreamPrices(model)
+        const wanTiers = getWanTiers(model)
+
+        if (wanTiers) {
+          const tierPrices = wanTiers.map((tier) => tier.pricePerSecond)
+          const formatWanPrice = (price: number) =>
+            stripTrailingZeros(
+              formatUnitPrice(
+                model,
+                price,
+                showRechargePrice,
+                priceRate,
+                usdExchangeRate,
+                selectedGroup
+              )
+            )
+          const minPrice = formatWanPrice(Math.min(...tierPrices))
+          const maxPrice = formatWanPrice(Math.max(...tierPrices))
+
+          return (
+            <div className='max-w-full min-w-0'>
+              <span className='font-mono text-sm tabular-nums'>
+                {minPrice}
+                {maxPrice !== minPrice && (
+                  <>
+                    <span className='text-muted-foreground/40 mx-1'>–</span>
+                    {maxPrice}
+                  </>
+                )}
+              </span>
+              <div className='text-muted-foreground/50 text-[10px]'>
+                / {t('second')}
+                {` · ${t('{{count}} tiers', { count: wanTiers.length })}`}
+              </div>
+            </div>
+          )
+        }
 
         if (seedreamPrices) {
           const inputImage = stripTrailingZeros(
@@ -345,7 +390,8 @@ export function usePricingColumns(
         if (
           !isTokenBased ||
           model.cache_ratio == null ||
-          isSeedreamBillingModel(model)
+          isSeedreamBillingModel(model) ||
+          isWanBillingModel(model)
         ) {
           return <span className='text-muted-foreground/30 text-xs'>—</span>
         }

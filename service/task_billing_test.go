@@ -241,6 +241,92 @@ func TestComputeTaskQuotaByTokensSeedanceSnapshotRatio(t *testing.T) {
 	})
 }
 
+// TestComputeTaskQuotaBySeconds 锁定 wan 按秒档价结算边界：
+// seconds × pricePerSecond × QuotaPerUnit × 分组倍率 × 附加倍率（跳过 seconds 键），
+// 超长时长钳制到 MaxTaskDurationSeconds，非法输入/分组缺失时放弃重算（保持预扣）。
+func TestComputeTaskQuotaBySeconds(t *testing.T) {
+	truncate(t)
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"group_ratio_setting.group_ratio": `{"default":1,"vip":2}`,
+	}))
+
+	t.Run("基础按秒档价", func(t *testing.T) {
+		task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+		quota, ok := ComputeTaskQuotaBySeconds(task, 5, 0.25)
+		require.True(t, ok)
+		// 5s × $0.25/s × 500000 = 625000
+		assert.Equal(t, 625_000, quota)
+	})
+
+	t.Run("分组倍率", func(t *testing.T) {
+		task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+		task.Group = "vip"
+		quota, ok := ComputeTaskQuotaBySeconds(task, 5, 0.25)
+		require.True(t, ok)
+		assert.Equal(t, 1_250_000, quota)
+	})
+
+	t.Run("跳过seconds快照倍率保留折扣", func(t *testing.T) {
+		task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+		task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+			"seconds":       5,
+			"user_discount": 0.5,
+		}
+		quota, ok := ComputeTaskQuotaBySeconds(task, 5, 0.25)
+		require.True(t, ok)
+		// seconds 键不重复相乘，仅折扣生效：625000 × 0.5
+		assert.Equal(t, 312_500, quota)
+	})
+
+	t.Run("超长时长钳制", func(t *testing.T) {
+		task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+		quota, ok := ComputeTaskQuotaBySeconds(task, 1e9, 0.25)
+		require.True(t, ok)
+		// 钳制到 3600s：3600 × 0.25 × 500000
+		assert.Equal(t, 450_000_000, quota)
+	})
+
+	t.Run("非法输入放弃重算", func(t *testing.T) {
+		task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+		invalid := []struct {
+			seconds float64
+			price   float64
+		}{
+			{0, 0.25}, {-1, 0.25}, {math.NaN(), 0.25}, {math.Inf(1), 0.25},
+			{5, 0}, {5, -0.25}, {5, math.NaN()}, {5, math.Inf(1)},
+		}
+		for _, in := range invalid {
+			_, ok := ComputeTaskQuotaBySeconds(task, in.seconds, in.price)
+			assert.False(t, ok, "seconds=%v price=%v", in.seconds, in.price)
+		}
+	})
+
+	t.Run("分组缺失放弃重算", func(t *testing.T) {
+		task := makeTask(999_999, 1, 100, 0, BillingSourceWallet, 0)
+		task.Group = ""
+		_, ok := ComputeTaskQuotaBySeconds(task, 5, 0.25)
+		assert.False(t, ok)
+	})
+
+	t.Run("分组回落用户分组", func(t *testing.T) {
+		user := &model.User{Id: 40, Username: "wan_group_user", Group: "vip", Status: common.UserStatusEnabled}
+		require.NoError(t, model.DB.Create(user).Error)
+		task := makeTask(40, 1, 100, 0, BillingSourceWallet, 0)
+		task.Group = ""
+		quota, ok := ComputeTaskQuotaBySeconds(task, 5, 0.25)
+		require.True(t, ok)
+		assert.Equal(t, 1_250_000, quota)
+	})
+}
+
 func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {
 	task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
 	task.PrivateData.BillingContext.OtherRatios = map[string]float64{

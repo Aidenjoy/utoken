@@ -15,22 +15,25 @@ import (
 const (
 	BillingModeRatio      = "ratio"
 	BillingModeTieredExpr = "tiered_expr"
+	BillingModeWan        = "wan"
 	BillingModeSeedance   = "seedance"
 	BillingModeSeedream   = "seedream"
 	BillingModeField      = "billing_mode"
 	BillingExprField      = "billing_expr"
+	WanConfigField        = "wan_config"
 	SeedanceConfigField   = "seedance_config"
 	SeedreamConfigField   = "seedream_config"
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.
 // DB keys: billing_setting.billing_mode, billing_setting.billing_expr,
-// billing_setting.seedance_config, billing_setting.seedream_config
+// billing_setting.wan_config, billing_setting.seedance_config, billing_setting.seedream_config
 type BillingSetting struct {
 	BillingMode map[string]string `json:"billing_mode"`
 	BillingExpr map[string]string `json:"billing_expr"`
-	// SeedanceConfig / SeedreamConfig 的 value 为 JSON 字符串，读取时手动反序列化，
+	// WanConfig / SeedanceConfig / SeedreamConfig 的 value 为 JSON 字符串，读取时手动反序列化，
 	// 与 BillingExpr 同构，避免 config 框架处理嵌套结构。
+	WanConfig      map[string]string `json:"wan_config"`
 	SeedanceConfig map[string]string `json:"seedance_config"`
 	SeedreamConfig map[string]string `json:"seedream_config"`
 }
@@ -38,6 +41,7 @@ type BillingSetting struct {
 var billingSetting = BillingSetting{
 	BillingMode:    make(map[string]string),
 	BillingExpr:    make(map[string]string),
+	WanConfig:      make(map[string]string),
 	SeedanceConfig: make(map[string]string),
 	SeedreamConfig: make(map[string]string),
 }
@@ -74,6 +78,61 @@ func GetBillingMode(model string) string {
 func GetBillingExpr(model string) (string, bool) {
 	expr, ok := billingSetting.BillingExpr[model]
 	return expr, ok
+}
+
+// GetWanConfig 返回模型 wan 按秒单价配置（key 为分辨率，已归一化为小写去空格，
+// value 为每秒绝对单价，与按次 ModelPrice 同量纲）。未配置该模型或解析失败时返回 ok=false。
+func GetWanConfig(model string) (map[string]float64, bool) {
+	raw, ok := billingSetting.WanConfig[model]
+	if !ok || raw == "" {
+		return nil, false
+	}
+	var parsed map[string]float64
+	if err := common.UnmarshalJsonStr(raw, &parsed); err != nil {
+		common.SysError(fmt.Sprintf("billing_setting: parse wan_config for %q failed: %v", model, err))
+		return nil, false
+	}
+	normalized := make(map[string]float64, len(parsed))
+	for res, price := range parsed {
+		key := strings.ToLower(strings.TrimSpace(res))
+		if key == "" {
+			continue
+		}
+		normalized[key] = price
+	}
+	if len(normalized) == 0 {
+		return nil, false
+	}
+	return normalized, true
+}
+
+// GetWanTierPrice 返回模型指定分辨率档的每秒绝对单价（与按次 ModelPrice 同量纲，
+// 经 QuotaPerUnit 换算为额度，再乘秒数与分组倍率）。不区分是否含视频输入。
+// resolution 为空（用户未指定，走上游默认档）时返回已配置的最高档单价作为预扣兜底，
+// 结算时按响应分辨率重算。未配置该模型、所请求分辨率不在配置内或对应档单价无效（<=0）
+// 时返回 ok=false（即该档不支持）。
+func GetWanTierPrice(model, resolution string) (float64, bool) {
+	cfg, ok := GetWanConfig(model)
+	if !ok {
+		return 0, false
+	}
+	res := strings.ToLower(strings.TrimSpace(resolution))
+	if res != "" {
+		if price, found := cfg[res]; found && price > 0 {
+			return price, true
+		}
+		return 0, false
+	}
+	maxPrice := 0.0
+	for _, price := range cfg {
+		if price > maxPrice {
+			maxPrice = price
+		}
+	}
+	if maxPrice <= 0 {
+		return 0, false
+	}
+	return maxPrice, true
 }
 
 // GetSeedanceConfig 返回模型 seedance 分辨率单价配置（key 为分辨率，已归一化为小写去空格）。
@@ -187,6 +246,10 @@ func GetBillingExprCopy() map[string]string {
 	return lo.Assign(billingSetting.BillingExpr)
 }
 
+func GetWanConfigCopy() map[string]string {
+	return lo.Assign(billingSetting.WanConfig)
+}
+
 func GetSeedanceConfigCopy() map[string]string {
 	return lo.Assign(billingSetting.SeedanceConfig)
 }
@@ -196,12 +259,15 @@ func GetSeedreamConfigCopy() map[string]string {
 }
 
 func GetPricingSyncData(base map[string]any) map[string]any {
-	extra := make(map[string]any, 4)
+	extra := make(map[string]any, 5)
 	if modes := GetBillingModeCopy(); len(modes) > 0 {
 		extra[BillingModeField] = modes
 	}
 	if exprs := GetBillingExprCopy(); len(exprs) > 0 {
 		extra[BillingExprField] = exprs
+	}
+	if cfg := GetWanConfigCopy(); len(cfg) > 0 {
+		extra[WanConfigField] = cfg
 	}
 	if cfg := GetSeedanceConfigCopy(); len(cfg) > 0 {
 		extra[SeedanceConfigField] = cfg

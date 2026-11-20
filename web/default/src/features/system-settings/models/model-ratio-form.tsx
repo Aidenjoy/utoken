@@ -56,6 +56,7 @@ type ModelFormValues = {
   ExposeRatioEnabled: boolean
   BillingMode: string
   BillingExpr: string
+  WanConfig: string
   SeedanceConfig: string
   SeedreamConfig: string
 }
@@ -250,6 +251,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedAudioCompletionRatio={savedValues.AudioCompletionRatio}
               savedBillingMode={savedValues.BillingMode}
               savedBillingExpr={savedValues.BillingExpr}
+              savedWanConfig={savedValues.WanConfig}
               savedSeedanceConfig={savedValues.SeedanceConfig}
               savedSeedreamConfig={savedValues.SeedreamConfig}
               modelPrice={form.watch('ModelPrice')}
@@ -262,6 +264,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               audioCompletionRatio={form.watch('AudioCompletionRatio')}
               billingMode={form.watch('BillingMode')}
               billingExpr={form.watch('BillingExpr')}
+              wanConfig={form.watch('WanConfig')}
               seedanceConfig={form.watch('SeedanceConfig')}
               seedreamConfig={form.watch('SeedreamConfig')}
               onSave={handleSave}
@@ -270,6 +273,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
                 const fieldMap: Record<string, keyof ModelFormValues> = {
                   'billing_setting.billing_mode': 'BillingMode',
                   'billing_setting.billing_expr': 'BillingExpr',
+                  'billing_setting.wan_config': 'WanConfig',
                   'billing_setting.seedance_config': 'SeedanceConfig',
                   'billing_setting.seedream_config': 'SeedreamConfig',
                 }

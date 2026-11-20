@@ -1,6 +1,8 @@
 package ali
 
 var ModelList = []string{
+	"wan3.0-video",       // 万相3.0视频生成（按秒计费，支持 wan 档价模式）
+	"wan3.0-video-prime", // 万相3.0视频生成高速版（按秒计费）
 	"wan2.7-i2v",         // 万相2.7图生视频（新input.media协议）
 	"wan2.7-t2v",         // 万相2.7文生视频
 	"wan2.5-i2v-preview", // 万相2.5 preview（有声视频）推荐

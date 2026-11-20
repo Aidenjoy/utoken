@@ -51,6 +51,31 @@ func (i IntValue) MarshalJSON() ([]byte, error) {
 	return json.Marshal(int(i))
 }
 
+// FloatValue 容忍浮点、整数与字符串形式的数值（如上游 usage.duration 返回 5.0）。
+type FloatValue float64
+
+func (f *FloatValue) UnmarshalJSON(b []byte) error {
+	var n float64
+	if err := json.Unmarshal(b, &n); err == nil {
+		*f = FloatValue(n)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+	*f = FloatValue(v)
+	return nil
+}
+
+func (f FloatValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(float64(f))
+}
+
 type BoolValue bool
 
 func (b *BoolValue) UnmarshalJSON(data []byte) error {

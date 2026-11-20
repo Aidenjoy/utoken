@@ -77,8 +77,10 @@ import {
 import {
   getSeedanceTiers,
   getSeedreamPrices,
+  getWanTiers,
   isSeedanceBillingModel,
   isSeedreamBillingModel,
+  isWanBillingModel,
   seedanceTierEnteredPricePer1M,
   type SeedanceTierPrice,
   type SeedanceTierVariant,
@@ -474,9 +476,11 @@ function ModelBackendProviderSection(props: { model: PricingModel }) {
   cells.push(
     <CatalogInfoCell key='type' label={t('Type')}>
       <CatalogTextValue>
-        {model.quota_type === QUOTA_TYPE_VALUES.TOKEN
-          ? t('Token-based')
-          : t('Per Request')}
+        {isWanBillingModel(model)
+          ? t('Per-second pricing')
+          : model.quota_type === QUOTA_TYPE_VALUES.TOKEN
+            ? t('Token-based')
+            : t('Per Request')}
       </CatalogTextValue>
     </CatalogInfoCell>
   )
@@ -572,12 +576,22 @@ function ModelHeader(props: { model: PricingModel }) {
         )}
         <span className='text-muted-foreground/30'>·</span>
         <span className='text-muted-foreground/70'>
-          {isSeedreamBillingModel(model)
-            ? t('Per-image pricing')
-            : model.quota_type === QUOTA_TYPE_VALUES.TOKEN
-              ? t('Token-based')
-              : t('Per Request')}
+          {isWanBillingModel(model)
+            ? t('Per-second pricing')
+            : isSeedreamBillingModel(model)
+              ? t('Per-image pricing')
+              : model.quota_type === QUOTA_TYPE_VALUES.TOKEN
+                ? t('Token-based')
+                : t('Per Request')}
         </span>
+        {isWanBillingModel(model) && (
+          <>
+            <span className='text-muted-foreground/30'>·</span>
+            <span className='rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'>
+              {t('Wan')}
+            </span>
+          </>
+        )}
         {(isSeedreamBillingModel(model) || isSeedanceBillingModel(model)) && (
           <>
             <span className='text-muted-foreground/30'>·</span>
@@ -624,6 +638,7 @@ function PriceSection(props: {
   const baseGroupRatioMap = { [baseGroupKey]: 1 }
   const seedreamPrices = getSeedreamPrices(props.model)
   const seedanceTiers = getSeedanceTiers(props.model)
+  const wanTiers = getWanTiers(props.model)
   const formatSeedanceTier = (
     tier: SeedanceTierPrice,
     variant: SeedanceTierVariant,
@@ -759,6 +774,38 @@ function PriceSection(props: {
             </div>
           </div>
         )}
+      </section>
+    )
+  }
+
+  if (wanTiers) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <div className='grid grid-cols-2 gap-2'>
+          {wanTiers.map((tier) => (
+            <div
+              key={tier.resolution}
+              className='bg-muted/20 rounded-lg border p-3'
+            >
+              <div className='text-muted-foreground text-xs'>
+                {tier.resolution}
+              </div>
+              <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
+                {formatUnitPriceWithRatio(
+                  tier.pricePerSecond,
+                  1,
+                  props.showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate
+                )}
+                <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                  / {t('second')}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
     )
   }
@@ -991,6 +1038,7 @@ function GroupPricingSection(props: {
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
   const seedreamPrices = getSeedreamPrices(props.model)
   const seedanceTiers = getSeedanceTiers(props.model)
+  const wanTiers = getWanTiers(props.model)
 
   const extraPriceTypes = useMemo(() => {
     const types: { label: string; type: PriceType }[] = []
@@ -1132,6 +1180,63 @@ function GroupPricingSection(props: {
           })}
           <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
             {t('Prices shown per')} {tokenUnitLabel} tokens
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  if (wanTiers) {
+    return (
+      <section>
+        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
+        <div className='space-y-3'>
+          {availableGroups.map((group) => {
+            const ratio = props.groupRatio[group] || 1
+            return (
+              <div key={group} className='overflow-hidden rounded-lg border'>
+                <div className='bg-muted/20 flex items-center justify-between gap-3 border-b px-3 py-2'>
+                  <GroupBadge group={group} size='sm' />
+                  <span className='text-muted-foreground font-mono text-xs'>
+                    {ratio}x
+                  </span>
+                </div>
+                <StaticDataTable
+                  className='rounded-none border-0'
+                  tableClassName='text-sm'
+                  headerRowClassName='hover:bg-transparent'
+                  data={wanTiers}
+                  getRowKey={(tier) => `${group}-${tier.resolution}`}
+                  columns={[
+                    {
+                      id: 'resolution',
+                      header: t('Resolution'),
+                      className: thClass,
+                      cellClassName: 'text-muted-foreground py-2.5',
+                      cell: (tier) => tier.resolution,
+                    },
+                    {
+                      id: 'price_per_second',
+                      header: t('Per-second pricing'),
+                      className: `${thClass} text-right`,
+                      cellClassName: 'py-2.5 text-right font-mono',
+                      cell: (tier: (typeof wanTiers)[number]) =>
+                        formatUnitPriceWithRatio(
+                          tier.pricePerSecond,
+                          ratio,
+                          showRechargePrice,
+                          props.priceRate,
+                          props.usdExchangeRate
+                        ),
+                    },
+                  ]}
+                />
+              </div>
+            )
+          })}
+          <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
+            {t('Prices shown per second of generated video')}
           </p>
         </div>
       </section>

@@ -73,6 +73,7 @@ type UpstreamRatioSyncProps = {
     AudioCompletionRatio: string
     'billing_setting.billing_mode': string
     'billing_setting.billing_expr': string
+    'billing_setting.wan_config': string
     'billing_setting.seedance_config': string
     'billing_setting.seedream_config': string
   }
@@ -97,6 +98,7 @@ function getBillingCategory(ratioType: string): 'price' | 'ratio' | 'tiered' {
   if (
     ratioType === 'billing_mode' ||
     ratioType === 'billing_expr' ||
+    ratioType === 'wan_config' ||
     ratioType === 'seedance_config' ||
     ratioType === 'seedream_config'
   )
@@ -108,6 +110,7 @@ function optionKeyBySyncField(ratioType: string): string {
   const explicit: Record<string, string> = {
     billing_mode: 'billing_setting.billing_mode',
     billing_expr: 'billing_setting.billing_expr',
+    wan_config: 'billing_setting.wan_config',
     seedance_config: 'billing_setting.seedance_config',
     seedream_config: 'billing_setting.seedream_config',
   }
@@ -361,6 +364,9 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
       'billing_setting.billing_expr': parseJsonRecord<string>(
         modelRatios['billing_setting.billing_expr']
       ),
+      'billing_setting.wan_config': parseJsonRecord<string>(
+        modelRatios['billing_setting.wan_config']
+      ),
       'billing_setting.seedance_config': parseJsonRecord<string>(
         modelRatios['billing_setting.seedance_config']
       ),
@@ -406,6 +412,9 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
         },
         'billing_setting.billing_expr': {
           ...currentRatios['billing_setting.billing_expr'],
+        },
+        'billing_setting.wan_config': {
+          ...currentRatios['billing_setting.wan_config'],
         },
         'billing_setting.seedance_config': {
           ...currentRatios['billing_setting.seedance_config'],
