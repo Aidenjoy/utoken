@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
@@ -18,15 +19,16 @@ const (
 )
 
 type videoRouteChannelFixture struct {
-	id         int
-	modelName  string
-	group      string
-	priority   *int
-	supports4K bool
-	status     int
-	noProtocol bool
-	noAbility  bool
-	noMapping  bool
+	id          int
+	modelName   string
+	group       string
+	priority    *int
+	supports4K  bool
+	status      int
+	channelType int
+	noProtocol  bool
+	noAbility   bool
+	noMapping   bool
 }
 
 func videoRoutePriority(value int) *int {
@@ -105,6 +107,7 @@ func seedVideoRouteChannel(t *testing.T, fixture videoRouteChannelFixture) {
 	channel := &model.Channel{
 		Id:            fixture.id,
 		Name:          fmt.Sprintf("video-route-channel-%d", fixture.id),
+		Type:          fixture.channelType,
 		Key:           "sk-video-route-test",
 		Status:        fixture.status,
 		Group:         fixture.group,
@@ -230,4 +233,33 @@ func TestValidateVideoTokenChannelIgnoresPriorityButChecksCapability(t *testing.
 	assert.NoError(t, ValidateVideoTokenChannel(token, 1))
 	assert.Error(t, ValidateVideoTokenChannel(token, 2))
 	assert.Error(t, ValidateVideoTokenChannel(token, 3))
+}
+
+// TestWanNativeChannelSelectableWithoutAssetProtocol 锁定万相渠道回归契约：
+// DashScope 上游无素材库，万相官方透传渠道不配置素材上传协议也必须能出现在
+// 视频 Key 模型候选中并可被绑定/改派；同配置的普通渠道仍被素材协议门槛排除。
+func TestWanNativeChannelSelectableWithoutAssetProtocol(t *testing.T) {
+	setupVideoRouteTest(t)
+	seedVideoRouteUser(t, 1, "default", 0)
+	wanModel := "wan3.0-video"
+	seedVideoRouteChannel(t, videoRouteChannelFixture{
+		id: 1, modelName: wanModel, channelType: constant.ChannelTypeWanNative,
+		priority: videoRoutePriority(50), supports4K: true, noProtocol: true,
+	})
+	seedVideoRouteChannel(t, videoRouteChannelFixture{
+		id: 2, modelName: videoRouteModel20, priority: videoRoutePriority(50), noProtocol: true,
+	})
+
+	options, err := ListVideoKeyOptions(1, "default")
+	require.NoError(t, err)
+	assert.Equal(t, []VideoKeyOption{{Model: wanModel, Supports4K: true}}, options)
+
+	channel, err := MatchVideoKeyChannel(1, "default", wanModel, false)
+	require.NoError(t, err)
+	assert.Equal(t, 1, channel.Id)
+
+	token := &model.Token{
+		UserId: 1, Group: "default", KeyType: model.TokenKeyTypeVideo, VideoModel: wanModel,
+	}
+	assert.NoError(t, ValidateVideoTokenChannel(token, 1))
 }

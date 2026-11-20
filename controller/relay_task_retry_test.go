@@ -151,6 +151,88 @@ func TestRelayTaskBoundVideoKeyRetriesSameChannel(t *testing.T) {
 	assert.Equal(t, []string{"14", "14"}, c.GetStringSlice("use_channel"))
 }
 
+// TestRelayTaskPinnedPlaygroundChannelRetriesSameChannel 锁定体验页渠道选择器的
+// 重试边界：超管显式指定渠道后，首次提交失败也只能在原渠道换 Key 再试，
+// 不得回落优先级选路把任务静默落到别的渠道（使用日志渠道与用户选择不一致）。
+// 指定渠道放最高优先级层、对照渠道放次级层：重试选路按层降级，
+// 一旦回落优先级选路（retry=1 → 次级层）必然命中对照渠道。
+func TestRelayTaskPinnedPlaygroundChannelRetriesSameChannel(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.LogBody{}))
+
+	var pinnedCalls atomic.Int32
+	pinnedUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		pinnedCalls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"pinned upstream failed"}`))
+	}))
+	t.Cleanup(pinnedUpstream.Close)
+
+	var otherCalls atomic.Int32
+	otherUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		otherCalls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"other upstream failed"}`))
+	}))
+	t.Cleanup(otherUpstream.Close)
+
+	const modelName = "retry-video-model"
+	for _, channel := range []*model.Channel{
+		{Id: 14, Name: "pinned", Type: constant.ChannelTypeArkNative, Key: "sk-pinned", BaseURL: &pinnedUpstream.URL},
+		{Id: 5, Name: "other", Type: constant.ChannelTypeArkNative, Key: "sk-other", BaseURL: &otherUpstream.URL},
+	} {
+		channel.Status = common.ChannelStatusEnabled
+		channel.Group = "default"
+		channel.Models = modelName
+		require.NoError(t, db.Create(channel).Error)
+		priority := int64(10)
+		if channel.Id == 5 {
+			priority = 1
+		}
+		require.NoError(t, db.Create(&model.Ability{
+			Group: "default", Model: modelName, ChannelId: channel.Id, Enabled: true, Priority: common.GetPointer(priority), Weight: 100,
+		}).Error)
+	}
+
+	oldMemoryCache := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() { common.MemoryCacheEnabled = oldMemoryCache })
+	oldRetryTimes := common.RetryTimes
+	common.RetryTimes = 1
+	t.Cleanup(func() { common.RetryTimes = oldRetryTimes })
+	oldModelPrices := ratio_setting.ModelPrice2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"retry-video-model":0}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(oldModelPrices)) })
+	oldFreeModelPreConsume := operation_setting.GetQuotaSetting().EnableFreeModelPreConsume
+	operation_setting.GetQuotaSetting().EnableFreeModelPreConsume = false
+	t.Cleanup(func() { operation_setting.GetQuotaSetting().EnableFreeModelPreConsume = oldFreeModelPreConsume })
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/pg/video/generations", strings.NewReader(`{"model":"retry-video-model","prompt":"pinned retry isolation"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(common.RequestIdKey, "req-pinned-video-retry")
+	c.Set("id", 208)
+	// C 端 playground 会话：无 token_id，渠道由分发层锁定并写入上下文。
+	c.Set("relay_mode", relayconstant.RelayModeVideoSubmit)
+	common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyRequestPinnedChannelId, 14)
+
+	pinnedChannel, err := model.GetChannelById(14, true)
+	require.NoError(t, err)
+	require.Nil(t, middleware.SetupContextForSelectedChannel(c, pinnedChannel, modelName))
+	service.InitHttpClient()
+
+	RelayTask(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, int32(2), pinnedCalls.Load(), "首次请求和唯一一次重试都必须到达指定渠道")
+	assert.Zero(t, otherCalls.Load(), "指定渠道不得因重试回落优先级选路调用其他渠道")
+	assert.Equal(t, []string{"14", "14"}, c.GetStringSlice("use_channel"))
+}
+
 func TestLockTokenBoundVideoChannelScope(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.Channel{}))

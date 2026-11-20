@@ -321,11 +321,13 @@ func translateAssetLockError(c *gin.Context, err *AssetLockError) error {
 	}
 }
 
-// isVideoSubmitPath 仅视频任务提交路径支持 asset:// 素材引用。
+// isVideoSubmitPath 视频任务提交路径：B 端视频 Key 锁渠道与素材预检的生效范围。
+// 含万相官方透传提交路径（DashScope 上游无素材库，body 无 asset:// 引用时预检直接放行）。
 func isVideoSubmitPath(path string) bool {
 	return strings.HasPrefix(path, "/pg/video/generations") ||
 		strings.HasPrefix(path, "/v1/video/generations") ||
-		strings.HasPrefix(path, "/api/v3/contents/generations/tasks")
+		strings.HasPrefix(path, "/api/v3/contents/generations/tasks") ||
+		strings.HasPrefix(path, "/api/v1/services/aigc/video-generation/video-synthesis")
 }
 
 // preflightAssetRefsForChannel 在转发前确认请求体引用的素材在目标渠道已就绪。

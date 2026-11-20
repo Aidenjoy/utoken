@@ -214,6 +214,7 @@ func Distribute() func(c *gin.Context) {
 								abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
 								return
 							}
+							common.SetContextKey(c, constant.ContextKeyRequestPinnedChannelId, channel.Id)
 							common.SysLog(fmt.Sprintf("[Asset] request locked to channel %d (group=%s, model=%s, user=%d)",
 								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 						} else if playgroundChannelId > 0 {
@@ -231,6 +232,7 @@ func Distribute() func(c *gin.Context) {
 								}))
 								return
 							}
+							common.SetContextKey(c, constant.ContextKeyRequestPinnedChannelId, channel.Id)
 							common.SysLog(fmt.Sprintf("[Playground] request pinned to channel %d (group=%s, model=%s, user=%d)",
 								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 						}
@@ -248,6 +250,7 @@ func Distribute() func(c *gin.Context) {
 						}))
 						return
 					}
+					common.SetContextKey(c, constant.ContextKeyRequestPinnedChannelId, channel.Id)
 					common.SysLog(fmt.Sprintf("[Playground] request pinned to channel %d (group=%s, model=%s, user=%d)",
 						channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 				}
@@ -419,9 +422,9 @@ func getJSONStringValue(result gjson.Result, field string) (string, error) {
 }
 
 // ExtractRequestedResolution 从任务提交体中解析用户要求的分辨率，作为选路的
-// (渠道 × 模型 × 分辨率) 能力矩阵输入。同时覆盖官方协议顶层 resolution 与统一
-// 视频协议 metadata.resolution 两种来源；两者都缺失（走上游默认档）或非 JSON
-// 请求体时返回空串，表示不按分辨率过滤。
+// (渠道 × 模型 × 分辨率) 能力矩阵输入。覆盖官方协议顶层 resolution、万相官方
+// parameters.resolution 与统一视频协议 metadata.resolution 三种来源；都缺失
+// （走上游默认档）或非 JSON 请求体时返回空串，表示不按分辨率过滤。
 func ExtractRequestedResolution(c *gin.Context) string {
 	bodyStorage, err := common.GetBodyStorage(c)
 	if err != nil {
@@ -430,6 +433,9 @@ func ExtractRequestedResolution(c *gin.Context) string {
 	var probe struct {
 		Resolution string         `json:"resolution"`
 		Metadata   map[string]any `json:"metadata"`
+		Parameters *struct {
+			Resolution string `json:"resolution"`
+		} `json:"parameters"`
 	}
 	decodeErr := common.DecodeJson(bodyStorage, &probe)
 	// 读后复位，保证下游直接读 c.Request.Body 时仍拿到完整请求体
@@ -440,6 +446,9 @@ func ExtractRequestedResolution(c *gin.Context) string {
 		return ""
 	}
 	res := strings.TrimSpace(probe.Resolution)
+	if res == "" && probe.Parameters != nil {
+		res = strings.TrimSpace(probe.Parameters.Resolution)
+	}
 	if res == "" {
 		if metaRes, ok := probe.Metadata["resolution"].(string); ok {
 			res = strings.TrimSpace(metaRes)

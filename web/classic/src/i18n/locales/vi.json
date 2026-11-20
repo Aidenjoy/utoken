@@ -4280,6 +4280,17 @@
     "Actual Consumption": "Tiêu thụ thực tế",
     "{{value}} points": "{{value}} điểm",
     "User ID": "ID người dùng",
-    "No Records Found": "Không tìm thấy bản ghi"
+    "No Records Found": "Không tìm thấy bản ghi",
+    "推理接入点": "Endpoint suy luận",
+    "每个模型对应一个上游接入点，保存后写入模型重定向。渠道 API Key 必须已授权该接入点；引用素材时，接入点须与素材库属于同一账号和项目。": "Mỗi mô hình một endpoint thượng nguồn, được lưu vào Chuyển hướng mô hình. Khóa API của kênh phải được cấp quyền cho endpoint; để tham chiếu tài nguyên, endpoint và thư viện tài nguyên phải thuộc cùng tài khoản và dự án.",
+    "ep-20260101xxxx-xxxx，留空则按模型 ID 直连": "ep-20260101xxxx-xxxx, để trống để gọi bằng ID mô hình",
+    "请先修正模型重定向的 JSON 格式": "Hãy sửa JSON Chuyển hướng mô hình trước",
+    "请先在模型列表中添加模型": "Hãy thêm mô hình vào danh sách trước",
+    "模型信息": "Thông tin mô hình",
+    "上下文窗口": "Cửa sổ ngữ cảnh",
+    "最大输出 token 数": "Số token đầu ra tối đa",
+    "为语言模型配置上下文窗口与最大输出 token 数，配置后的值将通过 /v1/modelsinfo 接口返回。": "Định cấu hình cửa sổ ngữ cảnh và số token đầu ra tối đa cho các mô hình ngôn ngữ. Giá trị đã định cấu hình được trả về qua /v1/modelsinfo.",
+    "可填整数或 128K / 1M 形式的值（K = 1024，M = 1048576），留空表示清除配置。": "Nhập số hoặc giá trị dạng 128K / 1M (K = 1024, M = 1048576). Để trống để xóa.",
+    "{{model}} 的 token 数格式无效": "Số token không hợp lệ cho {{model}}"
   }
 }

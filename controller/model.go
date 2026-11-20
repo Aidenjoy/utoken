@@ -206,19 +206,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 }
 
 func ListModels(c *gin.Context, modelType int) {
-	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
-	if !acceptUnsetRatioModel {
-		userId := c.GetInt("id")
-		if userId > 0 {
-			userSettings, _ := model.GetUserSetting(userId, false)
-			if userSettings.AcceptUnsetRatioModel {
-				acceptUnsetRatioModel = true
-			}
-		}
-	}
-
-	userModelNames := make([]string, 0)
-	groups, err := getModelListGroups(c)
+	userModelNames, groups, err := listUserModelNames(c)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -227,54 +215,6 @@ func ListModels(c *gin.Context, modelType int) {
 		return
 	}
 	ownerGroups := groups.ownerGroups
-	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
-	if modelLimitEnable {
-		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
-		var tokenModelLimit map[string]bool
-		if ok {
-			tokenModelLimit = s.(map[string]bool)
-		} else {
-			tokenModelLimit = map[string]bool{}
-		}
-		for allowModel, _ := range tokenModelLimit {
-			if !acceptUnsetRatioModel {
-				if !helper.HasModelBillingConfig(allowModel) {
-					continue
-				}
-			}
-			userModelNames = append(userModelNames, allowModel)
-		}
-	} else {
-		var models []string
-		if groups.tokenGroup == "auto" {
-			for _, autoGroup := range ownerGroups {
-				groupModels := model.GetGroupEnabledModels(autoGroup)
-				for _, g := range groupModels {
-					if !common.StringsContains(models, g) {
-						models = append(models, g)
-					}
-				}
-			}
-		} else {
-			models = model.GetGroupEnabledModels(ownerGroups[0])
-		}
-		for _, modelName := range models {
-			if !acceptUnsetRatioModel {
-				if !helper.HasModelBillingConfig(modelName) {
-					continue
-				}
-			}
-			userModelNames = append(userModelNames, modelName)
-		}
-	}
-
-	// 代理商授权模型白名单：剔除未授权模型，使 /v1/models 的返回与分发层的
-	// 实际拦截能力一致（同一份 AllowedModels 快照、同一个 ResolveAllowedModels）。
-	// Filter 对空清单原样返回，因此无代理归属与 fail-open 两种情况都不需额外分支。
-	userModelNames = model.ResolveAllowedModels(
-		common.GetContextKeyInt(c, constant.ContextKeyUserAgentId),
-		common.GetContextKeyString(c, constant.ContextKeyUserAllowedModels),
-	).Filter(userModelNames)
 
 	ownerByModel := map[string]string{}
 	if len(ownerGroups) > 0 {
@@ -328,6 +268,77 @@ func ListModels(c *gin.Context, modelType int) {
 			"object":  "list",
 		})
 	}
+}
+
+// listUserModelNames 计算令牌可见模型清单，/v1/models 与 /v1/modelsinfo 共用，
+// 保证两个接口的可见范围（分组、令牌模型限制、计费配置门槛、代理白名单）一致。
+func listUserModelNames(c *gin.Context) ([]string, modelListGroups, error) {
+	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
+	if !acceptUnsetRatioModel {
+		userId := c.GetInt("id")
+		if userId > 0 {
+			userSettings, _ := model.GetUserSetting(userId, false)
+			if userSettings.AcceptUnsetRatioModel {
+				acceptUnsetRatioModel = true
+			}
+		}
+	}
+
+	userModelNames := make([]string, 0)
+	groups, err := getModelListGroups(c)
+	if err != nil {
+		return nil, modelListGroups{}, err
+	}
+	ownerGroups := groups.ownerGroups
+	modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	if modelLimitEnable {
+		s, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit)
+		var tokenModelLimit map[string]bool
+		if ok {
+			tokenModelLimit = s.(map[string]bool)
+		} else {
+			tokenModelLimit = map[string]bool{}
+		}
+		for allowModel, _ := range tokenModelLimit {
+			if !acceptUnsetRatioModel {
+				if !helper.HasModelBillingConfig(allowModel) {
+					continue
+				}
+			}
+			userModelNames = append(userModelNames, allowModel)
+		}
+	} else {
+		var models []string
+		if groups.tokenGroup == "auto" {
+			for _, autoGroup := range ownerGroups {
+				groupModels := model.GetGroupEnabledModels(autoGroup)
+				for _, g := range groupModels {
+					if !common.StringsContains(models, g) {
+						models = append(models, g)
+					}
+				}
+			}
+		} else {
+			models = model.GetGroupEnabledModels(ownerGroups[0])
+		}
+		for _, modelName := range models {
+			if !acceptUnsetRatioModel {
+				if !helper.HasModelBillingConfig(modelName) {
+					continue
+				}
+			}
+			userModelNames = append(userModelNames, modelName)
+		}
+	}
+
+	// 代理商授权模型白名单：剔除未授权模型，使 /v1/models 的返回与分发层的
+	// 实际拦截能力一致（同一份 AllowedModels 快照、同一个 ResolveAllowedModels）。
+	// Filter 对空清单原样返回，因此无代理归属与 fail-open 两种情况都不需额外分支。
+	userModelNames = model.ResolveAllowedModels(
+		common.GetContextKeyInt(c, constant.ContextKeyUserAgentId),
+		common.GetContextKeyString(c, constant.ContextKeyUserAllowedModels),
+	).Filter(userModelNames)
+	return userModelNames, groups, nil
 }
 
 func ChannelListModels(c *gin.Context) {

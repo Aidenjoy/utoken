@@ -37,6 +37,10 @@ const (
 	ContextKeyChannelIsMultiKey        ContextKey = "channel_is_multi_key"
 	ContextKeyChannelMultiKeyIndex     ContextKey = "channel_multi_key_index"
 	ContextKeyChannelKey               ContextKey = "channel_key"
+	// ContextKeyRequestPinnedChannelId 标记本次请求被分发层锁定到指定渠道
+	//（体验页超管渠道选择器 / 素材归属渠道）。重试只能留在该渠道换 Key 再试，
+	// 不得回落到优先级选路，否则任务会静默落到其他渠道。
+	ContextKeyRequestPinnedChannelId ContextKey = "request_pinned_channel_id"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"
