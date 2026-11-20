@@ -41,6 +41,15 @@ func SetRelayRouter(router *gin.Engine) {
 		})
 	}
 
+	// 自定义模型信息接口：与 /v1/models 同鉴权，额外支持模态筛选与
+	// 管理员配置的上下文窗口/最大输出 token 数。
+	modelsInfoRouter := router.Group("/v1/modelsinfo")
+	modelsInfoRouter.Use(middleware.RouteTag("relay"))
+	modelsInfoRouter.Use(middleware.TokenAuth())
+	{
+		modelsInfoRouter.GET("", controller.ListModelsInfo)
+	}
+
 	geminiRouter := router.Group("/v1beta/models")
 	geminiRouter.Use(middleware.RouteTag("relay"))
 	geminiRouter.Use(middleware.TokenAuth())

@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import SettingGeminiModel from '../../pages/Setting/Model/SettingGeminiModel';
 import SettingClaudeModel from '../../pages/Setting/Model/SettingClaudeModel';
 import SettingGlobalModel from '../../pages/Setting/Model/SettingGlobalModel';
+import SettingModelInfo from '../../pages/Setting/Model/SettingModelInfo';
 import SettingGrokModel from '../../pages/Setting/Model/SettingGrokModel';
 import SettingsChannelAffinity from '../../pages/Setting/Operation/SettingsChannelAffinity';
 
@@ -112,6 +113,10 @@ const ModelSetting = () => {
         {/* OpenAI */}
         <Card style={{ marginTop: '10px' }}>
           <SettingGlobalModel options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* Model info */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingModelInfo />
         </Card>
         {/* Channel affinity */}
         <Card style={{ marginTop: '10px' }}>

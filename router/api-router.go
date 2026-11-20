@@ -323,6 +323,14 @@ func SetApiRouter(router *gin.Engine) {
 			modelsOptionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
 		}
 
+		// 语言模型上下文窗口/最大输出 token 配置，供 /v1/modelsinfo 对外读取。
+		modelInfoRoute := apiRouter.Group("/model_info")
+		modelInfoRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.SettingsModels))
+		{
+			modelInfoRoute.GET("", controller.GetModelInfoSettings)
+			modelInfoRoute.PUT("", controller.UpdateModelInfoSettings)
+		}
+
 		// 通用配置读写要求至少一个系统设置子菜单授权，controller 再按键归属过滤，
 		// 确保未授权子菜单的配置既读不到也改不了；未归属键始终仅超管可读写。
 		settingsOptionRoute := apiRouter.Group("/option")
