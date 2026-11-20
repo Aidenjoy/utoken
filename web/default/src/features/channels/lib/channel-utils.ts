@@ -104,6 +104,7 @@ export function getChannelTypeIcon(type: number): string {
     54: 'Doubao', // DoubaoVideo
     59: 'Doubao', // VolcEngine Video
     61: 'Doubao', // Baidu DataBuilder (seedance)
+    62: 'Qwen', // Wan Video (Ali DashScope)
     56: 'Replicate', // Replicate
 
     // Tools & Platforms

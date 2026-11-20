@@ -646,11 +646,16 @@ export function PlaygroundVideoInput({
 
   // Fetch active library assets while the @ mention popup is open so they
   // can be referenced alongside session uploads. Assets are per-channel, so
-  // only ask for assets whose channel can serve the selected model/group.
+  // only ask for assets whose channel can serve the selected model/group;
+  // when a channel is pinned (super admin), restrict to that channel's assets.
   useEffect(() => {
     if (!showMention || config.mode !== 'reference') return
     let cancelled = false
-    void listAssets(undefined, config.model, config.group).then((list) => {
+    void listAssets(
+      config.channelId || undefined,
+      config.model,
+      config.group
+    ).then((list) => {
       if (!cancelled) {
         setLibraryAssets(list.filter((asset) => asset.status === 'active'))
       }
@@ -658,7 +663,7 @@ export function PlaygroundVideoInput({
     return () => {
       cancelled = true
     }
-  }, [showMention, config.mode, config.model, config.group])
+  }, [showMention, config.mode, config.model, config.group, config.channelId])
 
   const mentionLibraryAssets = libraryAssets.filter(
     (asset) =>
