@@ -214,6 +214,7 @@ func Distribute() func(c *gin.Context) {
 								abortWithOpenAiMessage(c, http.StatusBadRequest, lockErr.Error())
 								return
 							}
+							common.SetContextKey(c, constant.ContextKeyRequestPinnedChannelId, channel.Id)
 							common.SysLog(fmt.Sprintf("[Asset] request locked to channel %d (group=%s, model=%s, user=%d)",
 								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 						} else if playgroundChannelId > 0 {
@@ -231,6 +232,7 @@ func Distribute() func(c *gin.Context) {
 								}))
 								return
 							}
+							common.SetContextKey(c, constant.ContextKeyRequestPinnedChannelId, channel.Id)
 							common.SysLog(fmt.Sprintf("[Playground] request pinned to channel %d (group=%s, model=%s, user=%d)",
 								channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 						}
@@ -248,6 +250,7 @@ func Distribute() func(c *gin.Context) {
 						}))
 						return
 					}
+					common.SetContextKey(c, constant.ContextKeyRequestPinnedChannelId, channel.Id)
 					common.SysLog(fmt.Sprintf("[Playground] request pinned to channel %d (group=%s, model=%s, user=%d)",
 						channel.Id, selectGroup, modelRequest.Model, c.GetInt("id")))
 				}

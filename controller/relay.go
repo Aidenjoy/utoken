@@ -346,6 +346,22 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			AutoBan: &autoBanInt,
 		}, nil
 	}
+	// 体验页指定渠道 / 素材锁定渠道：重试只能留在原渠道换 Key 再试，
+	// 不得回落到优先级选路，否则任务会静默落到其他渠道，
+	// 使用日志里的渠道与用户选择不再一致。
+	if pinnedId := common.GetContextKeyInt(c, constant.ContextKeyRequestPinnedChannelId); pinnedId > 0 {
+		channel, err := model.CacheGetChannel(pinnedId)
+		if err != nil {
+			channel, err = model.GetChannelById(pinnedId, true)
+		}
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
+		if setupErr := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName); setupErr != nil {
+			return nil, setupErr
+		}
+		return channel, nil
+	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
