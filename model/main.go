@@ -275,6 +275,10 @@ func migrateDB() error {
 	if err := EnsureTokenArkColumnsSQLite(); err != nil {
 		return err
 	}
+	// SQLite 存量 user_subscriptions 去掉遗留 float 默认值，规避 AutoMigrate 重建 decimal 列崩溃
+	if err := normalizeUserSubscriptionFloatDefaultsSQLite(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -817,6 +821,8 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`title`" + ` varchar(128) NOT NULL,
 ` + "`subtitle`" + ` varchar(255) DEFAULT '',
 ` + "`price_amount`" + ` decimal(10,6) NOT NULL,
+` + "`points_ratio`" + ` decimal(18,8) NOT NULL DEFAULT 0,
+` + "`gross_profit_percent`" + ` decimal(5,2) DEFAULT 0,
 ` + "`currency`" + ` varchar(8) NOT NULL DEFAULT 'USD',
 ` + "`duration_unit`" + ` varchar(16) NOT NULL DEFAULT 'month',
 ` + "`duration_value`" + ` integer NOT NULL DEFAULT 1,
@@ -854,6 +860,8 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "title", DDL: "`title` varchar(128) NOT NULL"},
 		{Name: "subtitle", DDL: "`subtitle` varchar(255) DEFAULT ''"},
 		{Name: "price_amount", DDL: "`price_amount` decimal(10,6) NOT NULL"},
+		{Name: "points_ratio", DDL: "`points_ratio` decimal(18,8) NOT NULL DEFAULT 0"},
+		{Name: "gross_profit_percent", DDL: "`gross_profit_percent` decimal(5,2) DEFAULT 0"},
 		{Name: "currency", DDL: "`currency` varchar(8) NOT NULL DEFAULT 'USD'"},
 		{Name: "duration_unit", DDL: "`duration_unit` varchar(16) NOT NULL DEFAULT 'month'"},
 		{Name: "duration_value", DDL: "`duration_value` integer NOT NULL DEFAULT 1"},
@@ -923,6 +931,67 @@ func EnsureTokenArkColumnsSQLite() error {
 		}
 	}
 	return nil
+}
+
+// normalizeUserSubscriptionFloatDefaultsSQLite 清理存量 user_subscriptions 表中
+// points_ratio / gross_profit_percent 的遗留 DEFAULT 0.000000。旧版模型带 default:0
+// 标签，GORM 以 %.6f 内联 float 默认值，SQLite 把 0.000000 写进表 DDL；标签移除后
+// AutoMigrate 会试图 AlterColumn 去掉默认值，而 glebarez 驱动的列替换正则遇到
+// decimal(18,8) 的逗号会截断出未闭合括号，启动直接 FATAL。SQLite 无 ALTER COLUMN，
+// 故在 AutoMigrate 之前整表重建去掉默认值，保留数据与索引；幂等：DDL 不含
+// DEFAULT 0.000000 时跳过。MySQL/PG 的 AlterColumn 原生可用，无需此补偿。
+func normalizeUserSubscriptionFloatDefaultsSQLite() error {
+	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		return nil
+	}
+	tableName := "user_subscriptions"
+	if !DB.Migrator().HasTable(tableName) {
+		return nil
+	}
+	var rawDDL string
+	if err := DB.Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", tableName).Row().Scan(&rawDDL); err != nil {
+		return err
+	}
+	if !strings.Contains(rawDDL, "DEFAULT 0.000000") {
+		return nil
+	}
+	var cols []struct {
+		Name string `gorm:"column:name"`
+	}
+	if err := DB.Raw("PRAGMA table_info(`" + tableName + "`)").Scan(&cols).Error; err != nil {
+		return err
+	}
+	quoted := make([]string, 0, len(cols))
+	for _, c := range cols {
+		quoted = append(quoted, "`"+c.Name+"`")
+	}
+	var indexes []string
+	if err := DB.Raw("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL", tableName).Scan(&indexes).Error; err != nil {
+		return err
+	}
+	newDDL := strings.ReplaceAll(rawDDL, " DEFAULT 0.000000", "")
+	legacy := tableName + "__legacy"
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("ALTER TABLE `" + tableName + "` RENAME TO `" + legacy + "`").Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(newDDL).Error; err != nil {
+			return err
+		}
+		colList := strings.Join(quoted, ",")
+		if err := tx.Exec("INSERT INTO `" + tableName + "` (" + colList + ") SELECT " + colList + " FROM `" + legacy + "`").Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DROP TABLE `" + legacy + "`").Error; err != nil {
+			return err
+		}
+		for _, idx := range indexes {
+			if err := tx.Exec(idx).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text
