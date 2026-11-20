@@ -106,8 +106,11 @@ func TestIsVideoSubmitPath(t *testing.T) {
 	assert.True(t, isVideoSubmitPath("/pg/video/generations"))
 	assert.True(t, isVideoSubmitPath("/v1/video/generations"))
 	assert.True(t, isVideoSubmitPath("/api/v3/contents/generations/tasks"))
+	assert.True(t, isVideoSubmitPath("/api/v1/services/aigc/video-generation/video-synthesis"))
 	// 前缀匹配：GET 查询路径同前缀，但 Distribute 中 shouldSelectChannel=false 不会进入锁定逻辑
 	assert.True(t, isVideoSubmitPath("/v1/video/generations/task-123"))
+	// 万相查询路径独立前缀，不属于提交路径
+	assert.False(t, isVideoSubmitPath("/api/v1/tasks/task-123"))
 	assert.False(t, isVideoSubmitPath("/pg/chat/completions"))
 	assert.False(t, isVideoSubmitPath("/v1/chat/completions"))
 }

@@ -88,7 +88,7 @@ func (ctx *videoRouteContext) matchChannel(modelName string, video4K bool) *mode
 			}
 			seen[channelId] = true
 			channel, err := model.GetChannelById(channelId, true)
-			if err != nil || channel.Status != common.ChannelStatusEnabled || channel.GetOtherSettings().AssetUploadProtocol == "" {
+			if err != nil || channel.Status != common.ChannelStatusEnabled || !videoKeyBindableChannel(channel) {
 				continue
 			}
 			config, ok := videoRouteConfig(channel, modelName)
@@ -160,7 +160,7 @@ func ValidateVideoTokenChannel(token *model.Token, channelID int) error {
 	if token == nil || token.KeyType != model.TokenKeyTypeVideo || channelID <= 0 {
 		return ValidateTokenBindChannel(channelID)
 	}
-	channel, err := resolveBoundAssetChannel(channelID)
+	channel, err := resolveBoundVideoChannel(channelID)
 	if err != nil {
 		return err
 	}

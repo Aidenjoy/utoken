@@ -348,8 +348,8 @@ func TestResolveAssetLockedChannelIdResolutionFallback(t *testing.T) {
 	})
 }
 
-// TestExtractRequestedResolution 选路的分辨率输入同时覆盖官方协议顶层 resolution
-// 与统一视频协议 metadata.resolution，且解析后请求体仍可完整重读。
+// TestExtractRequestedResolution 选路的分辨率输入覆盖官方协议顶层 resolution、
+// 万相官方 parameters.resolution 与统一视频协议 metadata.resolution，且解析后请求体仍可完整重读。
 func TestExtractRequestedResolution(t *testing.T) {
 	tests := []struct {
 		name string
@@ -359,6 +359,9 @@ func TestExtractRequestedResolution(t *testing.T) {
 		{"top level trimmed and lowercased", `{"resolution":" 4K "}`, "4k"},
 		{"metadata fallback", `{"metadata":{"resolution":" 1080p "}}`, "1080p"},
 		{"top level wins over metadata", `{"resolution":"4k","metadata":{"resolution":"720p"}}`, "4k"},
+		{"wan parameters resolution", `{"parameters":{"resolution":" 4K "}}`, "4k"},
+		{"wan parameters 1080p", `{"parameters":{"resolution":"1080P"}}`, "1080p"},
+		{"top level wins over parameters", `{"resolution":"720p","parameters":{"resolution":"4k"}}`, "720p"},
 		{"absent means upstream default", `{"duration":4}`, ""},
 		{"non json body", `resolution=4k`, ""},
 	}
