@@ -339,10 +339,10 @@ export function useVideoHandler(config: VideoConfig) {
   )
 
   const submitVideo = useCallback(
-    async (prompt: string) => {
+    async (prompt: string): Promise<boolean> => {
       if (!config.model) {
         toast.error(t('Please select a model first'))
-        return
+        return false
       }
 
       // Mode-specific validation
@@ -350,7 +350,7 @@ export function useVideoHandler(config: VideoConfig) {
         // Text-to-video: prompt is required
         if (!prompt.trim()) {
           toast.error(t('Please enter a prompt'))
-          return
+          return false
         }
       } else if (config.mode === 'reference') {
         // Reference mode: must have at least 1 image or video (not audio-only)
@@ -359,7 +359,7 @@ export function useVideoHandler(config: VideoConfig) {
         )
         if (!hasImageOrVideo) {
           toast.error(t('Reference mode requires at least one image or video'))
-          return
+          return false
         }
         // Ensure all media items are uploaded
         const pendingUploads = config.mediaItems.filter(
@@ -371,7 +371,7 @@ export function useVideoHandler(config: VideoConfig) {
         )
         if (pendingUploads.length > 0) {
           toast.error(t('Please wait for all media uploads to complete'))
-          return
+          return false
         }
       } else if (
         config.mode === 'first_last_frame' ||
@@ -380,14 +380,14 @@ export function useVideoHandler(config: VideoConfig) {
         // First/last frame and first frame modes: must have at least 1 image
         if (config.images.length === 0) {
           toast.error(t('Please upload at least one image'))
-          return
+          return false
         }
       }
 
       // Check for ongoing uploads
       if (Object.keys(uploadProgress).length > 0) {
         toast.error(t('Please wait for all media uploads to complete'))
-        return
+        return false
       }
 
       const payload = buildSubmitPayload(config, prompt)
@@ -422,7 +422,7 @@ export function useVideoHandler(config: VideoConfig) {
         if (!taskId) {
           toast.error(t('Failed to submit video task'))
           setIsGenerating(false)
-          return
+          return false
         }
 
         const newTask: VideoTask = {
@@ -451,6 +451,7 @@ export function useVideoHandler(config: VideoConfig) {
         pollTimerRef.current = setTimeout(() => {
           pollTask(taskId)
         }, VIDEO_POLL_INTERVAL_MS)
+        return true
       } catch (error: unknown) {
         setIsGenerating(false)
         // Extract the actual error message from the backend response.
@@ -465,6 +466,7 @@ export function useVideoHandler(config: VideoConfig) {
         toast.error(t('Failed to submit video task'), {
           description: message,
         })
+        return false
       }
     },
     [config, t, pollTask, persistTasks]

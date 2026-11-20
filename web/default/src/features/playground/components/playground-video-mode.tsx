@@ -90,6 +90,21 @@ export function PlaygroundVideoMode({
     uploadProgress,
   } = useVideoHandler(videoConfig)
 
+  // 提交成功后清空参考素材与首尾帧图片：任务已携带这些素材，
+  // 留在输入区只会迫使下次生成前手动删除。失败时保留以便重试。
+  const handleSubmit = useCallback(
+    async (prompt: string) => {
+      const submitted = await submitVideo(prompt)
+      if (!submitted) return
+      setVideoConfig((prev) => {
+        const next = { ...prev, images: [], mediaItems: [] }
+        saveVideoConfig(next)
+        return next
+      })
+    },
+    [submitVideo]
+  )
+
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
@@ -110,7 +125,7 @@ export function PlaygroundVideoMode({
           onGroupChange={onGroupChange}
           onModelChange={onModelChange}
           onStop={stopPolling}
-          onSubmit={submitVideo}
+          onSubmit={handleSubmit}
           onUploadMediaItem={uploadMediaItem}
           uploadProgress={uploadProgress}
           showChannelSelector={showChannelSelector}
