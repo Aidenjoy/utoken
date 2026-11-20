@@ -975,6 +975,24 @@ export function useCommonLogsColumns(scope: LogsScope): ColumnDef<UsageLog>[] {
     },
 
     {
+      id: 'video_seconds',
+      header: t('Seconds'),
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isDisplayableLogType(log.type)) return null
+        // 上游返回的视频计费秒数（wan/seedance）；非视频行/历史行缺失时显示 '-'。
+        const seconds = parseLogOther(log.other)?.video_seconds
+        if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) {
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
+        }
+        return (
+          <span className='font-mono text-xs tabular-nums'>{seconds}s</span>
+        )
+      },
+      size: 80,
+    },
+
+    {
       id: 'quota',
       accessorFn: (log) => getLogCharges(log).walletQuota,
       header: t('Cost'),

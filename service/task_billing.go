@@ -213,6 +213,10 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	if props.RequestURL != "" {
 		other["request_url"] = props.RequestURL
 	}
+	// 上游返回的视频计费秒数（wan/seedance）：结算/退款行与预扣回填行保持一致展示。
+	if seconds := task.PrivateData.VideoSeconds; seconds > 0 {
+		other["video_seconds"] = seconds
+	}
 	// token 费率缩放前的原始用量与费率是超管对账数据：嵌套在 admin_info 下，
 	// model.formatUserLogs 会对非管理员视图剥离整个对象，列天然超管专属。
 	if scale := task.TokenRateScale; scale != nil {

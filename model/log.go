@@ -805,6 +805,22 @@ func mergeTokenRateScaleIntoOther(otherStr string, scale *TaskTokenRateScale) st
 	return string(data)
 }
 
+// mergeVideoSecondsIntoOther 把上游返回的视频计费秒数写入日志 other 顶层的
+// video_seconds（用户可见；不能用 seconds/duration，那两个键是提交时的倍率快照，
+// 在 userHiddenBillingKeys 中对普通用户隐藏）。合并失败时返回原串，绝不阻断回填。
+func mergeVideoSecondsIntoOther(otherStr string, seconds float64) string {
+	other := map[string]interface{}{}
+	if strings.TrimSpace(otherStr) != "" {
+		_ = common.UnmarshalJsonStr(otherStr, &other)
+	}
+	other["video_seconds"] = seconds
+	data, err := common.Marshal(other)
+	if err != nil {
+		return otherStr
+	}
+	return string(data)
+}
+
 // UpdateTaskConsumeLogUsage 回填任务预扣消费日志的真实 token 用量与耗时。
 // 异步任务提交时预扣消费日志 tokens=0，结算差额另起新行，原行永远显示 0；
 // 差额为 0（预扣准确）时甚至没有差额行，tokens 完全丢失，用户在对账时看不到
@@ -814,7 +830,9 @@ func mergeTokenRateScaleIntoOther(otherStr string, scale *TaskTokenRateScale) st
 // 走回退口径）：预扣回填行是上游对账唯一计入行，必须携带真实值。
 // scale 非空时同时把缩放快照合并进该行 other.admin_info.token_rate_scale，使超管
 // 在使用日志的消耗行（而非仅结算行）也能看到「原始 tokens / 费率」。
-func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion int, scale *TaskTokenRateScale) (int64, error) {
+// videoSeconds > 0 时把上游返回的视频计费秒数写入 other.video_seconds（wan 按秒计费
+// 时 tokens 为 0，秒数是唯一用量展示）。
+func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, useTime, upstreamPrompt, upstreamCompletion int, videoSeconds float64, scale *TaskTokenRateScale) (int64, error) {
 	if taskID == "" {
 		return 0, nil
 	}
@@ -836,8 +854,15 @@ func UpdateTaskConsumeLogUsage(taskID string, promptTokens, completionTokens, us
 		"upstream_prompt_tokens":     upstreamPrompt,
 		"upstream_completion_tokens": upstreamCompletion,
 	}
-	if scale != nil {
-		updates["other"] = mergeTokenRateScaleIntoOther(pre.Other, scale)
+	if scale != nil || videoSeconds > 0 {
+		otherStr := pre.Other
+		if scale != nil {
+			otherStr = mergeTokenRateScaleIntoOther(otherStr, scale)
+		}
+		if videoSeconds > 0 {
+			otherStr = mergeVideoSecondsIntoOther(otherStr, videoSeconds)
+		}
+		updates["other"] = otherStr
 	}
 	res := LOG_DB.Model(&Log{}).Where("id = ?", pre.Id).Updates(updates)
 	return res.RowsAffected, res.Error
