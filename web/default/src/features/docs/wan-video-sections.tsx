@@ -41,13 +41,6 @@ export function buildWanVideoSections(
               )}
             />
           </P>
-          <Note>
-            <DocText
-              text={t(
-                'The required `X-DashScope-Async: enable` header is added automatically when forwarding upstream; sending it from the client (as in the official examples) also works.'
-              )}
-            />
-          </Note>
         </>
       ),
     },
@@ -149,26 +142,6 @@ curl ${tasksUrl}/{task_id} \\
                 'Task status flow: `PENDING` → `RUNNING` → `SUCCEEDED` / `FAILED` / `CANCELED` / `UNKNOWN`. Failed tasks include `code` and `message` describing the failure reason.'
               )}
             />
-          </Note>
-        </>
-      ),
-    },
-    {
-      id: 'wan-billing',
-      title: t('Billing Notes'),
-      body: (
-        <>
-          <P>
-            <DocText
-              text={t(
-                'Wan video models are billed per second by resolution tier: an estimated amount is pre-deducted at submission, and on completion the fee is settled against the actual upstream duration and resolution — overcharges are refunded and undercharges supplemented.'
-              )}
-            />
-          </P>
-          <Note>
-            {t(
-              'When duration is -1 or omitted, the pre-deduction estimates 5 seconds; the final fee always follows the actual generated duration.'
-            )}
           </Note>
         </>
       ),
