@@ -56,6 +56,14 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
+		desktopAuth := apiRouter.Group("/desktop-auth")
+		desktopAuth.GET("/authorize", controller.DesktopAuthorize)
+		desktopAuth.POST("/authorize", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DesktopAuthorizeDecision)
+		desktopAuth.POST("/token", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DesktopExchange)
+		desktopAuth.GET("/me", controller.DesktopProfile)
+		desktopAuth.POST("/session", middleware.CriticalRateLimit(), controller.DesktopCreateDashboardSession)
+		desktopAuth.POST("/revoke", middleware.CriticalRateLimit(), controller.DesktopRevoke)
+
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", anonymousRequestBodyLimit, controller.WaffoWebhook)
@@ -256,6 +264,7 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(middleware.AdminAuth(), middleware.RequirePermission(authz.MenuSubscriptions))
 		{
+			subscriptionAdminRoute.GET("/billing", controller.GetSubscriptionBilling)
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
@@ -410,6 +419,7 @@ func SetApiRouter(router *gin.Engine) {
 
 		billingRoute := apiRouter.Group("/billing")
 		billingRoute.Use(middleware.AdminAuth())
+		billingRoute.GET("/subscription", middleware.RequirePermission(authz.MenuUserBilling), controller.GetSubscriptionBilling)
 		{
 			userBillingRoute := billingRoute.Group("/", middleware.RequirePermission(authz.MenuUserBilling))
 			userBillingRoute.GET("/recharge", controller.GetBillingRecharge)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/common"
 
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -37,6 +38,9 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
 	if relayInfo.Billing != nil {
 		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
+		if relayInfo.BillingSource == BillingSourceSubscription && relayInfo.SubscriptionGrossProfitPercent > 0 {
+			logger.LogInfo(ctx, fmt.Sprintf("subscription markup settlement subscription=%d gross_profit_percent=%.2f charged_quota=%d preconsumed=%d", relayInfo.SubscriptionId, relayInfo.SubscriptionGrossProfitPercent, actualQuota, preConsumed))
+		}
 		delta := actualQuota - preConsumed
 
 		if delta > 0 {
@@ -83,4 +87,16 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 		return PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true)
 	}
 	return nil
+}
+
+// ApplySubscriptionMarkup 将本次基础消耗换成订阅实际消耗，供日志、统计和结算共同使用。
+// 钱包、企业、退款不经过加价；退款使用已经扣过的原额，禁止再次乘倍率。
+func ApplySubscriptionMarkup(info *relaycommon.RelayInfo, quota int) int {
+	if info == nil || info.BillingSource != BillingSourceSubscription {
+		return quota
+	}
+	info.SubscriptionQuotaBeforeMarkup = quota
+	charged, clamp := common.SubscriptionQuotaWithMarkup(quota, info.SubscriptionGrossProfitPercent, info.SubscriptionPointsRatio)
+	noteQuotaClamp(info, clamp)
+	return charged
 }

@@ -45,6 +45,7 @@ import { Route as AuthenticatedTokenRatesIndexRouteImport } from './routes/_auth
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
+import { Route as AuthenticatedSubscriptionBillingIndexRouteImport } from './routes/_authenticated/subscription-billing/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedPromptsIndexRouteImport } from './routes/_authenticated/prompts/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
@@ -292,6 +293,12 @@ const AuthenticatedSubscriptionsIndexRoute =
   AuthenticatedSubscriptionsIndexRouteImport.update({
     id: '/subscriptions/',
     path: '/subscriptions/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSubscriptionBillingIndexRoute =
+  AuthenticatedSubscriptionBillingIndexRouteImport.update({
+    id: '/subscription-billing/',
+    path: '/subscription-billing/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedRedemptionCodesIndexRoute =
@@ -737,6 +744,7 @@ export interface FileRoutesByFullPath {
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/prompts/': typeof AuthenticatedPromptsIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/subscription-billing/': typeof AuthenticatedSubscriptionBillingIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -834,6 +842,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/prompts': typeof AuthenticatedPromptsIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/subscription-billing': typeof AuthenticatedSubscriptionBillingIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
@@ -935,6 +944,7 @@ export interface FileRoutesById {
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/prompts/': typeof AuthenticatedPromptsIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/_authenticated/subscription-billing/': typeof AuthenticatedSubscriptionBillingIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -1036,6 +1046,7 @@ export interface FileRouteTypes {
     | '/profile/'
     | '/prompts/'
     | '/redemption-codes/'
+    | '/subscription-billing/'
     | '/subscriptions/'
     | '/system-info/'
     | '/system-settings/'
@@ -1133,6 +1144,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/prompts'
     | '/redemption-codes'
+    | '/subscription-billing'
     | '/subscriptions'
     | '/system-info'
     | '/system-settings'
@@ -1233,6 +1245,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile/'
     | '/_authenticated/prompts/'
     | '/_authenticated/redemption-codes/'
+    | '/_authenticated/subscription-billing/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-info/'
     | '/_authenticated/system-settings/'
@@ -1536,6 +1549,13 @@ declare module '@tanstack/react-router' {
       path: '/subscriptions'
       fullPath: '/subscriptions/'
       preLoaderRoute: typeof AuthenticatedSubscriptionsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/subscription-billing/': {
+      id: '/_authenticated/subscription-billing/'
+      path: '/subscription-billing'
+      fullPath: '/subscription-billing/'
+      preLoaderRoute: typeof AuthenticatedSubscriptionBillingIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/redemption-codes/': {
@@ -2148,6 +2168,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedPromptsIndexRoute: typeof AuthenticatedPromptsIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
+  AuthenticatedSubscriptionBillingIndexRoute: typeof AuthenticatedSubscriptionBillingIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
   AuthenticatedTokenRatesIndexRoute: typeof AuthenticatedTokenRatesIndexRoute
@@ -2209,6 +2230,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPromptsIndexRoute: AuthenticatedPromptsIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
+  AuthenticatedSubscriptionBillingIndexRoute:
+    AuthenticatedSubscriptionBillingIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,
   AuthenticatedTokenRatesIndexRoute: AuthenticatedTokenRatesIndexRoute,

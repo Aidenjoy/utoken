@@ -205,9 +205,11 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
-	Key            string `json:"key,omitempty"`
-	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
-	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
+	SubscriptionPointsRatio        float64 `json:"subscription_points_ratio,omitempty"`
+	SubscriptionGrossProfitPercent float64 `json:"subscription_gross_profit_percent,omitempty"`
+	Key                            string  `json:"key,omitempty"`
+	UpstreamTaskID                 string  `json:"upstream_task_id,omitempty"` // 上游真实 task ID
+	ResultURL                      string  `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	// DeletedAt 是公开协议删除标记；保留本地任务行用于计费与审计，但不再对外返回。
 	DeletedAt int64 `json:"deleted_at,omitempty"`
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）

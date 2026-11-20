@@ -108,6 +108,9 @@ export interface ChannelAffinityInfo {
 
 export interface LogOtherData {
   admin_info?: {
+    subscription_base_quota?: number
+    subscription_points_ratio?: number
+    subscription_gross_profit_percent?: number
     is_multi_key?: boolean
     multi_key_index?: number
     use_channel?: number[]
@@ -265,6 +268,7 @@ export interface LogOtherData {
  * Log statistics data
  */
 export interface LogStatistics {
+  subscription_quota: number
   quota: number
   rpm: number
   tpm: number

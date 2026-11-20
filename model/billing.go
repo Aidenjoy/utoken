@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"regexp"
 	"sort"
@@ -10,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -648,6 +650,10 @@ func computeBillingBalance(userScope, orgScope BillingScope) (int, error) {
 // 企业维度通过成员关系展开为用户集合参与筛选；userOrg/orgNames 则按返回行
 // 的用户当前归属回填，供前端展示企业列。
 func GetBillingConsumption(userScope, orgScope BillingScope, startTimestamp, endTimestamp int64, pageInfo *common.PageInfo) (logs []*Log, total int64, stat BillingConsumptionStat, userOrg map[int]int, orgNames map[int]string, err error) {
+	// Merging two databases requires sorted prefixes. Bound deep pagination before allocating them.
+	if pageInfo.Page < 1 || pageInfo.PageSize < 1 || pageInfo.Page > billingConsumptionExportCap/pageInfo.PageSize {
+		return nil, 0, stat, nil, nil, errors.New("too many records; narrow the billing filters")
+	}
 	userOrg = make(map[int]int)
 	orgNames = make(map[int]string)
 	constrained, mergedIds, mergeErr := billingConsumptionUserIds(userScope, orgScope)
@@ -656,6 +662,8 @@ func GetBillingConsumption(userScope, orgScope BillingScope, startTimestamp, end
 	}
 
 	tx := LOG_DB.Model(&Log{}).Where("type IN ?", []int{LogTypeConsume, LogTypeRefund})
+	// Point spending belongs to the subscription ledger, never the monetary ledger.
+	tx = tx.Where("subscription_quota = 0 AND replace(COALESCE(other, ''), ' ', '') NOT LIKE ?", `%"billing_source":"subscription"%`)
 	if constrained {
 		if len(mergedIds) == 0 {
 			return nil, 0, stat, userOrg, orgNames, nil
@@ -703,9 +711,36 @@ func GetBillingConsumption(userScope, orgScope BillingScope, startTimestamp, end
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	if err = tx.Order(order).Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&logs).Error; err != nil {
+	if err = tx.Order(order).Limit(pageInfo.GetEndIdx()).Find(&logs).Error; err != nil {
 		return nil, 0, stat, nil, nil, err
 	}
+
+	// Merge immutable successful orders at read time: no extra debit or payment callback side effect.
+	purchases, purchaseCount, purchaseQuota, purchaseErr := billingSubscriptionPurchases(constrained, mergedIds, startTimestamp, endTimestamp, pageInfo.GetEndIdx())
+	if purchaseErr != nil {
+		return nil, 0, stat, nil, nil, purchaseErr
+	}
+	total += purchaseCount
+	stat.ConsumeQuota += purchaseQuota
+	logs = append(logs, purchases...)
+	sort.SliceStable(logs, func(i, j int) bool {
+		if logs[i].CreatedAt != logs[j].CreatedAt {
+			return logs[i].CreatedAt > logs[j].CreatedAt
+		}
+		if logs[i].Type == LogTypeSubscriptionPurchase && logs[j].Type == LogTypeSubscriptionPurchase {
+			return logs[i].Id < logs[j].Id
+		}
+		return logs[i].Id > logs[j].Id
+	})
+	start := pageInfo.GetStartIdx()
+	if start > len(logs) {
+		start = len(logs)
+	}
+	end := start + pageInfo.GetPageSize()
+	if end > len(logs) {
+		end = len(logs)
+	}
+	logs = logs[start:end]
 
 	// 归属列以用户当前所属企业为准，所以不论按用户还是按企业筛选，
 	// 都按返回行的 user_id 回填一次映射（展示名优先 display_name）。
@@ -776,4 +811,96 @@ func billingConsumptionUserIds(userScope, orgScope BillingScope) (bool, []int, e
 		}
 	}
 	return true, merged, nil
+}
+
+// LogTypeSubscriptionPurchase is a virtual billing row, never persisted as a usage log.
+const LogTypeSubscriptionPurchase = 100
+
+// billingSubscriptionPurchases returns a sorted prefix of successful orders and their full-range sum.
+// Orders live in the main database; usage logs may live in a separate database.
+func billingSubscriptionPurchases(constrained bool, userIds []int, start, end int64, limit int) ([]*Log, int64, int64, error) {
+	tx := DB.Model(&SubscriptionOrder{}).Where("status = ?", common.TopUpStatusSuccess)
+	if constrained {
+		tx = tx.Where("user_id IN ?", userIds)
+	}
+	if start > 0 {
+		tx = tx.Where("complete_time >= ?", start)
+	}
+	if end > 0 {
+		tx = tx.Where("complete_time <= ?", end)
+	}
+	var count int64
+	if err := tx.Count(&count).Error; err != nil {
+		return nil, 0, 0, err
+	}
+	var money float64
+	if err := tx.Session(&gorm.Session{}).Select("COALESCE(SUM(money), 0)").Scan(&money).Error; err != nil {
+		return nil, 0, 0, err
+	}
+	var orders []SubscriptionOrder
+	if err := tx.Order("complete_time desc, id desc").Limit(limit).Find(&orders).Error; err != nil {
+		return nil, 0, 0, err
+	}
+	userIds = nil
+	planIds := []int{}
+	for _, o := range orders {
+		userIds = append(userIds, o.UserId)
+		planIds = append(planIds, o.PlanId)
+	}
+	var users []User
+	var plans []SubscriptionPlan
+	if len(orders) > 0 {
+		if err := DB.Select("id, username").Where("id IN ?", userIds).Find(&users).Error; err != nil {
+			return nil, 0, 0, err
+		}
+		if err := DB.Select("id, title").Where("id IN ?", planIds).Find(&plans).Error; err != nil {
+			return nil, 0, 0, err
+		}
+	}
+	names := map[int]string{}
+	titles := map[int]string{}
+	for _, u := range users {
+		names[u.Id] = u.Username
+	}
+	for _, p := range plans {
+		titles[p.Id] = p.Title
+	}
+	rows := make([]*Log, 0, len(orders))
+	for _, o := range orders {
+		paid := o.Money
+		title := titles[o.PlanId]
+		if title == "" {
+			title = fmt.Sprintf("#%d", o.PlanId)
+		}
+		rows = append(rows, &Log{Id: -o.Id, UserId: o.UserId, Username: names[o.UserId], CreatedAt: o.CompleteTime,
+			Type: LogTypeSubscriptionPurchase, ModelName: title, RequestId: o.TradeNo,
+			Quota: subscriptionPurchaseDisplayQuota(paid), BillingPurchaseAmount: &paid, BillingPaymentMethod: o.PaymentMethod})
+	}
+	// Reporting totals are int64 and may exceed a single request's int32 quota limit.
+	// Validate before Int64 conversion instead of truncating a multi-order total at that limit.
+	rate := operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate)
+	if math.IsNaN(money) || math.IsInf(money, 0) || math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 || common.QuotaPerUnit <= 0 {
+		return nil, 0, 0, errors.New("invalid subscription billing currency configuration")
+	}
+	quotaTotal := decimal.NewFromFloat(money).Div(decimal.NewFromFloat(rate)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Round(0).BigInt()
+	if !quotaTotal.IsInt64() {
+		return nil, 0, 0, errors.New("subscription billing total exceeds reporting range")
+	}
+	return rows, count, quotaTotal.Int64(), nil
+}
+
+// subscriptionPurchaseDisplayQuota converts a native-currency order amount solely for monetary reporting.
+// It does not grant points, debit a wallet, or update used_quota.
+func subscriptionPurchaseDisplayQuota(money float64) int {
+	rate := 1.0
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
+		rate = operation_setting.USDExchangeRate
+	case operation_setting.QuotaDisplayTypeCustom:
+		rate = operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+	}
+	if rate <= 0 {
+		rate = 1
+	}
+	return common.QuotaRound(money / rate * common.QuotaPerUnit)
 }

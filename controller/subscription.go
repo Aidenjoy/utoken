@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,17 @@ type SubscriptionPlanDTO struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
+// PublicSubscriptionPlan 复用公开套餐信息，但不下发配置专用的点数比例。
+// 同名外层字段屏蔽嵌入模型字段；nil 配合 omitempty 保证 JSON 中完全没有该键。
+type PublicSubscriptionPlan struct {
+	model.SubscriptionPlan
+	PointsRatio *float64 `json:"points_ratio,omitempty"`
+}
+
+type PublicSubscriptionPlanDTO struct {
+	Plan PublicSubscriptionPlan `json:"plan"`
+}
+
 type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
 }
@@ -31,7 +43,7 @@ type SubscriptionBalancePayRequest struct {
 
 func GetSubscriptionPlans(c *gin.Context) {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
-		common.ApiSuccess(c, []SubscriptionPlanDTO{})
+		common.ApiSuccess(c, []PublicSubscriptionPlanDTO{})
 		return
 	}
 
@@ -40,11 +52,11 @@ func GetSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	result := make([]SubscriptionPlanDTO, 0, len(plans))
+	result := make([]PublicSubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
 		p.NormalizeDefaults()
-		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+		result = append(result, PublicSubscriptionPlanDTO{
+			Plan: PublicSubscriptionPlan{SubscriptionPlan: p},
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -187,6 +199,16 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	if math.IsNaN(req.Plan.GrossProfitPercent) || math.IsInf(req.Plan.GrossProfitPercent, 0) || req.Plan.GrossProfitPercent < 0 || req.Plan.GrossProfitPercent > 100 {
+		common.ApiErrorMsg(c, "预计毛利润必须在0到100之间")
+		return
+	}
+	// 与 decimal(5,2) 存储精度一致，避免购买快照与表单回显出现不同倍率。
+	req.Plan.GrossProfitPercent = math.Round(req.Plan.GrossProfitPercent*100) / 100
+	if err := req.Plan.CalculatePointsQuota(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -261,6 +283,16 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	if math.IsNaN(req.Plan.GrossProfitPercent) || math.IsInf(req.Plan.GrossProfitPercent, 0) || req.Plan.GrossProfitPercent < 0 || req.Plan.GrossProfitPercent > 100 {
+		common.ApiErrorMsg(c, "预计毛利润必须在0到100之间")
+		return
+	}
+	// 与 decimal(5,2) 存储精度一致，避免购买快照与表单回显出现不同倍率。
+	req.Plan.GrossProfitPercent = math.Round(req.Plan.GrossProfitPercent*100) / 100
+	if err := req.Plan.CalculatePointsQuota(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -302,6 +334,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
+			"points_ratio":               req.Plan.PointsRatio,
+			"gross_profit_percent":       req.Plan.GrossProfitPercent,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,

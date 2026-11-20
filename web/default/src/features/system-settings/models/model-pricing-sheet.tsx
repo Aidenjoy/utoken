@@ -67,19 +67,23 @@ import {
   EMPTY_LANE_ENABLED,
   EMPTY_LANE_PRICES,
   SEEDANCE_RESOLUTIONS,
+  WAN_RESOLUTIONS,
   buildPreviewRows,
   createInitialLaneState,
   createModelPricingSchema,
   emptySeedancePrices,
   emptySeedreamPrices,
+  emptyWanPrices,
   hasValue,
   laneConfigs,
   numericDraftRegex,
   parseSeedanceConfig,
   parseSeedreamConfig,
+  parseWanConfig,
   ratioFieldByLane,
   serializeSeedanceConfig,
   serializeSeedreamConfig,
+  serializeWanConfig,
   toNumberOrNull,
   type LaneKey,
   type ModelPricingFormValues,
@@ -88,6 +92,8 @@ import {
   type SeedancePriceForm,
   type SeedanceResolution,
   type SeedreamPriceForm,
+  type WanPriceForm,
+  type WanResolution,
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
 import { formatPricingNumber } from './pricing-format'
@@ -174,6 +180,7 @@ export const ModelPricingEditorPanel = forwardRef<
   const [seedreamPrices, setSeedreamPrices] = useState<SeedreamPriceForm>(
     emptySeedreamPrices()
   )
+  const [wanPrices, setWanPrices] = useState<WanPriceForm>(emptyWanPrices())
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
 
@@ -210,18 +217,21 @@ export const ModelPricingEditorPanel = forwardRef<
       setPricingMode(
         editData.billingMode === 'tiered_expr'
           ? 'tiered_expr'
-          : editData.billingMode === 'seedance'
-            ? 'seedance'
-            : editData.billingMode === 'seedream'
-              ? 'seedream'
-              : editData.price
-                ? 'per-request'
-                : 'per-token'
+          : editData.billingMode === 'wan'
+            ? 'wan'
+            : editData.billingMode === 'seedance'
+              ? 'seedance'
+              : editData.billingMode === 'seedream'
+                ? 'seedream'
+                : editData.price
+                  ? 'per-request'
+                  : 'per-token'
       )
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
       setSeedancePrices(parseSeedanceConfig(editData.seedanceConfig))
       setSeedreamPrices(parseSeedreamConfig(editData.seedreamConfig))
+      setWanPrices(parseWanConfig(editData.wanConfig))
     } else {
       form.reset({
         name: '',
@@ -239,6 +249,7 @@ export const ModelPricingEditorPanel = forwardRef<
       setRequestRuleExpr('')
       setSeedancePrices(emptySeedancePrices())
       setSeedreamPrices(emptySeedreamPrices())
+      setWanPrices(emptyWanPrices())
     }
 
     setPromptPrice(nextLaneState.promptPrice)
@@ -390,6 +401,14 @@ export const ModelPricingEditorPanel = forwardRef<
     []
   )
 
+  const handleWanPriceChange = useCallback(
+    (res: WanResolution, value: string) => {
+      if (!numericDraftRegex.test(value)) return
+      setWanPrices((prev) => ({ ...prev, [res]: value }))
+    },
+    []
+  )
+
   const watchedValues = form.watch()
   const previewRows = useMemo(
     () =>
@@ -403,6 +422,7 @@ export const ModelPricingEditorPanel = forwardRef<
         laneEnabled,
         seedancePrices,
         seedreamPrices,
+        wanPrices,
         t
       ),
     [
@@ -415,6 +435,7 @@ export const ModelPricingEditorPanel = forwardRef<
       seedancePrices,
       seedreamPrices,
       t,
+      wanPrices,
       watchedValues,
     ]
   )
@@ -512,6 +533,13 @@ export const ModelPricingEditorPanel = forwardRef<
         data.requestRuleExpr = requestRuleExpr
       }
 
+      if (pricingMode === 'wan') {
+        data.wanConfig = serializeWanConfig(wanPrices)
+        // 档价即每秒绝对单价，不依赖 ModelPrice/ModelRatio
+        data.price = ''
+        data.ratio = ''
+      }
+
       if (pricingMode === 'seedance') {
         data.seedanceConfig = serializeSeedanceConfig(seedancePrices)
         // 基准价（480p 不含视频）即 ModelRatio，后端据此换算档间倍率。
@@ -527,7 +555,14 @@ export const ModelPricingEditorPanel = forwardRef<
 
       return data
     },
-    [billingExpr, pricingMode, requestRuleExpr, seedancePrices, seedreamPrices]
+    [
+      billingExpr,
+      pricingMode,
+      requestRuleExpr,
+      seedancePrices,
+      seedreamPrices,
+      wanPrices,
+    ]
   )
 
   useImperativeHandle(
@@ -618,7 +653,7 @@ export const ModelPricingEditorPanel = forwardRef<
                   onValueChange={handleModeChange}
                   className='gap-4'
                 >
-                  <TabsList className='grid w-full grid-cols-5'>
+                  <TabsList className='grid w-full grid-cols-6'>
                     <TabsTrigger value='per-token'>
                       {t('Per-token')}
                     </TabsTrigger>
@@ -628,6 +663,7 @@ export const ModelPricingEditorPanel = forwardRef<
                     <TabsTrigger value='tiered_expr'>
                       {t('Expression')}
                     </TabsTrigger>
+                    <TabsTrigger value='wan'>{t('Wan')}</TabsTrigger>
                     <TabsTrigger value='seedance'>{t('Seedance')}</TabsTrigger>
                     <TabsTrigger value='seedream'>{t('Seedream')}</TabsTrigger>
                   </TabsList>
@@ -725,6 +761,53 @@ export const ModelPricingEditorPanel = forwardRef<
                         onBillingExprChange={setBillingExpr}
                         onRequestRuleExprChange={setRequestRuleExpr}
                       />
+                    </FieldGroup>
+                  </TabsContent>
+
+                  <TabsContent value='wan' className='pt-0'>
+                    <FieldGroup className='gap-5'>
+                      <Field>
+                        <FieldLabel>
+                          {t('Per-second resolution pricing')}
+                        </FieldLabel>
+                        <FieldDescription>
+                          {t(
+                            'Price per second of generated video for each resolution. Billing uses the actual video duration reported by the provider.'
+                          )}
+                        </FieldDescription>
+                      </Field>
+                      <div className='grid gap-3'>
+                        {WAN_RESOLUTIONS.map((res) => (
+                          <div
+                            key={res}
+                            className='grid gap-3 rounded-lg border p-3 sm:grid-cols-[64px_1fr] sm:items-center'
+                          >
+                            <span className='text-sm font-medium'>{res}</span>
+                            <InputGroup>
+                              <InputGroupAddon>$</InputGroupAddon>
+                              <InputGroupInput
+                                inputMode='decimal'
+                                placeholder='0'
+                                value={wanPrices[res]}
+                                onChange={(event) =>
+                                  handleWanPriceChange(
+                                    res,
+                                    event.target.value
+                                  )
+                                }
+                              />
+                              <InputGroupAddon align='inline-end'>
+                                {t('per second')}
+                              </InputGroupAddon>
+                            </InputGroup>
+                          </div>
+                        ))}
+                      </div>
+                      <FieldDescription>
+                        {t(
+                          'Resolutions left empty will be rejected with a 400 for this model.'
+                        )}
+                      </FieldDescription>
                     </FieldGroup>
                   </TabsContent>
 

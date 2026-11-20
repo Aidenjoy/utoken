@@ -33,6 +33,7 @@ import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
 import { parseLogOther } from '@/features/usage-logs/lib/format'
 import { toIntlLocale } from '@/i18n/languages'
+import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { formatModelDiscount } from '@/lib/discount'
 import {
   formatLogQuota,
@@ -155,8 +156,9 @@ export function ConsumptionTable({
               header: t('Organization'),
               cell: ({ row }: { row: { original: BillingConsumptionRow } }) => {
                 const orgId = orgOf[String(row.original.user_id)]
-                if (!orgId)
+                if (!orgId) {
                   return <span className='text-muted-foreground'>-</span>
+                }
                 return (
                   <TruncatedCell>
                     {orgNames[String(orgId)] || `#${orgId}`}
@@ -188,6 +190,12 @@ export function ConsumptionTable({
         accessorKey: 'type',
         header: t('Type'),
         cell: ({ row }) => {
+          if (row.original.type === 100)
+            {return (
+              <StatusBadge variant='neutral' copyable={false}>
+                {t('Subscription Purchase')}
+              </StatusBadge>
+            )}
           const isRefund = row.original.type === LOG_TYPE_REFUND
           return (
             <StatusBadge
@@ -209,6 +217,7 @@ export function ConsumptionTable({
           const other = log.other ? parseLogOther(log.other) : null
           // 退款与订阅抵扣不走钱包折扣，原价/折扣两列对它们没有意义。
           if (
+            log.type === 100 ||
             log.type === LOG_TYPE_REFUND ||
             other?.billing_source === 'subscription'
           ) {
@@ -232,6 +241,7 @@ export function ConsumptionTable({
           const log = row.original
           const other = log.other ? parseLogOther(log.other) : null
           if (
+            log.type === 100 ||
             log.type === LOG_TYPE_REFUND ||
             other?.billing_source === 'subscription'
           ) {
@@ -260,7 +270,9 @@ export function ConsumptionTable({
               }
             >
               {quota > 0 ? '-' : '+'}
-              {formatLogQuota(Math.abs(quota))}
+              {row.original.purchase_amount == null
+                ? formatLogQuota(Math.abs(quota))
+                : formatLocalCurrencyAmount(row.original.purchase_amount)}
             </span>
           )
         },
@@ -276,6 +288,11 @@ export function ConsumptionTable({
           </span>
         ),
         size: 140,
+      },
+      {
+        accessorKey: 'payment_method',
+        header: t('Payment Method'),
+        cell: ({ row }) => row.original.payment_method || '—',
       },
       {
         accessorKey: 'request_id',

@@ -59,6 +59,14 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
+	// 支付前先拦截已有订阅；实际开通时还会在事务内再次校验。
+	if active, err := model.HasActiveUserSubscription(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	} else if active {
+		common.ApiErrorMsg(c, "已有有效订阅，请在到期或取消后重新开通")
+		return
+	}
 	user, err := model.GetUserById(userId, false)
 	if err != nil {
 		common.ApiError(c, err)

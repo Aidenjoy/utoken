@@ -37,6 +37,7 @@ import { formatPrice, formatRequestPrice, formatUnitPrice } from '../lib/price'
 import {
   getSeedanceTiers,
   getSeedreamPrices,
+  getWanTiers,
   seedanceTierEnteredPricePer1M,
 } from '../lib/seed-price'
 import type { PricingModel, TokenUnit } from '../types'
@@ -73,6 +74,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const hasCachedPrice = isTokenBased && props.model.cache_ratio != null
   const seedreamPrices = getSeedreamPrices(props.model)
   const seedanceTiers = getSeedanceTiers(props.model)
+  const wanTiers = getWanTiers(props.model)
   const seedanceEntries = seedanceTiers
     ? seedanceTiers
         .map((tier) => ({
@@ -159,6 +161,30 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </span>
       )
     }
+  } else if (wanTiers) {
+    priceSummary = (
+      <>
+        {wanTiers.map((tier) => (
+          <span
+            key={tier.resolution}
+            className='text-muted-foreground whitespace-nowrap'
+          >
+            {tier.resolution}{' '}
+            <span className='text-foreground font-mono font-semibold'>
+              {formatUnitPrice(
+                props.model,
+                tier.pricePerSecond,
+                showRechargePrice,
+                priceRate,
+                usdExchangeRate,
+                props.selectedGroup
+              )}
+            </span>
+            / {t('second')}
+          </span>
+        ))}
+      </>
+    )
   } else if (seedreamPrices) {
     priceSummary = (
       <>
@@ -343,12 +369,22 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 sm:mt-4'>
         <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
           <span className='text-muted-foreground text-xs font-medium'>
-            {seedreamPrices
-              ? t('Per-image pricing')
-              : isTokenBased
-                ? t('Token-based')
-                : t('Per Request')}
+            {wanTiers
+              ? t('Per-second pricing')
+              : seedreamPrices
+                ? t('Per-image pricing')
+                : isTokenBased
+                  ? t('Token-based')
+                  : t('Per Request')}
           </span>
+          {wanTiers && (
+            <StatusBadge
+              label={t('Wan')}
+              variant='orange'
+              copyable={false}
+              size='sm'
+            />
+          )}
           {seedModeLabel && (
             <StatusBadge
               label={seedModeLabel}
@@ -374,7 +410,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               {item}
             </span>
           ))}
-          {!seedreamPrices && (
+          {!seedreamPrices && !wanTiers && (
             <span className='text-muted-foreground/50 text-xs'>
               {tokenUnitLabel}
             </span>

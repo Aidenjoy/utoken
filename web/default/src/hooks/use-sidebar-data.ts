@@ -121,6 +121,7 @@ const ADMIN_MENU_PERMISSION_BY_URL: Record<string, string> = {
   '/cost-calculator': ADMIN_MENU_ACTIONS.COST_CALCULATOR,
   '/redemption-codes': ADMIN_MENU_ACTIONS.REDEMPTION,
   '/subscriptions': ADMIN_MENU_ACTIONS.SUBSCRIPTIONS,
+  '/subscription-billing': ADMIN_MENU_ACTIONS.SUBSCRIPTIONS,
   '/system-info': ADMIN_MENU_ACTIONS.SYSTEM_INFO,
 }
 
@@ -551,6 +552,12 @@ export function useSidebarData(): SidebarData {
           title: t('Redemption Codes'),
           url: '/redemption-codes',
           icon: Ticket,
+          requiredRole: ROLE.ADMIN,
+        },
+        {
+          title: t('Subscription Points Billing'),
+          url: '/subscription-billing',
+          icon: ReceiptText,
           requiredRole: ROLE.ADMIN,
         },
         {

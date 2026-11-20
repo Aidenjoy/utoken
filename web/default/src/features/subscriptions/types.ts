@@ -39,6 +39,8 @@ export const subscriptionPlanSchema = z.object({
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
+  points_ratio: z.number().optional().default(0),
+  gross_profit_percent: z.number().min(0).max(100).optional().default(0),
   upgrade_group: z.string().optional(),
   downgrade_group: z.string().optional(),
   stripe_price_id: z.string().optional(),

@@ -125,3 +125,29 @@ func ApplyModelDiscount(quota int, discount float64) int {
 	}
 	return QuotaRound(float64(quota) * discount)
 }
+
+// SubscriptionQuotaWithMarkup 将原始正额度按套餐加价百分比换算为实际扣费额度。
+// percent=30、pointsRatio=2 表示金额换点后乘 2.6；历史比例 0 按 1 兼容。
+// 零额度不收费，异常比例返回额度上限并记录饱和标记。
+func SubscriptionQuotaWithMarkup(quota int, percent float64, pointsRatios ...float64) (int, *QuotaClamp) {
+	if quota <= 0 {
+		return 0, nil
+	}
+	pointsRatio := 1.0
+	if len(pointsRatios) > 0 && pointsRatios[0] != 0 {
+		pointsRatio = pointsRatios[0]
+	}
+	if math.IsNaN(pointsRatio) || math.IsInf(pointsRatio, 0) || pointsRatio <= 0 || pointsRatio > 1000000 {
+		SysError(fmt.Sprintf("invalid subscription points ratio: %v", pointsRatio))
+		return MaxQuota, &QuotaClamp{Op: "SubscriptionQuotaWithMarkup", Kind: QuotaClampOverflow, Original: pointsRatio, Clamped: MaxQuota}
+	}
+	if math.IsNaN(percent) || math.IsInf(percent, 0) || percent < 0 || percent > 100 {
+		SysError(fmt.Sprintf("invalid subscription gross profit percent: %v", percent))
+		return MaxQuota, &QuotaClamp{Op: "SubscriptionQuotaWithMarkup", Kind: QuotaClampNaN, Original: percent, Clamped: MaxQuota}
+	}
+	if percent == 0 && pointsRatio == 1 {
+		return quota, nil
+	}
+	ratio := decimal.NewFromInt(1).Add(decimal.NewFromFloat(percent).Div(decimal.NewFromInt(100)))
+	return QuotaFromDecimalChecked(decimal.NewFromInt(int64(quota)).Mul(ratio).Mul(decimal.NewFromFloat(pointsRatio)))
+}

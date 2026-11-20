@@ -34,7 +34,10 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { API, showError, showSuccess } from '../../../../helpers';
-import { convertUSDToCurrency } from '../../../../helpers/render';
+import {
+  renderSubscriptionPlanPrice,
+  renderSubscriptionPoints,
+} from '../../../../helpers/render';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
 
@@ -104,7 +107,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
 
   const planOptions = useMemo(() => {
     return (plans || []).map((p) => ({
-      label: `${p?.plan?.title || ''} (${convertUSDToCurrency(
+      label: `${p?.plan?.title || ''} (${renderSubscriptionPlanPrice(
         Number(p?.plan?.price_amount || 0),
         2,
       )})`,
@@ -306,7 +309,9 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
           const used = Number(sub?.amount_used || 0);
           return (
             <Text type={total > 0 ? 'secondary' : 'tertiary'}>
-              {total > 0 ? `${used}/${total}` : t('不限')}
+              {total > 0
+                ? `${renderSubscriptionPoints(used)}/${renderSubscriptionPoints(total)}`
+                : t('不限')}
             </Text>
           );
         },

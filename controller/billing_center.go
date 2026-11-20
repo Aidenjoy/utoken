@@ -253,11 +253,14 @@ func ExportBillingConsumption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	header := []string{"时间", "用户", "企业", "令牌", "模型", "类型", "金额", "输入tokens", "输出tokens", "请求ID"}
+	header := []string{"时间", "用户", "企业", "令牌", "模型", "类型", "金额", "输入tokens", "输出tokens", "请求ID", "支付方式"}
 	rows := make([][]string, 0, len(logs))
 	for _, log := range logs {
 		quota := log.Quota
 		typeText := "消耗"
+		if log.Type == model.LogTypeSubscriptionPurchase {
+			typeText = "购买订阅"
+		}
 		if log.Type == model.LogTypeRefund {
 			quota = -quota
 			typeText = "退款"
@@ -273,11 +276,20 @@ func ExportBillingConsumption(c *gin.Context) {
 			log.TokenName,
 			log.ModelName,
 			typeText,
-			logger.FormatQuota(quota),
+			billingConsumptionAmount(log, quota),
 			strconv.Itoa(log.PromptTokens),
 			strconv.Itoa(log.CompletionTokens),
 			log.RequestId,
+			log.BillingPaymentMethod,
 		})
 	}
 	writeBillingCSV(c, "billing-consumption-"+time.Now().Format("20060102-150405")+".csv", header, rows)
+}
+
+// billingConsumptionAmount renders actual order money without applying currency conversion twice.
+func billingConsumptionAmount(log *model.Log, quota int) string {
+	if log.BillingPurchaseAmount != nil {
+		return logger.FormatLocalCurrency(*log.BillingPurchaseAmount)
+	}
+	return logger.FormatQuota(quota)
 }

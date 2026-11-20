@@ -137,6 +137,8 @@ export interface BillingConsumptionStat {
 }
 
 export interface BillingConsumptionRow {
+  purchase_amount?: number
+  payment_method?: string
   id: number
   created_at: number
   user_id: number

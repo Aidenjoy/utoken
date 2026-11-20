@@ -3,10 +3,12 @@ const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+const { beginDesktopLogin, createDashboardSession } = require('./desktop-auth');
 
 let mainWindow;
 let serverProcess;
 let tray = null;
+let desktopLogin;
 let serverErrorLogs = [];
 const PORT = 3000;
 const DEV_FRONTEND_PORT = 5173; // Vite dev server port
@@ -425,6 +427,49 @@ function createWindow() {
   });
 }
 
+async function loginInSystemBrowser() {
+  if (desktopLogin) return;
+  if (!mainWindow) createWindow();
+  const window = mainWindow;
+  const isDev = process.env.NODE_ENV === 'development';
+  const backendOrigin = 'http://127.0.0.1:' + PORT;
+  const rendererOrigin = 'http://127.0.0.1:' + (isDev ? DEV_FRONTEND_PORT : PORT);
+  const login = new AbortController();
+  desktopLogin = login;
+  try {
+    await beginDesktopLogin(backendOrigin, (url) => shell.openExternal(url), async (token, _languageApiKey, profile) => {
+      const { cookie, user, theme } = await createDashboardSession(backendOrigin, token, login.signal);
+      // 令牌交换里带了账号快照，会话接口也返回同一份数据；合并后写进 localStorage，
+      // 让界面在首屏就能拿到用户名，不用等 /api/user/self 回来。
+      const account = profile && profile.id === user.id ? { ...user, ...profile } : user;
+      if (window.isDestroyed()) throw new Error('客户端窗口已关闭。');
+      if (new URL(window.webContents.getURL()).origin !== rendererOrigin) {
+        throw new Error('请返回客户端首页后重试。');
+      }
+      await window.webContents.session.cookies.set(cookie);
+      const applied = await window.webContents.executeJavaScript(
+        '(() => {' +
+        'if (location.origin !== ' + JSON.stringify(rendererOrigin) + ') return false;' +
+        'localStorage.setItem("user", ' + JSON.stringify(JSON.stringify(account)) + ');' +
+        'localStorage.setItem("uid", ' + JSON.stringify(String(account.id)) + ');' +
+        'return true;})()'
+      );
+      if (!applied) throw new Error('客户端页面已切换，请重新登录。');
+      const dashboard = !isDev && theme === 'classic' ? '/console' : '/dashboard';
+      await window.loadURL(new URL(dashboard, rendererOrigin).href);
+      if (process.platform === 'darwin') app.dock.show();
+      window.show();
+      window.focus();
+    }, login.signal);
+  } catch (error) {
+    if (!login.signal.aborted && error.code !== 'DESKTOP_LOGIN_CANCELLED') {
+      dialog.showErrorBox('登录失败', '请确认服务器已初始化，然后重新在浏览器登录。');
+    }
+  } finally {
+    desktopLogin = null;
+  }
+}
+
 function createTray() {
   // Use template icon for macOS (black with transparency, auto-adapts to theme)
   // Use colored icon for Windows
@@ -448,6 +493,7 @@ function createTray() {
         }
       }
     },
+    { label: '在浏览器登录', click: loginInSystemBrowser },
     { type: 'separator' },
     {
       label: 'Quit',
@@ -569,6 +615,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', (event) => {
+  desktopLogin?.abort();
   if (serverProcess) {
     event.preventDefault();
 

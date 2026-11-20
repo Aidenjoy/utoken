@@ -158,7 +158,11 @@ type RelayInfo struct {
 	// "" or "wallet" => wallet; "subscription" => subscription
 	BillingSource string
 	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
-	SubscriptionId int
+	// SubscriptionGrossProfitPercent 是已选订阅的购买快照，仅用于订阅加价。
+	SubscriptionPointsRatio        float64
+	SubscriptionQuotaBeforeMarkup  int
+	SubscriptionGrossProfitPercent float64
+	SubscriptionId                 int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
 	SubscriptionPreConsumed int64
 	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).
@@ -731,6 +735,11 @@ type TaskRelayInfo struct {
 	// 由 seedance 适配器在校验阶段写入，供预扣费按档绝对单价合成模型倍率。
 	SeedanceResolution string
 
+	// WanResolution 是 wan 按秒计费请求的分辨率参数（480p/720p/1080p/4k，可为空）。
+	// 由 ali 适配器在校验阶段写入，供预扣费按档每秒绝对单价计费；
+	// 为空表示用户未显式指定，预扣按已配置最高档兜底，结算按上游真实分辨率重算。
+	WanResolution string
+
 	// LockedChannel holds the full channel object when the request is bound to
 	// a specific channel (e.g., remix on origin task's channel). Stored as any
 	// to avoid an import cycle with model; callers type-assert to *model.Channel.
@@ -829,7 +838,8 @@ type TaskInfo struct {
 	Progress         string `json:"progress,omitempty"`
 	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
-	Resolution       string `json:"resolution,omitempty"`        // 上游返回的实际输出分辨率，用于 seedance 按分辨率结算
+	Resolution       string `json:"resolution,omitempty"`        // 上游返回的实际输出分辨率，用于 seedance/wan 按分辨率结算
+	Duration         float64 `json:"duration,omitempty"`         // 上游返回的计费时长（秒，可为浮点），用于 wan 按秒结算
 	FinishTime       int64  `json:"finish_time,omitempty"`       // 上游报告的终态时间（unix 秒），0 表示未知，结算时回退到本地检测时刻
 }
 

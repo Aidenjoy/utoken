@@ -376,6 +376,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	// 用户按模型折扣：对最终额度整体打折（含 tiered/seedream/工具附加费），
 	// 折前额度写入日志 other.original_quota，前端「原价 / 折扣」两列据此展示。
 	summary.Quota, quotaBeforeDiscount = applyUserModelDiscount(relayInfo, summary.Quota)
+	summary.Quota = ApplySubscriptionMarkup(relayInfo, summary.Quota)
 
 	if summary.WebSearchCallCount > 0 {
 		extraContent = append(extraContent, fmt.Sprintf("Web Search 调用 %d 次，调用花费 %s", summary.WebSearchCallCount, decimal.NewFromFloat(summary.WebSearchPrice).Mul(decimal.NewFromInt(int64(summary.WebSearchCallCount))).Div(decimal.NewFromInt(1000)).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
@@ -408,9 +409,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		// 本次不扣费，不应在日志里留下“原价”
 		quotaBeforeDiscount = 0
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+		model.UpdateUserConsumption(relayInfo.UserId, summary.Quota, relayInfo.BillingSource == BillingSourceSubscription, true)
 		// 缓存命中不经过渠道选择，ChannelId 为 0，跳过渠道用量累加避免打到不存在的渠道
-		if relayInfo.ChannelId > 0 {
+		if relayInfo.ChannelId > 0 && relayInfo.BillingSource != BillingSourceSubscription {
 			model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 		}
 	}

@@ -44,8 +44,49 @@ export type PricingMode =
   | 'per-token'
   | 'per-request'
   | 'tiered_expr'
+  | 'wan'
   | 'seedance'
   | 'seedream'
+
+// wan：4 档分辨率各一个每秒单价（与按次 ModelPrice 同量纲），不区分是否含视频输入。
+// 某档不填 = 该分辨率不支持；编辑器以字符串持有输入，序列化为后端扁平 {res: price} JSON。
+export const WAN_RESOLUTIONS = ['480p', '720p', '1080p', '4k'] as const
+export type WanResolution = (typeof WAN_RESOLUTIONS)[number]
+
+export type WanPriceForm = Record<WanResolution, string>
+
+export const emptyWanPrices = (): WanPriceForm =>
+  WAN_RESOLUTIONS.reduce((acc, res) => {
+    acc[res] = ''
+    return acc
+  }, {} as WanPriceForm)
+
+// parseWanConfig / serializeWanConfig 在编辑器的按分辨率字符串表单与
+// 后端 billing_setting.wan_config[model] 存储的 JSON 之间双向映射。
+export function parseWanConfig(raw?: string): WanPriceForm {
+  const form = emptyWanPrices()
+  const parsed = safeJsonParse<Record<string, number>>(raw, {
+    fallback: {},
+    silent: true,
+  })
+  for (const res of WAN_RESOLUTIONS) {
+    const price = parsed?.[res]
+    if (price !== undefined && price !== null) {
+      form[res] = String(price)
+    }
+  }
+  return form
+}
+
+export function serializeWanConfig(form: WanPriceForm): string {
+  const out: Record<string, number> = {}
+  for (const res of WAN_RESOLUTIONS) {
+    const price = toNumberOrNull(form[res])
+    if (price === null || price <= 0) continue
+    out[res] = price
+  }
+  return Object.keys(out).length > 0 ? JSON.stringify(out) : ''
+}
 
 // seedance：4 档分辨率×（含/不含视频输入）共 8 个单价（元/百万 token）。
 // 编辑器以字符串持有输入，序列化为后端 {with_video, without_video} 结构。
@@ -95,8 +136,9 @@ export type ModelRatioData = {
   billingMode?: PricingMode
   billingExpr?: string
   requestRuleExpr?: string
-  // seedance/seedream 每模型配置的原始 JSON 字符串（对应
-  // billing_setting.seedance_config[model] / seedream_config[model] 的值）。
+  // wan/seedance/seedream 每模型配置的原始 JSON 字符串（对应
+  // billing_setting.wan_config[model] / seedance_config[model] / seedream_config[model] 的值）。
+  wanConfig?: string
   seedanceConfig?: string
   seedreamConfig?: string
 }
@@ -312,8 +354,24 @@ export function buildPreviewRows(
   laneEnabled: Record<LaneKey, boolean>,
   seedancePrices: SeedancePriceForm,
   seedreamPrices: SeedreamPriceForm,
+  wanPrices: WanPriceForm,
   t: (key: string) => string
 ): PreviewRow[] {
+  if (mode === 'wan') {
+    const rows: PreviewRow[] = [
+      { key: 'mode', label: 'BillingMode', value: 'wan' },
+    ]
+    for (const res of WAN_RESOLUTIONS) {
+      const price = wanPrices[res]
+      rows.push({
+        key: res,
+        label: res,
+        value: price ? `$${price} / ${t('second')}` : t('Not supported'),
+      })
+    }
+    return rows
+  }
+
   if (mode === 'seedream') {
     return [
       { key: 'mode', label: 'BillingMode', value: 'seedream' },

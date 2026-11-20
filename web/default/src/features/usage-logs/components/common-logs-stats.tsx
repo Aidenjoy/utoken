@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { useLogsScope } from '@/hooks/use-admin'
-import { formatLogQuota } from '@/lib/format'
+import { formatLogQuota, formatSubscriptionPoints } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getLogStats, getUserLogStats, getAgentLogStats } from '../api'
@@ -85,6 +85,7 @@ export function CommonLogsStats() {
     return (
       <div className='flex items-center gap-2'>
         <Skeleton className='h-7 w-[150px] rounded-md' />
+        <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[100px] rounded-md' />
         <Skeleton className='h-7 w-[120px] rounded-md' />
       </div>
@@ -97,6 +98,15 @@ export function CommonLogsStats() {
         label={t('Usage')}
         value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
         accent='bg-sky-500/70'
+      />
+      <StatBadge
+        label={t('Subscription Points')}
+        value={
+          sensitiveVisible
+            ? formatSubscriptionPoints(stats?.subscription_quota || 0)
+            : '••••'
+        }
+        accent='bg-violet-500/70'
       />
       <StatBadge
         label={t('RPM')}

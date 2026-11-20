@@ -21,6 +21,7 @@ const (
 	BatchUpdateTypeUsedQuota
 	BatchUpdateTypeChannelUsedQuota
 	BatchUpdateTypeRequestCount
+	BatchUpdateTypeSubscriptionRequestCount
 	BatchUpdateTypeCount // if you add a new type, you need to add a new map and a new lock
 )
 
@@ -159,7 +160,7 @@ func batchUpdate() {
 	}
 
 	for i, store := range stores {
-		if i == BatchUpdateTypeUserQuota || i == BatchUpdateTypeUsedQuota || i == BatchUpdateTypeRequestCount {
+		if i == BatchUpdateTypeUserQuota || i == BatchUpdateTypeUsedQuota || i == BatchUpdateTypeRequestCount || i == BatchUpdateTypeSubscriptionRequestCount {
 			continue
 		}
 		for key, value := range store {
@@ -190,6 +191,7 @@ func batchUpdate() {
 	userQuotaStore := stores[BatchUpdateTypeUserQuota]
 	usedQuotaStore := stores[BatchUpdateTypeUsedQuota]
 	requestCountStore := stores[BatchUpdateTypeRequestCount]
+	subscriptionRequestCountStore := stores[BatchUpdateTypeSubscriptionRequestCount]
 
 	userIDs := make(map[int]struct{}, len(userQuotaStore)+len(usedQuotaStore)+len(requestCountStore))
 	for key := range userQuotaStore {
@@ -201,16 +203,23 @@ func batchUpdate() {
 	for key := range requestCountStore {
 		userIDs[key] = struct{}{}
 	}
+	for key := range subscriptionRequestCountStore {
+		userIDs[key] = struct{}{}
+	}
 	for key := range userIDs {
-		batchFlushUserUpdates(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key])
+		batchFlushUserUpdates(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key], subscriptionRequestCountStore[key])
 	}
 	common.SysLog("batch update finished")
 }
 
 // batchFlushUserUpdates 安全地刷写用户额度/已用/请求数批量更新。
 // 当 userQuotaDelta 为负数（扣费）时，使用 WHERE quota >= ? 保护，防止并发超扣。
-func batchFlushUserUpdates(userId int, userQuotaDelta int, usedQuotaDelta int, requestCountDelta int) {
-	if userQuotaDelta == 0 && usedQuotaDelta == 0 && requestCountDelta == 0 {
+func batchFlushUserUpdates(userId int, userQuotaDelta int, usedQuotaDelta int, requestCountDelta int, subscriptionCounts ...int) {
+	subscriptionCount := 0
+	if len(subscriptionCounts) > 0 {
+		subscriptionCount = subscriptionCounts[0]
+	}
+	if userQuotaDelta == 0 && usedQuotaDelta == 0 && requestCountDelta == 0 && subscriptionCount == 0 {
 		return
 	}
 	if userQuotaDelta < 0 {
@@ -219,9 +228,10 @@ func batchFlushUserUpdates(userId int, userQuotaDelta int, usedQuotaDelta int, r
 		result := DB.Model(&User{}).
 			Where("id = ? AND quota >= ?", userId, deductAmount).
 			Updates(map[string]interface{}{
-				"quota":         gorm.Expr("quota - ?", deductAmount),
-				"used_quota":    gorm.Expr("used_quota + ?", usedQuotaDelta),
-				"request_count": gorm.Expr("request_count + ?", requestCountDelta),
+				"quota":                      gorm.Expr("quota - ?", deductAmount),
+				"used_quota":                 gorm.Expr("used_quota + ?", usedQuotaDelta),
+				"request_count":              gorm.Expr("request_count + ?", requestCountDelta),
+				"subscription_request_count": gorm.Expr("subscription_request_count + ?", subscriptionCount),
 			})
 		if result.Error != nil {
 			common.SysLog("failed to batch flush user quota (decrease): " + result.Error.Error())
@@ -230,10 +240,11 @@ func batchFlushUserUpdates(userId int, userQuotaDelta int, usedQuotaDelta int, r
 		if result.RowsAffected == 0 {
 			// 余额不足：仍然更新 used_quota 和 request_count，仅跳过额度扣减
 			common.SysLog(fmt.Sprintf("batch flush user quota overdraft skipped (userId=%d, deduct=%d)", userId, deductAmount))
-			if usedQuotaDelta != 0 || requestCountDelta != 0 {
+			if usedQuotaDelta != 0 || requestCountDelta != 0 || subscriptionCount != 0 {
 				if err := DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
-					"used_quota":    gorm.Expr("used_quota + ?", usedQuotaDelta),
-					"request_count": gorm.Expr("request_count + ?", requestCountDelta),
+					"used_quota":                 gorm.Expr("used_quota + ?", usedQuotaDelta),
+					"request_count":              gorm.Expr("request_count + ?", requestCountDelta),
+					"subscription_request_count": gorm.Expr("subscription_request_count + ?", subscriptionCount),
 				}).Error; err != nil {
 					common.SysLog("failed to batch flush user non-quota fields: " + err.Error())
 				}
@@ -242,7 +253,7 @@ func batchFlushUserUpdates(userId int, userQuotaDelta int, usedQuotaDelta int, r
 		}
 	} else {
 		// 增加操作或零：无余额保护需求
-		updateUserQuotaUsedQuotaAndRequestCount(userId, userQuotaDelta, usedQuotaDelta, requestCountDelta)
+		updateUserQuotaUsedQuotaAndRequestCount(userId, userQuotaDelta, usedQuotaDelta, requestCountDelta, subscriptionCount)
 	}
 }
 

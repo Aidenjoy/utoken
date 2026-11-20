@@ -3,6 +3,8 @@ package model
 import (
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -142,7 +144,7 @@ func InvalidateSubscriptionPlanCache(planId int) {
 	_ = infoCache.Purge()
 }
 
-// Subscription plan
+// SubscriptionPlan 定义可购买套餐、额度及新订阅使用的扣费加价比例。
 type SubscriptionPlan struct {
 	Id int `json:"id"`
 
@@ -150,8 +152,12 @@ type SubscriptionPlan struct {
 	Subtitle string `json:"subtitle" gorm:"type:varchar(255);default:''"`
 
 	// Display money amount (follow existing code style: float64 for money)
-	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
-	Currency    string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
+	// GrossProfitPercent 是扣费加价百分比，30 表示原消耗乘 1.3，不表示财务毛利率。
+	// PointsRatio 为每单位套餐价格发放的点数；0 保留历史手工额度。
+	PointsRatio        float64 `json:"points_ratio" gorm:"type:decimal(18,8);not null;default:0"`
+	GrossProfitPercent float64 `json:"gross_profit_percent" gorm:"type:decimal(5,2);default:0"`
+	PriceAmount        float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
+	Currency           string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
 
 	DurationUnit  string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
@@ -250,11 +256,15 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 }
 
 // User subscription instance
+// UserSubscription 保存用户已购套餐快照，后续编辑套餐不改变已有订阅的计费比例。
 type UserSubscription struct {
-	Id     int `json:"id"`
-	UserId int `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
-	PlanId int `json:"plan_id" gorm:"index"`
+	PointsRatio        float64 `json:"-" gorm:"type:decimal(18,8);not null;default:0"`
+	GrossProfitPercent float64 `json:"-" gorm:"type:decimal(5,2);default:0"`
+	Id                 int     `json:"id"`
+	UserId             int     `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
+	PlanId             int     `json:"plan_id" gorm:"index"`
 
+	// AmountTotal/AmountUsed 为订阅点数的整数最小单位，不是钱包金额。
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
 
@@ -481,6 +491,7 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	return target, nil
 }
 
+// CreateUserSubscriptionFromPlanTx 在调用方事务内锁定用户并创建订阅，确保同一用户最多持有一个有效订阅。
 func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, source string) (*UserSubscription, error) {
 	if tx == nil {
 		return nil, errors.New("tx is nil")
@@ -490,6 +501,21 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	}
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
+	}
+	// 锁定始终存在的用户行，避免两个请求均查不到订阅后同时开通。
+	var user User
+	if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
+		return nil, err
+	}
+	var activeCount int64
+	if err := tx.Model(&UserSubscription{}).
+		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", GetDBTimestamp()).
+		Count(&activeCount).Error; err != nil {
+		return nil, err
+	}
+	if activeCount > 0 {
+		common.SysLog(fmt.Sprintf("拒绝重复开通订阅: user_id=%d plan_id=%d source=%s", userId, plan.Id, source))
+		return nil, errors.New("已有有效订阅，请在到期或取消后重新开通")
 	}
 	if plan.MaxPurchasePerUser > 0 {
 		var count int64
@@ -537,6 +563,8 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		UserId:              userId,
 		PlanId:              plan.Id,
 		AmountTotal:         plan.TotalAmount,
+		GrossProfitPercent:  plan.GrossProfitPercent,
+		PointsRatio:         plan.PointsRatio,
 		AmountUsed:          0,
 		StartTime:           now.Unix(),
 		EndTime:             endUnix,
@@ -571,6 +599,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var logUserId int
 	var logPlanTitle string
 	var logMoney float64
+	var logPaidQuota int
 	var logPaymentMethod string
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
@@ -599,6 +628,17 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if err != nil {
 			return err
 		}
+		// 使用订单实付金额，沿用余额购买的金额到内部额度换算，不能使用套餐赠送额度。
+		paidQuota, err := calcSubscriptionBalanceQuota(order.Money)
+		if err != nil {
+			return err
+		}
+		if paidQuota > 0 {
+			if err := tx.Model(&User{}).Where("id = ?", order.UserId).Update("used_quota", gorm.Expr("used_quota + ?", paidQuota)).Error; err != nil {
+				return err
+			}
+		}
+		// 与开通订阅及订单完成同事务：重复回调在成功状态处返回，不再次累计购买金额。
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
 		}
@@ -616,6 +656,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		logUserId = order.UserId
 		logPlanTitle = plan.Title
 		logMoney = order.Money
+		logPaidQuota = paidQuota
 		logPaymentMethod = order.PaymentMethod
 		return nil
 	})
@@ -626,7 +667,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
 	if logUserId > 0 {
-		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
+		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s，计入钱包总用量额度: %d", logPlanTitle, logMoney, logPaymentMethod, logPaidQuota)
 		RecordLog(logUserId, LogTypeTopup, msg)
 	}
 	return nil
@@ -723,11 +764,12 @@ func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
 	if common.QuotaPerUnit <= 0 {
 		return 0, errors.New("额度单位配置错误")
 	}
-	quota := decimal.NewFromFloat(priceAmount).
-		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
-		Ceil().
-		IntPart()
-	return int(quota), nil
+	quota, clamp := common.QuotaFromDecimalChecked(decimal.NewFromFloat(priceAmount).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Ceil())
+	if clamp != nil {
+		return 0, errors.New("套餐购买金额超出额度范围")
+	}
+	return quota, nil
 }
 
 // PurchaseSubscriptionWithBalance creates a subscription by deducting the user's wallet quota.
@@ -769,7 +811,10 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		}
 		if requiredQuota > 0 {
 			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
+				Updates(map[string]interface{}{
+					"quota":      gorm.Expr("quota - ?", requiredQuota),
+					"used_quota": gorm.Expr("used_quota + ?", requiredQuota),
+				}).Error; err != nil {
 				return err
 			}
 		}
@@ -1104,6 +1149,8 @@ func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*Subscripti
 }
 
 type SubscriptionPreConsumeResult struct {
+	PointsRatio        float64
+	GrossProfitPercent float64
 	UserSubscriptionId int
 	PreConsumed        int64
 	AmountTotal        int64
@@ -1300,6 +1347,8 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			}
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = existing.PreConsumed
+			returnValue.GrossProfitPercent = sub.GrossProfitPercent
+			returnValue.PointsRatio = sub.PointsRatio
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
@@ -1325,10 +1374,20 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			// 每个订阅独立按购买快照加价，避免切换候选套餐时重复乘倍率。
+			baseQuota, clamp := common.QuotaFromFloatChecked(float64(amount))
+			if clamp != nil {
+				return errors.New("subscription quota insufficient: preconsume amount exceeds quota limit")
+			}
+			charged, clamp := common.SubscriptionQuotaWithMarkup(baseQuota, sub.GrossProfitPercent, sub.PointsRatio)
+			if clamp != nil {
+				return errors.New("subscription quota insufficient: marked-up amount exceeds quota limit")
+			}
+			chargedAmount := int64(charged)
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
-				if remain < amount {
+				if remain < chargedAmount {
 					continue
 				}
 			}
@@ -1336,7 +1395,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				RequestId:          requestId,
 				UserId:             userId,
 				UserSubscriptionId: sub.Id,
-				PreConsumed:        amount,
+				PreConsumed:        chargedAmount,
 				Status:             "consumed",
 			}
 			if err := tx.Create(record).Error; err != nil {
@@ -1347,6 +1406,8 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					}
 					returnValue.UserSubscriptionId = sub.Id
 					returnValue.PreConsumed = dup.PreConsumed
+					returnValue.GrossProfitPercent = sub.GrossProfitPercent
+					returnValue.PointsRatio = sub.PointsRatio
 					returnValue.AmountTotal = sub.AmountTotal
 					returnValue.AmountUsedBefore = sub.AmountUsed
 					returnValue.AmountUsedAfter = sub.AmountUsed
@@ -1354,12 +1415,14 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				}
 				return err
 			}
-			sub.AmountUsed += amount
+			sub.AmountUsed += chargedAmount
 			if err := tx.Save(&sub).Error; err != nil {
 				return err
 			}
 			returnValue.UserSubscriptionId = sub.Id
-			returnValue.PreConsumed = amount
+			returnValue.PreConsumed = chargedAmount
+			returnValue.GrossProfitPercent = sub.GrossProfitPercent
+			returnValue.PointsRatio = sub.PointsRatio
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = usedBefore
 			returnValue.AmountUsedAfter = sub.AmountUsed
@@ -1506,4 +1569,37 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		sub.AmountUsed = newUsed
 		return tx.Save(&sub).Error
 	})
+}
+
+// CalculatePointsQuota 根据售价和点数比例确定发放额度，0 比例兼容原手工额度。
+// 价格乘比例得到展示点数，再按现有展示换算反解原始 quota；实际扣费倍率不受影响。
+func (p *SubscriptionPlan) CalculatePointsQuota() error {
+	if math.IsNaN(p.PointsRatio) || math.IsInf(p.PointsRatio, 0) || p.PointsRatio < 0 || p.PointsRatio > 1000000 {
+		return errors.New("点数比例必须在0到1000000之间")
+	}
+	if p.PointsRatio == 0 {
+		return nil
+	}
+	p.PointsRatio = math.Round(p.PointsRatio*100000000) / 100000000
+	if p.PointsRatio == 0 {
+		return errors.New("点数比例至少为0.00000001")
+	}
+	if p.PriceAmount <= 0 || math.IsNaN(p.PriceAmount) || math.IsInf(p.PriceAmount, 0) {
+		return errors.New("按点数比例发放时套餐价格必须大于0")
+	}
+	points := decimal.NewFromFloat(p.PriceAmount).Mul(decimal.NewFromFloat(p.PointsRatio))
+	quota := points
+	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
+		rate := operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate)
+		if rate <= 0 || math.IsNaN(rate) || math.IsInf(rate, 0) || common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+			return errors.New("额度换算配置无效")
+		}
+		quota = points.Div(decimal.NewFromFloat(rate)).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	}
+	amount, clamp := common.QuotaFromDecimalChecked(quota)
+	if clamp != nil || amount <= 0 {
+		return errors.New("按点数比例计算的套餐额度超出有效范围")
+	}
+	p.TotalAmount = int64(amount)
+	return nil
 }

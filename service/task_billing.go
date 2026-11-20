@@ -43,6 +43,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 	}
 	other := make(map[string]interface{})
 	other["is_task"] = true
+	appendBillingInfo(info, other)
 	if taskID != "" {
 		other["task_id"] = taskID
 	}
@@ -71,8 +72,10 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, taskID stri
 		Group:     info.UsingGroup,
 		Other:     other,
 	})
-	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
-	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+	model.UpdateUserConsumption(info.UserId, info.PriceData.Quota, info.BillingSource == BillingSourceSubscription, true)
+	if info.BillingSource != BillingSourceSubscription {
+		model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +134,7 @@ func taskAdjustFunding(task *model.Task, delta int) error {
 // 无限额度令牌没有余额上限，跳过令牌级调整（与预扣费旁路对称），
 // 否则结算会把 remain_quota 越扣越负、退费又把它抬回，账目无意义且会触发余额不足告警。
 func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
-	if task.PrivateData.TokenId <= 0 || delta == 0 {
+	if taskIsSubscription(task) || task.PrivateData.TokenId <= 0 || delta == 0 {
 		return
 	}
 	token := resolveTaskToken(ctx, task.PrivateData.TokenId, task.TaskID)
@@ -184,6 +187,7 @@ func settleTaskFundingWithRetry(ctx context.Context, task *model.Task, delta int
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
 func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
+	other["billing_source"] = task.PrivateData.BillingSource
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
 		if bc.ModelRatio > 0 {
@@ -291,7 +295,9 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string, usage
 	taskAdjustTokenQuota(ctx, task, -quota)
 
 	// 3. 减少已用额度统计（退款不影响请求次数）
-	model.DecreaseUserUsedQuota(task.UserId, quota)
+	if !taskIsSubscription(task) {
+		model.DecreaseUserUsedQuota(task.UserId, quota)
+	}
 
 	// 4. 记录日志
 	other := taskBillingOther(task)
@@ -362,6 +368,12 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if actualQuota <= 0 {
 		return
 	}
+	baseQuota := actualQuota
+	if taskIsSubscription(task) {
+		charged, clamp := common.SubscriptionQuotaWithMarkup(actualQuota, task.PrivateData.SubscriptionGrossProfitPercent, task.PrivateData.SubscriptionPointsRatio)
+		actualQuota = charged
+		clamps = append(clamps, clamp)
+	}
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
 
@@ -399,17 +411,31 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if quotaDelta > 0 {
 		logType = model.LogTypeConsume
 		logQuota = quotaDelta
-		model.UpdateUserUsedQuotaAndRequestCount(task.UserId, quotaDelta)
-		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		model.UpdateUserConsumption(task.UserId, quotaDelta, taskIsSubscription(task), false)
+		if !taskIsSubscription(task) {
+			model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+		}
 	} else {
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
-		model.DecreaseUserUsedQuota(task.UserId, -quotaDelta)
+		if !taskIsSubscription(task) {
+			model.DecreaseUserUsedQuota(task.UserId, -quotaDelta)
+		}
 	}
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
+	if taskIsSubscription(task) {
+		admin, _ := other["admin_info"].(map[string]interface{})
+		if admin == nil {
+			admin = make(map[string]interface{})
+			other["admin_info"] = admin
+		}
+		admin["subscription_base_quota"] = baseQuota
+
+		admin["subscription_gross_profit_percent"] = task.PrivateData.SubscriptionGrossProfitPercent
+	}
 	attachTaskLogDiscountOriginal(other, logQuota)
 	for _, clamp := range clamps {
 		attachQuotaSaturationToOther(other, clamp)
@@ -455,6 +481,54 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 func ComputeTaskQuotaByTokens(task *model.Task, totalTokens int) (int, bool) {
 	quota, _, _, ok := computeTaskQuotaByTokens(task, totalTokens)
 	return quota, ok
+}
+
+// ComputeTaskQuotaBySeconds 计算 wan 按秒档价的最终额度（纯计算，不结算），
+// 供 ali 适配器 AdjustBillingOnComplete 按上游真实 usage.duration × 实际分辨率档价重算。
+// 公式：seconds × pricePerSecond × QuotaPerUnit × finalGroupRatio × otherMultiplier（饱和转换）。
+// 快照 OtherRatios 中的 "seconds" 键被跳过（秒数已显式传入，避免重复计秒），
+// user_discount 等其它附加倍率保留。seconds 钳制到 MaxTaskDurationSeconds，
+// 防止上游返回荒谬时长溢出成负数。返回 (quota, ok)：ok=false 表示输入无效或分组信息缺失。
+func ComputeTaskQuotaBySeconds(task *model.Task, seconds float64, pricePerSecond float64) (int, bool) {
+	if seconds <= 0 || pricePerSecond <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) ||
+		math.IsNaN(pricePerSecond) || math.IsInf(pricePerSecond, 0) {
+		return 0, false
+	}
+	if seconds > float64(relaycommon.MaxTaskDurationSeconds) {
+		seconds = float64(relaycommon.MaxTaskDurationSeconds)
+	}
+
+	group := task.Group
+	if group == "" {
+		user, err := model.GetUserById(task.UserId, false)
+		if err == nil {
+			group = user.Group
+		}
+	}
+	if group == "" {
+		return 0, false
+	}
+
+	groupRatio := ratio_setting.GetGroupRatio(group)
+	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
+	finalGroupRatio := groupRatio
+	if hasUserGroupRatio {
+		finalGroupRatio = userGroupRatio
+	}
+
+	// OtherRatios() 已过滤非正/NaN/Inf 倍率；跳过 seconds 避免与显式秒数重复相乘
+	otherMultiplier := 1.0
+	if priceData := taskBillingContextPriceData(task.PrivateData.BillingContext); priceData != nil {
+		for key, ratio := range priceData.OtherRatios() {
+			if key == "seconds" {
+				continue
+			}
+			otherMultiplier *= ratio
+		}
+	}
+
+	quota, _ := common.QuotaFromFloatChecked(seconds * pricePerSecond * common.QuotaPerUnit * finalGroupRatio * otherMultiplier)
+	return quota, true
 }
 
 // computeTaskQuotaByTokens 计算任务按 token 的最终额度（纯计算，不结算）。

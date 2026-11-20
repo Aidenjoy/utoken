@@ -19,13 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import type { PricingModel } from '../types'
 
 // ----------------------------------------------------------------------------
-// Seedance / Seedream billing display helpers
+// Seedance / Seedream / Wan billing display helpers
 //
-// 后端 billing_setting 为这两种计费模式按模型存储单价 JSON（原始字符串经
-// /api/pricing 的 seedance_config / seedream_config 下发），这里负责解析与
-// 展示：seedream 为按张单价（与 model_price 同量纲）；seedance 各档配置值即
-// 每百万 token 的绝对单价（与编辑器录入的 $/1M 同量纲），展示时按录入值直接
-// 呈现，不再经 model_ratio 换算，未配置的档（<=0）不展示。
+// 后端 billing_setting 为这几种计费模式按模型存储单价 JSON（原始字符串经
+// /api/pricing 的 seedance_config / seedream_config / wan_config 下发），这里
+// 负责解析与展示：seedream 为按张单价（与 model_price 同量纲）；seedance 各档
+// 配置值即每百万 token 的绝对单价（与编辑器录入的 $/1M 同量纲）；wan 为按秒
+// 单价（与 model_price 同量纲）。展示时按录入值直接呈现，不再经 model_ratio
+// 换算，未配置的档（<=0）不展示。
 // ----------------------------------------------------------------------------
 
 // 分辨率档固定顺序（与系统设置编辑器一致）；其余自定义档按名称附后
@@ -49,12 +50,21 @@ export type SeedanceTierPrice = {
 
 export type SeedanceTierVariant = 'withVideo' | 'withoutVideo'
 
+export type WanTierPrice = {
+  resolution: string
+  pricePerSecond: number
+}
+
 export function isSeedreamBillingModel(model: PricingModel): boolean {
   return model.billing_mode === 'seedream' && Boolean(model.seedream_config)
 }
 
 export function isSeedanceBillingModel(model: PricingModel): boolean {
   return model.billing_mode === 'seedance' && Boolean(model.seedance_config)
+}
+
+export function isWanBillingModel(model: PricingModel): boolean {
+  return model.billing_mode === 'wan' && Boolean(model.wan_config)
 }
 
 function toPrice(value: unknown): number {
@@ -114,6 +124,45 @@ export function getSeedanceTiers(
   const known = SEEDANCE_RESOLUTION_ORDER.filter((res) =>
     byResolution.has(res)
   ).map((res) => byResolution.get(res) as SeedanceTierPrice)
+  const extra = [...byResolution.values()]
+    .filter(
+      (tier) =>
+        !(SEEDANCE_RESOLUTION_ORDER as readonly string[]).includes(
+          tier.resolution
+        )
+    )
+    .sort((a, b) => a.resolution.localeCompare(b.resolution))
+  return [...known, ...extra]
+}
+
+/**
+ * Parse wan per-second prices (same dimension as model_price), ordered by the
+ * fixed resolution list. Unconfigured tiers (<= 0) are omitted since they mean
+ * "unsupported resolution". Returns null when the model is not in wan mode or
+ * config is invalid.
+ */
+export function getWanTiers(model: PricingModel): WanTierPrice[] | null {
+  if (!isWanBillingModel(model)) return null
+  let parsed: Record<string, number>
+  try {
+    parsed = JSON.parse(model.wan_config || '')
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+
+  const byResolution = new Map<string, WanTierPrice>()
+  for (const [key, value] of Object.entries(parsed)) {
+    const resolution = key.trim().toLowerCase()
+    const price = toPrice(value)
+    if (!resolution || price <= 0) continue
+    byResolution.set(resolution, { resolution, pricePerSecond: price })
+  }
+  if (byResolution.size === 0) return null
+
+  const known = SEEDANCE_RESOLUTION_ORDER.filter((res) =>
+    byResolution.has(res)
+  ).map((res) => byResolution.get(res) as WanTierPrice)
   const extra = [...byResolution.values()]
     .filter(
       (tier) =>

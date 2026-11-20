@@ -430,9 +430,10 @@ func GetAgentLogsStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": stat.Quota,
-			"rpm":   stat.Rpm,
-			"tpm":   stat.Tpm,
+			"quota":              stat.Quota,
+			"subscription_quota": stat.SubscriptionQuota,
+			"rpm":                stat.Rpm,
+			"tpm":                stat.Tpm,
 		},
 	})
 }
@@ -631,11 +632,14 @@ func ExportAgentBillingConsumption(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	header := []string{"时间", "用户", "令牌", "模型", "类型", "金额", "输入tokens", "输出tokens", "请求ID"}
+	header := []string{"时间", "用户", "令牌", "模型", "类型", "金额", "输入tokens", "输出tokens", "请求ID", "支付方式"}
 	rows := make([][]string, 0, len(logs))
 	for _, log := range logs {
 		quota := log.Quota
 		typeText := "消耗"
+		if log.Type == model.LogTypeSubscriptionPurchase {
+			typeText = "购买订阅"
+		}
 		if log.Type == model.LogTypeRefund {
 			quota = -quota
 			typeText = "退款"
@@ -646,10 +650,11 @@ func ExportAgentBillingConsumption(c *gin.Context) {
 			log.TokenName,
 			log.ModelName,
 			typeText,
-			logger.FormatQuota(quota),
+			billingConsumptionAmount(log, quota),
 			strconv.Itoa(log.PromptTokens),
 			strconv.Itoa(log.CompletionTokens),
 			log.RequestId,
+			log.BillingPaymentMethod,
 		})
 	}
 	writeBillingCSV(c, "billing-consumption-"+time.Now().Format("20060102-150405")+".csv", header, rows)

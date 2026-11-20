@@ -60,7 +60,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
-import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { getCurrencyDisplay } from '@/lib/currency'
 
 import {
   createPlan,
@@ -96,7 +96,6 @@ export function SubscriptionsMutateDrawer({
   const { triggerRefresh } = useSubscriptions()
   const { meta: currencyMeta } = getCurrencyDisplay()
   const tokensOnly = currencyMeta.kind === 'tokens'
-  const currencyLabel = getCurrencyLabel()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [groupOptions, setGroupOptions] = useState<string[]>([])
   const [creatingPancakeProduct, setCreatingPancakeProduct] = useState(false)
@@ -109,6 +108,9 @@ export function SubscriptionsMutateDrawer({
     resolver: zodResolver(schema) as unknown as Resolver<PlanFormValues>,
     defaultValues: PLAN_FORM_DEFAULTS,
   })
+
+  const pointsRatio = form.watch('points_ratio')
+  const planPrice = form.watch('price_amount')
 
   useEffect(() => {
     if (open) {
@@ -348,21 +350,17 @@ export function SubscriptionsMutateDrawer({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {t('Quota ({{currency}})', { currency: currencyLabel })}
+                        {t('Quota (points)')}
                       </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
+                          value={pointsRatio > 0 ? Number((planPrice * pointsRatio).toFixed(6)) : field.value}
+                          readOnly={pointsRatio > 0}
                           type='number'
                           min={0}
                           step={tokensOnly ? 1 : 0.01}
-                          placeholder={
-                            tokensOnly
-                              ? t('Enter quota in tokens')
-                              : t('Enter quota in {{currency}}', {
-                                  currency: currencyLabel,
-                                })
-                          }
+                          placeholder={t('Quota (points)')}
                           onChange={(e) =>
                             field.onChange(parseFloat(e.target.value) || 0)
                           }
@@ -370,7 +368,7 @@ export function SubscriptionsMutateDrawer({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Total quota included in the plan, usable per billing period. 0 means unlimited.'
+                          'Plan price multiplied by the points ratio determines the quota. A zero ratio keeps manual quota.'
                         )}
                       </FormDescription>
                       <FormMessage />
@@ -378,6 +376,56 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name='points_ratio'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Points Ratio')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='number'
+                        min={0}
+                        max={1000000}
+                        step='0.00000001'
+                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Points per unit of plan price. For example, price 30 and ratio 2 grant 60 points. Set 0 to enter quota manually.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='gross_profit_percent'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Expected Gross Profit (%)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='number'
+                        min={0}
+                        max={100}
+                        step='0.01'
+                        onChange={(e) =>
+                          field.onChange(parseFloat(e.target.value) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Subscription quota markup: 30 means 1.3 times the original charge. 0 means no markup. Applies to new purchases only.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField

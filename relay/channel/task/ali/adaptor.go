@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -87,9 +88,9 @@ type AliVideoOutput struct {
 
 // AliUsage 使用统计
 type AliUsage struct {
-	Duration   dto.IntValue `json:"duration,omitempty"`
-	VideoCount dto.IntValue `json:"video_count,omitempty"`
-	SR         dto.IntValue `json:"SR,omitempty"`
+	Duration   dto.FloatValue `json:"duration,omitempty"` // wan3.0 返回浮点秒数（输入+输出视频总时长）
+	VideoCount dto.IntValue   `json:"video_count,omitempty"`
+	SR         dto.IntValue   `json:"SR,omitempty"`
 }
 
 type AliMetadata struct {
@@ -131,7 +132,49 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	// ValidateMultipartDirect 负责解析并将原始 TaskSubmitReq 存入 context
-	return relaycommon.ValidateMultipartDirect(c, info)
+	if taskErr = relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
+		return taskErr
+	}
+	// wan 按秒档价模式：校验用户显式指定的分辨率档，未填的档 = 不支持，直接 400 拒绝。
+	// 未指定分辨率时留空，预扣按已配置最高档兜底，结算按上游真实分辨率重算。
+	if billing_setting.GetBillingMode(info.OriginModelName) != billing_setting.BillingModeWan {
+		return nil
+	}
+	if _, ok := billing_setting.GetWanConfig(info.OriginModelName); !ok {
+		return nil
+	}
+	taskReq, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+	raw := strings.TrimSpace(taskReq.Size)
+	if raw == "" && taskReq.Metadata != nil {
+		if params, ok := taskReq.Metadata["parameters"].(map[string]interface{}); ok {
+			if v, ok := params["resolution"].(string); ok && strings.TrimSpace(v) != "" {
+				raw = strings.TrimSpace(v)
+			} else if v, ok := params["size"].(string); ok {
+				raw = strings.TrimSpace(v)
+			}
+		}
+	}
+	if raw == "" {
+		return nil
+	}
+	resolution := strings.ToLower(raw)
+	if strings.Contains(raw, "*") {
+		mapped, err := sizeToResolution(raw)
+		if err != nil {
+			return service.TaskErrorWrapper(err, "unsupported_resolution", http.StatusBadRequest)
+		}
+		resolution = strings.ToLower(mapped)
+	} else if !strings.HasSuffix(resolution, "p") && resolution != "4k" {
+		resolution += "p"
+	}
+	if _, ok := billing_setting.GetWanTierPrice(info.OriginModelName, resolution); !ok {
+		return service.TaskErrorWrapper(fmt.Errorf("此模型暂不支持该分辨率: %s", raw), "unsupported_resolution", http.StatusBadRequest)
+	}
+	info.WanResolution = resolution
+	return nil
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -461,6 +504,13 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	otherRatios := map[string]float64{
 		"seconds": float64(min(aliReq.Parameters.Duration, relaycommon.MaxTaskDurationSeconds)),
 	}
+	// wan 按秒档价模式：档价已在 ModelPriceHelperPerCall 中按每秒绝对单价计费，
+	// 只注入 seconds 倍率，不再叠加 legacy 分辨率相对倍率。
+	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeWan {
+		if _, ok := billing_setting.GetWanConfig(info.OriginModelName); ok {
+			return otherRatios
+		}
+	}
 	ratios, err := ProcessAliOtherRatios(aliReq)
 	if err != nil {
 		return otherRatios
@@ -469,6 +519,35 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		otherRatios[k] = v
 	}
 	return otherRatios
+}
+
+// AdjustBillingOnComplete 任务成功时按上游真实 usage.duration × 实际分辨率档价重算 wan 按秒计费。
+// 提交预扣用的是请求分辨率（或最高档兜底）× 预估秒数，可能与实际输出不同；
+// 返回 > 0 触发差额结算（多退少补）；返回 0 表示保持预扣（非 wan 模式 / 响应缺结算依据 / 档未配置）。
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	if task == nil || taskResult == nil || taskResult.Status != model.TaskStatusSuccess {
+		return 0
+	}
+	modelName := task.Properties.OriginModelName
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.OriginModelName != "" {
+		modelName = bc.OriginModelName
+	}
+	if billing_setting.GetBillingMode(modelName) != billing_setting.BillingModeWan {
+		return 0
+	}
+	resolution := strings.TrimSpace(taskResult.Resolution)
+	if resolution == "" || taskResult.Duration <= 0 {
+		return 0
+	}
+	tierPrice, ok := billing_setting.GetWanTierPrice(modelName, resolution)
+	if !ok {
+		return 0
+	}
+	quota, ok := service.ComputeTaskQuotaBySeconds(task, taskResult.Duration, tierPrice)
+	if !ok || quota <= 0 {
+		return 0
+	}
+	return quota
 }
 
 // DoRequest delegates to common helper
@@ -572,6 +651,17 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusSuccess
 		// 阿里直接返回视频URL，不需要额外的代理端点
 		taskResult.Url = aliResp.Output.VideoURL
+		// wan 按秒结算依据：实际输出分辨率（SR）与计费时长（duration，可为浮点）
+		if aliResp.Usage != nil {
+			if sr := int(aliResp.Usage.SR); sr > 0 {
+				if sr >= 2160 {
+					taskResult.Resolution = "4k"
+				} else {
+					taskResult.Resolution = fmt.Sprintf("%dp", sr)
+				}
+			}
+			taskResult.Duration = float64(aliResp.Usage.Duration)
+		}
 	case "FAILED", "CANCELED", "UNKNOWN":
 		taskResult.Status = model.TaskStatusFailure
 		if aliResp.Message != "" {

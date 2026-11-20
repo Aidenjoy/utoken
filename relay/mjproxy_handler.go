@@ -252,8 +252,10 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 				Group:     info.UsingGroup,
 				Other:     other,
 			})
-			model.UpdateUserUsedQuotaAndRequestCount(info.UserId, priceData.Quota)
-			model.UpdateChannelUsedQuota(info.ChannelId, priceData.Quota)
+			model.UpdateUserConsumption(info.UserId, priceData.Quota, info.BillingSource == service.BillingSourceSubscription, true)
+			if info.BillingSource != service.BillingSourceSubscription {
+				model.UpdateChannelUsedQuota(info.ChannelId, priceData.Quota)
+			}
 		}
 	}()
 	midjResponse := &mjResp.Response
@@ -561,8 +563,10 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 				Group:     relayInfo.UsingGroup,
 				Other:     other,
 			})
-			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, priceData.Quota)
-			model.UpdateChannelUsedQuota(relayInfo.ChannelId, priceData.Quota)
+			model.UpdateUserConsumption(relayInfo.UserId, priceData.Quota, relayInfo.BillingSource == service.BillingSourceSubscription, true)
+			if relayInfo.BillingSource != service.BillingSourceSubscription {
+				model.UpdateChannelUsedQuota(relayInfo.ChannelId, priceData.Quota)
+			}
 		}
 	}()
 

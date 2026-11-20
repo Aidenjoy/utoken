@@ -103,6 +103,8 @@ func loginMethodFromContext(c *gin.Context) string {
 	switch c.FullPath() {
 	case "/api/user/login":
 		return "password"
+	case "/api/desktop-auth/session":
+		return "desktop_pkce"
 	case "/api/user/login/2fa":
 		return "2fa"
 	case "/api/user/passkey/login/finish":
@@ -635,36 +637,37 @@ func GetSelf(c *gin.Context) {
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
-		"id":                user.Id,
-		"username":          user.Username,
-		"display_name":      user.DisplayName,
-		"role":              user.Role,
-		"status":            user.Status,
-		"email":             user.Email,
-		"github_id":         user.GitHubId,
-		"discord_id":        user.DiscordId,
-		"oidc_id":           user.OidcId,
-		"wechat_id":         user.WeChatId,
-		"telegram_id":       user.TelegramId,
-		"group":             user.Group,
-		"quota":             user.Quota,
-		"used_quota":        user.UsedQuota,
-		"request_count":     user.RequestCount,
-		"aff_code":          user.AffCode,
-		"aff_count":         user.AffCount,
-		"aff_quota":         user.AffQuota,
-		"aff_history_quota": user.AffHistoryQuota,
-		"inviter_id":        user.InviterId,
-		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
-		"stripe_customer":   user.StripeCustomer,
-		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
-		"permissions":       permissions,                // 新增权限字段
-		"org_id":            orgId,
-		"org_name":          orgName,
-		"org_role":          orgRole,
-		"org_quota_limit":   orgQuotaLimit,
-		"org_quota_used":    orgQuotaUsed,
+		"id":                         user.Id,
+		"username":                   user.Username,
+		"display_name":               user.DisplayName,
+		"role":                       user.Role,
+		"status":                     user.Status,
+		"email":                      user.Email,
+		"github_id":                  user.GitHubId,
+		"discord_id":                 user.DiscordId,
+		"oidc_id":                    user.OidcId,
+		"wechat_id":                  user.WeChatId,
+		"telegram_id":                user.TelegramId,
+		"group":                      user.Group,
+		"quota":                      user.Quota,
+		"used_quota":                 user.UsedQuota,
+		"request_count":              user.RequestCount,
+		"subscription_request_count": user.SubscriptionRequestCount,
+		"aff_code":                   user.AffCode,
+		"aff_count":                  user.AffCount,
+		"aff_quota":                  user.AffQuota,
+		"aff_history_quota":          user.AffHistoryQuota,
+		"inviter_id":                 user.InviterId,
+		"linux_do_id":                user.LinuxDOId,
+		"setting":                    user.Setting,
+		"stripe_customer":            user.StripeCustomer,
+		"sidebar_modules":            userSetting.SidebarModules, // 正确提取sidebar_modules字段
+		"permissions":                permissions,                // 新增权限字段
+		"org_id":                     orgId,
+		"org_name":                   orgName,
+		"org_role":                   orgRole,
+		"org_quota_limit":            orgQuotaLimit,
+		"org_quota_used":             orgQuotaUsed,
 		// has_model_discount 仅告知本人“是否配有模型折扣”，前端据此决定使用日志
 		// 原价/折扣两列是否默认显示。
 		"has_model_discount": common.HasModelDiscounts(user.ModelDiscounts),

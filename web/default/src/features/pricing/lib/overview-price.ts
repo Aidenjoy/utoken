@@ -33,6 +33,7 @@ import {
 import {
   getSeedanceTiers,
   getSeedreamPrices,
+  getWanTiers,
   isSeedreamBillingModel,
   seedanceTierEnteredPricePer1M,
   type SeedanceTierVariant,
@@ -105,6 +106,28 @@ export function getModelOverviewPriceInfo(
     priceRate,
     usdExchangeRate,
     groupRatioMultiplier: getDynamicDisplayGroupRatio(model),
+  }
+
+  const wanTiers = getWanTiers(model)
+  if (wanTiers) {
+    for (const tier of wanTiers) {
+      rows.push({
+        field: 'item',
+        labelKey: 'Video generation',
+        labelPrefix: tier.resolution,
+        sub: `/ ${translate('second')}`,
+        value: stripTrailingZeros(
+          formatUnitPrice(
+            model,
+            tier.pricePerSecond,
+            false,
+            priceRate,
+            usdExchangeRate
+          )
+        ),
+      })
+    }
+    return { rows, isSpecialExpression }
   }
 
   const seedanceTiers = getSeedanceTiers(model)

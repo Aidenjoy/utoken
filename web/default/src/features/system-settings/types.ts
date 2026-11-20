@@ -225,6 +225,7 @@ export type ModelSettings = {
   ExposeRatioEnabled: boolean
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string
+  'billing_setting.wan_config': string
   'billing_setting.seedance_config': string
   'billing_setting.seedream_config': string
   'tool_price_setting.prices': string
@@ -281,6 +282,7 @@ export type BillingSettings = {
   ExposeRatioEnabled: boolean
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string
+  'billing_setting.wan_config': string
   'billing_setting.seedance_config': string
   'billing_setting.seedream_config': string
   'tool_price_setting.prices': string
@@ -418,6 +420,7 @@ export type RatioType =
   | 'model_price'
   | 'billing_mode'
   | 'billing_expr'
+  | 'wan_config'
   | 'seedance_config'
   | 'seedream_config'
 

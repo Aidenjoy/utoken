@@ -139,11 +139,12 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	quota, clamp := calculateAudioQuota(quotaInfo)
 	noteQuotaClamp(relayInfo, clamp)
 
-	if userQuota < quota {
+	quota = ApplySubscriptionMarkup(relayInfo, quota)
+	if relayInfo.BillingSource != BillingSourceSubscription && userQuota < quota {
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
 	}
 
-	if !token.UnlimitedQuota && token.RemainQuota < quota {
+	if relayInfo.BillingSource != BillingSourceSubscription && !token.UnlimitedQuota && token.RemainQuota < quota {
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
 	}
 
@@ -207,6 +208,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	}
 	// 用户按模型折扣：实时（WSS）结算同样打折，折前额度记入日志。
 	quota, quotaBeforeDiscount := applyUserModelDiscount(relayInfo, quota)
+	quota = ApplySubscriptionMarkup(relayInfo, quota)
 
 	totalTokens := usage.TotalTokens
 	var logContent string
@@ -227,8 +229,10 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, modelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		model.UpdateUserConsumption(relayInfo.UserId, quota, relayInfo.BillingSource == BillingSourceSubscription, true)
+		if relayInfo.BillingSource != BillingSourceSubscription {
+			model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		}
 	}
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
@@ -334,6 +338,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 	// 用户按模型折扣：音频结算同样打折，折前额度记入日志。
 	quota, quotaBeforeDiscount := applyUserModelDiscount(relayInfo, quota)
+	quota = ApplySubscriptionMarkup(relayInfo, quota)
 
 	totalTokens := usage.TotalTokens
 	var logContent string
@@ -354,8 +359,10 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, relayInfo.OriginModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
-		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		model.UpdateUserConsumption(relayInfo.UserId, quota, relayInfo.BillingSource == BillingSourceSubscription, true)
+		if relayInfo.BillingSource != BillingSourceSubscription {
+			model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
+		}
 	}
 
 	if err := SettleBilling(ctx, relayInfo, quota); err != nil {
@@ -447,7 +454,7 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 
 	// 无限额度令牌不做令牌级扣减，与 PreConsumeTokenQuota 的旁路保持对称，
 	// 避免结算把 remain_quota 越扣越负。
-	if !relayInfo.IsPlayground && !relayInfo.TokenUnlimited {
+	if relayInfo.BillingSource != BillingSourceSubscription && !relayInfo.IsPlayground && !relayInfo.TokenUnlimited {
 		if quota > 0 {
 			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
 		} else {

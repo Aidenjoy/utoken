@@ -58,6 +58,8 @@ export type PricingModel = {
   seedance_config?: string
   /** Raw seedream per-image price config JSON (billing_mode === 'seedream') */
   seedream_config?: string
+  /** Raw wan per-second price config JSON (billing_mode === 'wan') */
+  wan_config?: string
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
   /**

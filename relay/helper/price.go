@@ -182,6 +182,31 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
 
+	// wan 绝对单价模式：管理员按分辨率档配置了每秒单价（wan_config）时，档价即
+	// 每秒实际单价（与按次 ModelPrice 同量纲），基础额度按 1 秒计，提交侧由适配器
+	// EstimateBilling 注入 seconds 倍率乘上真实秒数；分辨率未指定时取已配置最高档价
+	// 作预扣兜底，结算时按响应分辨率与真实时长重算。未配置档价的模型落入下方常规
+	// ModelPrice/ModelRatio 逻辑。
+	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeWan {
+		if tierPrice, ok := billing_setting.GetWanTierPrice(info.OriginModelName, info.WanResolution); ok {
+			quota := common.QuotaFromFloat(tierPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+			freeModel := false
+			if !operation_setting.GetQuotaSetting().EnableFreeModelPreConsume {
+				if groupRatioInfo.GroupRatio == 0 {
+					quota = 0
+					freeModel = true
+				}
+			}
+			return types.PriceData{
+				FreeModel:      freeModel,
+				ModelPrice:     tierPrice,
+				UsePrice:       true,
+				Quota:          quota,
+				GroupRatioInfo: groupRatioInfo,
+			}, nil
+		}
+	}
+
 	// seedance 绝对单价模式：管理员配置了分辨率档单价（seedance_config）时，档价即每
 	// 百万 token 实际单价，按档价/2 合成模型倍率后沿用既有按量计费公式，无需再配置
 	// ModelRatio。分辨率未指定时取该「含/不含视频」变体最高档价作预扣兜底，结算时按
@@ -273,11 +298,14 @@ func HasModelBillingConfig(modelName string) bool {
 	if _, ok, _ := ratio_setting.GetModelRatio(modelName); ok {
 		return true
 	}
-	// seedance/seedream 绝对单价配置同样是有效计费配置（无需 ModelRatio/ModelPrice）
+	// seedance/seedream/wan 绝对单价配置同样是有效计费配置（无需 ModelRatio/ModelPrice）
 	if _, ok := billing_setting.GetSeedanceConfig(modelName); ok {
 		return true
 	}
 	if _, ok := billing_setting.GetSeedreamConfig(modelName); ok {
+		return true
+	}
+	if _, ok := billing_setting.GetWanConfig(modelName); ok {
 		return true
 	}
 	if billing_setting.GetBillingMode(modelName) != billing_setting.BillingModeTieredExpr {

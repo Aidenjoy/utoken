@@ -66,3 +66,49 @@ func TestGetSeedanceConfigNormalizesResolutionKeys(t *testing.T) {
 	require.True(t, found)
 	assert.InDelta(t, 55.44, tier.WithoutVideo, 1e-9)
 }
+
+// wanTierFixture 覆盖：多档每秒单价、零价档（不支持）、大写/带空格分辨率键归一化。
+func loadWanTierFixture(t *testing.T) {
+	t.Helper()
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.wan_config": `{"wan-model":"{\"1080P\":0.14,\"480p\":0.04,\"720p\":0,\"4k\":0.3}","empty-model":"{}"}`,
+	}))
+}
+
+func TestGetWanTierPrice(t *testing.T) {
+	loadWanTierFixture(t)
+
+	tests := []struct {
+		name       string
+		model      string
+		resolution string
+		wantPrice  float64
+		wantOK     bool
+	}{
+		{name: "命中档", model: "wan-model", resolution: "480p", wantPrice: 0.04, wantOK: true},
+		{name: "大写键归一化", model: "wan-model", resolution: "1080p", wantPrice: 0.14, wantOK: true},
+		{name: "带空格分辨率归一化", model: "wan-model", resolution: " 1080P ", wantPrice: 0.14, wantOK: true},
+		{name: "零价档视为不支持", model: "wan-model", resolution: "720p", wantOK: false},
+		{name: "分辨率不在配置内", model: "wan-model", resolution: "2k", wantOK: false},
+		{name: "空分辨率取最高档预扣兜底", model: "wan-model", resolution: "", wantPrice: 0.3, wantOK: true},
+		{name: "模型未配置", model: "other-model", resolution: "480p", wantOK: false},
+		{name: "模型配置为空", model: "empty-model", resolution: "480p", wantOK: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			price, ok := GetWanTierPrice(tt.model, tt.resolution)
+			assert.Equal(t, tt.wantOK, ok)
+			if tt.wantOK {
+				assert.InDelta(t, tt.wantPrice, price, 1e-9)
+			}
+		})
+	}
+}
