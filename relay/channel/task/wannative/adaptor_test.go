@@ -187,52 +187,115 @@ func TestValidateWanResolution(t *testing.T) {
 	}
 }
 
-// Playground 方舟 content 协议体必须转换为 DashScope 官方结构（逐字段匹配官方样例）。
+// Playground 方舟 content 协议体必须转换为 wan3 官方 input.media 数组协议：
+// 首尾帧模式 → first_frame/last_frame；参考模式 → reference_image/reference_video/
+// reference_audio；不得残留 wan2 legacy 字段（img_url/last_frame_url/audio_url）。
 func TestArkContentConvertedToOfficial(t *testing.T) {
-	body := `{
-		"model": "wan3.0-video",
-		"content": [
-			{"type": "text", "text": "一只小猫在月光下的屋顶上奔跑"},
-			{"type": "image_url", "image_url": {"url": "https://example.com/first.png"}},
-			{"type": "image_url", "image_url": {"url": "https://example.com/last.png"}, "role": "last_frame"},
-			{"type": "audio_url", "audio_url": {"url": "https://example.com/a.mp3"}}
-		],
-		"resolution": "480p",
-		"ratio": "adaptive",
-		"duration": 5,
-		"generate_audio": true
-	}`
-	c := newTestContext(t, http.MethodPost, "/v1/video/generations", body)
-	a := &TaskAdaptor{}
-	info := newWanRelayInfo()
-	info.UpstreamModelName = "mapped-model"
-	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
-	assert.True(t, a.arkContent)
-	assert.Equal(t, "480p", a.resolution)
+	t.Run("首尾帧模式", func(t *testing.T) {
+		body := `{
+			"model": "wan3.0-video",
+			"content": [
+				{"type": "text", "text": "一只小猫在月光下的屋顶上奔跑"},
+				{"type": "image_url", "image_url": {"url": "https://example.com/first.png"}, "role": "first_frame"},
+				{"type": "image_url", "image_url": {"url": "https://example.com/last.png"}, "role": "last_frame"}
+			],
+			"resolution": "480p",
+			"ratio": "adaptive",
+			"duration": 5,
+			"generate_audio": true
+		}`
+		c := newTestContext(t, http.MethodPost, "/v1/video/generations", body)
+		a := &TaskAdaptor{}
+		info := newWanRelayInfo()
+		info.UpstreamModelName = "mapped-model"
+		info.IsModelMapped = true
+		require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+		assert.True(t, a.arkContent)
+		assert.Equal(t, "480p", a.resolution)
 
-	reader, err := a.BuildRequestBody(c, info)
-	require.NoError(t, err)
-	out, err := io.ReadAll(reader)
-	require.NoError(t, err)
+		reader, err := a.BuildRequestBody(c, info)
+		require.NoError(t, err)
+		out, err := io.ReadAll(reader)
+		require.NoError(t, err)
 
-	var parsed map[string]any
-	require.NoError(t, common.Unmarshal(out, &parsed))
-	assert.Equal(t, "mapped-model", parsed["model"])
-	_, hasContent := parsed["content"]
-	assert.False(t, hasContent, "转换后不得残留方舟 content 数组")
-	input, _ := parsed["input"].(map[string]any)
-	require.NotNil(t, input)
-	assert.Equal(t, "一只小猫在月光下的屋顶上奔跑", input["prompt"])
-	assert.Equal(t, "https://example.com/first.png", input["img_url"])
-	assert.Equal(t, "https://example.com/last.png", input["last_frame_url"])
-	assert.Equal(t, "https://example.com/a.mp3", input["audio_url"])
-	params, _ := parsed["parameters"].(map[string]any)
-	require.NotNil(t, params)
-	assert.Equal(t, "480P", params["resolution"])
-	assert.Equal(t, "adaptive", params["ratio"])
-	assert.Equal(t, float64(5), params["duration"])
-	assert.Equal(t, true, params["audio"])
-	assert.Equal(t, false, params["watermark"], "未显式传 watermark 默认去水印")
+		var parsed map[string]any
+		require.NoError(t, common.Unmarshal(out, &parsed))
+		assert.Equal(t, "mapped-model", parsed["model"])
+		_, hasContent := parsed["content"]
+		assert.False(t, hasContent, "转换后不得残留方舟 content 数组")
+		input, _ := parsed["input"].(map[string]any)
+		require.NotNil(t, input)
+		assert.Equal(t, "一只小猫在月光下的屋顶上奔跑", input["prompt"])
+		assert.Equal(t, []any{
+			map[string]any{"type": "first_frame", "url": "https://example.com/first.png"},
+			map[string]any{"type": "last_frame", "url": "https://example.com/last.png"},
+		}, input["media"])
+		for _, legacy := range []string{"img_url", "last_frame_url", "audio_url"} {
+			_, has := input[legacy]
+			assert.False(t, has, "wan3 不得发送 legacy 字段 %s", legacy)
+		}
+		params, _ := parsed["parameters"].(map[string]any)
+		require.NotNil(t, params)
+		assert.Equal(t, "480P", params["resolution"])
+		assert.Equal(t, "adaptive", params["ratio"])
+		assert.Equal(t, float64(5), params["duration"])
+		assert.Equal(t, true, params["audio"])
+		// watermark 未显式传时不注入 true（omitempty 丢弃 false，wan3 上游默认即无水印）
+		assert.NotEqual(t, true, params["watermark"], "未显式传 watermark 不得盖水印")
+	})
+
+	t.Run("参考模式含参考视频", func(t *testing.T) {
+		body := `{
+			"model": "wan3.0-video",
+			"content": [
+				{"type": "text", "text": "参考图1的风格生成视频"},
+				{"type": "image_url", "image_url": {"url": "https://example.com/ref.png"}, "role": "reference_image"},
+				{"type": "video_url", "video_url": {"url": "https://example.com/ref.mp4"}, "role": "reference_video"},
+				{"type": "audio_url", "audio_url": {"url": "https://example.com/ref.mp3"}, "role": "reference_audio"}
+			],
+			"resolution": "720p",
+			"duration": -1
+		}`
+		c := newTestContext(t, http.MethodPost, "/v1/video/generations", body)
+		a := &TaskAdaptor{}
+		info := newWanRelayInfo()
+		require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+
+		reader, err := a.BuildRequestBody(c, info)
+		require.NoError(t, err)
+		out, err := io.ReadAll(reader)
+		require.NoError(t, err)
+
+		var parsed map[string]any
+		require.NoError(t, common.Unmarshal(out, &parsed))
+		input, _ := parsed["input"].(map[string]any)
+		require.NotNil(t, input)
+		assert.Equal(t, []any{
+			map[string]any{"type": "reference_image", "url": "https://example.com/ref.png"},
+			map[string]any{"type": "reference_video", "url": "https://example.com/ref.mp4"},
+			map[string]any{"type": "reference_audio", "url": "https://example.com/ref.mp3"},
+		}, input["media"])
+		params, _ := parsed["parameters"].(map[string]any)
+		require.NotNil(t, params)
+		assert.Equal(t, float64(-1), params["duration"], "wan3 智能时长 -1 必须透传上游")
+	})
+
+	t.Run("首尾帧与参考素材互斥", func(t *testing.T) {
+		body := `{
+			"model": "wan3.0-video",
+			"content": [
+				{"type": "text", "text": "p"},
+				{"type": "image_url", "image_url": {"url": "https://example.com/first.png"}, "role": "first_frame"},
+				{"type": "image_url", "image_url": {"url": "https://example.com/ref.png"}, "role": "reference_image"}
+			]
+		}`
+		c := newTestContext(t, http.MethodPost, "/v1/video/generations", body)
+		a := &TaskAdaptor{}
+		require.Nil(t, a.ValidateRequestAndSetAction(c, newWanRelayInfo()))
+		_, err := a.BuildRequestBody(c, newWanRelayInfo())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "首尾帧与参考素材不能同时使用")
+	})
 }
 
 func TestValidateArkContentBody(t *testing.T) {
@@ -247,8 +310,18 @@ func TestValidateArkContentBody(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "reference video rejected (DashScope has no such protocol)",
-			body:    `{"model":"m","content":[{"type":"text","text":"p"},{"type":"video_url","video_url":{"url":"https://example.com/ref.mp4"}}]}`,
+			name:    "reference video accepted for wan3",
+			body:    `{"model":"wan3.0-video","content":[{"type":"text","text":"p"},{"type":"video_url","video_url":{"url":"https://example.com/ref.mp4"}}]}`,
+			wantErr: false,
+		},
+		{
+			name:    "reference video rejected for legacy wan model",
+			body:    `{"model":"wan2.6-i2v","content":[{"type":"text","text":"p"},{"type":"video_url","video_url":{"url":"https://example.com/ref.mp4"}}]}`,
+			wantErr: true,
+		},
+		{
+			name:    "wan3 4k resolution rejected",
+			body:    `{"model":"wan3.0-video","resolution":"4k","content":[{"type":"text","text":"p"}]}`,
 			wantErr: true,
 		},
 		{
@@ -355,6 +428,10 @@ func TestBuildRequestURL(t *testing.T) {
 		{"https://dashscope.aliyuncs.com", "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"},
 		{"https://dashscope.aliyuncs.com/", "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"},
 		{"https://llm-apiv1example.cn-beijing.maas.aliyuncs.com", "https://llm-apiv1example.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"},
+		// 用户常把 base_url 配成含版本路径后缀的地址，不得拼出双重路径
+		{"https://llm-apiv1example.cn-beijing.maas.aliyuncs.com/api", "https://llm-apiv1example.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"},
+		{"https://llm-apiv1example.cn-beijing.maas.aliyuncs.com/api/v1", "https://llm-apiv1example.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"},
+		{"https://dashscope.aliyuncs.com/api/v1/", "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"},
 	}
 	for _, tt := range tests {
 		a := &TaskAdaptor{baseURL: tt.baseURL}

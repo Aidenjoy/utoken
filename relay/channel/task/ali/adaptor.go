@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -56,6 +57,7 @@ type AliVideoInput struct {
 type AliVideoParameters struct {
 	Resolution   string `json:"resolution,omitempty"`    // 分辨率: 480P/720P/1080P（图生视频、首尾帧生视频）
 	Size         string `json:"size,omitempty"`          // 尺寸: 如 "832*480"（文生视频）
+	Ratio        string `json:"ratio,omitempty"`         // 画面比例（wan3.0：adaptive/16:9/9:16 等）
 	Duration     int    `json:"duration,omitempty"`      // 时长: 3-10秒
 	PromptExtend bool   `json:"prompt_extend,omitempty"` // 是否开启prompt智能改写
 	Watermark    bool   `json:"watermark,omitempty"`     // 是否添加水印
@@ -131,22 +133,32 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
+	// Playground 同源客户端发送方舟 content 数组协议（无 prompt 字段），
+	// 先转换为统一协议体再走共享校验，否则 prompt 为空被误拒。
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	rawBody, err := io.ReadAll(storage)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if unified, isArk, convErr := ConvertArkTaskBody(rawBody); convErr != nil {
+		return service.TaskErrorWrapperLocal(convErr, "invalid_request", http.StatusBadRequest)
+	} else if isArk {
+		if replaceErr := common.ReplaceBodyStorage(c, unified); replaceErr != nil {
+			return service.TaskErrorWrapperLocal(replaceErr, "invalid_request", http.StatusInternalServerError)
+		}
+	}
 	// ValidateMultipartDirect 负责解析并将原始 TaskSubmitReq 存入 context
 	if taskErr = relaycommon.ValidateMultipartDirect(c, info); taskErr != nil {
 		return taskErr
-	}
-	// wan 按秒档价模式：校验用户显式指定的分辨率档，未填的档 = 不支持，直接 400 拒绝。
-	// 未指定分辨率时留空，预扣按已配置最高档兜底，结算按上游真实分辨率重算。
-	if billing_setting.GetBillingMode(info.OriginModelName) != billing_setting.BillingModeWan {
-		return nil
-	}
-	if _, ok := billing_setting.GetWanConfig(info.OriginModelName); !ok {
-		return nil
 	}
 	taskReq, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
 	}
+	// 提取用户显式指定的分辨率档（顶层 size 或 metadata.parameters）
 	raw := strings.TrimSpace(taskReq.Size)
 	if raw == "" && taskReq.Metadata != nil {
 		if params, ok := taskReq.Metadata["parameters"].(map[string]interface{}); ok {
@@ -156,6 +168,24 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 				raw = strings.TrimSpace(v)
 			}
 		}
+	}
+	// wan3.0 上游仅支持 480P/720P/1080P，提前拦截避免提交上游后才失败
+	if IsWan3Model(taskReq.Model) && raw != "" {
+		res := strings.ToLower(raw)
+		if !strings.HasSuffix(res, "p") && res != "4k" {
+			res += "p"
+		}
+		if res != "480p" && res != "720p" && res != "1080p" {
+			return service.TaskErrorWrapper(fmt.Errorf("wan3.0 仅支持 480P/720P/1080P 分辨率: %s", raw), "unsupported_resolution", http.StatusBadRequest)
+		}
+	}
+	// wan 按秒档价模式：校验用户显式指定的分辨率档，未填的档 = 不支持，直接 400 拒绝。
+	// 未指定分辨率时留空，预扣按已配置最高档兜底，结算按上游真实分辨率重算。
+	if billing_setting.GetBillingMode(info.OriginModelName) != billing_setting.BillingModeWan {
+		return nil
+	}
+	if _, ok := billing_setting.GetWanConfig(info.OriginModelName); !ok {
+		return nil
 	}
 	if raw == "" {
 		return nil
@@ -177,8 +207,19 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	return nil
 }
 
+// NormalizeWanBaseURL 归一化 DashScope base_url：去掉尾部斜杠与版本路径后缀
+// （/api/v1、/api、/v1）。适配器自行追加 /api/v1 路径段，用户常把 base_url
+// 配成含 /api 或 /api/v1 后缀的地址，直接拼接会拼出双重路径 404。
+func NormalizeWanBaseURL(baseURL string) string {
+	trimmed := strings.TrimSuffix(baseURL, "/")
+	trimmed = strings.TrimSuffix(trimmed, "/api/v1")
+	trimmed = strings.TrimSuffix(trimmed, "/api")
+	trimmed = strings.TrimSuffix(trimmed, "/v1")
+	return trimmed
+}
+
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	return fmt.Sprintf("%s/api/v1/services/aigc/video-generation/video-synthesis", a.baseURL), nil
+	return NormalizeWanBaseURL(a.baseURL) + "/api/v1/services/aigc/video-generation/video-synthesis", nil
 }
 
 // BuildRequestHeader sets required headers for Ali API
@@ -305,6 +346,12 @@ func ProcessAliOtherRatios(aliReq *AliVideoRequest) (map[string]float64, error) 
 
 func isWan27I2VModel(model string) bool {
 	return strings.HasPrefix(model, "wan2.7-i2v")
+}
+
+// IsWan3Model 判断 wan3 系列模型：使用官方 input.media 数组协议，
+// 支持参考图/参考视频/参考音频输入，分辨率仅 480P/720P/1080P。
+func IsWan3Model(model string) bool {
+	return strings.HasPrefix(model, "wan3")
 }
 
 func firstNonEmpty(values ...string) string {
@@ -479,7 +526,30 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 		return nil, errors.New("can't change model with metadata")
 	}
 
+	// metadata 可绕过顶层时长校验：duration 是计费乘数，必须强制上下界。
+	// -1 是 wan3 智能时长的合法值（预扣按 5 秒估算，结算按上游真实时长），
+	// 其余模型不支持智能时长，归入默认 5 秒。
+	// 模型映射可能把 wan3 映射为别名（或反向），协议判定同时看原始与上游模型名。
+	wan3 := IsWan3Model(aliReq.Model) || IsWan3Model(req.Model)
+	if aliReq.Parameters.Duration > relaycommon.MaxTaskDurationSeconds || aliReq.Parameters.Duration < -1 {
+		return nil, fmt.Errorf("duration must be -1 (smart duration) or between 0 and %d", relaycommon.MaxTaskDurationSeconds)
+	}
+	if aliReq.Parameters.Duration <= 0 {
+		if aliReq.Parameters.Duration == -1 && wan3 {
+			// 保留 -1 透传上游智能时长
+		} else {
+			aliReq.Parameters.Duration = 5
+		}
+	}
+	if !wan3 {
+		// ratio 仅 wan3 支持，legacy 模型发送会被上游拒绝
+		aliReq.Parameters.Ratio = ""
+	}
+
 	if err := normalizeWan27I2VInput(aliReq, req); err != nil {
+		return nil, err
+	}
+	if err := normalizeWan3Input(aliReq, req); err != nil {
 		return nil, err
 	}
 
@@ -501,8 +571,13 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 
 	// metadata can override Duration past standard request validation;
 	// cap it because it is used as a billing multiplier.
+	// -1 智能时长/未指定按 5 秒预估，结算按上游真实时长重算。
+	seconds := aliReq.Parameters.Duration
+	if seconds <= 0 {
+		seconds = 5
+	}
 	otherRatios := map[string]float64{
-		"seconds": float64(min(aliReq.Parameters.Duration, relaycommon.MaxTaskDurationSeconds)),
+		"seconds": float64(min(seconds, relaycommon.MaxTaskDurationSeconds)),
 	}
 	// wan 按秒档价模式：档价已在 ModelPriceHelperPerCall 中按每秒绝对单价计费，
 	// 只注入 seconds 倍率，不再叠加 legacy 分辨率相对倍率。
@@ -606,7 +681,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := fmt.Sprintf("%s/api/v1/tasks/%s", baseUrl, taskID)
+	uri := NormalizeWanBaseURL(baseUrl) + "/api/v1/tasks/" + url.PathEscape(taskID)
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
