@@ -1,3 +1,5 @@
+新接口 GET /v1/modelsinfo?type=all|text|image|video
+
 安装 Go 依赖
 ```
 运行前需要在 web/default 和 web/classic 下面创建 dist/index.html，写入<!DOCTYPE html><html><body></body></html>

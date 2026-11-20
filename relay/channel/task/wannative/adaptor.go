@@ -30,10 +30,11 @@ import (
 // GET {base}/api/v1/tasks/:id），客户端只需替换 base_url 与 key 即可接入：
 // 官方请求体除 model 字段按渠道模型映射替换外原样透传上游，
 // 上游提交/查询响应也原样返回客户端。
-// Playground 同源客户端发送的方舟 content 数组协议（无 input 对象）按官方
-// 结构转换后发送（见 buildOfficialFromContent），不侵入统一协议共享校验器。
-// 渠道 base_url 原样使用（所见即所发），适配器自行追加 /api/v1 路径段，
-// base_url 不能包含该后缀，否则拼出双重路径 404。
+// Playground 同源客户端发送的方舟 content 数组协议（无 input 对象）委托
+// ali 包转换为官方结构后发送（wan3 走 input.media 数组协议），
+// 不侵入统一协议共享校验器。
+// 渠道 base_url 尾部版本路径后缀（/api、/api/v1、/v1）会被归一化剔除，
+// 适配器自行追加 /api/v1 路径段，避免拼出双重路径 404。
 type TaskAdaptor struct {
 	taskcommon.BaseBilling
 	ChannelType int
@@ -51,27 +52,6 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl
 	a.apiKey = info.ApiKey
-}
-
-// mediaURLField 兼容方舟 content 协议的媒体字段：字符串 URL 或 {url} 对象。
-type mediaURLField struct {
-	URL string
-}
-
-func (m *mediaURLField) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := common.Unmarshal(data, &s); err == nil {
-		m.URL = s
-		return nil
-	}
-	var obj struct {
-		URL string `json:"url"`
-	}
-	if err := common.Unmarshal(data, &obj); err != nil {
-		return err
-	}
-	m.URL = obj.URL
-	return nil
 }
 
 // submitProbe 提交请求体的最小解析结构：同时覆盖 DashScope 官方协议与
@@ -92,18 +72,11 @@ type submitProbe struct {
 	} `json:"parameters"`
 	// 方舟 content 协议字段（Playground 同源客户端）
 	Content []struct {
-		Type     string         `json:"type"`
-		Role     string         `json:"role"`
-		Text     string         `json:"text"`
-		ImageURL *mediaURLField `json:"image_url"`
-		VideoURL *mediaURLField `json:"video_url"`
-		AudioURL *mediaURLField `json:"audio_url"`
+		Type string `json:"type"`
+		Role string `json:"role"`
 	} `json:"content"`
-	Resolution    string         `json:"resolution"`
-	Ratio         string         `json:"ratio"`
-	Duration      *dto.IntValue  `json:"duration"`
-	GenerateAudio *dto.BoolValue `json:"generate_audio"`
-	Watermark     *dto.BoolValue `json:"watermark"`
+	Resolution string        `json:"resolution"`
+	Duration   *dto.IntValue `json:"duration"`
 }
 
 // ValidateRequestAndSetAction 对原始请求体做最小校验：model 必填；duration 是
@@ -133,9 +106,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if len(req.Content) > 0 {
 		a.arkContent = true
 		for _, item := range req.Content {
-			if item.Type == "video_url" {
-				// DashScope 上游没有参考视频输入协议，静默丢弃会生成与用户预期不符的视频。
-				return service.TaskErrorWrapperLocal(errors.New("ali 视频渠道不支持参考视频输入"), "unsupported_input", http.StatusBadRequest)
+			if item.Type == "video_url" && !ali.IsWan3Model(req.Model) {
+				// 仅 wan3 支持参考视频；其余模型静默丢弃会生成与用户预期不符的视频。
+				return service.TaskErrorWrapperLocal(fmt.Errorf("%s 不支持参考视频输入", req.Model), "unsupported_input", http.StatusBadRequest)
 			}
 		}
 		if req.Duration != nil {
@@ -160,6 +133,10 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			}
 			a.resolution = normalizeResolution(req.Parameters.Resolution)
 		}
+	}
+	// wan3 上游仅支持 480P/720P/1080P，提前拦截避免提交上游后才失败
+	if ali.IsWan3Model(req.Model) && a.resolution != "" && a.resolution != "480p" && a.resolution != "720p" && a.resolution != "1080p" {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("wan3.0 仅支持 480P/720P/1080P 分辨率: %s", a.resolution), "unsupported_resolution", http.StatusBadRequest)
 	}
 	return a.validateWanResolution(info)
 }
@@ -209,7 +186,7 @@ func (a *TaskAdaptor) validateWanResolution(info *relaycommon.RelayInfo) *dto.Ta
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(_ *relaycommon.RelayInfo) (string, error) {
-	return strings.TrimSuffix(a.baseURL, "/") + "/api/v1/services/aigc/video-generation/video-synthesis", nil
+	return ali.NormalizeWanBaseURL(a.baseURL) + "/api/v1/services/aigc/video-generation/video-synthesis", nil
 }
 
 // BuildRequestHeader sets required headers for DashScope API.
@@ -255,11 +232,13 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 
 	if a.arkContent {
-		var req submitProbe
-		if err := common.Unmarshal(body, &req); err != nil {
-			return nil, errors.Wrap(err, "parse ark content request failed")
+		// 委托 ali 包同一条转换链路：方舟 content → 统一协议 → DashScope 官方结构，
+		// wan3 走 input.media 数组协议，模型映射/时长边界/分辨率校验与 ali 渠道一致。
+		unified, _, err := ali.ConvertArkTaskBody(body)
+		if err != nil {
+			return nil, errors.Wrap(err, "convert ark content request failed")
 		}
-		converted, err := buildOfficialFromContent(&req, info)
+		converted, err := ali.BuildOfficialWanBody(unified, info)
 		if err != nil {
 			return nil, errors.Wrap(err, "convert ark content request failed")
 		}
@@ -281,94 +260,13 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	return bytes.NewReader(body), nil
 }
 
-// buildOfficialFromContent 把 Playground 方舟 content 数组协议转换为 DashScope
-// 官方结构：text → input.prompt；首图/first_frame → input.img_url，last_frame →
-// input.last_frame_url；audio_url → input.audio_url；顶层 resolution/ratio/duration/
-// watermark/generate_audio → parameters（watermark 未显式传则 false 去水印，
-// generate_audio 映射为官方 audio 参数）。
-func buildOfficialFromContent(req *submitProbe, info *relaycommon.RelayInfo) ([]byte, error) {
-	var texts, images []string
-	lastFrame, audioURL := "", ""
-	for _, item := range req.Content {
-		switch item.Type {
-		case "text":
-			if strings.TrimSpace(item.Text) != "" {
-				texts = append(texts, item.Text)
-			}
-		case "image_url":
-			if item.ImageURL == nil {
-				continue
-			}
-			u := strings.TrimSpace(item.ImageURL.URL)
-			if u == "" {
-				continue
-			}
-			if item.Role == "last_frame" {
-				lastFrame = u
-			} else {
-				images = append(images, u)
-			}
-		case "audio_url":
-			if item.AudioURL != nil && audioURL == "" {
-				audioURL = strings.TrimSpace(item.AudioURL.URL)
-			}
-		}
-	}
-
-	input := map[string]any{}
-	if prompt := strings.Join(texts, "\n"); prompt != "" {
-		input["prompt"] = prompt
-	}
-	if len(images) > 0 {
-		input["img_url"] = images[0]
-	}
-	if lastFrame != "" {
-		input["last_frame_url"] = lastFrame
-	}
-	if audioURL != "" {
-		input["audio_url"] = audioURL
-	}
-
-	parameters := map[string]any{}
-	if res := normalizeResolution(req.Resolution); res != "" {
-		parameters["resolution"] = strings.ToUpper(res)
-	}
-	if ratio := strings.TrimSpace(req.Ratio); ratio != "" {
-		parameters["ratio"] = ratio
-	}
-	if req.Duration != nil {
-		parameters["duration"] = int(*req.Duration)
-	}
-	if req.Watermark != nil {
-		parameters["watermark"] = bool(*req.Watermark)
-	} else {
-		parameters["watermark"] = false
-	}
-	if req.GenerateAudio != nil {
-		parameters["audio"] = bool(*req.GenerateAudio)
-	}
-
-	modelName := req.Model
-	if info.UpstreamModelName != "" {
-		modelName = info.UpstreamModelName
-	}
-	body := map[string]any{
-		"model": modelName,
-		"input": input,
-	}
-	if len(parameters) > 0 {
-		body["parameters"] = parameters
-	}
-	return common.Marshal(body)
-}
-
 // DoRequest delegates to common helper.
 func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
 // DoResponse 原样透传上游提交响应，并以上游任务 ID 作为公开任务 ID
-//（官方提交响应 output.task_id 即上游 ID，客户端用它查询，tasks 表 TaskID 必须一致）。
+// （官方提交响应 output.task_id 即上游 ID，客户端用它查询，tasks 表 TaskID 必须一致）。
 func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -429,7 +327,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 		return nil, fmt.Errorf("invalid task_id")
 	}
 
-	uri := strings.TrimSuffix(baseUrl, "/") + "/api/v1/tasks/" + url.PathEscape(taskID)
+	uri := ali.NormalizeWanBaseURL(baseUrl) + "/api/v1/tasks/" + url.PathEscape(taskID)
 
 	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {

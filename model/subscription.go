@@ -258,8 +258,13 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 // User subscription instance
 // UserSubscription 保存用户已购套餐快照，后续编辑套餐不改变已有订阅的计费比例。
 type UserSubscription struct {
-	PointsRatio        float64 `json:"-" gorm:"type:decimal(18,8);not null;default:0"`
-	GrossProfitPercent float64 `json:"-" gorm:"type:decimal(5,2);default:0"`
+	// 比例快照在创建订阅时从套餐显式赋值（零值即 0），不用 DB 默认值标签：GORM 以 %.6f
+	// 内联 float 默认值（0.000000）与标签 "0" 永不相等；且 glebarez 驱动把 decimal(p,s)
+	// 解析成类型 decimal + 长度 p，与 float64 默认 size 64 不等。两者都会让 AutoMigrate
+	// 每次启动触发 AlterColumn，而驱动重建 decimal 列 DDL 的正则遇逗号截断括号，
+	// SQLite 启动直接 FATAL。size 对齐驱动解析出的精度使比较收敛。
+	PointsRatio        float64 `json:"-" gorm:"type:decimal(18,8);not null;size:18"`
+	GrossProfitPercent float64 `json:"-" gorm:"type:decimal(5,2);size:5"`
 	Id                 int     `json:"id"`
 	UserId             int     `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
 	PlanId             int     `json:"plan_id" gorm:"index"`

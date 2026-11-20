@@ -22,6 +22,14 @@ import { DocText, Note, P } from './doc-typography'
 
 const WAN_MODEL = 'wan3.0-video'
 
+const wanSubmitResponse = `{
+  "output": {
+    "task_id": "a8532587-fa8c-4ef8-82be-0c46b17950d1",
+    "task_status": "PENDING"
+  },
+  "request_id": "7574ee8f-38a3-4b1e-9280-11c33ab46e51"
+}`
+
 export function buildWanVideoSections(
   siteUrl: string,
   t: DocsTranslate
@@ -41,6 +49,20 @@ export function buildWanVideoSections(
               )}
             />
           </P>
+          <P>
+            <DocText
+              text={t(
+                'Four creation modes are supported: reference-based generation, text-to-video, first & last frame, and first frame; a successful submission returns a task ID for later status queries.'
+              )}
+            />
+          </P>
+          <Note>
+            <DocText
+              text={t(
+                'Video generation endpoints require a video model Key: create one on the General → API Keys page and select the wan model (one Key per model). The `model` in requests must match the model bound to the Key.'
+              )}
+            />
+          </Note>
         </>
       ),
     },
@@ -52,22 +74,62 @@ export function buildWanVideoSections(
           <P>
             <DocText
               text={t(
-                'Creates an asynchronous video generation task. `input.prompt` describes the video; for image-to-video pass the first frame via `input.img_url`. `parameters.resolution` selects the resolution tier (e.g. `480P` / `720P` / `1080P`), `parameters.ratio` the aspect ratio (`adaptive` follows the input image), and `parameters.duration` the video length in seconds (`-1` lets the model decide the duration automatically).'
+                'Creates an asynchronous video generation task. `input.prompt` describes the video; `input.media` carries image, video and audio inputs for the image-to-video and reference-based modes. `parameters.resolution` selects the resolution tier (`480P` / `720P` / `1080P`), `parameters.ratio` the aspect ratio (`adaptive` follows the input media), and `parameters.duration` the video length in seconds (`2`-`30`, or `-1` to let the model decide automatically).'
               )}
             />
           </P>
-          <CodeBlock
-            method='POST'
-            url={submitUrl}
-            lang='bash'
-            code={`curl ${submitUrl} \\
+        </>
+      ),
+      children: [
+        {
+          id: 'wan-reference',
+          title: t('Reference-based Generation'),
+          body: (
+            <>
+              <P>
+                <DocText
+                  text={t(
+                    'Reference-based generation combines the prompt with reference images (up to 10), reference videos (up to 5, total duration within 15 seconds) and reference audio (up to 5, total duration within 15 seconds) via `input.media`. In the prompt, refer to the media in array order as image 1, video 1, audio 1, etc.'
+                  )}
+                />
+              </P>
+              <CodeBlock
+                method='POST'
+                url={submitUrl}
+                lang='json'
+                code={`{
+  "model": "${WAN_MODEL}",
+  "input": {
+    "prompt": "${t('The subject from image 1 follows the motion of video 1, with audio 1 as the background rhythm')}",
+    "media": [
+      {"type": "reference_image", "url": "https://example.com/reference1.jpg"},
+      {"type": "reference_video", "url": "https://example.com/reference.mp4"},
+      {"type": "reference_audio", "url": "https://example.com/reference.mp3"}
+    ]
+  },
+  "parameters": {
+    "resolution": "480P",
+    "ratio": "adaptive",
+    "duration": 5
+  }
+}`}
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl ${submitUrl} \\
   -H "Authorization: Bearer ${t('sk-your-token')}" \\
   -H "Content-Type: application/json" \\
   -H "X-DashScope-Async: enable" \\
   -d '{
     "model": "${WAN_MODEL}",
     "input": {
-      "prompt": "一只小猫在月光下的屋顶上奔跑，城市的霓虹灯在远处闪烁，电影级画质，流畅运镜。"
+      "prompt": "${t('The subject from image 1 follows the motion of video 1, with audio 1 as the background rhythm')}",
+      "media": [
+        {"type": "reference_image", "url": "https://example.com/reference1.jpg"},
+        {"type": "reference_video", "url": "https://example.com/reference.mp4"},
+        {"type": "reference_audio", "url": "https://example.com/reference.mp3"}
+      ]
     },
     "parameters": {
       "resolution": "480P",
@@ -75,27 +137,224 @@ export function buildWanVideoSections(
       "duration": 5
     }
   }'`}
-          />
-          <CodeBlock
-            title={t('Response example')}
-            lang='json'
-            code={`{
-  "output": {
-    "task_id": "a8532587-fa8c-4ef8-82be-0c46b17950d1",
-    "task_status": "PENDING"
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={wanSubmitResponse}
+              />
+              <Note>
+                <DocText
+                  text={t(
+                    'Keep the returned `output.task_id` for querying the task. Tasks are asynchronous: poll the query endpoint until `task_status` reaches a terminal state.'
+                  )}
+                />
+              </Note>
+              <Note>
+                <DocText
+                  text={t(
+                    'First/last frame media (`first_frame` / `last_frame`) cannot be mixed with reference media (`reference_image` / `reference_video` / `reference_audio`) in one request; the first & last frame mode accepts images only.'
+                  )}
+                />
+              </Note>
+            </>
+          ),
+        },
+        {
+          id: 'wan-text',
+          title: t('Text-to-Video'),
+          body: (
+            <>
+              <P>{t('Generates a video from a text prompt only.')}</P>
+              <CodeBlock
+                method='POST'
+                url={submitUrl}
+                lang='json'
+                code={`{
+  "model": "${WAN_MODEL}",
+  "input": {
+    "prompt": "${t('An orange cat running on a sunlit grassland, bright and sunny')}"
   },
-  "request_id": "7574ee8f-38a3-4b1e-9280-11c33ab46e51"
+  "parameters": {
+    "resolution": "480P",
+    "ratio": "adaptive",
+    "duration": 5
+  }
 }`}
-          />
-          <Note>
-            <DocText
-              text={t(
-                'Keep the returned `output.task_id` for querying the task. Tasks are asynchronous: poll the query endpoint until `task_status` reaches a terminal state.'
-              )}
-            />
-          </Note>
-        </>
-      ),
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl ${submitUrl} \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-DashScope-Async: enable" \\
+  -d '{
+    "model": "${WAN_MODEL}",
+    "input": {
+      "prompt": "${t('An orange cat running on a sunlit grassland, bright and sunny')}"
+    },
+    "parameters": {
+      "resolution": "480P",
+      "ratio": "adaptive",
+      "duration": 5
+    }
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={wanSubmitResponse}
+              />
+              <Note>
+                <DocText
+                  text={t(
+                    'Keep the returned `output.task_id` for querying the task. Tasks are asynchronous: poll the query endpoint until `task_status` reaches a terminal state.'
+                  )}
+                />
+              </Note>
+            </>
+          ),
+        },
+        {
+          id: 'wan-frames',
+          title: t('First & Last Frame'),
+          body: (
+            <>
+              <P>
+                <DocText
+                  text={t(
+                    'Specify the first and last frame of the video via `first_frame` and `last_frame`; the model generates the transitional content in between.'
+                  )}
+                />
+              </P>
+              <CodeBlock
+                method='POST'
+                url={submitUrl}
+                lang='json'
+                code={`{
+  "model": "${WAN_MODEL}",
+  "input": {
+    "prompt": "${t('A city skyline transitioning from day to night')}",
+    "media": [
+      {"type": "first_frame", "url": "https://example.com/first-frame.jpg"},
+      {"type": "last_frame", "url": "https://example.com/last-frame.jpg"}
+    ]
+  },
+  "parameters": {
+    "resolution": "480P",
+    "ratio": "adaptive",
+    "duration": 5
+  }
+}`}
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl ${submitUrl} \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-DashScope-Async: enable" \\
+  -d '{
+    "model": "${WAN_MODEL}",
+    "input": {
+      "prompt": "${t('A city skyline transitioning from day to night')}",
+      "media": [
+        {"type": "first_frame", "url": "https://example.com/first-frame.jpg"},
+        {"type": "last_frame", "url": "https://example.com/last-frame.jpg"}
+      ]
+    },
+    "parameters": {
+      "resolution": "480P",
+      "ratio": "adaptive",
+      "duration": 5
+    }
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={wanSubmitResponse}
+              />
+              <Note>
+                <DocText
+                  text={t(
+                    'Keep the returned `output.task_id` for querying the task. Tasks are asynchronous: poll the query endpoint until `task_status` reaches a terminal state.'
+                  )}
+                />
+              </Note>
+            </>
+          ),
+        },
+        {
+          id: 'wan-first-frame',
+          title: t('First Frame'),
+          body: (
+            <>
+              <P>
+                <DocText
+                  text={t(
+                    'Pass a single first frame via `input.media` with `type: "first_frame"`; the model animates the image starting from that exact frame.'
+                  )}
+                />
+              </P>
+              <CodeBlock
+                method='POST'
+                url={submitUrl}
+                lang='json'
+                code={`{
+  "model": "${WAN_MODEL}",
+  "input": {
+    "prompt": "${t('A cat running on the grassland, cinematic lighting')}",
+    "media": [
+      {"type": "first_frame", "url": "https://example.com/first-frame.jpg"}
+    ]
+  },
+  "parameters": {
+    "resolution": "480P",
+    "ratio": "adaptive",
+    "duration": 5
+  }
+}`}
+              />
+              <CodeBlock
+                title={t('curl example')}
+                lang='bash'
+                code={`curl ${submitUrl} \\
+  -H "Authorization: Bearer ${t('sk-your-token')}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-DashScope-Async: enable" \\
+  -d '{
+    "model": "${WAN_MODEL}",
+    "input": {
+      "prompt": "${t('A cat running on the grassland, cinematic lighting')}",
+      "media": [
+        {"type": "first_frame", "url": "https://example.com/first-frame.jpg"}
+      ]
+    },
+    "parameters": {
+      "resolution": "480P",
+      "ratio": "adaptive",
+      "duration": 5
+    }
+  }'`}
+              />
+              <CodeBlock
+                title={t('Response example')}
+                lang='json'
+                code={wanSubmitResponse}
+              />
+              <Note>
+                <DocText
+                  text={t(
+                    'Keep the returned `output.task_id` for querying the task. Tasks are asynchronous: poll the query endpoint until `task_status` reaches a terminal state.'
+                  )}
+                />
+              </Note>
+            </>
+          ),
+        },
+      ],
     },
     {
       id: 'wan-query',
