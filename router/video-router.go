@@ -62,6 +62,17 @@ func SetVideoRouter(router *gin.Engine) {
 		arkNativeRouter.DELETE("/contents/generations/tasks/:task_id", controller.ArkVideoTaskDelete)
 	}
 
+	// Ali DashScope Wan official-protocol routes — clients of the official
+	// DashScope video API can point their base_url at this server and keep
+	// the exact same paths (no list/delete: DashScope has no such protocol).
+	wanNativeRouter := router.Group("/api/v1")
+	wanNativeRouter.Use(middleware.RouteTag("relay"))
+	wanNativeRouter.Use(middleware.TokenAuth(), middleware.Distribute())
+	{
+		wanNativeRouter.POST("/services/aigc/video-generation/video-synthesis", controller.RelayTask)
+		wanNativeRouter.GET("/tasks/:task_id", controller.RelayTaskFetch)
+	}
+
 	// 中转站风格素材库对外 API（兼容 ctaigw 契约）：下游客户端/下级网关
 	// 用 Bearer token 注册与查询素材，本站可作为其素材协议的中转上游。
 	relayAssetRouter := router.Group("/v1/api/assets")

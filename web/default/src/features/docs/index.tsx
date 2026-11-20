@@ -45,7 +45,8 @@ import { buildVideoTaskSections } from './video-task-sections'
 const TABS: { id: DocsTabId; label: string; icon: LucideIcon }[] = [
   { id: 'language', label: 'Text Models', icon: MessageSquareText },
   { id: 'image', label: 'Image Models', icon: ImageIcon },
-  { id: 'video', label: 'Video Models', icon: Clapperboard },
+  { id: 'video', label: 'Video Models - Seedance', icon: Clapperboard },
+  { id: 'video-wan', label: 'Video Models - Wan', icon: Clapperboard },
   { id: 'faq', label: 'FAQ', icon: CircleHelp },
 ]
 
@@ -55,6 +56,8 @@ const TAB_ACTIVE_STYLES: Record<DocsTabId, string> = {
   image:
     'border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300',
   video: 'border-sky-500/60 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  'video-wan':
+    'border-indigo-500/60 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
   faq: 'border-rose-500/60 bg-rose-500/10 text-rose-700 dark:text-rose-300',
 }
 

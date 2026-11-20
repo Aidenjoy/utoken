@@ -401,7 +401,8 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 	if !exist {
-		if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") ||
+			strings.HasPrefix(c.Request.URL.Path, "/api/v1/tasks/") {
 			message := fmt.Sprintf("The specified resource `%s` is not found.", taskId)
 			taskResp = service.TaskErrorWrapperLocal(errors.New(message), "ResourceNotFound", http.StatusNotFound)
 		} else {
@@ -418,7 +419,10 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		originTask.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeKling))
 	isArkProtocolRequest := strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") ||
 		(isUnifiedVideoAPI && isArkNativeTask)
-	if isArkProtocolRequest && originTask.IsDeleted() {
+	isWanNativeTask := originTask.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanNative))
+	isWanProtocolRequest := strings.HasPrefix(c.Request.URL.Path, "/api/v1/tasks/") ||
+		(isUnifiedVideoAPI && isWanNativeTask)
+	if (isArkProtocolRequest || isWanProtocolRequest) && originTask.IsDeleted() {
 		message := fmt.Sprintf("The specified resource `%s` is not found.", taskId)
 		taskResp = service.TaskErrorWrapperLocal(errors.New(message), "ResourceNotFound", http.StatusNotFound)
 		return
@@ -430,17 +434,18 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	// 火山方舟官方协议路径：查询响应透传上游（格式与实时性与官方一致）。统一视频
-	// 查询路径上的方舟系任务也走同一分支，绝不能回退成包含内部字段的 TaskDto。
-	if isArkProtocolRequest {
+	// 火山方舟/阿里万相官方协议路径：查询响应透传上游（格式与实时性与官方一致）。
+	// 统一视频查询路径上的对应系任务也走同一分支，绝不能回退成包含内部字段的 TaskDto。
+	if isArkProtocolRequest || isWanProtocolRequest {
 		if realtime := arkNativePassthroughFetch(originTask); len(realtime) > 0 {
 			respBody = realtime
 			return
 		}
 		// 上游不可用时回退本地轮询快照；本地取消后快照可能仍是 queued，
 		// 仅在这种状态不一致时重建公开结构，避免把已取消任务误报为排队中。
+		// ToArkTask 仅适用于方舟格式快照，万相快照是 DashScope 格式，原样返回。
 		if len(originTask.Data) > 0 {
-			if originTask.Status == model.TaskStatusCancelled {
+			if originTask.Status == model.TaskStatusCancelled && !isWanNativeTask {
 				respBody, err = common.Marshal(originTask.ToArkTask())
 				if err != nil {
 					taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
@@ -492,17 +497,21 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	return
 }
 
-// arkNativePassthroughFetch 对 ArkNative（火山方舟官方协议透传）与 Baidu DataBuilder
-// （同为方舟官方协议形态，仅鉴权改 BCE AK/SK 签名）渠道实时查询上游，
-// 返回上游原始响应体；顺便把最新状态同步到本地任务。失败返回 nil（调用方回退本地快照）。
+// arkNativePassthroughFetch 对 ArkNative（火山方舟官方协议透传）、Baidu DataBuilder
+// （同为方舟官方协议形态，仅鉴权改 BCE AK/SK 签名）与 WanNative（阿里 DashScope
+// 官方协议透传）渠道实时查询上游，返回上游原始响应体；顺便把最新状态同步到
+// 本地任务。失败返回 nil（调用方回退本地快照）。
 func arkNativePassthroughFetch(task *model.Task) []byte {
 	channelModel, err := model.GetChannelById(task.ChannelId, true)
-	if err != nil || (channelModel.Type != constant.ChannelTypeArkNative && channelModel.Type != constant.ChannelTypeBaiduDataBuilder) {
+	if err != nil || (channelModel.Type != constant.ChannelTypeArkNative && channelModel.Type != constant.ChannelTypeBaiduDataBuilder && channelModel.Type != constant.ChannelTypeWanNative) {
 		return nil
 	}
 	logPrefix := "[ArkNative]"
 	if channelModel.Type == constant.ChannelTypeBaiduDataBuilder {
 		logPrefix = "[DataBuilder]"
+	}
+	if channelModel.Type == constant.ChannelTypeWanNative {
+		logPrefix = "[WanNative]"
 	}
 
 	baseURL := channelModel.GetBaseURL()

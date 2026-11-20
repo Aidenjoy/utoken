@@ -150,6 +150,11 @@ export const CHANNEL_OPTIONS = [
     label: '火山方舟（视频）',
   },
   {
+    value: 62,
+    color: 'blue',
+    label: '通义万相（视频）',
+  },
+  {
     value: 48,
     color: 'blue',
     label: 'xAI',

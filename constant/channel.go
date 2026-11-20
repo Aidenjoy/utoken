@@ -59,6 +59,7 @@ const (
 	ChannelTypeArkNative        = 59 // Volcengine Ark official-protocol passthrough (video tasks)
 	ChannelTypeVolcEngineImage  = 60 // Volcengine Ark image generation
 	ChannelTypeBaiduDataBuilder = 61 // Baidu DataBuilder (seedance video via BCE AK/SK signature)
+	ChannelTypeWanNative        = 62 // Ali DashScope Wan official-protocol passthrough (video tasks)
 	ChannelTypeDummy                 // this one is only for count, do not add any channel after this
 
 )
@@ -126,6 +127,7 @@ var ChannelBaseURLs = []string{
 	"https://ark.cn-beijing.volces.com/api/v3", //59
 	"https://ark.cn-beijing.volces.com",        //60
 	"http://databuilder.bd.baidubce.com",       //61
+	"https://dashscope.aliyuncs.com",            //62
 }
 
 var ChannelTypeNames = map[int]string{
@@ -187,6 +189,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeArkNative:        "VolcEngine Video",
 	ChannelTypeVolcEngineImage:  "VolcEngine Image",
 	ChannelTypeBaiduDataBuilder: "Baidu DataBuilder",
+	ChannelTypeWanNative:        "Wan Video",
 }
 
 func GetChannelTypeName(channelType int) string {

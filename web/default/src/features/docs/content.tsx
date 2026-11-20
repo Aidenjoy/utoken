@@ -20,8 +20,9 @@ import type { ReactNode } from 'react'
 
 import { CodeBlock } from './code-block'
 import { DocText, Note, P } from './doc-typography'
+import { buildWanVideoSections } from './wan-video-sections'
 
-export type DocsTabId = 'language' | 'image' | 'video' | 'faq'
+export type DocsTabId = 'language' | 'image' | 'video' | 'video-wan' | 'faq'
 
 /** 文档文案翻译函数：键为英文源串，行内代码以反引号标记 */
 export type DocsTranslate = (
@@ -1510,6 +1511,7 @@ export function getDocSections(
 ): DocSection[] {
   if (tab === 'image') return buildImageSections(siteUrl, t)
   if (tab === 'video') return buildVideoSections(siteUrl, t)
+  if (tab === 'video-wan') return buildWanVideoSections(siteUrl, t)
   if (tab === 'faq') return buildFaqSections(siteUrl, t)
   return buildLanguageSections(siteUrl, t)
 }

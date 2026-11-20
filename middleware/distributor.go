@@ -66,7 +66,7 @@ func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
 		channelId, ok := common.GetContextKey(c, constant.ContextKeyTokenSpecificChannelId)
-		if strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") && c.Request.Method != http.MethodPost {
+		if (strings.HasPrefix(c.Request.URL.Path, "/api/v3/contents/generations/tasks") || strings.HasPrefix(c.Request.URL.Path, "/api/v1/tasks/")) && c.Request.Method != http.MethodPost {
 			// 查询、列表和删除都使用 tasks 表保存的原渠道，不能因视频 Key 当前
 			// 改绑到其他渠道而误选渠道或阻断读取；删除处理器会自行加载原渠道。
 			ok = false
@@ -537,6 +537,24 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 				modelRequest.Model = getTaskOriginModelName(c)
 			}
 		} else if c.Request.Method == http.MethodDelete {
+			relayMode = relayconstant.RelayModeVideoFetchByID
+			shouldSelectChannel = false
+			modelRequest.Model = getTaskOriginModelName(c)
+		}
+		c.Set("relay_mode", relayMode)
+	} else if strings.HasPrefix(c.Request.URL.Path, "/api/v1/services/aigc/video-generation/video-synthesis") ||
+		strings.HasPrefix(c.Request.URL.Path, "/api/v1/tasks/") {
+		// 阿里 DashScope 万相官方协议透传路径：提交从请求体提取模型；
+		// 单任务查询从当前用户任务回填模型，不重新选路。
+		relayMode := relayconstant.RelayModeUnknown
+		if c.Request.Method == http.MethodPost {
+			req, err := getModelFromRequest(c)
+			if err != nil {
+				return nil, false, err
+			}
+			modelRequest.Model = req.Model
+			relayMode = relayconstant.RelayModeVideoSubmit
+		} else if c.Request.Method == http.MethodGet {
 			relayMode = relayconstant.RelayModeVideoFetchByID
 			shouldSelectChannel = false
 			modelRequest.Model = getTaskOriginModelName(c)
