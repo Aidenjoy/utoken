@@ -2,6 +2,7 @@ package ali
 
 import (
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -144,6 +145,36 @@ func TestParseTaskResultWanUsage(t *testing.T) {
 			require.Equal(t, model.TaskStatusSuccess, taskResult.Status)
 			assert.Equal(t, tt.wantResolution, taskResult.Resolution)
 			assert.InDelta(t, tt.wantDuration, taskResult.Duration, 1e-9)
+		})
+	}
+}
+
+// TestParseTaskResultWanFinishTime 锁定 wan 完成时间采用上游 end_time（北京时间，
+// 可带毫秒）：补录/实时查询结算时日志时间与耗时必须回归上游真实完成时刻，
+// 而不是本地检测时刻；非法/缺失 end_time 保持 0 交由时钟守卫回退。
+func TestParseTaskResultWanFinishTime(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	cst := time.FixedZone("UTC+8", 8*3600)
+	want := time.Date(2026, 11, 20, 21, 9, 38, 0, cst).Unix()
+
+	tests := []struct {
+		name       string
+		status     string
+		endTime    string
+		wantFinish int64
+	}{
+		{"成功带毫秒", "SUCCEEDED", `"end_time":"2026-11-20 21:09:38.808",`, want},
+		{"成功不带毫秒", "SUCCEEDED", `"end_time":"2026-11-20 21:09:38",`, want},
+		{"失败也采用", "FAILED", `"end_time":"2026-11-20 21:09:38",`, want},
+		{"非法时间保持0", "SUCCEEDED", `"end_time":"not-a-time",`, 0},
+		{"缺失保持0", "SUCCEEDED", "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `{"output":{"task_id":"t-1","task_status":"` + tt.status + `",` + tt.endTime + `"video_url":"https://example.com/v.mp4"},"usage":{"duration":5,"SR":1080}}`
+			taskResult, err := adaptor.ParseTaskResult([]byte(body))
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantFinish, taskResult.FinishTime)
 		})
 	}
 }
