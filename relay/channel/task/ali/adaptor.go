@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -748,6 +749,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		}
 	default:
 		taskResult.Status = model.TaskStatusQueued
+	}
+
+	// 完成时间采用上游 end_time（DashScope 返回北京时间，可带毫秒）：漏结算任务
+	// 被很久后的实时查询/补录结算时，本地检测时刻会严重偏离真实完成时间，结算日志
+	// 时间与耗时展示随之漂移（与 volc 采用 updated_at 同一约定）。解析失败保持 0，
+	// ApplyUpstreamTaskResult 的时钟守卫会回退本地检测时刻。
+	if endTime := strings.TrimSpace(aliResp.Output.EndTime); endTime != "" {
+		if t, err := time.ParseInLocation("2006-01-02 15:04:05", endTime, time.FixedZone("UTC+8", 8*3600)); err == nil {
+			taskResult.FinishTime = t.Unix()
+		}
 	}
 
 	return &taskResult, nil
