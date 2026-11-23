@@ -109,6 +109,11 @@ export function PlaygroundImageInput({
     }
     onSubmit(trimmed)
     setPrompt('')
+    // generate 在首个 await 前已把参考图复制进任务快照，这里清空不会丢图；
+    // 不清的话下一次生成会静默复用上一轮的参考图。
+    if (config.referenceImages.length > 0) {
+      onConfigChange({ ...config, referenceImages: [] })
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
