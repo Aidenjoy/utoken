@@ -137,6 +137,24 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	return nil
 }
 
+// resolveTaskPlatform 确定任务平台：默认取绑定渠道类型；万相官方提交路径
+// （/api/v1/services/aigc/video-generation/video-synthesis）说的是 DashScope 官方协议，
+// Ali(17) 与 WanNative(62) 上游同为 DashScope，Ali 渠道接到该路径的提交时
+// 改走 WanNative 官方透传适配器，platform 随之记录为 WanNative，使提交校验、
+// 响应透传与查询/轮询结算全部复用既有万相官方链路（wannative 的解析与计费
+// 均委托 ali 实现，两渠道结算口径一致）。统一协议路径不受影响。
+func resolveTaskPlatform(c *gin.Context) constant.TaskPlatform {
+	platform := constant.TaskPlatform(c.GetString("platform"))
+	if platform == "" {
+		platform = GetTaskPlatform(c)
+	}
+	if platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAli)) &&
+		strings.HasPrefix(c.Request.URL.Path, "/api/v1/services/aigc/video-generation/video-synthesis") {
+		return constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeWanNative))
+	}
+	return platform
+}
+
 // RelayTaskSubmit 完成 task 提交的全部流程（每次尝试调用一次）：
 // 刷新渠道元数据 → 确定 platform/adaptor → 验证请求 →
 // 估算计费(EstimateBilling) → 计算价格 → 预扣费（仅首次）→
@@ -146,10 +164,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	info.InitChannelMeta(c)
 
 	// 1. 确定 platform → 创建适配器 → 验证请求
-	platform := constant.TaskPlatform(c.GetString("platform"))
-	if platform == "" {
-		platform = GetTaskPlatform(c)
-	}
+	platform := resolveTaskPlatform(c)
 	adaptor := GetTaskAdaptor(platform)
 	if adaptor == nil {
 		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
@@ -498,12 +513,13 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 }
 
 // arkNativePassthroughFetch 对 ArkNative（火山方舟官方协议透传）、Baidu DataBuilder
-// （同为方舟官方协议形态，仅鉴权改 BCE AK/SK 签名）与 WanNative（阿里 DashScope
-// 官方协议透传）渠道实时查询上游，返回上游原始响应体；顺便把最新状态同步到
-// 本地任务。失败返回 nil（调用方回退本地快照）。
+// （同为方舟官方协议形态，仅鉴权改 BCE AK/SK 签名）、WanNative（阿里 DashScope
+// 官方协议透传）与 Ali（统一协议万相，上游同为 DashScope，官方路径提交的任务
+// platform 记为 WanNative）渠道实时查询上游，返回上游原始响应体；顺便把最新
+// 状态同步到本地任务。失败返回 nil（调用方回退本地快照）。
 func arkNativePassthroughFetch(task *model.Task) []byte {
 	channelModel, err := model.GetChannelById(task.ChannelId, true)
-	if err != nil || (channelModel.Type != constant.ChannelTypeArkNative && channelModel.Type != constant.ChannelTypeBaiduDataBuilder && channelModel.Type != constant.ChannelTypeWanNative) {
+	if err != nil || (channelModel.Type != constant.ChannelTypeArkNative && channelModel.Type != constant.ChannelTypeBaiduDataBuilder && channelModel.Type != constant.ChannelTypeWanNative && channelModel.Type != constant.ChannelTypeAli) {
 		return nil
 	}
 	logPrefix := "[ArkNative]"
@@ -512,6 +528,9 @@ func arkNativePassthroughFetch(task *model.Task) []byte {
 	}
 	if channelModel.Type == constant.ChannelTypeWanNative {
 		logPrefix = "[WanNative]"
+	}
+	if channelModel.Type == constant.ChannelTypeAli {
+		logPrefix = "[AliWan]"
 	}
 
 	baseURL := channelModel.GetBaseURL()
