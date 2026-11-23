@@ -21,10 +21,11 @@ import { before, test } from 'node:test'
 
 import i18next from 'i18next'
 
+import { buildImageSize } from '@/lib/image-size'
+
 import { createDesignItem, moveDesignItem } from '../design-types'
 import { createFoodConfig, FOOD_MODES, type FoodMode } from '../food-config'
 import { designPlanToBodies } from './design-plan'
-import { buildImageSize } from './image-size'
 import { buildFoodPlan } from './prompt-food'
 
 before(async () => {

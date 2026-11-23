@@ -19,6 +19,7 @@ import { getModelCategory } from '@/lib/model-category'
 import { cn } from '@/lib/utils'
 
 import {
+  IMAGE_ASPECT_RATIOS,
   IMAGE_COUNT_RANGE,
   IMAGE_MODES,
   MAX_IMAGE_FILE_BYTES,
@@ -289,6 +290,21 @@ export function PlaygroundImageInput({
             value={config.size}
             onChange={(v) => updateField('size', v)}
           />
+
+          {/* Ark 档位本身不含宽高比：比例选择在发送时换算成显式 WxH；
+              'auto' 保持裸档位，由模型自定比例。OpenAI 系只认 WxH，不显示。 */}
+          {profile.supportsRatio && (
+            <ConfigOptionPopover
+              label={config.ratio === 'auto' ? t('Auto') : config.ratio}
+              title={t('Aspect ratio')}
+              options={[
+                { value: 'auto', label: t('Auto') },
+                ...IMAGE_ASPECT_RATIOS.map((r) => ({ value: r, label: r })),
+              ]}
+              value={config.ratio}
+              onChange={(v) => updateField('ratio', v)}
+            />
+          )}
 
           {/* Seedream 4.x has no output_format parameter and 5.0 Pro returns a
               single image and rejects sequential generation, so each control is

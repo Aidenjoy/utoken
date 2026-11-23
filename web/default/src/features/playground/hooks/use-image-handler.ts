@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { buildImageSize } from '@/lib/image-size'
+
 import { generateImages } from '../api'
 import { MAX_IMAGE_TOTAL } from '../constants'
 import { createImageId, getImageModelProfile } from '../lib/image-utils'
@@ -24,11 +26,24 @@ function buildImagePayload(
   config: ImageConfig,
   prompt: string
 ): ImageGenerationRequest {
+  const profile = getImageModelProfile(config.model)
+  // Ark tiers carry no aspect ratio of their own: pair the tier with the picked
+  // ratio into an explicit WxH (the bare tier would let the model choose).
+  // 'auto' keeps the bare tier, and WxH-only providers send their size as-is.
+  const size =
+    profile.supportsRatio && config.ratio !== 'auto'
+      ? buildImageSize(config.size, config.ratio)
+      : config.size
   const payload: ImageGenerationRequest = {
     model: config.model,
     prompt,
     group: config.group,
-    size: config.size,
+    size,
+    // Ask for SSE: the gateway commits headers immediately and keepalives the
+    // connection while the upstream renders, so a slow generation no longer
+    // dies on the reverse proxy's read timeout (504). The gateway strips the
+    // field before the upstream call (Seedream 5.0 Pro rejects it outright).
+    stream: true,
     // Ark stamps an "AI generated" mark onto the image unless watermark is
     // explicitly false, so it is always sent: the playground offers no toggle.
     watermark: false,
@@ -39,7 +54,7 @@ function buildImagePayload(
   }
   // Seedream 4.x has no output_format parameter at all and answers it with a
   // 400; an empty format list in the profile means "omit the field".
-  if (getImageModelProfile(config.model).outputFormats.length > 0) {
+  if (profile.outputFormats.length > 0) {
     payload.output_format = config.outputFormat
   }
 
@@ -149,7 +164,7 @@ export function useImageHandler(config: ImageConfig) {
         status: 'pending',
         model: config.model,
         prompt,
-        size: config.size,
+        size: payload.size ?? config.size,
         images: [],
         referenceImages: config.referenceImages.map((item) => ({ ...item })),
         createdAt: Date.now(),

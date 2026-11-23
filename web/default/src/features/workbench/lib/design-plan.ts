@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { t } from 'i18next'
 import { z } from 'zod'
 
+import { buildImageSize } from '@/lib/image-size'
+
 import type { TryOnGenerationBody } from '../api'
 import { TRY_ON_RATIOS } from '../constants'
 import type {
@@ -29,7 +31,6 @@ import type {
 } from '../design-types'
 import { DESIGN_CHANNELS } from '../packaging-config'
 import type { ChipOption, TryOnImage } from '../types'
-import { buildImageSize } from './image-size'
 
 const imageSchema = z.object({
   id: z.string().min(1),

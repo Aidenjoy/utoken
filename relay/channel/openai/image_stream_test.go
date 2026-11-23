@@ -6,9 +6,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -99,8 +102,9 @@ func TestOpenaiImageStreamHandlerWrapsJSONResponse(t *testing.T) {
 }
 
 // TestOpenaiImageHandlersReturnJSONError covers JSON error responses for both
-// entry points: the non-streaming handler and the stream handler's non-SSE
-// fallback. Neither must leak the error body to the client.
+// entry points. The non-streaming handler must not leak the error body to the
+// client; the stream fallback has already committed its 200 SSE headers, so it
+// surfaces the failure as an SSE error event and forbids channel retry.
 func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)
@@ -126,12 +130,56 @@ func TestOpenaiImageHandlersReturnJSONError(t *testing.T) {
 		c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
 
 		usage, err := OpenaiImageStreamHandler(c, info, resp)
-		require.Nil(t, usage)
+		require.NotNil(t, usage)
 		require.NotNil(t, err)
 		require.Equal(t, http.StatusOK, err.StatusCode)
 		require.Equal(t, "content moderation failed", err.ToOpenAIError().Message)
-		require.Empty(t, recorder.Body.String())
+		// 响应已提交，换渠道重试会往同一条流里写第二份响应，必须 SkipRetry。
+		require.True(t, types.IsSkipRetryError(err))
+		require.Contains(t, recorder.Body.String(), "event: error")
+		require.Contains(t, recorder.Body.String(), "content moderation failed")
+		require.Contains(t, recorder.Body.String(), "data: [DONE]")
 	})
+}
+
+// TestOpenaiImageJSONAsStreamKeepsAliveWhileUpstreamRenders locks in the 504
+// fix: a slow non-streaming upstream must not leave the client connection idle
+// while the image renders. Comment pings are emitted before the JSON body
+// arrives even with the optional ping feature disabled, and the completed
+// event follows once the upstream answers.
+func TestOpenaiImageJSONAsStreamKeepsAliveWhileUpstreamRenders(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	settings := operation_setting.GetGeneralSetting()
+	oldSeconds := settings.PingIntervalSeconds
+	settings.PingIntervalSeconds = 1
+	t.Cleanup(func() { settings.PingIntervalSeconds = oldSeconds })
+	require.False(t, settings.PingIntervalEnabled)
+
+	body := `{"created":1710000000,"data":[{"url":"https://example.com/final.png"}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}`
+	c, recorder, resp, info := newImageTestContext(t, "", "application/json", true)
+	pr, pw := io.Pipe()
+	resp.Body = pr
+	go func() {
+		time.Sleep(2500 * time.Millisecond)
+		_, _ = pw.Write([]byte(body))
+		_ = pw.Close()
+	}()
+
+	usage, err := OpenaiImageJSONAsStreamHandler(c, info, resp)
+	require.Nil(t, err)
+	require.Equal(t, 7, usage.TotalTokens)
+	out := recorder.Body.String()
+	pingIdx := strings.Index(out, ": PING")
+	completedIdx := strings.Index(out, "event: image_generation.completed")
+	require.GreaterOrEqual(t, pingIdx, 0)
+	require.GreaterOrEqual(t, completedIdx, 0)
+	require.Less(t, pingIdx, completedIdx)
+	require.Contains(t, out, "https://example.com/final.png")
+	require.Contains(t, out, "data: [DONE]")
+	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 }
 
 // TestOpenaiImageStreamHandlerRecordsUpstreamErrorEvent verifies that an error
