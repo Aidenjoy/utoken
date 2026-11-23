@@ -3,16 +3,20 @@ package channel
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestSanitizeUpstreamURL 锁定凭据不落库不变量：个别供应商把密钥放 query
-//（如百度 v1 的 access_token），最终地址写入日志前必须脱敏；
+// （如百度 v1 的 access_token），最终地址写入日志前必须脱敏；
 // path 与非敏感 query（如任务协议的 Action/Version）原样保留。
 func TestSanitizeUpstreamURL(t *testing.T) {
 	t.Parallel()
@@ -239,4 +243,54 @@ func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.
 	require.Equal(t, "Codex CLI", upstreamReq.Header.Get("Originator"))
 	require.Equal(t, "sess-123", upstreamReq.Header.Get("Session_id"))
 	require.Empty(t, upstreamReq.Header.Get("X-Codex-Beta-Features"))
+}
+
+// TestDoRequestTransportKeepAliveWhileUpstreamHeadersPending 锁定 504 根因修复：
+// 生图上游要等整张图渲染完才发响应头，client.Do 等待期间客户端连接零字节，
+// 反向代理读超时会把成功的生成误报成 504。TransportKeepAlive 必须在等待上游
+// 响应头期间就发 PING（不受 PingIntervalEnabled 门控），而不是等响应头到达后
+// 由 JSON-as-stream 包装器才开始保活。
+func TestDoRequestTransportKeepAliveWhileUpstreamHeadersPending(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	settings := operation_setting.GetGeneralSetting()
+	oldEnabled, oldSeconds := settings.PingIntervalEnabled, settings.PingIntervalSeconds
+	settings.PingIntervalEnabled = false
+	settings.PingIntervalSeconds = 1
+	t.Cleanup(func() {
+		settings.PingIntervalEnabled, settings.PingIntervalSeconds = oldEnabled, oldSeconds
+	})
+
+	// doRequest 走全局 relay HTTP client，测试环境需显式初始化。
+	service.InitHttpClient()
+
+	// 上游延迟 3s 才发响应头（模拟出图等待），body 随即一次写完。
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Second)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"url":"https://example.com/final.png"}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, IsStream: true, TransportKeepAlive: true}
+	req, err := http.NewRequest(http.MethodPost, upstream.URL, strings.NewReader(`{}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := DoRequest(c, req, info)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// PING 间隔 1s、上游 3s 才发响应头：等待期间至少已经发出两次保活，
+	// 证明保活覆盖响应头等待阶段；修复前这段时间一个字节都不会写。
+	out := recorder.Body.String()
+	require.GreaterOrEqual(t, strings.Count(out, ": PING"), 2)
+	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
+	require.Equal(t, http.StatusOK, recorder.Code)
 }

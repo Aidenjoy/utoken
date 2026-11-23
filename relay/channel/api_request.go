@@ -539,9 +539,11 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	var pingerDone <-chan struct{}
 	if info.IsStream {
 		helper.SetEventStreamHeaders(c)
-		// 处理流式请求的 ping 保活
+		// 处理流式请求的 ping 保活；生图等 JSON-as-stream 路径的传输层保活
+		// （TransportKeepAlive）不受用户可见 ping 开关门控：上游出图期间
+		// 连接零字节会被反向代理读超时误报成 504。
 		generalSettings := operation_setting.GetGeneralSetting()
-		if generalSettings.PingIntervalEnabled && !info.DisablePing {
+		if (generalSettings.PingIntervalEnabled && !info.DisablePing) || info.TransportKeepAlive {
 			pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
 			stopPinger, pingerDone = startPingKeepAlive(c, pingInterval)
 			// 使用defer确保在任何情况下都能停止ping goroutine

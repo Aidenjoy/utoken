@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -56,6 +57,32 @@ func SetEventStreamHeaders(c *gin.Context) {
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
+}
+
+// IsStreamCommitted 判断 SSE 响应是否已提交给客户端（keepalive PING 或首个
+// 事件已写）。提交后状态码与 Content-Type 不可再改，JSON 错误体也会被流
+// 客户端忽略，失败只能以 SSE error 事件补发。
+func IsStreamCommitted(c *gin.Context) bool {
+	return c.Writer.Written() && strings.Contains(c.Writer.Header().Get("Content-Type"), "text/event-stream")
+}
+
+// StreamErrorEvent 向已提交的 SSE 流补发 error 事件与 [DONE]，形状与 OpenAI
+// image/responses 的 error 事件一致（type=error + error.message），供流客户端
+// 读取失败原因；未断开的客户端据此报错而不是误报「未返回图片」。
+func StreamErrorEvent(c *gin.Context, message string) {
+	payload := map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"message": message,
+			"type":    "upstream_error",
+		},
+	}
+	data, err := common.Marshal(payload)
+	if err != nil {
+		return
+	}
+	_ = ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "error"}, string(data))
+	_ = StringData(c, "[DONE]")
 }
 
 func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {

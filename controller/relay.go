@@ -115,9 +115,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					"error": newAPIError.ToClaudeError(),
 				})
 			default:
-				c.JSON(newAPIError.StatusCode, gin.H{
-					"error": newAPIError.ToOpenAIError(),
-				})
+				if helper.IsStreamCommitted(c) {
+					// SSE 头已提交（生图 keepalive 等）：状态码改不了，JSON 错误体
+					// 也会被流客户端忽略，只能补发 SSE error 事件带上失败原因。
+					helper.StreamErrorEvent(c, newAPIError.Error())
+				} else {
+					c.JSON(newAPIError.StatusCode, gin.H{
+						"error": newAPIError.ToOpenAIError(),
+					})
+				}
 			}
 		}
 	}()
