@@ -10,8 +10,10 @@ import {
 import type { ImageConfig, ImageOutputFormat } from '../types'
 
 export interface ImageModelProfile {
-  /** Accepted sizes; the first entry is the fallback for a stale stored value */
+  /** Accepted sizes in display order (ascending pixel area) */
   sizes: readonly string[]
+  /** Fallback for a stale stored value; independent of the display order */
+  defaultSize: string
   /** Accepted output formats; empty means the field must be omitted entirely */
   outputFormats: readonly ImageOutputFormat[]
   /** Images one request can return; 1 hides the count control */
@@ -30,18 +32,20 @@ export function getImageModelProfile(model: string): ImageModelProfile {
   if (!/seedream|doubao|jimeng|volc|ark/i.test(model)) {
     return {
       sizes: OPENAI_IMAGE_SIZES,
+      defaultSize: '1024x1024',
       outputFormats: OPENAI_IMAGE_OUTPUT_FORMATS,
       maxCount: IMAGE_COUNT_RANGE.max,
       supportsRatio: false,
     }
   }
 
-  // Seedream 5.0 Pro takes the 2K/4K/1K/1.5K tiers and rejects both
+  // Seedream 5.0 Pro takes the 1K/1.5K/2K/4K tiers and rejects both
   // sequential_image_generation and stream outright, so it always returns
   // exactly one image.
   if (/pro/i.test(model)) {
     return {
       sizes: ARK_PRO_IMAGE_SIZES,
+      defaultSize: '2K',
       outputFormats: ARK_IMAGE_OUTPUT_FORMATS,
       maxCount: 1,
       supportsRatio: true,
@@ -54,6 +58,7 @@ export function getImageModelProfile(model: string): ImageModelProfile {
   const isSeedream5 = /seedream[-_.]?5/i.test(model)
   return {
     sizes: ARK_IMAGE_SIZES,
+    defaultSize: '2K',
     outputFormats: isSeedream5 ? ARK_IMAGE_OUTPUT_FORMATS : [],
     maxCount: IMAGE_COUNT_RANGE.max,
     supportsRatio: true,
@@ -73,7 +78,7 @@ export function normalizeImageConfig(
   const profile = getImageModelProfile(model)
   const next: ImageConfig = { ...config, model }
   if (!profile.sizes.includes(next.size)) {
-    next.size = profile.sizes[0]
+    next.size = profile.defaultSize
   }
   if (
     !profile.supportsRatio ||
