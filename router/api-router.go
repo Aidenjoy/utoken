@@ -61,6 +61,7 @@ func SetApiRouter(router *gin.Engine) {
 		desktopAuth.POST("/authorize", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DesktopAuthorizeDecision)
 		desktopAuth.POST("/token", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DesktopExchange)
 		desktopAuth.GET("/me", controller.DesktopProfile)
+		desktopAuth.GET("/balance", middleware.DesktopBalanceAuth(), controller.DesktopBalance)
 		desktopAuth.POST("/session", middleware.CriticalRateLimit(), controller.DesktopCreateDashboardSession)
 		desktopAuth.POST("/revoke", middleware.CriticalRateLimit(), controller.DesktopRevoke)
 
