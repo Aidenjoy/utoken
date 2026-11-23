@@ -213,14 +213,14 @@ export const DEFAULT_IMAGE_CONFIG: ImageConfig = {
   referenceImages: [],
 }
 
-// Ark answers an unsupported size with a 400 instead of falling back, so only
-// the resolution tiers each model documents are offered: 2K/4K for Seedream
-// 4.x and 5.0, 1K/1.5K/2K for 5.0 Pro (its ~4.6M total-pixel ceiling rules 4K
-// out). The aspect-ratio picker turns a tier into an explicit WxH at send time
-// (buildImageSize), which replaces the old fixed WxH preset list.
+// Ark answers an unsupported size with a 400 instead of falling back, so the
+// resolution tiers are offered per model family: 2K/4K for Seedream 4.x and
+// 5.0, 2K/4K/1K/1.5K for 5.0 Pro. The aspect-ratio picker turns a tier into an
+// explicit WxH at send time (buildImageSize), which replaces the old fixed WxH
+// preset list.
 export const ARK_IMAGE_SIZES = ['2K', '4K'] as const
 
-export const ARK_PRO_IMAGE_SIZES = ['2K', '1K', '1.5K'] as const
+export const ARK_PRO_IMAGE_SIZES = ['2K', '4K', '1K', '1.5K'] as const
 
 // Numeric ratios render as-is, so their labels are not i18n keys. 'auto' is
 // handled separately: it sends the bare tier and lets the model pick a ratio.

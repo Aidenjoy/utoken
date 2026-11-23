@@ -36,9 +36,9 @@ export function getImageModelProfile(model: string): ImageModelProfile {
     }
   }
 
-  // Seedream 5.0 Pro takes the 1K/1.5K/2K tiers only (4K exceeds its ~4.6M
-  // total-pixel ceiling) and rejects both sequential_image_generation and
-  // stream outright, so it always returns exactly one image.
+  // Seedream 5.0 Pro takes the 2K/4K/1K/1.5K tiers and rejects both
+  // sequential_image_generation and stream outright, so it always returns
+  // exactly one image.
   if (/pro/i.test(model)) {
     return {
       sizes: ARK_PRO_IMAGE_SIZES,
@@ -64,7 +64,7 @@ export function getImageModelProfile(model: string): ImageModelProfile {
  * A config outlives the model it was picked for: switching between an Ark and an
  * OpenAI-compatible model, or between Seedream 5.0 and 5.0 Pro, leaves a size, a
  * format or a count the new model answers with a 400. Clamp all three to the new
- * profile so the request that goes out is always one the model documents.
+ * profile so the request that goes out always uses the provider's vocabulary.
  */
 export function normalizeImageConfig(
   config: ImageConfig,

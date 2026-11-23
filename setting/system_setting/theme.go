@@ -10,7 +10,7 @@ type ThemeSettings struct {
 }
 
 var themeSettings = ThemeSettings{
-	Frontend: "classic",
+	Frontend: "default",
 }
 
 func init() {
@@ -19,6 +19,11 @@ func init() {
 }
 
 func syncThemeToCommon() {
+	// 仅保留新版前端：旧数据库里残留的其他主题取值一律归一为 default，
+	// 保证管理后台表单与运行时服务的前端产物一致。
+	if themeSettings.Frontend != "default" {
+		themeSettings.Frontend = "default"
+	}
 	common.SetTheme(themeSettings.Frontend)
 }
 

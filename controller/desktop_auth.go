@@ -190,9 +190,6 @@ func DesktopAuthorize(c *gin.Context) {
 	c.Header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' "+a.RedirectURI+"; frame-ancestors 'none'; base-uri 'none'")
 
 	loginPath := "/sign-in"
-	if common.GetTheme() == "classic" {
-		loginPath = "/login"
-	}
 	var username string
 	if id, ok := sessions.Default(c).Get("id").(int); ok {
 		user, err := model.GetUserById(id, false)
