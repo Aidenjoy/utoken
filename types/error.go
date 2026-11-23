@@ -407,9 +407,15 @@ func IsSkipRetryError(err *NewAPIError) bool {
 	return err.skipRetry
 }
 
+// MarkSkipRetry 事后禁止换渠道重试：SSE 响应头一旦提交，重试会往同一条流里
+// 写第二份响应，只能把失败补发给当前客户端。
+func (e *NewAPIError) MarkSkipRetry() {
+	e.skipRetry = true
+}
+
 func ErrOptionWithSkipRetry() NewAPIErrorOptions {
 	return func(e *NewAPIError) {
-		e.skipRetry = true
+		e.MarkSkipRetry()
 	}
 }
 

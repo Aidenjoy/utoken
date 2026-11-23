@@ -348,22 +348,13 @@ waitUpstream:
 }
 
 // writeOpenaiImageStreamErrorEvent surfaces a post-commit failure as an SSE
-// error event so the stream client can read the message; the JSON error body
-// the relay defer appends afterwards is ignored by a client that already
-// stopped on this event.
+// error event so the stream client can read the message; the event shape is
+// shared with the relay error defer via helper.StreamErrorEvent.
 func writeOpenaiImageStreamErrorEvent(c *gin.Context, clientGone bool, apiErr *types.NewAPIError) {
 	if clientGone {
 		return
 	}
-	payload := map[string]any{
-		"type": "error",
-		"error": map[string]any{
-			"message": apiErr.Error(),
-			"type":    "upstream_error",
-		},
-	}
-	_ = writeOpenaiImageStreamPayload(c, "error", payload)
-	_ = writeOpenaiImageStreamDone(c)
+	helper.StreamErrorEvent(c, apiErr.Error())
 }
 
 func writeOpenaiImageStreamPayload(c *gin.Context, eventName string, payload any) error {

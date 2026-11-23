@@ -215,12 +215,13 @@ export const DEFAULT_IMAGE_CONFIG: ImageConfig = {
 
 // Ark answers an unsupported size with a 400 instead of falling back, so the
 // resolution tiers are offered per model family: 2K/4K for Seedream 4.x and
-// 5.0, 2K/4K/1K/1.5K for 5.0 Pro. The aspect-ratio picker turns a tier into an
-// explicit WxH at send time (buildImageSize), which replaces the old fixed WxH
-// preset list.
+// 5.0, 1K/1.5K/2K/4K for 5.0 Pro. Lists stay in ascending pixel order for the
+// picker; the stale-value fallback is profile.defaultSize, not the first entry.
+// The aspect-ratio picker turns a tier into an explicit WxH at send time
+// (buildImageSize), which replaces the old fixed WxH preset list.
 export const ARK_IMAGE_SIZES = ['2K', '4K'] as const
 
-export const ARK_PRO_IMAGE_SIZES = ['2K', '4K', '1K', '1.5K'] as const
+export const ARK_PRO_IMAGE_SIZES = ['1K', '1.5K', '2K', '4K'] as const
 
 // Numeric ratios render as-is, so their labels are not i18n keys. 'auto' is
 // handled separately: it sends the bare tier and lets the model pick a ratio.
@@ -241,14 +242,14 @@ export const IMAGE_ASPECT_RATIOS = [
 ] as const
 
 export const OPENAI_IMAGE_SIZES = [
+  '256x256',
+  '512x512',
   '1024x1024',
   '1536x1024',
   '1024x1536',
   '1792x1024',
   '1024x1792',
   'auto',
-  '512x512',
-  '256x256',
 ] as const
 
 // output_format is documented for Seedream 5.0 only (png or jpeg); the 4.x line

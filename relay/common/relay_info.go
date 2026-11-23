@@ -112,6 +112,10 @@ type RelayInfo struct {
 	RequestHeaders     map[string]string
 	ShouldIncludeUsage bool
 	DisablePing        bool // 是否禁止向下游发送自定义 Ping
+	// TransportKeepAlive 传输层保活：客户端是 SSE 但上游可能长时间不发响应头
+	// （生图 JSON-as-stream），DoRequest 等待期间无条件发 PING，不受
+	// PingIntervalEnabled（用户可见 ping 功能开关）门控。
+	TransportKeepAlive bool
 	ClientWs           *websocket.Conn
 	TargetWs           *websocket.Conn
 	InputAudioFormat   string
@@ -829,18 +833,18 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 }
 
 type TaskInfo struct {
-	Code             int    `json:"code"`
-	TaskID           string `json:"task_id"`
-	Status           string `json:"status"`
-	Reason           string `json:"reason,omitempty"`
-	Url              string `json:"url,omitempty"`
-	RemoteUrl        string `json:"remote_url,omitempty"`
-	Progress         string `json:"progress,omitempty"`
-	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
-	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
-	Resolution       string `json:"resolution,omitempty"`        // 上游返回的实际输出分辨率，用于 seedance/wan 按分辨率结算
-	Duration         float64 `json:"duration,omitempty"`         // 上游返回的计费时长（秒，可为浮点），用于 wan 按秒结算
-	FinishTime       int64  `json:"finish_time,omitempty"`       // 上游报告的终态时间（unix 秒），0 表示未知，结算时回退到本地检测时刻
+	Code             int     `json:"code"`
+	TaskID           string  `json:"task_id"`
+	Status           string  `json:"status"`
+	Reason           string  `json:"reason,omitempty"`
+	Url              string  `json:"url,omitempty"`
+	RemoteUrl        string  `json:"remote_url,omitempty"`
+	Progress         string  `json:"progress,omitempty"`
+	CompletionTokens int     `json:"completion_tokens,omitempty"` // 用于按倍率计费
+	TotalTokens      int     `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	Resolution       string  `json:"resolution,omitempty"`        // 上游返回的实际输出分辨率，用于 seedance/wan 按分辨率结算
+	Duration         float64 `json:"duration,omitempty"`          // 上游返回的计费时长（秒，可为浮点），用于 wan 按秒结算
+	FinishTime       int64   `json:"finish_time,omitempty"`       // 上游报告的终态时间（unix 秒），0 表示未知，结算时回退到本地检测时刻
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

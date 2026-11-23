@@ -23,6 +23,14 @@ import (
 func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
 
+	// SSE 头一旦提交（keepalive PING 已写），状态码改不了，换渠道重试还会往
+	// 同一条流里写第二份响应：失败只能补发 SSE error 事件并禁止重试。
+	defer func() {
+		if newAPIError != nil && helper.IsStreamCommitted(c) {
+			newAPIError.MarkSkipRetry()
+		}
+	}()
+
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
 		return types.NewErrorWithStatusCode(fmt.Errorf("invalid request type, expected dto.ImageRequest, got %T", info.Request), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -40,6 +48,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if info.IsPlayground {
 		request.Stream = nil
 	}
+
+	// 生图上游（Seedream 等）的非流式响应要等整张图渲染完才发响应头，
+	// DoRequest 等待期间客户端连接完全空闲，反向代理读超时（约 60s）会把
+	// 成功的生成误报成 504。客户端侧是 SSE 时无条件开启传输层保活，
+	// 在等待上游响应头期间就发 PING，而不是等响应头到达后才开始。
+	info.TransportKeepAlive = info.IsStream
 
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
