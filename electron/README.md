@@ -74,7 +74,7 @@ const PORT = 3000; // Change to desired port
 
 ## Sign in using the system browser
 
-After completing the server's initial setup, choose **在浏览器登录** from the app's system tray menu. Sign in through the usual website if prompted, then return to the authorization tab and approve. The browser sends the authorization response to the app on a temporary loopback port. Both frontend themes use the same server authorization page.
+After completing the server's initial setup, choose **在浏览器登录** from the app's system tray menu. Sign in through the usual website if prompted, then return to the authorization tab and approve. The browser sends the authorization response to the app on a temporary loopback port.
 
 The bundled client uses the local backend on port 3000. Other native clients integrating with this backend can use the following endpoints. Use HTTPS for a deployed backend and keep the HTTP listener restricted to the loopback address.
 

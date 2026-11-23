@@ -156,32 +156,6 @@ func GetLogsSelfStat(c *gin.Context) {
 	return
 }
 
-// DeleteHistoryLogs is the legacy synchronous log cleanup endpoint (DELETE /api/log/).
-// It deletes directly instead of going through the async system task. It is kept only
-// for the classic frontend; the default frontend uses POST /api/system-task/log-cleanup.
-// TODO: remove this handler (and its route) once the classic frontend is removed.
-func DeleteHistoryLogs(c *gin.Context) {
-	targetTimestamp, _ := strconv.ParseInt(c.Query("target_timestamp"), 10, 64)
-	if targetTimestamp == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "target timestamp is required",
-		})
-		return
-	}
-	count, err := model.DeleteOldLog(c.Request.Context(), targetTimestamp, 100)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    count,
-	})
-	return
-}
-
 // GetLogBodies 使用日志详情的「传入/传出参数」快照查询：GET /api/log/bodies?request_id=...
 // 协议快照仅超级管理员可见。先按 request_id（已有索引 idx_logs_request_id）定位日志行归属
 // 用户；查不到日志行返回 404，越权返回空数据（不泄露该 request_id 是否有快照）。

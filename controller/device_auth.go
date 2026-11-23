@@ -194,9 +194,6 @@ func renderDevicePage(c *gin.Context, data devicePageData) {
 	c.Header("Content-Security-Policy", "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	if data.Username == "" && data.Message == "" {
 		data.LoginPath = "/sign-in"
-		if common.GetTheme() == "classic" {
-			data.LoginPath = "/login"
-		}
 		data.RefreshPath = c.Request.URL.RequestURI()
 		c.Header("Refresh", "3")
 	}

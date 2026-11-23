@@ -61,7 +61,7 @@ func TestConvertOpenAIRequestStripsSamplingParamsForGPT6Generation(t *testing.T)
 }
 
 // 经典 chat 模型（gpt-4o 等）仍支持采样参数，不得被新世代的适配误伤。
-func TestConvertOpenAIRequestKeepsSamplingParamsForClassicChatModels(t *testing.T) {
+func TestConvertOpenAIRequestKeepsSamplingParamsForLegacyChatModels(t *testing.T) {
 	request := &dto.GeneralOpenAIRequest{
 		Model:       "gpt-4o",
 		Temperature: common.GetPointer[float64](0.7),

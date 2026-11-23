@@ -438,7 +438,7 @@ async function loginInSystemBrowser() {
   desktopLogin = login;
   try {
     await beginDesktopLogin(backendOrigin, (url) => shell.openExternal(url), async (token, _languageApiKey, profile) => {
-      const { cookie, user, theme } = await createDashboardSession(backendOrigin, token, login.signal);
+      const { cookie, user } = await createDashboardSession(backendOrigin, token, login.signal);
       // 令牌交换里带了账号快照，会话接口也返回同一份数据；合并后写进 localStorage，
       // 让界面在首屏就能拿到用户名，不用等 /api/user/self 回来。
       const account = profile && profile.id === user.id ? { ...user, ...profile } : user;
@@ -455,8 +455,7 @@ async function loginInSystemBrowser() {
         'return true;})()'
       );
       if (!applied) throw new Error('客户端页面已切换，请重新登录。');
-      const dashboard = !isDev && theme === 'classic' ? '/console' : '/dashboard';
-      await window.loadURL(new URL(dashboard, rendererOrigin).href);
+      await window.loadURL(new URL('/dashboard', rendererOrigin).href);
       if (process.platform === 'darwin') app.dock.show();
       window.show();
       window.focus();
