@@ -25,7 +25,7 @@ const (
 	desktopClientID = "yun-token-desktop"
 	desktopAuthPath = "/api/desktop-auth/authorize"
 	desktopCodeTTL  = time.Minute
-	desktopTokenTTL = 10 * time.Minute
+	desktopTokenTTL = 90 * 24 * time.Hour
 )
 
 var (
@@ -339,8 +339,10 @@ func DesktopProfile(c *gin.Context) {
 	common.ApiSuccess(c, desktopUserPayload(user))
 }
 
+// DesktopCreateDashboardSession 使用长期桌面凭证建立网页 Cookie，不消费或续期该凭证。
+// Cookie 沿用现有有效期；Bearer 仍由过期、主动撤销和账号状态控制。
 func DesktopCreateDashboardSession(c *gin.Context) {
-	user := desktopAuthenticatedUser(c, true)
+	user := desktopAuthenticatedUser(c, false)
 	if user == nil {
 		return
 	}

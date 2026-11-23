@@ -56,6 +56,13 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
+		apiRouter.GET("/desktop/usage-logs", middleware.DesktopBalanceAuth(), controller.ConversationAuth, controller.DesktopUsageLogs)
+
+		history := apiRouter.Group("/conversations", middleware.DesktopBalanceAuth(), controller.ConversationAuth)
+		history.GET("", controller.ListConversationHistory)
+		history.GET("/:id/messages", controller.GetConversationHistory)
+		history.PATCH("/:id", controller.SaveConversationHistory)
+
 		desktopAuth := apiRouter.Group("/desktop-auth")
 		desktopAuth.GET("/authorize", controller.DesktopAuthorize)
 		desktopAuth.POST("/authorize", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.DesktopAuthorizeDecision)

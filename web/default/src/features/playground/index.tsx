@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo } from 'react'
 
+import { useAuthStore } from '@/stores/auth-store'
+
+import { HistoryBar } from './components/chat/history-bar'
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
 import { PlaygroundImageMode } from './components/playground-image-mode'
@@ -29,21 +32,40 @@ import {
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
+import { useHistory } from './hooks/use-history'
 import { getChannelModelOptions, getModelType } from './lib'
 
-export function Playground({ initialPrompt }: { initialPrompt?: string }) {
+/** Remount account-owned state on account changes. */
+export function Playground(props: { initialPrompt?: string }) {
+  const userID = useAuthStore((state) => state.auth.user?.id)
+  if (!userID) return null
+  return (
+    <AccountPlayground
+      key={userID}
+      userID={userID}
+      initialPrompt={props.initialPrompt}
+    />
+  )
+}
+
+/** Keeps history persistence separate from model requests and billing. */
+function AccountPlayground({
+  initialPrompt,
+  userID,
+}: {
+  initialPrompt?: string
+  userID: number
+}) {
+  const history = useHistory(userID)
+  const { messages, updateMessages, clearMessages, isLoadingMessages } = history
   const {
     config,
     parameterEnabled,
-    messages,
-    isLoadingMessages,
     models,
     groups,
-    updateMessages,
     setModels,
     setGroups,
     updateConfig,
-    clearMessages,
   } = usePlaygroundState()
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
@@ -139,16 +161,26 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
 
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+      <HistoryBar
+        history={history}
+        disabled={isGenerating || isLoadingMessages}
+      />
       {/* Full-width scroll container: scrolling works even over side whitespace */}
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
         <PlaygroundChat
           messages={messages}
           isLoadingMessages={isLoadingMessages}
-          onRegenerateMessage={handleRegenerateMessage}
-          onEditMessage={handleEditMessage}
+          onRegenerateMessage={
+            history.moreMessages ? undefined : handleRegenerateMessage
+          }
+          onEditMessage={history.moreMessages ? undefined : handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
-          onSelectPrompt={handleSendMessage}
-          isGenerating={isGenerating}
+          onSelectPrompt={
+            isLoadingMessages || history.moreMessages
+              ? undefined
+              : handleSendMessage
+          }
+          isGenerating={isGenerating || isLoadingMessages}
           editingKey={editingMessageKey}
           onCancelEdit={handleEditOpenChange}
           onSaveEdit={(newContent) => applyEdit(newContent, false)}
@@ -159,7 +191,7 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
       {/* Input area: center content and constrain to the same container width */}
       <div className='mx-auto w-full max-w-4xl'>
         <PlaygroundInput
-          disabled={isGenerating}
+          disabled={isGenerating || isLoadingMessages || history.moreMessages}
           groups={groups}
           groupValue={config.group}
           initialText={initialPrompt}

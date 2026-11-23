@@ -1,0 +1,254 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "new-api Conversation History",
+    "version": "1.0.0",
+    "description": "Isolated history API. Authenticate with a normal dashboard Cookie + New-Api-User header, or an unexpired, non-revoked desktop bearer (90 days for newly issued credentials; dashboard Cookie exchange does not consume it). Relay API keys and dashboard management access tokens are not accepted. Never point test writes at production."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3000",
+      "description": "Isolated local server only"
+    }
+  ],
+  "security": [
+    {
+      "desktop": []
+    },
+    {
+      "cookie": [],
+      "userHeader": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "desktop": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Existing 43-character desktop credential; not a language_api_key"
+      },
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session"
+      },
+      "userHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "New-Api-User"
+      }
+    },
+    "schemas": {
+      "Message": {
+        "type": "object",
+        "required": [
+          "id",
+          "payload"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Original structured message. The default UI expects key/from/versions and preserves extension fields."
+          }
+        }
+      },
+      "Change": {
+        "type": "object",
+        "required": [
+          "revision",
+          "mutation_id",
+          "title",
+          "messages",
+          "deleted_ids"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mutation_id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "messages": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          },
+          "deleted_ids": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/conversations": {
+      "get": {
+        "summary": "List own conversations",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success/data envelope"
+          },
+          "400": {
+            "description": "invalid parameters or bounded input exceeded"
+          },
+          "401": {
+            "description": "invalid or expired credential"
+          },
+          "404": {
+            "description": "not found or owned by another account"
+          },
+          "409": {
+            "description": "stale revision or mutation collision; retain local draft"
+          },
+          "500": {
+            "description": "history unavailable; existing model/billing paths are independent"
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/messages": {
+      "get": {
+        "summary": "Read original structured messages without invoking AI",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": -1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success/data envelope"
+          },
+          "400": {
+            "description": "invalid parameters or bounded input exceeded"
+          },
+          "401": {
+            "description": "invalid or expired credential"
+          },
+          "404": {
+            "description": "not found or owned by another account"
+          },
+          "409": {
+            "description": "stale revision or mutation collision; retain local draft"
+          },
+          "500": {
+            "description": "history unavailable; existing model/billing paths are independent"
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}": {
+      "patch": {
+        "summary": "Apply one idempotent revisioned patch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Change"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success/data envelope"
+          },
+          "400": {
+            "description": "invalid parameters or bounded input exceeded"
+          },
+          "401": {
+            "description": "invalid or expired credential"
+          },
+          "404": {
+            "description": "not found or owned by another account"
+          },
+          "409": {
+            "description": "stale revision or mutation collision; retain local draft"
+          },
+          "500": {
+            "description": "history unavailable; existing model/billing paths are independent"
+          }
+        }
+      }
+    }
+  }
+}

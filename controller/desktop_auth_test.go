@@ -161,7 +161,7 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 	assert.Contains(t, dashboard.Body.String(), user.Username)
 	require.Len(t, dashboard.Result().Cookies(), 1)
 	assert.Equal(t, "session", dashboard.Result().Cookies()[0].Name)
-	assert.Equal(t, http.StatusUnauthorized,
+	assert.Equal(t, http.StatusOK,
 		send(http.MethodPost, "/api/desktop-auth/session", nil, nil, token.Value).Code)
 
 	reapproval := send(http.MethodPost, desktopAuthPath, authorize, browserCookies, "")
