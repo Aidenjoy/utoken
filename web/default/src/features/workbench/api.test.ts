@@ -23,10 +23,10 @@ import { AxiosError } from 'axios'
 import i18next from 'i18next'
 
 import { api } from '@/lib/api'
+import { buildImageSize } from '@/lib/image-size'
 
 import { generateImageBatch, type TryOnGenerationBody } from './api'
 import { createDefaultDetailPageConfig } from './constants'
-import { buildImageSize } from './lib/image-size'
 import {
   buildDetailPageRequest,
   getSelectedDetailElements,

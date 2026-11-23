@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 /** Total pixel budget per resolution class (1K ≈ 1024×1024 and so on). */
 const RESOLUTION_PIXELS: Record<string, number> = {
   '1K': 1024 * 1024,
+  '1.5K': 1536 * 1536,
   '2K': 2048 * 2048,
   '4K': 4096 * 4096,
 }

@@ -2,6 +2,7 @@ import {
   ARK_IMAGE_OUTPUT_FORMATS,
   ARK_IMAGE_SIZES,
   ARK_PRO_IMAGE_SIZES,
+  IMAGE_ASPECT_RATIOS,
   IMAGE_COUNT_RANGE,
   OPENAI_IMAGE_OUTPUT_FORMATS,
   OPENAI_IMAGE_SIZES,
@@ -15,6 +16,9 @@ export interface ImageModelProfile {
   outputFormats: readonly ImageOutputFormat[]
   /** Images one request can return; 1 hides the count control */
   maxCount: number
+  /** Resolution tiers pair with an aspect-ratio picker (Ark); WxH-only
+   * providers (OpenAI) hide it */
+  supportsRatio: boolean
 }
 
 // Volcengine Ark and OpenAI-compatible providers disagree on the size
@@ -28,17 +32,19 @@ export function getImageModelProfile(model: string): ImageModelProfile {
       sizes: OPENAI_IMAGE_SIZES,
       outputFormats: OPENAI_IMAGE_OUTPUT_FORMATS,
       maxCount: IMAGE_COUNT_RANGE.max,
+      supportsRatio: false,
     }
   }
 
-  // Seedream 5.0 Pro takes the 1K/2K presets only and rejects both
-  // sequential_image_generation and stream outright, so it always returns
-  // exactly one image.
+  // Seedream 5.0 Pro takes the 1K/1.5K/2K tiers only (4K exceeds its ~4.6M
+  // total-pixel ceiling) and rejects both sequential_image_generation and
+  // stream outright, so it always returns exactly one image.
   if (/pro/i.test(model)) {
     return {
       sizes: ARK_PRO_IMAGE_SIZES,
       outputFormats: ARK_IMAGE_OUTPUT_FORMATS,
       maxCount: 1,
+      supportsRatio: true,
     }
   }
 
@@ -50,6 +56,7 @@ export function getImageModelProfile(model: string): ImageModelProfile {
     sizes: ARK_IMAGE_SIZES,
     outputFormats: isSeedream5 ? ARK_IMAGE_OUTPUT_FORMATS : [],
     maxCount: IMAGE_COUNT_RANGE.max,
+    supportsRatio: true,
   }
 }
 
@@ -67,6 +74,13 @@ export function normalizeImageConfig(
   const next: ImageConfig = { ...config, model }
   if (!profile.sizes.includes(next.size)) {
     next.size = profile.sizes[0]
+  }
+  if (
+    !profile.supportsRatio ||
+    (next.ratio !== 'auto' &&
+      !(IMAGE_ASPECT_RATIOS as readonly string[]).includes(next.ratio))
+  ) {
+    next.ratio = 'auto'
   }
   if (!profile.outputFormats.includes(next.outputFormat)) {
     next.outputFormat = profile.outputFormats[0] ?? next.outputFormat

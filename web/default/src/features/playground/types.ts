@@ -338,8 +338,10 @@ export interface ImageConfig {
   /** 显式指定渠道（0=自动，走渠道优先级选路；仅超管可见选择器） */
   channelId: number
   mode: ImageMode
-  /** Ark preset (2K/4K) or explicit WxH; OpenAI-compatible providers only take WxH */
+  /** Ark preset (1K/1.5K/2K/4K) or explicit WxH; OpenAI-compatible providers only take WxH */
   size: string
+  /** Aspect ratio paired with the Ark resolution tier; 'auto' lets the model decide */
+  ratio: string
   count: number
   outputFormat: ImageOutputFormat
   /** Reference images for image-to-image */

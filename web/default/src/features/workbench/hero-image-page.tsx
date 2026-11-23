@@ -29,6 +29,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 import { getUserModels } from '@/lib/api'
+import { buildImageSize } from '@/lib/image-size'
 import { getModelCategory } from '@/lib/model-category'
 
 import { generateImageBatch } from './api'
@@ -43,7 +44,6 @@ import {
   TRY_ON_RATIOS,
   TRY_ON_SIZES,
 } from './constants'
-import { buildImageSize } from './lib/image-size'
 import { buildHeroImageRequest } from './lib/prompt-hero'
 import { saveGenerationToLibrary } from './lib/save-to-library'
 import type { HeroImageConfig } from './types'

@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { SECTION_PAGE_TITLE_CLASS } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { getUserModels } from '@/lib/api'
+import { buildImageSize } from '@/lib/image-size'
 import { getModelCategory } from '@/lib/model-category'
 
 import { generateImageBatch } from './api'
@@ -43,7 +44,6 @@ import {
   TRY_ON_RATIOS,
   TRY_ON_SIZES,
 } from './constants'
-import { buildImageSize } from './lib/image-size'
 import { buildDuoTryOnRequest } from './lib/prompt-duo'
 import { saveGenerationToLibrary } from './lib/save-to-library'
 import type { ChipOption, DuoTryOnConfig } from './types'
