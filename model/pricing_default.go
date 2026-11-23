@@ -18,6 +18,10 @@ var defaultVendorRules = map[string]string{
 	"chatglm":  "智谱",
 	"glm-":     "智谱",
 	"qwen":     "阿里巴巴",
+	"qwq":      "阿里巴巴",
+	"qvq":      "阿里巴巴",
+	"tongyi":   "阿里巴巴",
+	"wan":      "阿里巴巴",
 	"deepseek": "DeepSeek",
 	"abab":     "MiniMax",
 	"ernie":    "百度",
@@ -71,7 +75,9 @@ var defaultVendorIcons = map[string]string{
 func initDefaultVendorMapping(metaMap map[string]*Model, vendorMap map[int]*Vendor, enableAbilities []AbilityWithChannel) {
 	for _, ability := range enableAbilities {
 		modelName := ability.Model
-		if _, exists := metaMap[modelName]; exists {
+		meta, exists := metaMap[modelName]
+		// 已有元数据且已关联供应商的模型无需处理
+		if exists && meta.VendorID != 0 {
 			continue
 		}
 
@@ -83,6 +89,18 @@ func initDefaultVendorMapping(metaMap map[string]*Model, vendorMap map[int]*Vend
 				vendorID = getOrCreateVendor(vendorName, vendorMap)
 				break
 			}
+		}
+
+		if exists {
+			// 元数据存在但未关联供应商（如同步上游时未携带供应商），按规则补齐；
+			// 复制一份避免污染前缀/包含规则共享的元数据指针
+			if vendorID == 0 {
+				continue
+			}
+			filled := *meta
+			filled.VendorID = vendorID
+			metaMap[modelName] = &filled
+			continue
 		}
 
 		// 创建模型元数据
