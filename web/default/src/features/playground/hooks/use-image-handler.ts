@@ -29,6 +29,11 @@ function buildImagePayload(
     prompt,
     group: config.group,
     size: config.size,
+    // Ask for SSE: the gateway commits headers immediately and keepalives the
+    // connection while the upstream renders, so a slow generation no longer
+    // dies on the reverse proxy's read timeout (504). The gateway strips the
+    // field before the upstream call (Seedream 5.0 Pro rejects it outright).
+    stream: true,
     // Ark stamps an "AI generated" mark onto the image unless watermark is
     // explicitly false, so it is always sent: the playground offers no toggle.
     watermark: false,

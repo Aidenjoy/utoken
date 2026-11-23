@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -211,76 +212,158 @@ func extractOpenAIImageStreamErrorMessage(data []byte) string {
 	return "upstream image stream returned error event"
 }
 
+// OpenaiImageJSONAsStreamHandler wraps a non-streaming upstream JSON answer as
+// a client-side SSE stream. The upstream only answers once the image is fully
+// rendered (Seedream regularly takes over a minute), which outlives typical
+// reverse-proxy read timeouts: the SSE headers are committed immediately and
+// comment pings keep the connection warm while the body is read, so a slow but
+// successful generation never surfaces to the browser as a 504. The keepalive
+// is unconditional — it guards the transport, unlike the optional user-facing
+// ping feature (PingIntervalEnabled) on real upstream streams.
 func OpenaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	helper.SetEventStreamHeaders(c)
+	c.Status(http.StatusOK)
+	_ = helper.PingData(c)
+	if info != nil {
+		info.SetFirstResponseTime()
+	}
+
+	type upstreamResult struct {
+		body []byte
+		err  error
+	}
+	resultCh := make(chan upstreamResult, 1)
+	go func() {
+		body, err := io.ReadAll(resp.Body)
+		resultCh <- upstreamResult{body: body, err: err}
+	}()
+
+	pingInterval := time.Duration(operation_setting.GetGeneralSetting().PingIntervalSeconds) * time.Second
+	if pingInterval <= 0 {
+		pingInterval = helper.DefaultPingInterval
+	}
+	pingTicker := time.NewTicker(pingInterval)
+	defer pingTicker.Stop()
+
+	clientGone := false
+	var result upstreamResult
+waitUpstream:
+	for {
+		select {
+		case result = <-resultCh:
+			break waitUpstream
+		case <-pingTicker.C:
+			if clientGone {
+				continue
+			}
+			if err := helper.PingData(c); err != nil {
+				// 客户端已断开，但上游仍在出图且必须计费：停写不停等，
+				// 拿到完整响应后照常结算。
+				clientGone = true
+				if info != nil && info.StreamStatus != nil {
+					info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
+				}
+			}
+		}
+	}
+
+	// 200 头已发出，失败不能再改状态码：向客户端补一个 SSE error 事件，
+	// 同时返回 SkipRetry 错误（响应已提交，换渠道重试会往同一条流里写第二份
+	// 响应），由 relay 错误路径退预扣费并落错误日志。
+	if result.err != nil {
+		apiErr := types.NewOpenAIError(result.err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
+		writeOpenaiImageStreamErrorEvent(c, clientGone, apiErr)
+		return &dto.Usage{}, apiErr
 	}
 
 	var imageResp dto.ImageResponse
-	if err := common.Unmarshal(responseBody, &imageResp); err != nil {
-		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	if err := common.Unmarshal(result.body, &imageResp); err != nil {
+		apiErr := types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
+		writeOpenaiImageStreamErrorEvent(c, clientGone, apiErr)
+		return &dto.Usage{}, apiErr
 	}
 
 	var usageResp dto.SimpleResponse
-	_ = common.Unmarshal(responseBody, &usageResp)
+	_ = common.Unmarshal(result.body, &usageResp)
 	if oaiError := usageResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+		apiErr := types.WithOpenAIError(*oaiError, resp.StatusCode, types.ErrOptionWithSkipRetry())
+		writeOpenaiImageStreamErrorEvent(c, clientGone, apiErr)
+		return &usageResp.Usage, apiErr
 	}
 	normalizeOpenAIUsage(&usageResp.Usage)
-	applyUsagePostProcessing(info, &usageResp.Usage, responseBody)
-
-	helper.SetEventStreamHeaders(c)
-	c.Status(http.StatusOK)
+	applyUsagePostProcessing(info, &usageResp.Usage, result.body)
 
 	created := imageResp.Created
 	if created == 0 {
 		created = time.Now().Unix()
 	}
 	recordReturnedImageCount(info, len(imageResp.Data))
-	if info != nil {
-		info.SetFirstResponseTime()
+	if !clientGone {
+		for _, image := range imageResp.Data {
+			payload := map[string]any{
+				"type":       "image_generation.completed",
+				"created_at": created,
+			}
+			if image.Url != "" {
+				payload["url"] = image.Url
+			}
+			if image.B64Json != "" {
+				payload["b64_json"] = image.B64Json
+			}
+			if image.RevisedPrompt != "" {
+				payload["revised_prompt"] = image.RevisedPrompt
+			}
+			if service.ValidUsage(&usageResp.Usage) {
+				payload["usage"] = usageResp.Usage
+			}
+			if err := writeOpenaiImageStreamPayload(c, "image_generation.completed", payload); err != nil {
+				clientGone = true
+				if info != nil && info.StreamStatus != nil {
+					info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
+				}
+				break
+			}
+		}
 	}
-	for _, image := range imageResp.Data {
-		payload := map[string]any{
-			"type":       "image_generation.completed",
-			"created_at": created,
-		}
-		if image.Url != "" {
-			payload["url"] = image.Url
-		}
-		if image.B64Json != "" {
-			payload["b64_json"] = image.B64Json
-		}
-		if image.RevisedPrompt != "" {
-			payload["revised_prompt"] = image.RevisedPrompt
-		}
-		if service.ValidUsage(&usageResp.Usage) {
-			payload["usage"] = usageResp.Usage
-		}
-		if err := writeOpenaiImageStreamPayload(c, "image_generation.completed", payload); err != nil {
+	if !clientGone {
+		if err := writeOpenaiImageStreamDone(c); err != nil {
+			clientGone = true
 			if info != nil && info.StreamStatus != nil {
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
 			}
-			return &usageResp.Usage, nil
 		}
-	}
-	if err := writeOpenaiImageStreamDone(c); err != nil {
-		if info != nil && info.StreamStatus != nil {
-			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
-		}
-		return &usageResp.Usage, nil
 	}
 	if info != nil {
 		info.ReceivedResponseCount += len(imageResp.Data)
 		if info.StreamStatus == nil {
 			info.StreamStatus = relaycommon.NewStreamStatus()
 		}
-		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+		if !clientGone {
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+		}
 	}
 	return &usageResp.Usage, nil
+}
+
+// writeOpenaiImageStreamErrorEvent surfaces a post-commit failure as an SSE
+// error event so the stream client can read the message; the JSON error body
+// the relay defer appends afterwards is ignored by a client that already
+// stopped on this event.
+func writeOpenaiImageStreamErrorEvent(c *gin.Context, clientGone bool, apiErr *types.NewAPIError) {
+	if clientGone {
+		return
+	}
+	payload := map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"message": apiErr.Error(),
+			"type":    "upstream_error",
+		},
+	}
+	_ = writeOpenaiImageStreamPayload(c, "error", payload)
+	_ = writeOpenaiImageStreamDone(c)
 }
 
 func writeOpenaiImageStreamPayload(c *gin.Context, eventName string, payload any) error {

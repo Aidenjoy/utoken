@@ -33,6 +33,14 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		return types.NewError(fmt.Errorf("failed to copy request to ImageRequest: %w", err), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	// Playground 请求的 stream 只描述「浏览器 ↔ 网关」这一段：上游调用一律降为
+	// 非流式（Seedream 5.0 Pro 直接拒绝 stream 字段），再由 JSON-as-stream 包装器
+	// 在等待出图期间向浏览器发 SSE keepalive，避免反向代理读超时把成功的生成
+	// 误报成 504。info.IsStream 保持原值，响应仍按 SSE 包装返回。
+	if info.IsPlayground {
+		request.Stream = nil
+	}
+
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { api, getCommonHeaders } from '@/lib/api'
 
 import {
   API_ENDPOINTS,
@@ -30,6 +30,7 @@ import type {
   AssetType,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ImageGenerationDataItem,
   ImageGenerationRequest,
   ImageGenerationResponse,
   ModelOption,
@@ -111,19 +112,120 @@ export async function submitVideoTask(
  * Generate images (text-to-image and image-to-image).
  *
  * The playground body is the same OpenAI-compatible body an external caller sends
- * to /v1/images/generations, plus the gateway-specific `group` field. Failures come
- * back as `{ error: { message } }`, so skipErrorHandler is used and the caller
- * surfaces the message itself.
+ * to /v1/images/generations, plus the gateway-specific `group` field. The request
+ * asks for `stream: true`: the gateway commits SSE headers immediately and sends
+ * comment pings while the upstream renders, so a slow-but-successful generation
+ * no longer hits the reverse proxy's read timeout (504). fetch is used instead of
+ * axios because the SSE body must be consumed incrementally; the aggregated
+ * result keeps the plain ImageGenerationResponse shape callers already read.
+ * Failures come back as `{ error: { message } }` (JSON) or an SSE error event,
+ * and the caller surfaces the message itself.
  */
 export async function generateImages(
   payload: ImageGenerationRequest,
   signal?: AbortSignal
 ): Promise<ImageGenerationResponse> {
-  const res = await api.post(IMAGE_API_ENDPOINTS.GENERATIONS, payload, {
+  const res = await fetch(IMAGE_API_ENDPOINTS.GENERATIONS, {
+    method: 'POST',
+    headers: { ...getCommonHeaders(), Accept: 'text/event-stream' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
     signal,
-    skipErrorHandler: true,
-  } as Record<string, unknown>)
-  return res.data as ImageGenerationResponse
+  })
+
+  const contentType = res.headers.get('Content-Type') ?? ''
+  if (!contentType.includes('text/event-stream')) {
+    // JSON fallback: gateway middleware failures, or a backend that ignored
+    // `stream`. Keep the axios-style error shape imageErrorMessage reads.
+    const data = (await res.json().catch(() => null)) as
+      | (ImageGenerationResponse & {
+          error?: { message?: string }
+          message?: string
+        })
+      | null
+    if (!res.ok) {
+      const message =
+        data?.error?.message ||
+        data?.message ||
+        `Request failed with status code ${res.status}`
+      const error = new Error(message) as Error & {
+        response?: { status: number; data: unknown }
+      }
+      error.response = { status: res.status, data }
+      throw error
+    }
+    return data as ImageGenerationResponse
+  }
+
+  if (!res.body) {
+    throw new Error('Image stream has no response body')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  const images: ImageGenerationDataItem[] = []
+  let created = 0
+  let buffer = ''
+  let done = false
+  try {
+    while (!done) {
+      const { value, done: finished } = await reader.read()
+      if (finished) break
+      buffer += decoder.decode(value, { stream: true })
+      let newlineIdx = buffer.indexOf('\n')
+      while (newlineIdx !== -1) {
+        const line = buffer.slice(0, newlineIdx).trim()
+        buffer = buffer.slice(newlineIdx + 1)
+        newlineIdx = buffer.indexOf('\n')
+        // ":" comment lines are the keepalive pings; "event:" lines carry no
+        // payload — the JSON "type" field names the event.
+        if (!line.startsWith('data:')) continue
+        const data = line.slice(5).trim()
+        if (data === '[DONE]') {
+          done = true
+          break
+        }
+        let event: {
+          type?: string
+          created_at?: number
+          url?: string
+          b64_json?: string
+          revised_prompt?: string
+          message?: string
+          error?: { message?: string }
+        }
+        try {
+          event = JSON.parse(data)
+        } catch {
+          continue
+        }
+        const eventType = (event.type ?? '').toLowerCase()
+        if (
+          eventType === 'error' ||
+          eventType === 'upstream_error' ||
+          event.error
+        ) {
+          throw new Error(
+            event.error?.message ||
+              event.message ||
+              'Upstream image stream returned error event'
+          )
+        }
+        if (eventType === 'image_generation.completed') {
+          if (event.created_at) created = event.created_at
+          images.push({
+            url: event.url,
+            b64_json: event.b64_json,
+            revised_prompt: event.revised_prompt,
+          })
+        }
+      }
+    }
+  } catch (error) {
+    await reader.cancel().catch(() => {})
+    throw error
+  }
+  return { created, data: images }
 }
 
 /**
@@ -354,4 +456,3 @@ export async function deleteAsset(id: number): Promise<void> {
     throw new Error(apiErrorMessage(error))
   }
 }
-
