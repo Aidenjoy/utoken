@@ -235,31 +235,43 @@ func TestValidateVideoTokenChannelIgnoresPriorityButChecksCapability(t *testing.
 	assert.Error(t, ValidateVideoTokenChannel(token, 3))
 }
 
-// TestWanNativeChannelSelectableWithoutAssetProtocol 锁定万相渠道回归契约：
-// DashScope 上游无素材库，万相官方透传渠道不配置素材上传协议也必须能出现在
-// 视频 Key 模型候选中并可被绑定/改派；同配置的普通渠道仍被素材协议门槛排除。
-func TestWanNativeChannelSelectableWithoutAssetProtocol(t *testing.T) {
-	setupVideoRouteTest(t)
-	seedVideoRouteUser(t, 1, "default", 0)
+// TestWanChannelSelectableWithoutAssetProtocol 锁定万相系渠道回归契约：
+// DashScope 上游无素材库，万相渠道（WanNative 官方透传与 Ali 统一协议）不配置
+// 素材上传协议也必须能出现在视频 Key 模型候选中并可被绑定/改派；
+// 同配置的普通渠道仍被素材协议门槛排除。
+func TestWanChannelSelectableWithoutAssetProtocol(t *testing.T) {
 	wanModel := "wan3.0-video"
-	seedVideoRouteChannel(t, videoRouteChannelFixture{
-		id: 1, modelName: wanModel, channelType: constant.ChannelTypeWanNative,
-		priority: videoRoutePriority(50), supports4K: true, noProtocol: true,
-	})
-	seedVideoRouteChannel(t, videoRouteChannelFixture{
-		id: 2, modelName: videoRouteModel20, priority: videoRoutePriority(50), noProtocol: true,
-	})
-
-	options, err := ListVideoKeyOptions(1, "default")
-	require.NoError(t, err)
-	assert.Equal(t, []VideoKeyOption{{Model: wanModel, Supports4K: true}}, options)
-
-	channel, err := MatchVideoKeyChannel(1, "default", wanModel, false)
-	require.NoError(t, err)
-	assert.Equal(t, 1, channel.Id)
-
-	token := &model.Token{
-		UserId: 1, Group: "default", KeyType: model.TokenKeyTypeVideo, VideoModel: wanModel,
+	tests := []struct {
+		name        string
+		channelType int
+	}{
+		{name: "WanNative", channelType: constant.ChannelTypeWanNative},
+		{name: "Ali", channelType: constant.ChannelTypeAli},
 	}
-	assert.NoError(t, ValidateVideoTokenChannel(token, 1))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setupVideoRouteTest(t)
+			seedVideoRouteUser(t, 1, "default", 0)
+			seedVideoRouteChannel(t, videoRouteChannelFixture{
+				id: 1, modelName: wanModel, channelType: tt.channelType,
+				priority: videoRoutePriority(50), supports4K: true, noProtocol: true,
+			})
+			seedVideoRouteChannel(t, videoRouteChannelFixture{
+				id: 2, modelName: videoRouteModel20, priority: videoRoutePriority(50), noProtocol: true,
+			})
+
+			options, err := ListVideoKeyOptions(1, "default")
+			require.NoError(t, err)
+			assert.Equal(t, []VideoKeyOption{{Model: wanModel, Supports4K: true}}, options)
+
+			channel, err := MatchVideoKeyChannel(1, "default", wanModel, false)
+			require.NoError(t, err)
+			assert.Equal(t, 1, channel.Id)
+
+			token := &model.Token{
+				UserId: 1, Group: "default", KeyType: model.TokenKeyTypeVideo, VideoModel: wanModel,
+			}
+			assert.NoError(t, ValidateVideoTokenChannel(token, 1))
+		})
+	}
 }

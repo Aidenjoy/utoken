@@ -48,9 +48,12 @@ func resolveBoundAssetChannel(channelID int) (*model.Channel, error) {
 }
 
 // videoKeyBindableChannel 报告渠道是否可被视频 Key 绑定/改派：开启素材上传协议的
-// 渠道，或万相官方透传渠道（DashScope 上游无素材库，素材协议对其不适用）。
+// 渠道，或万相系渠道（WanNative 官方透传与 Ali 统一协议，上游同为 DashScope，
+// 无素材库，素材协议对其不适用）。
 func videoKeyBindableChannel(channel *model.Channel) bool {
-	return channel.GetOtherSettings().AssetUploadProtocol != "" || channel.Type == constant.ChannelTypeWanNative
+	return channel.GetOtherSettings().AssetUploadProtocol != "" ||
+		channel.Type == constant.ChannelTypeWanNative ||
+		channel.Type == constant.ChannelTypeAli
 }
 
 // resolveBoundVideoChannel 取视频 Key 绑定渠道并校验存在、启用且满足视频绑定条件。
