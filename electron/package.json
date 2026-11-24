@@ -38,6 +38,7 @@
     "files": [
       "main.js",
       "desktop-auth.js",
+      "server-origin.js",
       "preload.js",
       "icon.png",
       "tray-iconTemplate.png",

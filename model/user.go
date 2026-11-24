@@ -966,6 +966,9 @@ func (user *User) Update(updatePassword bool) error {
 	if err := user.UpdateWithTx(DB, updatePassword); err != nil {
 		return err
 	}
+	if updatePassword {
+		common.NotifyYunControlPasswordChanged(user.Id)
+	}
 	return updateUserCache(*user)
 }
 
@@ -993,6 +996,9 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 func (user *User) Edit(updatePassword bool) error {
 	if err := user.EditWithTx(DB, updatePassword); err != nil {
 		return err
+	}
+	if updatePassword {
+		common.NotifyYunControlPasswordChanged(user.Id)
 	}
 	return updateUserCache(*user)
 }
@@ -1235,6 +1241,9 @@ func ResetUserPasswordByEmail(email string, password string) error {
 		return err
 	}
 	err = DB.Model(&User{}).Where("id = ?", user.Id).Update("password", hashedPassword).Error
+	if err == nil {
+		common.NotifyYunControlPasswordChanged(user.Id)
+	}
 	return err
 }
 

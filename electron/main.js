@@ -4,6 +4,8 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const { beginDesktopLogin, createDashboardSession } = require('./desktop-auth');
+const { parseServerOrigin } = require('./server-origin');
+let sharedServerOrigin = null;
 
 let mainWindow;
 let serverProcess;
@@ -403,9 +405,9 @@ function createWindow() {
     icon: path.join(__dirname, 'icon.png')
   });
 
-  mainWindow.loadURL(`http://127.0.0.1:${loadPort}`);
+  mainWindow.loadURL(sharedServerOrigin || `http://127.0.0.1:${loadPort}`);
   
-  console.log(`Loading from: http://127.0.0.1:${loadPort}`);
+  console.log(`Loading from: ${sharedServerOrigin || `http://127.0.0.1:${loadPort}`}`);
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -432,8 +434,8 @@ async function loginInSystemBrowser() {
   if (!mainWindow) createWindow();
   const window = mainWindow;
   const isDev = process.env.NODE_ENV === 'development';
-  const backendOrigin = 'http://127.0.0.1:' + PORT;
-  const rendererOrigin = 'http://127.0.0.1:' + (isDev ? DEV_FRONTEND_PORT : PORT);
+  const backendOrigin = sharedServerOrigin || 'http://127.0.0.1:' + PORT;
+  const rendererOrigin = sharedServerOrigin || 'http://127.0.0.1:' + (isDev ? DEV_FRONTEND_PORT : PORT);
   const login = new AbortController();
   desktopLogin = login;
   try {
@@ -521,7 +523,8 @@ function createTray() {
 
 app.whenReady().then(async () => {
   try {
-    await startServer();
+    sharedServerOrigin = parseServerOrigin(process.env.NEW_API_SERVER_URL);
+    if (!sharedServerOrigin) await startServer();
     createTray();
     createWindow();
   } catch (err) {

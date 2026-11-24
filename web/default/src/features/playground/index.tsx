@@ -18,6 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo } from 'react'
 
+import { useAuthStore } from '@/stores/auth-store'
+
+import { HistoryBar } from './components/chat/history-bar'
 import { PlaygroundChat } from './components/chat/playground-chat'
 import { PlaygroundInput } from './components/input/playground-input'
 import { PlaygroundImageMode } from './components/playground-image-mode'
@@ -29,22 +32,74 @@ import {
   usePlaygroundOptions,
   usePlaygroundState,
 } from './hooks'
+import { useHistory } from './hooks/use-history'
 import { getChannelModelOptions, getModelType } from './lib'
 
-export function Playground({ initialPrompt }: { initialPrompt?: string }) {
+type PlaygroundProps = { initialPrompt?: string; syncHistory?: boolean }
+type PlaygroundState = ReturnType<typeof usePlaygroundState>
+
+/** Preserve the original local playground unless server history is explicitly selected. */
+export function Playground(props: PlaygroundProps) {
+  const userID = useAuthStore((state) => state.auth.user?.id)
+  if (!userID) return null
+  if (props.syncHistory) {
+    return (
+      <SyncedPlayground
+        key={userID}
+        userID={userID}
+        initialPrompt={props.initialPrompt}
+      />
+    )
+  }
+  return <LocalPlayground key={userID} initialPrompt={props.initialPrompt} />
+}
+
+/** Keep the original browser history and chat behavior on the existing entry point. */
+function LocalPlayground(props: { initialPrompt?: string }) {
+  const state = usePlaygroundState()
+  return <PlaygroundContent state={state} initialPrompt={props.initialPrompt} />
+}
+
+/** The separate server mode keeps authenticated history out of the legacy cache. */
+function SyncedPlayground(props: { initialPrompt?: string; userID: number }) {
+  const history = useHistory(props.userID)
+  const state = usePlaygroundState({ localHistory: false })
+  return (
+    <PlaygroundContent
+      initialPrompt={props.initialPrompt}
+      history={history}
+      state={{
+        ...state,
+        messages: history.messages,
+        updateMessages: history.updateMessages,
+        clearMessages: history.clearMessages,
+        isLoadingMessages: history.isLoadingMessages,
+      }}
+    />
+  )
+}
+
+/** Shared rendering and the existing relay handlers preserve model request semantics. */
+function PlaygroundContent(props: {
+  initialPrompt?: string
+  state: PlaygroundState
+  history?: ReturnType<typeof useHistory>
+}) {
+  const initialPrompt = props.initialPrompt
+  const history = props.history
   const {
+    messages,
+    updateMessages,
+    clearMessages,
+    isLoadingMessages,
     config,
     parameterEnabled,
-    messages,
-    isLoadingMessages,
     models,
     groups,
-    updateMessages,
     setModels,
     setGroups,
     updateConfig,
-    clearMessages,
-  } = usePlaygroundState()
+  } = props.state
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -139,16 +194,28 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
 
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+      {history && (
+        <HistoryBar
+          history={history}
+          disabled={isGenerating || isLoadingMessages}
+        />
+      )}
       {/* Full-width scroll container: scrolling works even over side whitespace */}
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
         <PlaygroundChat
           messages={messages}
           isLoadingMessages={isLoadingMessages}
-          onRegenerateMessage={handleRegenerateMessage}
-          onEditMessage={handleEditMessage}
+          onRegenerateMessage={
+            history?.moreMessages ? undefined : handleRegenerateMessage
+          }
+          onEditMessage={history?.moreMessages ? undefined : handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
-          onSelectPrompt={handleSendMessage}
-          isGenerating={isGenerating}
+          onSelectPrompt={
+            isLoadingMessages || history?.moreMessages
+              ? undefined
+              : handleSendMessage
+          }
+          isGenerating={isGenerating || isLoadingMessages}
           editingKey={editingMessageKey}
           onCancelEdit={handleEditOpenChange}
           onSaveEdit={(newContent) => applyEdit(newContent, false)}
@@ -159,7 +226,7 @@ export function Playground({ initialPrompt }: { initialPrompt?: string }) {
       {/* Input area: center content and constrain to the same container width */}
       <div className='mx-auto w-full max-w-4xl'>
         <PlaygroundInput
-          disabled={isGenerating}
+          disabled={isGenerating || isLoadingMessages || history?.moreMessages}
           groups={groups}
           groupValue={config.group}
           initialText={initialPrompt}

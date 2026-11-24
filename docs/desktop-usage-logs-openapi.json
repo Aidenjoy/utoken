@@ -1,0 +1,439 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "UToken Desktop Usage Logs — new-api",
+    "version": "1.0.0",
+    "description": "GET only, own model consume/error logs. Existing desktop bearer OR existing dashboard Cookie + New-Api-User. sk- model keys and management access tokens are not accepted. Unknown/duplicate parameters rejected. Offset <=9999. No database writes or model requests. Test only against an isolated server."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:3000",
+      "description": "Local isolated test server"
+    }
+  ],
+  "paths": {
+    "/api/desktop/usage-logs": {
+      "get": {
+        "operationId": "getDesktopUsageLogs",
+        "summary": "Read the authenticated account’s stored model usage logs",
+        "security": [
+          {
+            "desktopBearer": []
+          },
+          {
+            "dashboardSession": [],
+            "dashboardUser": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "p",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "起始偏移必须 <=9999"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "default": 20,
+              "maximum": 100
+            },
+            "description": "页大小仅可使用 page_size/ps/size 中一种"
+          },
+          {
+            "name": "ps",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "页大小仅可使用 page_size/ps/size 中一种"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "页大小仅可使用 page_size/ps/size 中一种"
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Unix 秒，0 不限，非零时含边界"
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Unix 秒，0 不限，非零时含边界"
+          },
+          {
+            "name": "model_name",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "description": "最多256 UTF-8字节。无%精确匹配；含%沿用现有日志模式校验。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "原分页结构、原始日志字段，以及与Web用户使用记录一致的消耗展示数值及单位",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsagePage"
+                },
+                "example": {
+                  "success": true,
+                  "message": "",
+                  "data": {
+                    "page": 1,
+                    "page_size": 20,
+                    "total": 1,
+                    "items": [
+                      {
+                        "id": 4101,
+                        "created_at": 1700000000,
+                        "model_name": "example-model",
+                        "type": 2,
+                        "prompt_tokens": 11,
+                        "completion_tokens": 7,
+                        "quota": 125000,
+                        "subscription_quota": 0,
+                        "token_name": "example-key-name",
+                        "request_id": "example-request-id",
+                        "http_status": 200,
+                        "use_time": 2,
+                        "is_stream": true,
+                        "cache_hit": false,
+                        "task_settle": false,
+                        "consumption": {
+                          "wallet_amount": 0.25,
+                          "wallet_unit": "USD",
+                          "wallet_symbol": "$",
+                          "subscription_points": 0,
+                          "subscription_unit": "points"
+                        },
+                        "user_input": "请介绍一下这个模型。",
+                        "user_input_truncated": false
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination, times, model pattern or unknown parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "message": "invalid_pagination"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Existing auth response: invalid desktop bearer, or dashboard session/header failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "invalid_token"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Controlled query failure; auth database failures may use existing server_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "message": "usage_logs_unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "desktopBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Existing non-consumed desktop access_token. Not a language_api_key."
+      },
+      "dashboardSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session"
+      },
+      "dashboardUser": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "New-Api-User",
+        "description": "Must match the authenticated dashboard Cookie user; never selects another owner."
+      }
+    },
+    "schemas": {
+      "UsageLog": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "created_at",
+          "model_name",
+          "type",
+          "prompt_tokens",
+          "completion_tokens",
+          "quota",
+          "subscription_quota",
+          "token_name",
+          "request_id",
+          "http_status",
+          "use_time",
+          "is_stream",
+          "cache_hit",
+          "task_settle",
+          "consumption",
+          "user_input",
+          "user_input_truncated"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "原数据库日志 ID"
+          },
+          "created_at": {
+            "type": "integer",
+            "description": "Unix 秒"
+          },
+          "model_name": {
+            "type": "string",
+            "description": "原模型名"
+          },
+          "type": {
+            "type": "integer",
+            "description": "2 消费，5 模型错误"
+          },
+          "prompt_tokens": {
+            "type": "integer",
+            "description": "原输入 Token"
+          },
+          "completion_tokens": {
+            "type": "integer",
+            "description": "原输出 Token"
+          },
+          "quota": {
+            "type": "integer",
+            "description": "原始quota整数，保持兼容；展示请用consumption.wallet_amount"
+          },
+          "subscription_quota": {
+            "type": "integer",
+            "description": "原始订阅quota整数，保持兼容；展示请用consumption.subscription_points"
+          },
+          "token_name": {
+            "type": "string",
+            "description": "API Key 名称，不是 Key"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "原请求标识，可能为空"
+          },
+          "http_status": {
+            "type": "integer",
+            "description": "原列值，0 为未记录，不推算成功"
+          },
+          "use_time": {
+            "type": "integer",
+            "description": "原耗时秒"
+          },
+          "is_stream": {
+            "type": "boolean",
+            "description": "原流式标记"
+          },
+          "cache_hit": {
+            "type": "boolean",
+            "description": "原响应缓存标记"
+          },
+          "task_settle": {
+            "type": "boolean",
+            "description": "原任务结算标记"
+          },
+          "consumption": {
+            "$ref": "#/components/schemas/Consumption"
+          },
+          "user_input": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4096,
+            "description": "从本人该请求的已保存快照提取的最后一条用户文本；不含系统/助手/工具/媒体/完整请求；无快照或解析失败时null"
+          },
+          "user_input_truncated": {
+            "type": "boolean",
+            "description": "用户输入预览是否截断，最多4096个Unicode字符"
+          }
+        }
+      },
+      "UsagePage": {
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "page",
+              "page_size",
+              "total",
+              "items"
+            ],
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "page_size": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UsageLog"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Consumption": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "wallet_amount",
+          "wallet_unit",
+          "wallet_symbol",
+          "subscription_points",
+          "subscription_unit"
+        ],
+        "properties": {
+          "wallet_amount": {
+            "type": "number",
+            "format": "double",
+            "description": "Web用户使用记录的钱包展示数值，已换算；订阅记录为0"
+          },
+          "wallet_unit": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "CNY",
+              "CUSTOM",
+              "TOKENS"
+            ],
+            "description": "站点展示单位，CUSTOM结合wallet_symbol使用"
+          },
+          "wallet_symbol": {
+            "type": "string",
+            "description": "货币符号，如$、¥、€；TOKENS为空"
+          },
+          "subscription_points": {
+            "type": "number",
+            "format": "double",
+            "description": "按Web formatSubscriptionPoints口径换算的订阅点数"
+          },
+          "subscription_unit": {
+            "type": "string",
+            "enum": [
+              "points"
+            ],
+            "description": "订阅展示单位，始终为points，不附货币符号"
+          }
+        }
+      }
+    }
+  }
+}
