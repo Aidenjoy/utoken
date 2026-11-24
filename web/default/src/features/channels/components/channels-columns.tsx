@@ -20,10 +20,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
-  AlertTriangle,
   ChevronDown,
   ChevronRight,
-  CircleAlert,
+  CircleHelp,
   ListOrdered,
   Shuffle,
   SlidersHorizontal,
@@ -638,7 +637,7 @@ export function useChannelsColumns(
                       <Tooltip>
                         <TooltipTrigger
                           render={
-                            <AlertTriangle className='h-3.5 w-3.5 flex-shrink-0 text-amber-500' />
+                            <CircleHelp className='text-muted-foreground h-3.5 w-3.5 flex-shrink-0' />
                           }
                         />
                         <TooltipContent side='top'>
@@ -678,7 +677,7 @@ export function useChannelsColumns(
                           <TooltipTrigger
                             render={<span className='shrink-0 cursor-help' />}
                           >
-                            <CircleAlert className='h-3.5 w-3.5 text-amber-500' />
+                            <CircleHelp className='text-muted-foreground h-3.5 w-3.5' />
                           </TooltipTrigger>
                           <TooltipContent
                             side='bottom'
