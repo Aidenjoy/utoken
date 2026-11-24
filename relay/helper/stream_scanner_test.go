@@ -571,3 +571,23 @@ func TestStreamScannerHandler_StreamStatus_ReplacesPreInitialized(t *testing.T) 
 	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
 	assert.Equal(t, 0, info.StreamStatus.TotalErrorCount())
 }
+
+func TestTransportPingInterval(t *testing.T) {
+	cases := []struct {
+		name       string
+		configured time.Duration
+		want       time.Duration
+	}{
+		{"zero falls back to default", 0, DefaultPingInterval},
+		{"negative falls back to default", -5 * time.Second, DefaultPingInterval},
+		{"admin default 60s capped below proxy read timeout", 60 * time.Second, DefaultPingInterval},
+		{"slower custom cadence capped", 120 * time.Second, DefaultPingInterval},
+		{"faster custom cadence kept", 3 * time.Second, 3 * time.Second},
+		{"cadence equal to default kept", DefaultPingInterval, DefaultPingInterval},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, TransportPingInterval(tc.configured))
+		})
+	}
+}

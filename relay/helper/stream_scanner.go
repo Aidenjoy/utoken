@@ -32,6 +32,17 @@ const (
 	streamWriteTimeout = 30 * time.Second
 )
 
+// TransportPingInterval caps the keepalive cadence of transport-layer guards
+// (image JSON-as-stream): reverse proxies commonly cut idle reads at 60s, so
+// the first PING must land well before that even when the admin-configured
+// chat ping cadence (PingIntervalSeconds, default 60) is slower.
+func TransportPingInterval(configured time.Duration) time.Duration {
+	if configured <= 0 || configured > DefaultPingInterval {
+		return DefaultPingInterval
+	}
+	return configured
+}
+
 func getScannerBufferSize() int {
 	if constant.StreamScannerMaxBufferMB > 0 {
 		return constant.StreamScannerMaxBufferMB << 20

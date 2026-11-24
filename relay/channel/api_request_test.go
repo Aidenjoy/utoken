@@ -294,3 +294,47 @@ func TestDoRequestTransportKeepAliveWhileUpstreamHeadersPending(t *testing.T) {
 	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
+
+// TestDoRequestTransportKeepAliveNotDelayedByAdminPingCadence 锁定线上 504 复发根因：
+// PingIntervalSeconds 默认 60s，若传输层保活复用该节奏，首个 PING 与反向代理
+// 60s 读超时同时踩线，等待上游响应头期间仍然零字节。TransportKeepAlive 必须
+// 把间隔封顶到 DefaultPingInterval（10s）：上游 12s 才发响应头、配置 60s 时，
+// 立即首 PING + 10s tick 应至少写出两次保活。
+func TestDoRequestTransportKeepAliveNotDelayedByAdminPingCadence(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	settings := operation_setting.GetGeneralSetting()
+	oldEnabled, oldSeconds := settings.PingIntervalEnabled, settings.PingIntervalSeconds
+	settings.PingIntervalEnabled = false
+	settings.PingIntervalSeconds = 60
+	t.Cleanup(func() {
+		settings.PingIntervalEnabled, settings.PingIntervalSeconds = oldEnabled, oldSeconds
+	})
+
+	service.InitHttpClient()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(12 * time.Second)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"url":"https://example.com/final.png"}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, IsStream: true, TransportKeepAlive: true}
+	req, err := http.NewRequest(http.MethodPost, upstream.URL, strings.NewReader(`{}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := DoRequest(c, req, info)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	out := recorder.Body.String()
+	require.GreaterOrEqual(t, strings.Count(out, ": PING"), 2)
+}

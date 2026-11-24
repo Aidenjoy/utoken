@@ -240,10 +240,7 @@ func OpenaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 		resultCh <- upstreamResult{body: body, err: err}
 	}()
 
-	pingInterval := time.Duration(operation_setting.GetGeneralSetting().PingIntervalSeconds) * time.Second
-	if pingInterval <= 0 {
-		pingInterval = helper.DefaultPingInterval
-	}
+	pingInterval := helper.TransportPingInterval(time.Duration(operation_setting.GetGeneralSetting().PingIntervalSeconds) * time.Second)
 	pingTicker := time.NewTicker(pingInterval)
 	defer pingTicker.Stop()
 
