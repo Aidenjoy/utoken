@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -6,8 +6,16 @@ import { buildImageSize } from '@/lib/image-size'
 
 import { generateImages } from '../api'
 import { MAX_IMAGE_TOTAL } from '../constants'
+import {
+  abortActiveGeneration,
+  appendImageTask,
+  clearImageTasks,
+  getImageTasks,
+  setActiveGenerationController,
+  subscribeImageTasks,
+  updateImageTask,
+} from '../lib/image-task-store'
 import { createImageId, getImageModelProfile } from '../lib/image-utils'
-import { loadImageTasks, saveImageTasks } from '../lib/storage/image-storage'
 import type {
   ImageConfig,
   ImageGenerationDataItem,
@@ -113,28 +121,10 @@ function imageErrorMessage(error: unknown): string {
 
 export function useImageHandler(config: ImageConfig) {
   const { t } = useTranslation()
-  const [imageTasks, setImageTasks] = useState<ImageTask[]>(() =>
-    loadImageTasks()
-  )
-  const [isGenerating, setIsGenerating] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
-
-  const persistTasks = useCallback((tasks: ImageTask[]) => {
-    saveImageTasks(tasks)
-  }, [])
-
-  const updateTask = useCallback(
-    (taskId: string, updater: (task: ImageTask) => ImageTask) => {
-      setImageTasks((prev) => {
-        const next = prev.map((task) =>
-          task.id === taskId ? updater(task) : task
-        )
-        persistTasks(next)
-        return next
-      })
-    },
-    [persistTasks]
-  )
+  // 任务住在模块级 store：菜单切换卸载组件不会中断请求，重新挂载后继续
+  // 接收同一次生成的进度与结果。
+  const imageTasks = useSyncExternalStore(subscribeImageTasks, getImageTasks)
+  const isGenerating = imageTasks.some((task) => task.status === 'pending')
 
   const generate = useCallback(
     async (prompt: string) => {
@@ -170,15 +160,10 @@ export function useImageHandler(config: ImageConfig) {
         createdAt: Date.now(),
       }
 
-      setImageTasks((prev) => {
-        const next = [...prev, newTask]
-        persistTasks(next)
-        return next
-      })
+      appendImageTask(newTask)
 
       const controller = new AbortController()
-      abortRef.current = controller
-      setIsGenerating(true)
+      setActiveGenerationController(controller)
 
       try {
         const resp = await generateImages(payload, controller.signal)
@@ -190,7 +175,7 @@ export function useImageHandler(config: ImageConfig) {
         )
 
         if (images.length === 0) {
-          updateTask(taskId, (task) => ({
+          updateImageTask(taskId, (task) => ({
             ...task,
             status: 'failed',
             error: t('No image returned'),
@@ -202,7 +187,7 @@ export function useImageHandler(config: ImageConfig) {
           return
         }
 
-        updateTask(taskId, (task) => ({
+        updateImageTask(taskId, (task) => ({
           ...task,
           status: 'completed',
           images,
@@ -214,7 +199,7 @@ export function useImageHandler(config: ImageConfig) {
             ? error.name === 'AbortError'
             : (error as { code?: string })?.code === 'ERR_CANCELED'
 
-        updateTask(taskId, (task) => ({
+        updateImageTask(taskId, (task) => ({
           ...task,
           status: aborted ? 'cancelled' : 'failed',
           error: aborted ? undefined : imageErrorMessage(error),
@@ -227,30 +212,23 @@ export function useImageHandler(config: ImageConfig) {
           })
         }
       } finally {
-        abortRef.current = null
-        setIsGenerating(false)
+        setActiveGenerationController(null)
       }
     },
-    [config, persistTasks, t, updateTask]
+    [config, t]
   )
 
   const stop = useCallback(() => {
-    abortRef.current?.abort()
+    abortActiveGeneration()
   }, [])
 
   const clearTasks = useCallback(() => {
     stop()
-    setImageTasks([])
-    saveImageTasks([])
+    clearImageTasks()
   }, [stop])
 
-  // Abort an in-flight request when leaving image mode, otherwise the response
-  // would land on an unmounted task list.
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-    }
-  }, [])
+  // 刻意不在卸载时 abort：切换菜单再切回来必须能拿到仍在渲染的结果，
+  // 中断只会让后端照常计费而页面丢图（日志响应快照也为空）。
 
   return {
     imageTasks,
