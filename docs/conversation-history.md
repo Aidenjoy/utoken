@@ -1,6 +1,6 @@
 # 跨设备会话历史：实现与验收报告
 
-日期：2026-11-23。实现范围：`web/default` 的 Playground 文本聊天、共享服务端历史 API、Electron 可选共享服务器模式。**classic 主题和仓库之外的 Agent 客户端没有接入新历史 UI，不能把它们计为已支持同步。** 本报告不代表已完成 Mac/Windows 实机验收。
+日期：2026-11-23。发布兼容更新：默认 `/playground` 保留原本地历史及聊天行为；服务端同步页面通过 `/playground?history=server` 显式启用。实现范围：`web/default` 的 Playground 文本聊天、共享服务端历史 API、Electron 可选共享服务器模式。**classic 主题和仓库之外的 Agent 客户端没有接入新历史 UI，不能把它们计为已支持同步。** 本报告不代表已完成 Mac/Windows 实机验收。
 
 ## 1. 原有结构与检查结果
 
@@ -23,7 +23,7 @@
 | `controller/conversation_test.go` | 双凭证/双用户、Cookie、分页、续写、幂等、越权、冲突、DB 故障的隔离 HTTP 测试 |
 | `model/conversation_test.go` | 长结构化消息往返、幂等迁移、失败事务回滚 |
 | `web/default/src/features/playground/hooks/use-history.ts` | 服务端分页、增量保存、账号缓存、重试和冲突副本恢复 |
-| `web/default/src/features/playground/hooks/use-playground-state.ts` | 只保留现有配置状态，消息交由历史 hook 管理 |
+| `web/default/src/features/playground/hooks/use-playground-state.ts` | 默认恢复原本地消息与配置状态；独立服务端模式关闭本地历史读写 |
 | `web/default/src/features/playground/index.tsx` | 接入历史，按账号重新挂载消息状态，加载时禁止发送 |
 | `web/default/src/features/playground/components/chat/history-bar.tsx` | 历史选择、列表分页、刷新、新会话、消息分页及失败恢复 |
 | `web/default/src/features/playground/components/chat/playground-chat.tsx` | 可展开原来只显示最近 24 条的历史，不再让更早消息无法查看 |
@@ -54,7 +54,7 @@
 - `PATCH /api/conversations/:id`：`revision/mutation_id/title/messages/deleted_ids`。revision=0 可创建新 UUID；前端一次只提交变化消息。
 - 身份只从已校验 Cookie 或现有桌面凭证取得。客户端 user_id 不参与所有权判定。模型 API Key、管理 access token 不能作为新的历史凭证。其他用户的 ID 返回 404；无效凭证返回 401。
 - 消息 payload 保留原始 JSON，不转纯文本，包括 assistant 中原有扩展工具字段和引用。默认主题显示前验证其现有 Message 渲染结构，结构异常则保留当前显示并报错，不触发模型。
-- 旧的无归属全局 LocalStorage 不读取、不上传、不清空。**不能验证归属，所以本次不提供自动迁移**；其内容仍保留在原键，旧版原有导出功能可继续读取。新草稿使用 `conversation-draft-v1:<userID>`，只恢复相同账号的合格缓存。
+- 默认 Web 按原实现读取本地历史；独立服务端模式对旧的无归属全局 LocalStorage 不读取、不上传、不清空。**不能验证归属，所以本次不提供自动迁移**；其内容仍保留在原键，旧版原有导出功能可继续读取。新草稿使用 `conversation-draft-v1:<userID>`，只恢复相同账号的合格缓存。
 - 正在 loading/streaming 的响应不作为完整回答提交。刷新后本地中断内容恢复为 error，保留正文；不自动重发模型请求。
 - 消息第一页只读最近 50 条，可加载旧页；较长会话先加载完旧页才能继续发送，防止因为只载入一页而丢失原有请求上下文。原来的 payload builder、过滤与 Token 参数没有改动。界面展开不会自行请求模型。此交互在长会话中需要多次加载，是当前版本的明确限制。
 - 历史列表的非 401 故障局部返回不可用状态，避免触发本项目全局 QueryCache 的 500 页面跳转；401 仍进入原登录过期处理。
@@ -108,8 +108,17 @@
 
 1. 在隔离共享服务端部署新版本，使用默认主题和测试账号 A/B；不要用生产数据。两端均配置相同 `NEW_API_SERVER_URL=https://你的测试站点` 后启动 Electron。未配置会启动独立本地库，不满足此验收前提。
 2. Mac、Windows 分别按原入口登录账号 A，确认两端都保持登录。先不用付费模型，可在测试环境使用已有 Mock 渠道，或导入 OpenAPI 直接写入合成历史。
-3. Mac 新建会话发送到 Mock 渠道，等待保存完成。Windows 打开 Playground，检查列表/正文；继续发送后 Mac 点“刷新”，检查新消息与顺序。
+3. Mac 新建会话发送到 Mock 渠道，等待保存完成。Windows 打开 `/playground?history=server`，检查列表/正文；继续发送后 Mac 点“刷新”，检查新消息与顺序。
 4. 用 >50 条合成消息检查分页与展开。加载旧页不应产生任何模型网络请求或余额变化；加载完后再用 Mock 继续聊天。
 5. Windows 切换 B，确认没有 A 列表/草稿；携带 B 凭证请求 A 会话应 404。
 6. 两端同时打开旧版本记录并编辑，确认第二个提交提示同步失败，不覆盖先提交的版本；可将本地消息另存新会话。模拟断网检查已有内容和恢复重试。
 7. 记录钱包/套餐额度、旧 API Key、渠道及流式 Mock 结果；确认查看历史零模型请求，两端没有被互踢。
+
+## 9. 完整回归后的发布兼容修复
+
+- 默认 `/playground` 恢复父版本的本地消息加载、保存、清空及原上下文构建，不调用新增会话接口，因此不受新历史服务读写状态影响。
+- 服务端历史仍可通过原 `/api/conversations` 系列接口使用；网页通过 `/playground?history=server` 显式启用，两个模式组件分离，不自动导入未归属旧记录。
+- 全局 UI 缓存初始化现在保留 `playground_messages` 与 `conversation-draft-v1:*`，防止缓存版本缺失时清理用户聊天数据。
+- SQLite、MySQL 8.0、PostgreSQL 15 已在全新隔离库执行父版本 schema → 新版启动迁移和重复初始化，合成钱包/套餐/Key/原日志/请求快照均保持不变。
+- 原先素材校验失败已确认是测试预期过时：GroupId 允许省略，缺少绑定渠道应返回 ChannelBindingRequired。本轮修正了测试预期，未修改素材业务代码；完整 Go 功能回归不再跳过该用例。
+- 完整本轮记录见 `regression-2026-11-23.md`。以上更新替代前文中“未做 MySQL/PostgreSQL 实例验证”和“素材用例仍失败”的历史状态；Windows 原生客户端安装/实机验收仍未执行。

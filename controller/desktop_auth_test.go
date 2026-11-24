@@ -132,6 +132,7 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 		Value       string `json:"access_token"`
 		LanguageKey string `json:"language_api_key"`
 		Type        string `json:"token_type"`
+		ExpiresIn   int64  `json:"expires_in"`
 		User        struct {
 			ID       int    `json:"id"`
 			Username string `json:"username"`
@@ -149,6 +150,7 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 	require.Equal(t, "sk-"+languageKey.Key, token.LanguageKey)
 	require.True(t, languageKey.UnlimitedQuota)
 	assert.Equal(t, "Bearer", token.Type)
+	assert.EqualValues(t, 90*24*60*60, token.ExpiresIn)
 	replay := send(http.MethodPost, "/api/desktop-auth/token", exchange, nil, "")
 	assert.Equal(t, http.StatusBadRequest, replay.Code)
 	assert.JSONEq(t, `{"error":"invalid_grant"}`, replay.Body.String())
@@ -163,6 +165,12 @@ func TestDesktopLoginBrowserAndToken(t *testing.T) {
 	assert.Equal(t, "session", dashboard.Result().Cookies()[0].Name)
 	assert.Equal(t, http.StatusOK,
 		send(http.MethodPost, "/api/desktop-auth/session", nil, nil, token.Value).Code)
+
+	// Cookie exchange must leave the 90-day Bearer usable until explicit revocation.
+	require.Equal(t, http.StatusOK, send(http.MethodGet, "/api/desktop-auth/me", nil, nil, token.Value).Code)
+	require.Equal(t, http.StatusNoContent, send(http.MethodPost, "/api/desktop-auth/revoke", nil, nil, token.Value).Code)
+	assert.Equal(t, http.StatusUnauthorized, send(http.MethodGet, "/api/desktop-auth/me", nil, nil, token.Value).Code)
+	assert.Equal(t, http.StatusUnauthorized, send(http.MethodPost, "/api/desktop-auth/session", nil, nil, token.Value).Code)
 
 	reapproval := send(http.MethodPost, desktopAuthPath, authorize, browserCookies, "")
 	require.Equal(t, http.StatusSeeOther, reapproval.Code)

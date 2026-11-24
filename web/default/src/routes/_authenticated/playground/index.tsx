@@ -28,6 +28,7 @@ import { isSidebarModuleEnabled } from '@/lib/nav-modules'
 // persisted conversation: nothing is sent until the user submits.
 const playgroundSearchSchema = z.object({
   prompt: z.string().optional().catch(undefined),
+  history: z.literal('server').optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/_authenticated/playground/')({
@@ -41,11 +42,11 @@ export const Route = createFileRoute('/_authenticated/playground/')({
 })
 
 function PlaygroundPage() {
-  const { prompt } = Route.useSearch()
+  const { prompt, history } = Route.useSearch()
 
   return (
     <Main className='p-0'>
-      <Playground initialPrompt={prompt} />
+      <Playground initialPrompt={prompt} syncHistory={history === 'server'} />
     </Main>
   )
 }

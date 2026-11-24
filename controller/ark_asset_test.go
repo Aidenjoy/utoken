@@ -337,7 +337,6 @@ func TestRelayArkAssetAction_ValidationError(t *testing.T) {
 		body   any
 	}{
 		{"CreateAssetGroup missing Name", arkActionCreateAssetGroup, map[string]any{}},
-		{"CreateAsset missing GroupId", arkActionCreateAsset, map[string]any{"URL": "https://x/y.png", "AssetType": "Image"}},
 		{"CreateAsset bad URL", arkActionCreateAsset, map[string]any{"GroupId": "g", "URL": "ftp://x/y.png", "AssetType": "Image"}},
 		{"CreateAsset bad AssetType", arkActionCreateAsset, map[string]any{"GroupId": "g", "URL": "https://x/y.png", "AssetType": "Doc"}},
 		{"GetAsset missing Id", arkActionGetAsset, map[string]any{}},
@@ -355,6 +354,16 @@ func TestRelayArkAssetAction_ValidationError(t *testing.T) {
 			assert.Equal(t, "InvalidParameter", env.ResponseMetadata.Error.Code)
 		})
 	}
+	// GroupId is optional; this valid upload must instead require a token-bound
+	// channel. Preserve that public behavior rather than changing production code.
+	t.Run("CreateAsset without GroupId requires channel binding", func(t *testing.T) {
+		ctx, rec := newArkAssetContext(t, arkActionCreateAsset, 1, map[string]any{"URL": "https://x/y.png", "AssetType": "Image"})
+		RelayArkAssetAction(ctx)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		env := decodeArkEnvelope(t, rec)
+		require.NotNil(t, env.ResponseMetadata.Error)
+		assert.Equal(t, "ChannelBindingRequired", env.ResponseMetadata.Error.Code)
+	})
 }
 
 func TestRelayArkAssetActionListOfficialValidation(t *testing.T) {

@@ -25,6 +25,8 @@ const PRESERVED_LOCAL_STORAGE_KEYS = new Set([
   'uid',
   'aff',
   'oauth:binding:result',
+  // Chat history is user data, not disposable UI cache.
+  'playground_messages',
 ])
 
 export function initializeFrontendCache(): void {
@@ -50,7 +52,11 @@ function clearLocalUiCache(): void {
   const keysToRemove: string[] = []
   for (let index = 0; index < window.localStorage.length; index += 1) {
     const key = window.localStorage.key(index)
-    if (key && !PRESERVED_LOCAL_STORAGE_KEYS.has(key)) {
+    if (
+      key &&
+      !PRESERVED_LOCAL_STORAGE_KEYS.has(key) &&
+      !key.startsWith('conversation-draft-v1:')
+    ) {
       keysToRemove.push(key)
     }
   }
