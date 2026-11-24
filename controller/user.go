@@ -922,6 +922,11 @@ func UpdateUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// 管理员重置在外层事务提交后通知，回滚不撤销登录。
+	if updatePassword {
+		common.NotifyYunControlPasswordChanged(updatedUser.Id)
+	}
+
 	if authzTouched {
 		if err := authz.ReloadPolicyAndBroadcast(); err != nil {
 			common.ApiError(c, err)
