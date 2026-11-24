@@ -275,6 +275,12 @@ waitUpstream:
 		return &dto.Usage{}, apiErr
 	}
 
+	// 协议快照以原始上游响应为权威输出参数：客户端断开时下面停写，
+	// 旁路捕获只有心跳评论，会让计费成功的日志「输出参数」为空。
+	if info != nil {
+		info.ResponseSnapshot = result.body
+	}
+
 	var imageResp dto.ImageResponse
 	if err := common.Unmarshal(result.body, &imageResp); err != nil {
 		apiErr := types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
