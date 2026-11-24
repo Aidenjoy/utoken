@@ -473,6 +473,13 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 		var pingMutex sync.Mutex
 		logger.LogDebug(c, "SSE ping goroutine started")
 
+		// 首个 PING 立即发出：首字节落地前反向代理的读超时已经在计时，
+		// 等第一个 ticker 周期可能已经来不及。
+		if err := sendPingData(c, &pingMutex); err != nil {
+			logger.LogDebug(c, "SSE ping error, stopping goroutine: %s", err.Error())
+			return
+		}
+
 		// 增加超时控制，防止goroutine长时间运行
 		maxPingDuration := 120 * time.Minute // 最大ping持续时间
 		pingTimeout := time.NewTimer(maxPingDuration)
@@ -545,6 +552,11 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		generalSettings := operation_setting.GetGeneralSetting()
 		if (generalSettings.PingIntervalEnabled && !info.DisablePing) || info.TransportKeepAlive {
 			pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
+			if info.TransportKeepAlive {
+				// 传输层保活必须赶在反向代理读超时（常见 60s）之前发 PING，
+				// 不能复用管理员可见的聊天 ping 节奏（默认 60s 会恰好踩线）。
+				pingInterval = helper.TransportPingInterval(pingInterval)
+			}
 			stopPinger, pingerDone = startPingKeepAlive(c, pingInterval)
 			// 使用defer确保在任何情况下都能停止ping goroutine
 			defer func() {

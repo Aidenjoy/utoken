@@ -116,6 +116,10 @@ type RelayInfo struct {
 	// （生图 JSON-as-stream），DoRequest 等待期间无条件发 PING，不受
 	// PingIntervalEnabled（用户可见 ping 功能开关）门控。
 	TransportKeepAlive bool
+	// ResponseSnapshot 上游原始响应体（生图 JSON-as-stream 路径填写）：客户端
+	// 断开时 handler 停写，旁路捕获只剩心跳评论，协议快照以此为权威「输出
+	// 参数」，避免计费成功但日志响应为空。
+	ResponseSnapshot []byte
 	ClientWs           *websocket.Conn
 	TargetWs           *websocket.Conn
 	InputAudioFormat   string

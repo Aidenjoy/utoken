@@ -75,6 +75,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	var (
 		newAPIError *types.NewAPIError
 		ws          *websocket.Conn
+		relayInfo   *relaycommon.RelayInfo
 	)
 
 	// 使用日志「传入/传出参数」快照：包装 c.Writer 旁路捕获写给客户端的字节
@@ -83,7 +84,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	// realtime(WebSocket) 走二进制帧、非 HTTP body，跳过捕获。
 	if relayFormat != types.RelayFormatOpenAIRealtime {
 		bodyWriter := newRelayBodyWriter(c)
-		defer saveRelayBodySnapshot(c, requestId, bodyWriter)
+		defer func() { saveRelayBodySnapshot(c, requestId, bodyWriter, relayInfo) }()
 	}
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
@@ -139,7 +140,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
@@ -801,11 +802,17 @@ func newRelayBodyWriter(c *gin.Context) *relayBodyWriter {
 // saveRelayBodySnapshot 在 Relay handler 返回后把请求/返回体快照异步落库，不阻塞响应。
 // 两侧各自 RedactBase64 + 超限截断（追加 ...(truncated) 标记）；requestId 为空或两体皆空
 // 时 SaveLogBody 自身跳过。缓冲在 handler 返回后不再被写入，异步读取安全。
-func saveRelayBodySnapshot(c *gin.Context, requestId string, w *relayBodyWriter) {
+// 输出侧优先用 info.ResponseSnapshot（上游原始响应）：客户端断开时旁路捕获
+// 只有心跳评论甚至为空，不能代表真实输出。
+func saveRelayBodySnapshot(c *gin.Context, requestId string, w *relayBodyWriter, info *relaycommon.RelayInfo) {
 	if w == nil {
 		return
 	}
-	saveRelayBodySnapshotData(c, requestId, w.body.Bytes())
+	response := w.body.Bytes()
+	if info != nil && len(info.ResponseSnapshot) > 0 {
+		response = info.ResponseSnapshot
+	}
+	saveRelayBodySnapshotData(c, requestId, response)
 }
 
 // saveRelayBodySnapshotData 按 request_id 保存请求/响应快照，供同步中继与 task 错误

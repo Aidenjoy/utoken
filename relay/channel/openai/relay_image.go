@@ -240,10 +240,7 @@ func OpenaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 		resultCh <- upstreamResult{body: body, err: err}
 	}()
 
-	pingInterval := time.Duration(operation_setting.GetGeneralSetting().PingIntervalSeconds) * time.Second
-	if pingInterval <= 0 {
-		pingInterval = helper.DefaultPingInterval
-	}
+	pingInterval := helper.TransportPingInterval(time.Duration(operation_setting.GetGeneralSetting().PingIntervalSeconds) * time.Second)
 	pingTicker := time.NewTicker(pingInterval)
 	defer pingTicker.Stop()
 
@@ -276,6 +273,12 @@ waitUpstream:
 		apiErr := types.NewOpenAIError(result.err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 		writeOpenaiImageStreamErrorEvent(c, clientGone, apiErr)
 		return &dto.Usage{}, apiErr
+	}
+
+	// 协议快照以原始上游响应为权威输出参数：客户端断开时下面停写，
+	// 旁路捕获只有心跳评论，会让计费成功的日志「输出参数」为空。
+	if info != nil {
+		info.ResponseSnapshot = result.body
 	}
 
 	var imageResp dto.ImageResponse

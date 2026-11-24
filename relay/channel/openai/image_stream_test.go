@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -218,4 +219,26 @@ func TestOpenaiImageStreamHandlerRecordsUpstreamErrorEvent(t *testing.T) {
 	// is still forwarded in the data: payload (stream ID 77).
 	require.Contains(t, recorder.Body.String(), `event: upstream_error`)
 	require.Contains(t, recorder.Body.String(), `stream ID 77`)
+}
+
+// TestOpenaiImageJSONAsStreamSnapshotSurvivesClientGone 锁定「计费成功但日志
+// 响应为空」修复：客户端断开时 handler 停写（recorder 无 completed 事件），
+// 但上游原始响应必须留在 info.ResponseSnapshot 供协议快照落库。
+func TestOpenaiImageJSONAsStreamSnapshotSurvivesClientGone(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	body := `{"created":1710000000,"data":[{"url":"https://example.com/final.png"}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}`
+	c, recorder, resp, info := newImageTestContext(t, body, "application/json", true)
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	c.Request = c.Request.WithContext(ctx)
+	cancel()
+
+	usage, err := OpenaiImageJSONAsStreamHandler(c, info, resp)
+	require.Nil(t, err)
+	require.Equal(t, 7, usage.TotalTokens)
+	require.NotEmpty(t, info.ResponseSnapshot)
+	require.Contains(t, string(info.ResponseSnapshot), "https://example.com/final.png")
+	require.NotContains(t, recorder.Body.String(), "image_generation.completed")
 }
