@@ -108,9 +108,20 @@ function normalizeGeneratedImages(
 
 // Extract the upstream message from an axios failure. The relay answers with
 // `{ error: { message } }`, while gateway middleware answers with `{ message }`.
-function imageErrorMessage(error: unknown): string {
+// A proxy-generated 504 carries an HTML body instead: surface a readable
+// gateway-timeout hint rather than the raw axios status line.
+function imageErrorMessage(
+  error: unknown,
+  t: (key: string) => string
+): string {
   const axiosErr = error as {
-    response?: { data?: { error?: { message?: string }; message?: string } }
+    response?: {
+      status?: number
+      data?: { error?: { message?: string }; message?: string }
+    }
+  }
+  if (axiosErr?.response?.status === 504) {
+    return t('Gateway timeout (504). Please try again.')
   }
   return (
     axiosErr?.response?.data?.error?.message ||
@@ -202,13 +213,13 @@ export function useImageHandler(config: ImageConfig) {
         updateImageTask(taskId, (task) => ({
           ...task,
           status: aborted ? 'cancelled' : 'failed',
-          error: aborted ? undefined : imageErrorMessage(error),
+          error: aborted ? undefined : imageErrorMessage(error, t),
           completedAt: Date.now(),
         }))
 
         if (!aborted) {
           toast.error(t('Generation failed'), {
-            description: imageErrorMessage(error),
+            description: imageErrorMessage(error, t),
           })
         }
       } finally {
