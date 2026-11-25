@@ -251,6 +251,11 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		claudeRequest.TopK = nil
 	}
 
+	// Fable 系列仅弃用 temperature，单独省略，top_p/top_k 保持透传。
+	if dto.IsClaudeTemperatureDeprecatedModel(claudeRequest.Model) {
+		claudeRequest.Temperature = nil
+	}
+
 	if textRequest.Stop != nil {
 		// stop maybe string/array string, convert to array string
 		switch textRequest.Stop.(type) {

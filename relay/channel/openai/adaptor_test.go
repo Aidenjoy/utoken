@@ -176,3 +176,42 @@ func TestConvertOpenAIResponsesRequestBreaksRecursiveKimiToolSchema(t *testing.T
 	assert.NotContains(t, toolsJSON, `"$defs"`, "defs block must be removed")
 	assert.True(t, strings.Contains(toolsJSON, `"title"`), "non-recursive schema content must survive")
 }
+
+// OpenAI 兼容渠道转售 claude-fable-5 时，上游对 temperature 返回
+// 400 "'temperature' is deprecated for this model"；仅剥 temperature，
+// top_p 等其余采样参数保持透传，chat 与 Responses 两路径一致。
+func TestConvertOpenAIRequestStripsTemperatureOnlyForClaudeFable(t *testing.T) {
+	request := &dto.GeneralOpenAIRequest{
+		Model:       "claude-fable-5",
+		Temperature: common.GetPointer[float64](0.7),
+		TopP:        common.GetPointer[float64](0.9),
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeOpenAI,
+			UpstreamModelName: "claude-fable-5",
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+
+	require.NoError(t, err)
+	convertedRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Nil(t, convertedRequest.Temperature, "fable rejects temperature")
+	require.NotNil(t, convertedRequest.TopP)
+	assert.Equal(t, 0.9, *convertedRequest.TopP)
+
+	responses := dto.OpenAIResponsesRequest{
+		Model:       "claude-fable-5",
+		Temperature: common.GetPointer[float64](0.7),
+		TopP:        common.GetPointer[float64](0.9),
+	}
+	convertedResponses, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, info, responses)
+	require.NoError(t, err)
+	convertedResponsesRequest, ok := convertedResponses.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	assert.Nil(t, convertedResponsesRequest.Temperature, "fable rejects temperature on responses path")
+	require.NotNil(t, convertedResponsesRequest.TopP)
+	assert.Equal(t, 0.9, *convertedResponsesRequest.TopP)
+}

@@ -69,3 +69,28 @@ func TestIsClaudeSamplingRestrictedModel(t *testing.T) {
 		})
 	}
 }
+
+func TestIsClaudeTemperatureDeprecatedModel(t *testing.T) {
+	tests := []struct {
+		model string
+		want  bool
+	}{
+		// Fable 系列：弃用 temperature
+		{model: "claude-fable-5", want: true},
+		{model: "claude-fable-5-20260101", want: true},
+		{model: "claude-fable-5-thinking", want: true},
+		{model: "CLAUDE-FABLE-5", want: true},
+		// 其余家族不受影响（整组剥除走 IsClaudeSamplingRestrictedModel）
+		{model: "claude-sonnet-5-5", want: false},
+		{model: "claude-opus-4-8", want: false},
+		{model: "claude-haiku-4-5-20251001", want: false},
+		{model: "claude-fable", want: false},
+		{model: "gpt-4o", want: false},
+		{model: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsClaudeTemperatureDeprecatedModel(tt.model))
+		})
+	}
+}

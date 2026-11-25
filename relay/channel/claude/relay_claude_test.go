@@ -423,3 +423,29 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeSonnet45KeepsSamplingParams(t *testin
 	require.NotNil(t, claudeRequest.TopK)
 	assert.Equal(t, 40, *claudeRequest.TopK)
 }
+
+// claude-fable-5 仅弃用 temperature（400 "'temperature' is deprecated for this model"），
+// 剥除范围不得扩大到 top_p/top_k，与 Sonnet 5 世代的整组剥除区分。
+func TestRequestOpenAI2ClaudeMessage_ClaudeFable5StripsTemperatureOnly(t *testing.T) {
+	request := dto.GeneralOpenAIRequest{
+		Model:       "claude-fable-5",
+		Temperature: commonPointer(0.7),
+		TopP:        commonPointer(0.9),
+		TopK:        commonPointer(40),
+		Messages: []dto.Message{
+			{
+				Role:    "user",
+				Content: "hello",
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.Equal(t, "claude-fable-5", claudeRequest.Model)
+	require.Nil(t, claudeRequest.Temperature)
+	require.NotNil(t, claudeRequest.TopP)
+	assert.InDelta(t, 0.9, *claudeRequest.TopP, 1e-9)
+	require.NotNil(t, claudeRequest.TopK)
+	assert.Equal(t, 40, *claudeRequest.TopK)
+}

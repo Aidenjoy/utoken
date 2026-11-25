@@ -394,6 +394,14 @@ func IsClaudeSamplingRestrictedModel(modelName string) bool {
 	}
 }
 
+// IsClaudeTemperatureDeprecatedModel 判断 Claude 模型是否弃用 temperature 参数。
+// Fable 系列（claude-fable-5 等）设置 temperature 会返回 400（上游文案形如
+// "'temperature' is deprecated for this model"），转发前需省略该字段；
+// top_p/top_k 不在此列，保持透传，与 IsClaudeSamplingRestrictedModel 的整组剥除区分。
+func IsClaudeTemperatureDeprecatedModel(modelName string) bool {
+	return strings.HasPrefix(strings.ToLower(modelName), "claude-fable-")
+}
+
 // parseClaudeModelVersion 从 Claude 模型名解析家族（opus/sonnet/haiku）与主、次版本号。
 // 名字不含 claude- 前缀、缺家族或缺主版本时返回 ok=false；尾部日期/后缀（-20250929、-thinking）被忽略。
 func parseClaudeModelVersion(modelName string) (family string, major, minor int, ok bool) {

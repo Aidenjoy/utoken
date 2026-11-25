@@ -115,6 +115,11 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		request.TopK = nil
 	}
 
+	// Fable 系列仅弃用 temperature，单独省略，top_p/top_k 保持透传。
+	if dto.IsClaudeTemperatureDeprecatedModel(request.Model) {
+		request.Temperature = nil
+	}
+
 	if info.ChannelSetting.SystemPrompt != "" {
 		if request.System == nil {
 			request.SetStringSystem(info.ChannelSetting.SystemPrompt)

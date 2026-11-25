@@ -367,6 +367,12 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 	}
 
+	// Fable 系列上游弃用 temperature（400 "'temperature' is deprecated for this model"），
+	// OpenAI 兼容渠道转售时同样转发前省略；top_p 等其余采样参数不受影响。
+	if dto.IsClaudeTemperatureDeprecatedModel(info.UpstreamModelName) {
+		request.Temperature = nil
+	}
+
 	return request, nil
 }
 
@@ -772,6 +778,10 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if relaycommon.IsKimiFixedSamplingModel(upstreamModel) {
 		request.Input = relaycommon.RepairResponsesOrphanToolCalls(request.Input)
 		request.Tools = relaycommon.InlineKimiToolSchemaRefs(upstreamModel, request.Tools)
+	}
+	// Fable 系列弃用 temperature，与 chat 路径保持一致；其余采样参数不动。
+	if dto.IsClaudeTemperatureDeprecatedModel(upstreamModel) {
+		request.Temperature = nil
 	}
 	return request, nil
 }
