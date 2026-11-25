@@ -7,13 +7,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// ModelInfo 管理员按模型配置的上下文窗口与最大输出 token 数，仅语言模型有意义，
-// 经 /v1/modelsinfo 对外暴露。全量替换式保存：管理页每次提交整份列表。
+// ModelInfo 管理 /v1/modelsinfo 的展示状态与语言模型 token 元数据，
+// 不影响模型调用或 /v1/models。管理页每次提交整份列表。
 type ModelInfo struct {
 	ModelName       string `json:"model_name" gorm:"primaryKey"`
 	ContextWindow   int    `json:"context_window"`
 	MaxOutputTokens int    `json:"max_output_tokens"`
 	UpdatedTime     int64  `json:"updated_time"`
+	// nil 兼容存量配置和旧客户端，表示启用；不使用数据库布尔默认值。
+	Enabled *bool `json:"enabled" gorm:"column:is_enabled"`
 }
 
 // 模态分类取值。/v1/modelsinfo 的 type 筛选与管理页语言模型列表共用同一口径。
@@ -58,13 +60,13 @@ func GetAllModelInfos() ([]ModelInfo, error) {
 	return infos, err
 }
 
-// SaveModelInfos 全量替换配置：两个值都为 0 的条目视为未配置并删除，
-// 其余整表重写。管理页提交整份列表，故不做逐条 upsert。
+// SaveModelInfos 全量替换配置：token 值均为 0 且启用的条目可删除，
+// 禁用条目必须保留，以免清空 token 配置时丢失禁用状态。
 func SaveModelInfos(infos []ModelInfo) error {
 	kept := make([]ModelInfo, 0, len(infos))
 	now := time.Now().Unix()
 	for _, info := range infos {
-		if info.ContextWindow == 0 && info.MaxOutputTokens == 0 {
+		if info.ContextWindow == 0 && info.MaxOutputTokens == 0 && (info.Enabled == nil || *info.Enabled) {
 			continue
 		}
 		info.UpdatedTime = now

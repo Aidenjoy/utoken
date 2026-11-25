@@ -18,7 +18,7 @@ import (
 const maxModelInfoTokens = 100_000_000
 
 // ListModelsInfo GET /v1/modelsinfo?type=all|text|image|video
-// 可见范围与 /v1/models 完全一致（共用 listUserModelNames），额外返回模态分类；
+// 基于 /v1/models 的可见范围，额外过滤仅针对本接口禁用的模型并返回模态分类；
 // 上下文窗口与最大输出 token 数仅语言模型携带，且仅管理员配置过的模型才有。
 func ListModelsInfo(c *gin.Context) {
 	typeParam := strings.ToLower(strings.TrimSpace(c.DefaultQuery("type", "all")))
@@ -62,6 +62,10 @@ func ListModelsInfo(c *gin.Context) {
 	}
 	data := make([]dto.ModelsInfoItem, 0, len(userModelNames))
 	for _, modelName := range userModelNames {
+		// 仅在信息接口过滤，不修改共用模型清单和渠道路由状态。
+		if info, ok := infoMap[modelName]; ok && info.Enabled != nil && !*info.Enabled {
+			continue
+		}
 		category := model.GetModelCategory(modelName)
 		if typeParam != "all" && category != typeParam {
 			continue
@@ -129,6 +133,7 @@ func UpdateModelInfoSettings(c *gin.Context) {
 		return
 	}
 	seen := make(map[string]bool, len(req.Infos))
+	disabledModels := make([]string, 0)
 	for i := range req.Infos {
 		info := &req.Infos[i]
 		info.ModelName = strings.TrimSpace(info.ModelName)
@@ -147,6 +152,9 @@ func UpdateModelInfoSettings(c *gin.Context) {
 			return
 		}
 		seen[info.ModelName] = true
+		if info.Enabled != nil && !*info.Enabled {
+			disabledModels = append(disabledModels, info.ModelName)
+		}
 		if info.ContextWindow < 0 || info.ContextWindow > maxModelInfoTokens ||
 			info.MaxOutputTokens < 0 || info.MaxOutputTokens > maxModelInfoTokens {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -164,5 +172,6 @@ func UpdateModelInfoSettings(c *gin.Context) {
 		})
 		return
 	}
+	common.SysLog(fmt.Sprintf("model info settings saved: admin_id=%d, models=%d, modelsinfo_disabled=%v", c.GetInt("id"), len(req.Infos), disabledModels))
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
