@@ -18,14 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, RotateCcw, Search } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { MultiSelect } from '@/components/multi-select'
+import { MultiSelect, type Option } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import { useAgentMemberOptions } from '@/features/agents/hooks'
 import { getAdminOrganizations } from '@/features/organizations/api'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
-import { getUsers } from '@/features/users/api'
+import { getUsers, searchUsers } from '@/features/users/api'
+import { useDebounce } from '@/hooks'
 
 import {
   BILLING_SCOPE_ALL,
@@ -52,10 +54,17 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
   // Agent member picker; disabled for non-agents inside the hook.
   const { options: memberOptions } = useAgentMemberOptions()
 
+  // 远程搜索：后端 GetPageQuery 把 page_size 硬限到 100，只拉首页会让
+  // 注册较早的用户永远选不到，所以输入关键字时走服务端搜索。
+  const [userQuery, setUserQuery] = useState('')
+  const [orgQuery, setOrgQuery] = useState('')
+  const debouncedUserQuery = useDebounce(userQuery, 300).trim()
+  const debouncedOrgQuery = useDebounce(orgQuery, 300).trim()
+
   const { data: userOptions = [] } = useQuery({
     queryKey: ['billing-user-options'],
     queryFn: async () => {
-      const result = await getUsers({ p: 1, page_size: 1000 })
+      const result = await getUsers({ p: 1, page_size: 100 })
       return (result.data?.items ?? []).map((user) => ({
         label: `${user.username} (#${user.id})`,
         value: String(user.id),
@@ -65,10 +74,27 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
     enabled: !isAgent,
   })
 
+  const { data: searchedUserOptions = [] } = useQuery({
+    queryKey: ['billing-user-search', debouncedUserQuery],
+    queryFn: async () => {
+      const result = await searchUsers({
+        keyword: debouncedUserQuery,
+        p: 1,
+        page_size: 100,
+      })
+      return (result.data?.items ?? []).map((user) => ({
+        label: `${user.username} (#${user.id})`,
+        value: String(user.id),
+      }))
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: !isAgent && debouncedUserQuery !== '',
+  })
+
   const { data: orgOptions = [] } = useQuery({
     queryKey: ['billing-org-options'],
     queryFn: async () => {
-      const result = await getAdminOrganizations({ p: 1, page_size: 500 })
+      const result = await getAdminOrganizations({ p: 1, page_size: 100 })
       return (result.data?.items ?? []).map((org) => ({
         label: `${org.display_name || org.name} (#${org.id})`,
         value: String(org.id),
@@ -78,21 +104,84 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
     enabled: !isAgent,
   })
 
+  const { data: searchedOrgOptions = [] } = useQuery({
+    queryKey: ['billing-org-search', debouncedOrgQuery],
+    queryFn: async () => {
+      const result = await getAdminOrganizations({
+        p: 1,
+        page_size: 100,
+        keyword: debouncedOrgQuery,
+      })
+      return (result.data?.items ?? []).map((org) => ({
+        label: `${org.display_name || org.name} (#${org.id})`,
+        value: String(org.id),
+      }))
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: !isAgent && debouncedOrgQuery !== '',
+  })
+
+  // 已选值的 label 缓存：搜索结果会随输入清空而消失，缓存保证已选
+  // 用户/企业的 chip 仍显示名称而不是裸 ID。
+  const userLabelCache = useRef(new Map<string, Option>())
+  const orgLabelCache = useRef(new Map<string, Option>())
+  useEffect(() => {
+    for (const option of userOptions) {
+      userLabelCache.current.set(option.value, option)
+    }
+    for (const option of searchedUserOptions) {
+      userLabelCache.current.set(option.value, option)
+    }
+  }, [userOptions, searchedUserOptions])
+  useEffect(() => {
+    for (const option of orgOptions) {
+      orgLabelCache.current.set(option.value, option)
+    }
+    for (const option of searchedOrgOptions) {
+      orgLabelCache.current.set(option.value, option)
+    }
+  }, [orgOptions, searchedOrgOptions])
+
   // Agents pick only among their own members and cannot exclude by "None"
   // (the server already forces the member range), so the None sentinel is
   // dropped from the agent user scope.
-  const userScopeOptions = isAgent
-    ? [{ value: BILLING_SCOPE_ALL, label: t('All') }, ...memberOptions]
-    : [
-        { value: BILLING_SCOPE_ALL, label: t('All') },
-        { value: BILLING_SCOPE_NONE, label: t('None') },
-        ...userOptions,
-      ]
-  const orgScopeOptions = [
-    { value: BILLING_SCOPE_ALL, label: t('All') },
-    { value: BILLING_SCOPE_NONE, label: t('None') },
-    ...orgOptions,
-  ]
+  const userScopeOptions = useMemo(() => {
+    if (isAgent) {
+      return [{ value: BILLING_SCOPE_ALL, label: t('All') }, ...memberOptions]
+    }
+    const source = debouncedUserQuery ? searchedUserOptions : userOptions
+    const merged = new Map(source.map((option) => [option.value, option]))
+    for (const value of props.draft.userSel) {
+      const cached = userLabelCache.current.get(value)
+      if (cached && !merged.has(value)) merged.set(value, cached)
+    }
+    return [
+      { value: BILLING_SCOPE_ALL, label: t('All') },
+      { value: BILLING_SCOPE_NONE, label: t('None') },
+      ...merged.values(),
+    ]
+  }, [
+    isAgent,
+    memberOptions,
+    debouncedUserQuery,
+    searchedUserOptions,
+    userOptions,
+    props.draft.userSel,
+    t,
+  ])
+  const orgScopeOptions = useMemo(() => {
+    const source = debouncedOrgQuery ? searchedOrgOptions : orgOptions
+    const merged = new Map(source.map((option) => [option.value, option]))
+    for (const value of props.draft.orgSel) {
+      const cached = orgLabelCache.current.get(value)
+      if (cached && !merged.has(value)) merged.set(value, cached)
+    }
+    return [
+      { value: BILLING_SCOPE_ALL, label: t('All') },
+      { value: BILLING_SCOPE_NONE, label: t('None') },
+      ...merged.values(),
+    ]
+  }, [debouncedOrgQuery, searchedOrgOptions, orgOptions, props.draft.orgSel, t])
 
   return (
     <div className='border-border/60 bg-card rounded-xl border p-3 shadow-xs'>
@@ -109,6 +198,8 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
           }
           placeholder={isAgent ? t('Select members') : t('Select users')}
           maxVisibleChips={2}
+          remoteSearch={!isAgent}
+          onSearchChange={isAgent ? undefined : setUserQuery}
         />
 
         {!isAgent && (
@@ -124,6 +215,8 @@ export function BillingFilterBar(props: BillingFilterBarProps) {
             }
             placeholder={t('Select organizations')}
             maxVisibleChips={2}
+            remoteSearch
+            onSearchChange={setOrgQuery}
           />
         )}
 

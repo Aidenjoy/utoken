@@ -77,6 +77,19 @@ interface MultiSelectProps {
    * instead of being inert. The remove (×) button keeps its own behaviour.
    */
   copyChipOnClick?: boolean
+  /**
+   * Notified with the raw search input on every change (including the reset
+   * after a pick). Pair with `remoteSearch` to fetch matching options from
+   * the server instead of relying on the built-in local filter.
+   */
+  onSearchChange?: (query: string) => void
+  /**
+   * Skip local filtering because the parent already narrows `options` via a
+   * server-side search keyed on `onSearchChange`. Server matches (e.g. by
+   * email) may not appear in the rendered label, so filtering locally again
+   * would hide valid results.
+   */
+  remoteSearch?: boolean
 }
 
 const COMMA_REGEX = /[,，\n]/
@@ -173,6 +186,7 @@ export function MultiSelect(props: MultiSelectProps) {
   // on both so search behaves like the rendered list.
   const filterItems = React.useCallback(
     (item: string, query: string) => {
+      if (props.remoteSearch) return true
       const normalized = query.trim().toLowerCase()
       if (!normalized) return true
       if (canCreate && item === trimmedInput) return true
@@ -182,7 +196,7 @@ export function MultiSelect(props: MultiSelectProps) {
         label.toLowerCase().includes(normalized)
       )
     },
-    [canCreate, labelMap, trimmedInput]
+    [canCreate, labelMap, trimmedInput, props.remoteSearch]
   )
 
   const addValues = React.useCallback(
@@ -203,6 +217,7 @@ export function MultiSelect(props: MultiSelectProps) {
   )
 
   const handleInputValueChange = (value: string) => {
+    props.onSearchChange?.(value)
     if (!props.allowCreate) {
       setInputValue(value)
       return
@@ -223,6 +238,7 @@ export function MultiSelect(props: MultiSelectProps) {
     // feel snappier and matches popular chip-style multiselects.
     if (next.length > props.selected.length) {
       setInputValue('')
+      props.onSearchChange?.('')
     }
   }
 
