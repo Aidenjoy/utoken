@@ -51,7 +51,8 @@ interface PlaygroundInputProps {
   channelValue?: number
   onChannelChange?: (value: number) => void
   temperatureValue: number
-  onTemperatureChange: (value: number) => void
+  temperatureEnabled: boolean
+  onTemperatureChange: (value: number | null) => void
   /**
    * Text pre-filled into the composer, e.g. a template picked from the Prompt
    * Library. It only seeds the draft — nothing is sent until the user submits.
@@ -79,6 +80,7 @@ export function PlaygroundInput({
   channelValue = 0,
   onChannelChange,
   temperatureValue,
+  temperatureEnabled,
   onTemperatureChange,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
@@ -135,6 +137,7 @@ export function PlaygroundInput({
             channelValue={channelValue}
             onChannelChange={onChannelChange}
             temperatureValue={temperatureValue}
+            temperatureEnabled={temperatureEnabled}
             onTemperatureChange={onTemperatureChange}
             text={text}
             tools={

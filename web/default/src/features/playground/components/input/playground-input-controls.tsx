@@ -16,15 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { SendIcon, SquareIcon } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { Check, ChevronsUpDown, SendIcon, SquareIcon } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PromptInputButton } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
-import { Input } from '@/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { getModelCategory } from '@/lib/model-category'
+import { cn } from '@/lib/utils'
 
+import { TEMPERATURE_OPTIONS } from '../../constants'
 import { getInputControlState } from '../../lib'
 import type { GroupOption, ModelOption, PlaygroundChannel } from '../../types'
 import { PlaygroundChannelSelector } from './playground-channel-selector'
@@ -47,7 +53,8 @@ type PlaygroundInputControlsProps = {
   channelValue?: number
   onChannelChange?: (value: number) => void
   temperatureValue: number
-  onTemperatureChange: (value: number) => void
+  temperatureEnabled: boolean
+  onTemperatureChange: (value: number | null) => void
 }
 
 export function PlaygroundInputControls({
@@ -68,6 +75,7 @@ export function PlaygroundInputControls({
   channelValue = 0,
   onChannelChange,
   temperatureValue,
+  temperatureEnabled,
   onTemperatureChange,
 }: PlaygroundInputControlsProps) {
   const { t } = useTranslation()
@@ -82,28 +90,84 @@ export function PlaygroundInputControls({
       text,
     })
 
-  // 采样温度草稿：输入过程中不实时提交，失焦/回车时才校验并写回配置，
-  // 避免 typing “1.” 这类中间态被规范化打断。
-  const [temperatureDraft, setTemperatureDraft] = useState(
-    String(temperatureValue)
-  )
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTemperatureDraft(String(temperatureValue))
-  }, [temperatureValue])
+  // 采样温度下拉：预设值 + “关闭”（省略 temperature 参数）。
+  // 旧版自由输入可能存下预设外的温度，把当前值补进候选，避免下拉吞掉已有配置。
+  const [temperatureOpen, setTemperatureOpen] = useState(false)
+  const temperatureOptions = TEMPERATURE_OPTIONS.includes(temperatureValue)
+    ? TEMPERATURE_OPTIONS
+    : [temperatureValue, ...TEMPERATURE_OPTIONS]
 
-  const commitTemperature = () => {
-    const parsed = Number.parseFloat(temperatureDraft)
-    if (Number.isNaN(parsed)) {
-      setTemperatureDraft(String(temperatureValue))
-      return
-    }
-    const clamped = Math.min(2, Math.max(0, parsed))
-    setTemperatureDraft(String(clamped))
-    if (clamped !== temperatureValue) {
-      onTemperatureChange(clamped)
-    }
-  }
+  const renderTemperaturePicker = () => (
+    <label className='flex shrink-0 items-center gap-1.5'>
+      <span className='text-muted-foreground text-xs whitespace-nowrap'>
+        {t('Sampling Temperature')}
+      </span>
+      <Popover open={temperatureOpen} onOpenChange={setTemperatureOpen}>
+        <PopoverTrigger
+          render={
+            <button
+              type='button'
+              className='bg-background/80 hover:bg-accent/70 text-foreground flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors'
+              aria-label={t('Sampling Temperature')}
+              disabled={isSelectorDisabled}
+            >
+              <span>
+                {temperatureEnabled ? String(temperatureValue) : t('Off')}
+              </span>
+              <ChevronsUpDown className='text-muted-foreground size-3.5 shrink-0 opacity-60' />
+            </button>
+          }
+        />
+        <PopoverContent side='top' align='start' className='w-32 p-1'>
+          {temperatureOptions.map((value) => (
+            <button
+              type='button'
+              key={value}
+              className={cn(
+                'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                temperatureEnabled && temperatureValue === value
+                  ? 'bg-accent'
+                  : 'hover:bg-accent'
+              )}
+              onClick={() => {
+                onTemperatureChange(value)
+                setTemperatureOpen(false)
+              }}
+            >
+              <span>{value}</span>
+              <Check
+                className={cn(
+                  'size-3.5',
+                  temperatureEnabled && temperatureValue === value
+                    ? 'opacity-100'
+                    : 'opacity-0'
+                )}
+              />
+            </button>
+          ))}
+          <button
+            type='button'
+            className={cn(
+              'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+              !temperatureEnabled ? 'bg-accent' : 'hover:bg-accent'
+            )}
+            onClick={() => {
+              onTemperatureChange(null)
+              setTemperatureOpen(false)
+            }}
+          >
+            <span>{t('Off')}</span>
+            <Check
+              className={cn(
+                'size-3.5',
+                !temperatureEnabled ? 'opacity-100' : 'opacity-0'
+              )}
+            />
+          </button>
+        </PopoverContent>
+      </Popover>
+    </label>
+  )
 
   const renderSelector = () => (
     <div className='flex min-w-0 items-center gap-2'>
@@ -124,31 +188,7 @@ export function PlaygroundInputControls({
         categorizeModel={getModelCategory}
         disabled={isSelectorDisabled}
       />
-      <label className='flex shrink-0 items-center gap-1.5'>
-        <span className='text-muted-foreground text-xs whitespace-nowrap'>
-          {t('Sampling Temperature')}
-        </span>
-        <Input
-          type='number'
-          min={0}
-          max={2}
-          step={0.1}
-          inputMode='decimal'
-          aria-label={t('Sampling Temperature')}
-          className='h-8 w-16 px-2 text-xs'
-          disabled={isSelectorDisabled}
-          value={temperatureDraft}
-          onChange={(event) => setTemperatureDraft(event.target.value)}
-          onBlur={commitTemperature}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              // 阻止表单隐式提交，回车只确认温度值
-              event.preventDefault()
-              commitTemperature()
-            }
-          }}
-        />
-      </label>
+      {renderTemperaturePicker()}
     </div>
   )
 

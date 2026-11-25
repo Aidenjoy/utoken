@@ -99,6 +99,7 @@ function PlaygroundContent(props: {
     setModels,
     setGroups,
     updateConfig,
+    updateParameterEnabled,
   } = props.state
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
@@ -245,7 +246,17 @@ function PlaygroundContent(props: {
           channelValue={config.channelId}
           onChannelChange={(value) => updateConfig('channelId', value)}
           temperatureValue={config.temperature}
-          onTemperatureChange={(value) => updateConfig('temperature', value)}
+          temperatureEnabled={parameterEnabled.temperature}
+          onTemperatureChange={(value) => {
+            // null = 关闭：请求体省略 temperature（fable 等上游弃用该参数）；
+            // 选数值则同时恢复启用，避免关闭后选值不生效。
+            if (value === null) {
+              updateParameterEnabled('temperature', false)
+            } else {
+              updateConfig('temperature', value)
+              updateParameterEnabled('temperature', true)
+            }
+          }}
         />
       </div>
     </div>

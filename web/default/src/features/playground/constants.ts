@@ -75,6 +75,11 @@ export const DEFAULT_PARAMETER_ENABLED: ParameterEnabled = {
   seed: false,
 }
 
+// 采样温度下拉预设；数字标签各语言一致，直接渲染不做 i18n 键（同比例选项先例）。
+// “关闭”走 parameterEnabled.temperature=false，请求体省略 temperature，
+// 兼容 fable 等弃用该参数的上游模型。
+export const TEMPERATURE_OPTIONS: readonly number[] = [0, 0.3, 0.5, 0.7, 1]
+
 // Storage keys
 export const STORAGE_KEYS = {
   CONFIG: 'playground_config',
