@@ -175,6 +175,7 @@ export const STATIC_I18N_KEYS = [
   'Upload a flat-lay layout reference',
   'Upload a 3D style reference',
   // Header navigation
+  'Official Website',
   'Home',
   'Console',
   'Model Square',

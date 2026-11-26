@@ -84,6 +84,13 @@ export function useTopNavLinks(): TopNavLink[] {
 
   const links: TopNavLink[] = []
 
+  // 官网 — 外链跳转到云大师官网，置于「首页」之前
+  links.push({
+    title: t('Official Website'),
+    href: 'https://www.yundashi.com/',
+    external: true,
+  })
+
   // 首页
   if (modules?.home !== false) {
     links.push({ title: t('Home'), href: '/' })
