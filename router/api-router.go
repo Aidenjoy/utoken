@@ -71,6 +71,7 @@ func SetApiRouter(router *gin.Engine) {
 		desktopAuth.GET("/balance", middleware.DesktopBalanceAuth(), controller.DesktopBalance)
 		desktopAuth.POST("/session", middleware.CriticalRateLimit(), controller.DesktopCreateDashboardSession)
 		desktopAuth.POST("/revoke", middleware.CriticalRateLimit(), controller.DesktopRevoke)
+		apiRouter.POST("/yuncontrol/cloud-key", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.YuncontrolCloudKey)
 
 		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, controller.CreemWebhook)

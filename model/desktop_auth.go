@@ -9,6 +9,8 @@ import (
 
 var ErrDesktopCredentialInvalid = errors.New("invalid desktop credential")
 
+const desktopLanguageKeyName = "客户端语言模型专用（不建议用于其他用途）"
+
 // DesktopAuthCode stores only a digest of the short-lived browser authorization code.
 type DesktopAuthCode struct {
 	Digest      string `gorm:"type:char(64);primaryKey"`
@@ -63,20 +65,8 @@ func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, no
 		if err != nil {
 			return err
 		}
-		const desktopLanguageKeyName = "客户端语言模型专用（不建议用于其他用途）"
-		// 当前项目没有会员绑定字段；按账号、密钥类型、专用名称及未绑定渠道复用桌面密钥。
-		err = tx.Where("user_id = ? AND key_type = ? AND name = ? AND channel_id = ?", user.Id, TokenKeyTypeLanguage, desktopLanguageKeyName, 0).Order("id asc").First(&languageKey).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			key, keyErr := common.GenerateKey()
-			if keyErr != nil {
-				return keyErr
-			}
-			languageKey = Token{UserId: user.Id, Key: key, Name: desktopLanguageKeyName, KeyType: TokenKeyTypeLanguage,
-				Status: common.TokenStatusEnabled, CreatedTime: now, AccessedTime: now, ExpiredTime: -1, UnlimitedQuota: true}
-			if err := tx.Create(&languageKey).Error; err != nil {
-				return err
-			}
-		} else if err != nil {
+		languageKey, err = getOrCreateDesktopLanguageKey(tx, user.Id, now)
+		if err != nil {
 			return err
 		}
 		session.UserID = user.Id
@@ -87,6 +77,41 @@ func ExchangeDesktopAuthCode(digest, clientID, redirectURI, challenge string, no
 		return nil, nil, err
 	}
 	return &languageKey, account, nil
+}
+
+// GetOrCreateDesktopLanguageKey 复用桌面客户端的专用语言模型 Key。
+// 账号状态检查与 Key 创建处于同一事务，服务端调用方无需接触用户密码。
+func GetOrCreateDesktopLanguageKey(userID int, now int64) (*Token, error) {
+	var languageKey Token
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		user, err := activeDesktopUser(lockForUpdate(tx), userID)
+		if err != nil {
+			return err
+		}
+		languageKey, err = getOrCreateDesktopLanguageKey(tx, user.Id, now)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &languageKey, nil
+}
+
+func getOrCreateDesktopLanguageKey(tx *gorm.DB, userID int, now int64) (Token, error) {
+	var languageKey Token
+	// 当前项目没有会员绑定字段；按账号、密钥类型、专用名称及未绑定渠道复用桌面密钥。
+	err := tx.Where("user_id = ? AND key_type = ? AND name = ? AND channel_id = ?",
+		userID, TokenKeyTypeLanguage, desktopLanguageKeyName, 0).Order("id asc").First(&languageKey).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		key, keyErr := common.GenerateKey()
+		if keyErr != nil {
+			return Token{}, keyErr
+		}
+		languageKey = Token{UserId: userID, Key: key, Name: desktopLanguageKeyName, KeyType: TokenKeyTypeLanguage,
+			Status: common.TokenStatusEnabled, CreatedTime: now, AccessedTime: now, ExpiredTime: -1, UnlimitedQuota: true}
+		err = tx.Create(&languageKey).Error
+	}
+	return languageKey, err
 }
 
 func GetDesktopAuthUser(digest string, now int64, consume bool) (*User, error) {
